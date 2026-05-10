@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      OWNER_NAME: TestOwner
+      PARTNER_NAME: TestPartner
+      WHATSAPP_VERIFY_TOKEN: test
+      WHATSAPP_ACCESS_TOKEN: test
+      WHATSAPP_APP_SECRET: test
+      WHATSAPP_PHONE_NUMBER_ID: test
+      WHATSAPP_BUSINESS_ACCOUNT_ID: test
+      DEEPSEEK_API_KEY: test
+      ADMIN_SECRET: test
+      OWNER_PERSONAL_WHATSAPP_NUMBER: "573001112233"
+      AI_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm install
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - run: npm run scan:secrets

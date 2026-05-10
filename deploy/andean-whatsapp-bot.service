@@ -1,0 +1,31 @@
+[Unit]
+Description=Andean Scapes WhatsApp Sales Bot
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=andeanbot
+Group=andeanbot
+WorkingDirectory=/opt/andean-whatsapp-bot/app
+EnvironmentFile=/etc/andean-whatsapp-bot.env
+ExecStart=/usr/bin/node dist/server.js
+Restart=always
+RestartSec=10
+TimeoutStartSec=30
+TimeoutStopSec=30
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/andean-whatsapp-bot /var/log/andean-whatsapp-bot
+CapabilityBoundingSet=
+LockPersonality=true
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=andean-whatsapp-bot
+
+[Install]
+WantedBy=multi-user.target

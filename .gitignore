@@ -1,0 +1,20 @@
+# env
+.env
+.env.local
+.env.*.local
+
+# data
+data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# build
+dist/
+node_modules/
+
+# OS / IDE
+.DS_Store
+.vscode/
+.idea/
+*.log

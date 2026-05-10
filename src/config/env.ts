@@ -1,0 +1,66 @@
+import { z } from 'zod';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+function boolFromEnv(v: unknown): boolean {
+  if (typeof v === 'boolean') return v;
+  if (typeof v === 'string') return v.toLowerCase() === 'true' || v === '1';
+  return Boolean(v);
+}
+
+const boolSchema = z.preprocess(boolFromEnv, z.boolean());
+
+const envSchema = z.object({
+  NODE_ENV: z.enum(['production', 'development', 'test']).default('production'),
+  PORT: z.coerce.number().default(3000),
+  HOST: z.string().default('127.0.0.1'),
+  PUBLIC_BASE_URL: z.string().default('https://bot.yourdomain.com'),
+  PUBLIC_TOUR_URL: z.string().default('https://your-public-site.com/experiences/emerald-mining-tour'),
+
+  WHATSAPP_VERIFY_TOKEN: z.string().min(1),
+  WHATSAPP_ACCESS_TOKEN: z.string().min(1),
+  WHATSAPP_APP_SECRET: z.string().min(1),
+  WHATSAPP_PHONE_NUMBER_ID: z.string().min(1),
+  WHATSAPP_BUSINESS_ACCOUNT_ID: z.string().min(1),
+  WHATSAPP_GRAPH_API_VERSION: z.string().default('v24.0'),
+
+  OWNER_NAME: z.string().min(1),
+  PARTNER_NAME: z.string().min(1),
+
+  OWNER_PERSONAL_WHATSAPP_NUMBER: z.string().min(1),
+  ALERT_CHANNEL: z.enum(['telegram', 'whatsapp', 'log']).default('telegram'),
+  HOT_LEAD_THRESHOLD: z.coerce.number().default(85),
+  URGENT_LEAD_THRESHOLD: z.coerce.number().default(95),
+  MAX_OWNER_WHATSAPP_ALERTS_PER_CUSTOMER_PER_DAY: z.coerce.number().default(1),
+
+  TELEGRAM_BOT_TOKEN: z.string().default(''),
+  TELEGRAM_CHAT_ID: z.string().default(''),
+
+  AI_ENABLED: boolSchema.default(true),
+  DEEPSEEK_API_KEY: z.string().min(1),
+  DEEPSEEK_BASE_URL: z.string().default('https://api.deepseek.com'),
+  DEEPSEEK_MODEL: z.string().default('deepseek-chat'),
+  DEEPSEEK_MAX_OUTPUT_TOKENS: z.coerce.number().default(2048),
+  DEEPSEEK_TEMPERATURE: z.coerce.number().default(0.7),
+
+  DAILY_AI_BUDGET_USD: z.coerce.number().default(2.00),
+  MONTHLY_AI_BUDGET_USD: z.coerce.number().default(30.00),
+  MAX_AI_CALLS_PER_CUSTOMER_PER_DAY: z.coerce.number().default(60),
+  MAX_AI_CALLS_GLOBAL_PER_DAY: z.coerce.number().default(1000),
+  AI_CACHE_TTL_SECONDS: z.coerce.number().default(3600),
+
+  SEND_IMAGES_ENABLED: boolSchema.default(true),
+  MAX_IMAGES_PER_CUSTOMER_PER_72H: z.coerce.number().default(1),
+  MAX_BOT_MESSAGES_PER_CUSTOMER_PER_HOUR: z.coerce.number().default(8),
+  MAX_BOT_MESSAGES_PER_CUSTOMER_PER_DAY: z.coerce.number().default(20),
+  ALLOW_CUSTOMER_REENGAGEMENT_TEMPLATES: boolSchema.default(false),
+
+  SQLITE_PATH: z.string().default('./data/bot.sqlite'),
+
+  ADMIN_SECRET: z.string().min(1),
+
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+});
+
+export const env = envSchema.parse(process.env);
