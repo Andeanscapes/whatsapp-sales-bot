@@ -9,6 +9,7 @@ export interface AlertRequest {
   score: number;
   intent: string;
   message: string;
+  name?: string;
   date?: string;
   people?: string;
   transport?: string;
@@ -62,7 +63,8 @@ export async function sendAlert(request: AlertRequest, db: Database.Database): P
 
   const body = template
     .replace('{{score}}', String(request.score))
-    .replace('{{customerPhone}}', request.customerPhone)
+    .replaceAll('{{customerPhone}}', request.customerPhone)
+    .replace('{{name}}', request.name ?? 'unknown')
     .replace('{{intent}}', request.intent)
     .replace('{{date}}', request.date ?? 'unknown')
     .replace('{{people}}', request.people ?? 'unknown')

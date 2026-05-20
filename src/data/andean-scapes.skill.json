@@ -1,0 +1,440 @@
+{
+  "skillVersion": "2026-05-06-v1",
+  "business": {
+    "name": "Andean Scapes",
+    "location": "Chivor, Boyacá, Colombia",
+    "mainExperience": "Emerald Mining Tour",
+    "publicTourUrlEnv": "PUBLIC_TOUR_URL",
+    "languages": ["English", "Spanish", "French on request"]
+  },
+  "experiences": [
+    {
+      "id": "emerald_mining_tour",
+      "name": "Emerald Mining Tour",
+      "status": "active",
+      "shortDescription": "Aventura Minera 2 Dias/1 Noche en Hacienda El Recuerdo, Chivor (Boyaca). Plan todo incluido: alojamiento, 3 comidas, mina, charla esmeraldera. Pet-friendly. Experiencia cultural y de aventura en la zona esmeraldifera de Colombia.",
+      "fullDescription": "Plan todo incluido de 2 dias y 1 noche. Somos pet-friendly. Edad minima: 5 anios. Ideal para personas que les gusta caminar y las aventuras. La Hacienda El Recuerdo es una finca dedicada a la ganaderia y apicultura, con ambiente rural comodo para descansar. Tiene WiFi para trabajar remotamente si se requiere. La distancia desde Bogota hace necesario el hospedaje. Se recomienda llegar a Chivor maximo 10:30 am. La experiencia minera dura ~6 horas y termina en la tarde, por eso se incluye alojamiento con 3 comidas. Menu local estandar, se tienen en cuenta restricciones alimentarias. Si el cliente tiene vehiculo que no es 4x4, se puede dejar en el pueblo en un lugar seguro y nosotros lo transportamos a las minas en vehiculo 4x4 (~45 min). Si el cliente viaja en bus publico, debe comprarlo directamente por su cuenta en la terminal que corresponda segun su ciudad de origen (Bogota, Tunja u otra). El costo del bus NO se suma al precio final del plan; solo se orienta al cliente y se validan horarios para cumplir el itinerario. Si se necesita transporte privado 4x4 desde Bogota, tiene costo de $1,700,000 COP (capacidad maxima 4 personas, mismo precio para 1-4 personas; grupos mas grandes requieren vehiculos adicionales). Cancelacion o reagendamiento: maximo 2 veces, hasta 4 dias antes del tour. Despues de eso no se hacen reembolsos de reservas. Traductor disponible con costo adicional.",
+      "meetingPoint": "Chivor town center",
+      "route": {
+        "fromBogota": "Bogota → Tunja → bajar por El Sisga → Macanal (ferry) → via destapada → Chivor. Tiempo total aprox 5-6 horas. El ferry funciona lunes a domingo de 6:00 am a 5:20 pm. Despues del ferry son ~40 min hasta Chivor.",
+        "alternateRoute": "Via Region del Guavio por Ubala: Bogota → Ubala → Chivor. De Ubala a Chivor son solo 12 km (~45 min). De Bogota a Ubala son ~35 km (~2.5 horas). Es la via RECOMENDADA. Siempre validar estado de las vias antes de viajar.",
+        "localAccess": "El tour inicia y termina en Chivor. Si el cliente tiene vehiculo propio, puede llegar y partir de la Hacienda El Recuerdo por cuenta propia, ya sea por Valle de Tenza o por la Region del Guavio via Ubala.",
+        "arrivalTips": "Se recomienda no llegar muy tarde. Salir de Bogota minimo 5 horas antes del tour o maximo 2:00 pm para evitar manejar de noche. Si el tour es al dia siguiente del dia de llegada, estos horarios aplican al dia anterior. Se puede llegar en moto o carro.",
+        "ferryInfo": "Ferry en Macanal. Horario: lunes a domingo 6:00 am a 5:20 pm. Es el unico cruce disponible para llegar a Chivor via Valle de Tenza.",
+        "botRules": [
+          "Comparti la ruta exacta si el cliente pregunta: Bogota → Tunja → Sisga → Macanal → ferry → Chivor (via Valle de Tenza).",
+          "Tambien menciona la via alterna por Ubala (Region del Guavio) que es la recomendada: solo 12 km de Ubala a Chivor, ~45 min.",
+          "Menciona el horario del ferry (6am-5:20pm) si preguntan por logistica.",
+          "Si el cliente tiene carro no 4x4, explicale que lo puede dejar seguro en el pueblo y nosotros lo llevamos a la mina.",
+          "El tour empieza y termina en Chivor. Si tienen vehiculo propio pueden llegar a la hacienda directamente.",
+          "Recomenda salir de Bogota con 5 horas de anticipacion o maximo 2pm. Siempre sugiere validar estado de vias antes de viajar.",
+          "Si el tour es al dia siguiente, el cliente puede llegar el dia anterior antes de las 2pm."
+        ]
+      },
+      "availability": {
+        "lastUpdated": "2026-05-06",
+        "timezone": "America/Bogota",
+        "availableDates": [
+          {
+            "date": "2026-05-18",
+            "status": "available",
+            "slotsApprox": null,
+            "internalNote": "verify_before_production"
+          },
+          {
+            "date": "2026-05-25",
+            "status": "available",
+            "slotsApprox": null,
+            "internalNote": "verify_before_production"
+          },
+          {
+            "date": "2026-06-08",
+            "status": "available",
+            "slotsApprox": null,
+            "internalNote": "verify_before_production"
+          }
+        ],
+        "botRule": "Never confirm final availability, exact cupo, weekday, or final booking. Say the date can be validated with the reservations team. If no confirmed availability data exists for the customer's requested date, say clearly that sales has not confirmed that date yet and the team can validate it. Never invent a date."
+      },
+      "pricing": {
+        "currency": "COP",
+        "lastUpdated": "2026-05-07",
+        "items": [
+          {
+            "id": "individual",
+            "label": "Individual (1 persona)",
+            "pricePerPerson": 550000,
+            "peopleIncluded": 1,
+            "publiclyShow": true,
+            "description": "1 noche en habitacion privada con bano privado. Comidas completas: 1 desayuno, 1 almuerzo fiambre, 1 cena. Experiencia minera Mina La Union ~6h con equipo de seguridad. Taller y charla esmeraldera ~1h. Acompanamiento local Chivor-Hacienda."
+          },
+          {
+            "id": "couple",
+            "label": "Pareja (2 personas)",
+            "couplePrice": 1040000,
+            "peopleIncluded": 2,
+            "publiclyShow": true,
+            "description": "1 noche en habitacion privada compartida con bano privado. Comidas completas para 2: 2 desayunos, 2 almuerzos fiambre, 2 cenas. Experiencia minera Mina La Union ~6h. Taller y charla esmeraldera ~1h. Acompanamiento local."
+          },
+          {
+            "id": "apiary_cattle_addon",
+            "label": "Apicultura y ganaderia (opcional, por persona)",
+            "pricePerPerson": 55000,
+            "peopleIncluded": null,
+            "publiclyShow": true,
+            "description": "Actividades adicionales en la Hacienda El Recuerdo: apicultura (abejas) y ganaderia. Se realizan el dia de salida antes del mediodia. No incluye comidas extra."
+          },
+          {
+            "id": "private_transport",
+            "label": "Transporte privado 4x4 desde Bogota",
+            "couplePrice": 1700000,
+            "peopleIncluded": 4,
+            "publiclyShow": true,
+            "description": "Transporte privado tipo 4x4 desde Bogota. Capacidad maxima 4 personas. Mismo precio para 1, 2, 3 o 4 personas. Grupos de 5+ requieren vehiculos adicionales (se cobra por vehiculo extra)."
+          }
+        ],
+        "botRules": [
+          "Plan base: Individual $550,000 (1p) o Pareja $1,040,000 (2p, habitacion compartida).",
+          "3 personas: Pareja ($1,040,000) + Individual ($550,000) = $1,590,000 (2 habitaciones).",
+          "4 personas (2 parejas): $1,040,000 x 2 = $2,080,000.",
+          "Transporte privado 4x4 desde Bogota: $1,700,000 COP (1-4 personas, mismo precio). 5+ personas: vehiculos adicionales.",
+          "SI el cliente pide transporte privado desde Bogota, SUMA $1,700,000 al plan base y da el total.",
+          "Bus publico: el cliente lo compra directamente por su cuenta en la terminal que corresponda segun ciudad de origen (Bogota, Tunja u otra). NO sumes bus al precio final del plan. Solo orienta y valida horarios para itinerario.",
+          "Adicional apicultura/ganaderia: $55,000 COP/persona (opcional, dia de salida antes del mediodia).",
+          "Traductor disponible con costo adicional (consultar).",
+          "Somos pet-friendly. Edad minima: 5 anios. Ideal para quienes les gusta caminar y la aventura.",
+          "Cancelacion/reagendamiento: maximo 2 veces, hasta 4 dias antes del tour. Despues no hay reembolso.",
+          "Reserva: 15% de deposito via Nequi o Mercado Pago.",
+          "Never provide Nequi numbers, payment links, placeholders, account data, or final payment instructions. The team confirms payment details.",
+          "Nunca inventes descuentos ni precios que no sigan esta formula."
+        ]
+      },
+      "included": [
+        "1 noche de alojamiento en Hacienda El Recuerdo",
+        "Habitacion privada con cama doble y bano privado",
+        "3 comidas completas por persona: desayuno, almuerzo fiambre, cena (menu local estandar, se tienen en cuenta restricciones alimentarias)",
+        "Experiencia minera en Mina La Union (~6 horas, hasta 300m adentro)",
+        "Equipo de seguridad completo: casco, botas, guia durante toda la actividad",
+        "Apoyo de asistencia medica",
+        "Charla minera con artesanos locales al llegar",
+        "Taller y charla esmeraldera (~1 hora)",
+        "Transporte local 4x4 desde Chivor pueblo hasta la mina (~45 min, si el cliente no tiene 4x4)",
+        "Acompanamiento local (Chivor → Hacienda)"
+      ],
+      "notIncludedUnlessConfirmed": [
+        "Transporte desde la ciudad de origen. Privado 4x4 desde Bogota tiene costo adicional. Bus publico lo compra el cliente por su cuenta y no se suma al precio del plan.",
+        "Traductor (disponible con costo adicional)",
+        "Comidas adicionales",
+        "Seguro de viaje",
+        "Gastos personales"
+      ],
+      "petPolicy": {
+        "allowed": true,
+        "notes": "Somos pet-friendly. Las mascotas son bienvenidas. Consultar con el equipo para coordinar detalles."
+      },
+      "agePolicy": {
+        "minimumAge": 5,
+        "notes": "Edad minima 5 anios. No recomendado para ninos menores."
+      },
+      "cancellationPolicy": {
+        "maxReschedules": 2,
+        "deadlineDaysBefore": 4,
+        "refundAfterDeadline": false,
+        "notes": "Se puede cancelar o reagendar maximo 2 veces, hasta 4 dias antes del tour. Despues de ese plazo no se hacen reembolsos de reservas."
+      },
+      "haciendaInfo": {
+        "name": "Hacienda El Recuerdo",
+        "activities": "Ganaderia y apicultura",
+        "amenities": ["WiFi para trabajo remoto", "Ambiente rural comodo", "Descanso en finca"],
+        "notes": "La hacienda es una finca ganadera y apicola donde se puede descansar comodamente en ambiente rural. Cuenta con WiFi para trabajar remotamente si se requiere."
+      },
+      "whatToBring": [
+        "Zapatos comodos para caminar",
+        "Chaqueta ligera o impermeable",
+        "Botella de agua",
+        "Protector solar",
+        "Gorra o sombrero",
+        "Medicina personal",
+        "Ropa comoda para caminos rurales",
+        "Efectivo para gastos locales"
+      ],
+      "safetyInfo": {
+        "equipment": "Casco, botas de seguridad y guia acompanante durante toda la actividad minera.",
+        "medicalSupport": "Apoyo de asistencia medica incluido.",
+        "regionSecurity": "El Valle de Tenza es una region muy segura y en paz. No hay problemas de orden publico. Contamos con base militar en la zona de las minas y la represa. La region es tranquila y apta para turismo.",
+        "notes": [
+          "La mina tiene ingreso controlado, siempre acompanados por el guia.",
+          "Se debe informar de condiciones medicas preexistentes antes de la actividad.",
+          "La actividad no es recomendada para personas con movilidad severamente reducida."
+        ]
+      },
+      "mineDetails": {
+        "type": "Minas de carbon convertidas en experiencia esmeraldera",
+        "multipleMines": true,
+        "notes": "El tour se realiza en cualquiera de las minas con las que tenemos convenio. No se asegura una mina en particular. Dentro de la mina hay zonas humedas, es normal mojarse un poco."
+      },
+      "emeraldPolicy": {
+        "guaranteed": false,
+        "notes": "No podemos asegurar que encuentren una esmeralda. Cuando ocasionalmente pasa, tratamos de compartir los hallazgos con los integrantes del grupo de manera divertida. Sugerimos que ojala pase, pero no es seguro. Es parte de la emocion de la experiencia."
+      },
+      "climateInfo": {
+        "altitude": "~2,000 msnm",
+        "temperature": "Frio. Llevar chaqueta ligera para la noche.",
+        "rainySeason": "Mayo a agosto (epoca de lluvias)",
+        "drySeason": "Final e inicio de anio (diciembre a febrero, epoca mas seca)",
+        "notes": "Clima frio por altura. Dentro de la mina hay zonas humedas. En epoca de lluvias (mayo-agosto) se recomienda ropa impermeable adicional."
+      },
+      "locationContext": {
+        "region": "Chivor, zona esmeraldifera de Boyaca (oriente del departamento). Diferente al occidente de Boyaca.",
+        "altitude": "Aprox 2,100 msnm",
+        "climate": "Templado, llevar chaqueta ligera para la noche."
+      },
+      "difficulty": {
+        "level": "Easy to moderate",
+        "notes": [
+          "Some walking and rural terrain may be involved.",
+          "The team should confirm suitability for children, older adults, or people with mobility limitations."
+        ]
+      },
+      "reservationFlow": [
+        "Preguntar nombre del cliente.",
+        "Preguntar cuantas personas.",
+        "Preguntar fecha preferida.",
+        "Preguntar si tienen transporte propio o necesitan desde Bogota.",
+        "Dar precio exacto segun cantidad de personas.",
+        "Explicar que la reserva se hace con 15% via Nequi o Mercado Pago.",
+        "Cuando el cliente quiere reservar o elige Nequi/Mercado Pago, escalar a humano antes de dar datos de pago."
+      ],
+      "commonQuestions": [
+        {
+          "lang": "es",
+          "intent": "pricing",
+          "question": "¿Cuánto cuesta?",
+          "answer": "Tenemos 2 planes. Individual (1 persona): $550,000 COP. Pareja (2 personas, habitacion compartida): $1,040,000 COP. Incluye 1 noche, comidas, experiencia minera, charla esmeraldera. El equipo te confirma disponibilidad."
+        },
+        {
+          "lang": "en",
+          "intent": "pricing",
+          "question": "How much does it cost?",
+          "answer": "We have 2 plans. Individual (1 person): $550,000 COP. Couple (2 people, shared room): $1,040,000 COP. Includes 1 night, meals, mining experience, emerald workshop. Team confirms availability."
+        },
+        {
+          "lang": "es",
+          "intent": "reservation",
+          "question": "¿Cómo reservo?",
+          "answer": "La reserva se hace con el 15% de deposito via Nequi o Mercado Pago. Decime tu fecha preferida, cuantas personas y si necesitan transporte. El equipo te confirma todo."
+        },
+        {
+          "lang": "en",
+          "intent": "reservation",
+          "question": "How do I reserve?",
+          "answer": "Reservation is made with a 15% deposit via Nequi or Mercado Pago. Tell me your preferred date, number of people, and transport needs. The team will confirm everything."
+        },
+        {
+          "lang": "es",
+          "intent": "transport",
+          "question": "¿Pueden ayudar con transporte desde Bogotá?",
+          "answer": "Si, el transporte se coordina segun grupo y fecha. Bogota-Chivor son 5-6 horas. Decime cuantas personas y que fecha para evaluarlo."
+        },
+        {
+          "lang": "en",
+          "intent": "transport",
+          "question": "Can you help with transport from Bogotá?",
+          "answer": "Yes, transport can be arranged depending on group size and date. Bogota-Chivor is 5-6 hours. Tell me how many people and what date."
+        },
+        {
+          "lang": "es",
+          "intent": "activities",
+          "question": "¿Qué actividades incluye?",
+          "answer": "Incluye experiencia minera en Mina La Union (~6h, hasta 300m adentro), taller esmeraldero (~1h), charla con artesanos, alojamiento 1 noche, 3 comidas. Es autentico, no turismo masivo."
+        },
+        {
+          "lang": "en",
+          "intent": "activities",
+          "question": "What activities are included?",
+          "answer": "Includes mining experience at La Union mine (~6h, up to 300m inside), emerald workshop (~1h), talk with artisans, 1 night lodging, 3 meals. Authentic, not mass tourism."
+        },
+        {
+          "lang": "es",
+          "intent": "route",
+          "question": "¿Cómo se llega a Chivor?",
+          "answer": "Dos rutas desde Bogota. La via Valle de Tenza: Bogota → Tunja → El Sisga → Macanal → ferry → Chivor (~5-6h, ferry 6am-5:20pm lun-dom, despues 40 min a Chivor). La via RECOMENDADA por la Region del Guavio: Bogota → Ubala → Chivor. De Ubala a Chivor son solo 12 km (~45 min). De Bogota a Ubala ~35 km (~2.5h). Siempre valida el estado de las vias antes de viajar."
+        },
+        {
+          "lang": "en",
+          "intent": "route",
+          "question": "How do I get to Chivor?",
+          "answer": "Two routes from Bogota. Via Valle de Tenza: Bogota → Tunja → El Sisga → Macanal → ferry → Chivor (~5-6h, ferry 6am-5:20pm Mon-Sun, then 40 min to Chivor). The RECOMMENDED route via Guavio Region: Bogota → Ubala → Chivor. From Ubala to Chivor is only 12 km (~45 min). Bogota to Ubala ~35 km (~2.5h). Always check road conditions before traveling."
+        },
+        {
+          "lang": "es",
+          "intent": "ferry",
+          "question": "¿Cómo funciona el ferry?",
+          "answer": "El ferry esta en Macanal, es el cruce obligatorio para llegar a Chivor. Funciona de lunes a domingo de 6:00 am a 5:20 pm. Es gratuito. Despues del ferry son ~40 minutos de via destapada hasta Chivor."
+        },
+        {
+          "lang": "en",
+          "intent": "ferry",
+          "question": "How does the ferry work?",
+          "answer": "The ferry is in Macanal — it's the only crossing to reach Chivor. It runs Monday to Sunday from 6:00am to 5:20pm. It's free. After the ferry it's ~40 minutes on a dirt road to Chivor."
+        },
+        {
+          "lang": "es",
+          "intent": "addons",
+          "question": "¿Hay actividades adicionales?",
+          "answer": "Si, en la Hacienda El Recuerdo tenemos actividades de apicultura (abejas) y ganaderia por $55,000 COP adicionales por persona. Se hacen el dia de salida antes del mediodia. Es opcional, se puede agregar al plan."
+        },
+        {
+          "lang": "en",
+          "intent": "addons",
+          "question": "Are there additional activities?",
+          "answer": "Yes, at Hacienda El Recuerdo we have beekeeping (apiculture) and cattle activities for an additional $55,000 COP per person. They're done on departure day before midday. Optional, can be added to your plan."
+        },
+        {
+          "lang": "es",
+          "intent": "safety",
+          "question": "¿Es seguro entrar a la mina?",
+          "answer": "Si, es seguro. Proveemos equipo de seguridad completo (casco, botas) y un guia experto los acompana todo el tiempo dentro de la mina. Tambien contamos con apoyo de asistencia medica. La mina tiene ingreso controlado. No es recomendado para personas con movilidad severamente reducida."
+        },
+        {
+          "lang": "en",
+          "intent": "safety",
+          "question": "Is it safe to enter the mine?",
+          "answer": "Yes, it's safe. We provide full safety equipment (helmet, boots) and an expert guide accompanies you at all times inside the mine. Medical assistance support is included. The mine has controlled access. Not recommended for people with severely reduced mobility."
+        },
+        {
+          "lang": "es",
+          "intent": "meals",
+          "question": "¿Cómo es la comida?",
+          "answer": "Se sirven 3 comidas: desayuno, almuerzo fiambre (tipico de la zona) y cena. Es un menu local estandar. Si tenes alguna restriccion alimentaria, avisanos y el equipo lo tiene en cuenta."
+        },
+        {
+          "lang": "en",
+          "intent": "meals",
+          "question": "What's the food like?",
+          "answer": "3 meals are served: breakfast, fiambre-style lunch (local specialty), and dinner. It's a standard local menu. If you have any dietary restrictions, let us know and the team will accommodate."
+        },
+        {
+          "lang": "es",
+          "intent": "arrival",
+          "question": "¿A qué hora debo llegar?",
+          "answer": "El tour empieza y termina en Chivor. Recomendamos salir de Bogota minimo 5 horas antes del tour, o maximo a las 2:00 pm para evitar manejar de noche en zona rural. Si llegas el dia anterior al tour, aplica el mismo horario: llega antes de las 2pm. Si tenes vehiculo propio, podes llegar directamente a la Hacienda El Recuerdo. Recorda validar el estado de las vias antes de viajar."
+        },
+        {
+          "lang": "en",
+          "intent": "arrival",
+          "question": "What time should I arrive?",
+          "answer": "The tour starts and ends in Chivor. We recommend leaving Bogota at least 5 hours before the tour, or by 2:00 pm at the latest to avoid driving at night in rural areas. If you're arriving the day before the tour, same timing applies: arrive before 2pm. If you have your own vehicle, you can drive directly to Hacienda El Recuerdo. Remember to check road conditions before traveling."
+        },
+        {
+          "lang": "es",
+          "intent": "pets",
+          "question": "¿Se pueden llevar mascotas?",
+          "answer": "Si, somos pet-friendly. Las mascotas son bienvenidas en la Hacienda El Recuerdo. Solo avisanos con anticipacion para coordinar los detalles."
+        },
+        {
+          "lang": "en",
+          "intent": "pets",
+          "question": "Can I bring my pet?",
+          "answer": "Yes, we are pet-friendly. Pets are welcome at Hacienda El Recuerdo. Just let us know in advance to coordinate."
+        },
+        {
+          "lang": "es",
+          "intent": "cancellation",
+          "question": "¿Se puede cancelar o reagendar?",
+          "answer": "Si, se puede cancelar o reagendar maximo 2 veces, hasta 4 dias antes del tour. Despues de ese plazo no se hacen reembolsos de la reserva."
+        },
+        {
+          "lang": "en",
+          "intent": "cancellation",
+          "question": "Can I cancel or reschedule?",
+          "answer": "Yes, you can cancel or reschedule up to 2 times, up to 4 days before the tour. After that, no refunds on the reservation deposit."
+        },
+        {
+          "lang": "es",
+          "intent": "transport_price",
+          "question": "¿Cuánto cuesta el transporte desde Bogotá?",
+          "answer": "Transporte privado 4x4 desde Bogota: $1,700,000 COP (capacidad maxima 4 personas, mismo precio para 1-4). Si vas en bus publico, lo compras directamente por tu cuenta en la terminal que corresponda segun tu ciudad de origen (Bogota, Tunja u otra). Ese costo no se suma al plan; solo validamos horarios para que te funcione el itinerario."
+        },
+        {
+          "lang": "en",
+          "intent": "transport_price",
+          "question": "How much is transport from Bogotá?",
+          "answer": "Private 4x4 transport from Bogota: $1,700,000 COP (max 4 people, same price for 1-4). Groups of 5+ need additional vehicles. Public bus Bogota-Chivor also available: $65,000 COP per trip, but schedule must be validated for the tour itinerary."
+        },
+        {
+          "lang": "es",
+          "intent": "children",
+          "question": "¿Pueden ir niños?",
+          "answer": "La edad minima es 5 anios. La experiencia es ideal para personas que les gusta caminar y las aventuras. No es recomendado para ninos menores de 5 anios."
+        },
+        {
+          "lang": "en",
+          "intent": "children",
+          "question": "Can children go?",
+          "answer": "Minimum age is 5 years. The experience is ideal for people who enjoy walking and adventure. Not recommended for children under 5."
+        },
+        {
+          "lang": "es",
+          "intent": "translator",
+          "question": "¿Tienen traductor?",
+          "answer": "Se puede consultar disponibilidad de traductor de ingles, frances u otros idiomas. Tiene un costo adicional. Avisanos con tiempo para coordinar."
+        },
+        {
+          "lang": "en",
+          "intent": "translator",
+          "question": "Do you have a translator?",
+          "answer": "A translator for English, French, or other languages can be arranged at an additional cost. Let us know in advance to coordinate."
+        },
+        {
+          "lang": "es",
+          "intent": "security",
+          "question": "¿Es segura la zona?",
+          "answer": "Si, el Valle de Tenza es una region muy segura y en paz. No hay problemas de orden publico. Contamos con base militar en la zona de las minas y la represa. Es una region tranquila, totalmente apta para turismo."
+        },
+        {
+          "lang": "en",
+          "intent": "security",
+          "question": "Is the area safe?",
+          "answer": "Yes, the Valle de Tenza region is very safe and peaceful. No public order issues. We have a military base near the mining area and the dam. It's a calm region, completely suitable for tourism."
+        },
+        {
+          "lang": "es",
+          "intent": "emerald",
+          "question": "¿Se pueden encontrar esmeraldas?",
+          "answer": "No podemos asegurar que encuentres una esmeralda. Cuando ocasionalmente pasa, compartimos los hallazgos con el grupo de manera divertida. Ojala pase, pero no es seguro. Es parte de la emocion de la experiencia minera."
+        },
+        {
+          "lang": "en",
+          "intent": "emerald",
+          "question": "Can we find emeralds?",
+          "answer": "We can't guarantee you'll find an emerald. When it occasionally happens, we share the findings with the group in a fun way. Hopefully it happens, but it's not guaranteed. It's part of the mining experience excitement."
+        },
+        {
+          "lang": "es",
+          "intent": "weather",
+          "question": "¿Cómo es el clima?",
+          "answer": "El clima es frio por estar a ~2,000 msnm. Epoca de lluvias: mayo a agosto. Epoca mas seca: final e inicio de anio (diciembre a febrero). Dentro de la mina hay zonas humedas, es normal mojarse un poco. Recomendamos chaqueta ligera y en epoca de lluvias ropa impermeable."
+        },
+        {
+          "lang": "en",
+          "intent": "weather",
+          "question": "How's the weather?",
+          "answer": "The weather is cold at ~2,000 masl. Rainy season: May to August. Driest season: end and start of year (December to February). Inside the mine there are wet areas, it's normal to get a little wet. We recommend a light jacket and waterproof clothing during rainy season."
+        },
+        {
+          "lang": "es",
+          "intent": "mines",
+          "question": "¿A qué mina se va?",
+          "answer": "El tour se realiza en cualquiera de las minas con las que tenemos convenio. No aseguramos una mina en particular. Todas ofrecen una experiencia autentica y segura con guia experto."
+        },
+        {
+          "lang": "en",
+          "intent": "mines",
+          "question": "Which mine do we visit?",
+          "answer": "The tour takes place in any of the partner mines we work with. We don't guarantee a specific mine. All offer an authentic and safe experience with an expert guide."
+        }
+      ]
+    }
+  ]
+}

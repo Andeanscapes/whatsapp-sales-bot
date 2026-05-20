@@ -22,7 +22,7 @@ const db = createAndMigrate(dbPath);
 
 const result = await processMessage({
   db,
-  customerPhone: '573001112233',
+  customerPhone: '573000000001',
   message,
   messageId: `sim_${Date.now()}`,
 });
@@ -35,7 +35,7 @@ console.log(`should_send_image=${result.shouldSendImage}`);
 
 if (result.shouldSendReply) {
   addMessage(db, {
-    customer_phone: '573001112233',
+    customer_phone: '573000000001',
     direction: 'outbound',
     message_type: 'text',
     body: result.reply,

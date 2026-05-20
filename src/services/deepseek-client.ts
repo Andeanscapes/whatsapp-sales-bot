@@ -69,7 +69,7 @@ export function buildSystemPrompt(skills: Skills, lang?: string, collectedFields
     `Business: ${skills.andeanScapes.business.name} — ${exp.shortDescription}`,
     `Location: ${skills.andeanScapes.business.location}`,
     `Route from Bogota: ${exp.route.fromBogota}`,
-    `Available dates: ${exp.availability.availableDates.map(d => d.date).join(', ')} (${exp.availability.botRule})`,
+    `Availability rule: ${exp.availability.botRule}`,
     'Pricing: ' + exp.pricing.items.filter(i => i.publiclyShow).map(i =>
       i.couplePrice ? `${i.label}: ${(i.couplePrice as number).toLocaleString('en-US')} COP total` : i.pricePerPerson ? `${i.label}: ${(i.pricePerPerson as number).toLocaleString('en-US')} COP` : `${i.label}: consultar`
     ).join(' | '),
@@ -186,15 +186,22 @@ const metaLineSchema = z.object({
   people: z.number().int().nullable().catch(null),
   date: z.string().nullable().catch(null),
   transport_need: z.string().nullable().catch(null),
+  pet: z.string().nullable().catch(null),
 });
 
 type MetaLine = z.infer<typeof metaLineSchema>;
 
-const META_DEFAULTS: MetaLine = { delta: 0, img: false, name: null, people: null, date: null, transport_need: null };
+const META_DEFAULTS: MetaLine = { delta: 0, img: false, name: null, people: null, date: null, transport_need: null, pet: null };
+
+function stripAnyMetaFragment(text: string): string {
+  return text.replace(/\s*\[META:[^\]]*\]?\s*$/s, '').trim();
+}
 
 function extractMetaLine(text: string): { reply: string; meta: MetaLine } {
   const match = text.match(/\[META:(\{[^}]+\})\]\s*$/);
-  if (!match) return { reply: text, meta: META_DEFAULTS };
+  if (!match) {
+    return { reply: stripAnyMetaFragment(text), meta: META_DEFAULTS };
+  }
   try {
     const parsed = JSON.parse(match[1]);
     const result = metaLineSchema.safeParse(parsed);
@@ -203,7 +210,7 @@ function extractMetaLine(text: string): { reply: string; meta: MetaLine } {
       meta: result.success ? result.data : META_DEFAULTS,
     };
   } catch {
-    return { reply: text, meta: META_DEFAULTS };
+    return { reply: stripAnyMetaFragment(text), meta: META_DEFAULTS };
   }
 }
 
@@ -221,13 +228,15 @@ function parseDeepSeekReply(content: string): DeepSeekResponse | null {
   if (stripped.length < 2) return null;
 
   const { reply, meta } = extractMetaLine(stripped);
-  const replyText = reply.length >= 2 ? reply : stripped;
+  const replyText = reply.length >= 2 ? reply : stripAnyMetaFragment(stripped);
+  if (replyText.length < 2) return null;
 
   const collected_fields: Record<string, unknown> = {};
   if (meta.name != null) collected_fields.name = meta.name;
   if (meta.people != null) collected_fields.people = meta.people;
   if (meta.date != null) collected_fields.date = meta.date;
   if (meta.transport_need != null) collected_fields.transport_need = meta.transport_need;
+  if (meta.pet != null) collected_fields.pet = meta.pet;
 
   return {
     reply: replyText,

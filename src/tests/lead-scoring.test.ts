@@ -10,6 +10,10 @@ beforeAll(() => {
 });
 
 describe('scoreMessage', () => {
+  it('uses 90 as hot lead threshold', () => {
+    expect(skills.salesStrategy.hotLeadThreshold).toBe(90);
+  });
+
   it('scores availability keywords', () => {
     const result = scoreMessage('Is June 8 available?', skills);
     expect(result.score).toBeGreaterThan(0);
@@ -26,6 +30,12 @@ describe('scoreMessage', () => {
     const result = scoreMessage('I want to book a tour', skills);
     expect(result.score).toBeGreaterThan(0);
     expect(result.signals).toContain('asks_reservation');
+  });
+
+  it('scores month, solo traveler, and bus transport signals', () => {
+    expect(scoreMessage('para finales de agosto', skills).signals).toContain('shares_specific_date');
+    expect(scoreMessage('estaria sola', skills).signals).toContain('shares_group_size');
+    expect(scoreMessage('iria en bus desde salitre', skills).signals).toContain('asks_transport');
   });
 
   it('applies negative signals', () => {

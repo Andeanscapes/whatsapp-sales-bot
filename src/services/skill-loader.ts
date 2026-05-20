@@ -130,6 +130,26 @@ const mediaSchema = z.object({
 
 const langFallbackSchema = z.object({
   optOutConfirmation: z.string(),
+  askName: z.string(),
+  askPeople: z.string(),
+  askDate: z.string(),
+  askTransport: z.string(),
+  aiFailureQualified: z.string(),
+  messageLimitReached: z.string(),
+  handoffMessage: z.string(),
+  repairPriceNotPresented: z.string(),
+  repairPricePresented: z.string(),
+  handedOffVariant0: z.string(),
+  handedOffVariant1: z.string(),
+  disculpaYaDicho: z.string(),
+  objectionResolvedContinue: z.string(),
+  safeReservationHandoff: z.string(),
+  safeReservationHandoffAlt1: z.string(),
+  safeReservationHandoffAlt2: z.string(),
+  softCloseReply: z.string(),
+  confirmReservationPrompt: z.string(),
+  answerQuestionBeforeQualification: z.string(),
+  itineraryReply: z.string(),
 });
 
 const fallbackRepliesSchema = z.object({

@@ -15,7 +15,9 @@ const ENGLISH_MARKERS = [
   'much', 'price', 'cost', 'plans', 'available', 'availability', 'date',
   'book', 'reserve', 'people', 'couple', 'transport', 'pickup', 'lodging',
   'hotel', 'included', 'information', 'about', 'help', 'tour', 'emerald',
-  'stop', 'unsubscribe',
+  'just', 'planning', 'visit', 'colombia', 'december', 'january', 'february',
+  'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october',
+  'november', 'private', 'stop', 'unsubscribe',
 ];
 
 export function normalizeText(text: string): string {
@@ -29,6 +31,10 @@ export function normalizeText(text: string): string {
 }
 
 export function detectLanguage(text: string): SupportedLanguage {
+  return detectLanguageOrNull(text) ?? 'es';
+}
+
+export function detectLanguageOrNull(text: string): SupportedLanguage | null {
   const normalized = normalizeText(text);
   const words = new Set(normalized.split(' ').filter(Boolean));
   const spanishScore = SPANISH_MARKERS.filter(marker => words.has(marker)).length;
@@ -36,5 +42,5 @@ export function detectLanguage(text: string): SupportedLanguage {
 
   if (spanishScore > englishScore) return 'es';
   if (englishScore > spanishScore) return 'en';
-  return 'es';
+  return null;
 }

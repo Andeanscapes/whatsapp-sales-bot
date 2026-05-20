@@ -4,8 +4,10 @@ const ALLOWED_CONVERSATION_COLUMNS = new Set([
   'language', 'lead_score', 'last_seen_at', 'opt_out_at', 'handed_off_at',
   'collected_name', 'collected_date', 'collected_people',
   'collected_transport_need', 'collected_lodging_need',
+  'collected_pet',
   'free_entry_detected', 'ad_referral_json',
   'hot_alert_sent_at', 'urgent_alert_sent_at',
+  'price_given_at', 'soft_closed_at',
 ]);
 
 export interface StoredMessage {

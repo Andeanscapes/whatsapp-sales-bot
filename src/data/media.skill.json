@@ -1,0 +1,22 @@
+{
+  "mediaPolicy": {
+    "sendImagesEnabled": true,
+    "maxImagesPerCustomerPer72h": 1,
+    "preferTourUrlOverImages": true,
+    "botRules": [
+      "Send max 1 image per customer per 72 hours.",
+      "Prefer public tour URL when possible.",
+      "Do not send image gallery in MVP.",
+      "Do not send images to owner alert."
+    ]
+  },
+  "images": [
+    {
+      "id": "emerald_mining_preview_1",
+      "experienceId": "emerald_mining_tour",
+      "type": "public_url",
+      "value": "REPLACE_WITH_PUBLIC_IMAGE_URL",
+      "caption": "Emerald Mining Tour in Chivor, Boyacá. We can confirm dates, transport, and options for your group."
+    }
+  ]
+}
