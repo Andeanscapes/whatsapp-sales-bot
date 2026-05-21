@@ -16,7 +16,7 @@ const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 const availableDateSchema = z.object({
   date: dateSchema,
-  status: z.enum(['available', 'limited', 'unavailable']),
+  status: z.enum(['available', 'limited', 'unavailable', 'soldout']),
   slotsApprox: z.number().int().nullable(),
   internalNote: z.string().optional(),
 });
@@ -50,7 +50,7 @@ const experienceSchema = z.object({
     fromBogota: z.string(),
     localAccess: z.string(),
     botRules: z.array(z.string()),
-  }),
+  }).passthrough(),
   availability: z.object({
     lastUpdated: dateSchema,
     timezone: z.string(),
@@ -72,7 +72,7 @@ const experienceSchema = z.object({
   }),
   reservationFlow: z.array(z.string()),
   commonQuestions: z.array(commonQuestionSchema),
-});
+}).passthrough();
 
 const andeanScapesSchema = z.object({
   skillVersion: z.string(),
@@ -82,7 +82,7 @@ const andeanScapesSchema = z.object({
     mainExperience: z.string(),
     publicTourUrlEnv: z.string(),
     languages: z.array(z.string()),
-  }),
+  }).passthrough(),
   experiences: z.array(experienceSchema).min(1),
 });
 
@@ -136,13 +136,19 @@ const langFallbackSchema = z.object({
   askTransport: z.string(),
   aiFailureQualified: z.string(),
   messageLimitReached: z.string(),
+  messageLimitAfterPrice: z.string(),
   handoffMessage: z.string(),
   repairPriceNotPresented: z.string(),
   repairPricePresented: z.string(),
   handedOffVariant0: z.string(),
   handedOffVariant1: z.string(),
+  handedOffTypo: z.string(),
+  handedOffQuestion: z.string(),
+  handedOffThanks: z.string(),
+  adventureClarifier: z.string(),
   disculpaYaDicho: z.string(),
   objectionResolvedContinue: z.string(),
+  partnerConsultSummary: z.string(),
   safeReservationHandoff: z.string(),
   safeReservationHandoffAlt1: z.string(),
   safeReservationHandoffAlt2: z.string(),

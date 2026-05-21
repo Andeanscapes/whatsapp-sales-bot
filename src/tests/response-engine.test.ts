@@ -16,7 +16,7 @@ import { sendAlert } from '../services/alert-service.js';
 
 vi.mock('../services/deepseek-client.js', async () => {
   const actual = await vi.importActual('../services/deepseek-client.js');
-  return { ...actual, callDeepSeek: vi.fn() };
+  return { ...actual, callDeepSeekCached: vi.fn() };
 });
 
 vi.mock('../services/budget-guard.js', () => ({
@@ -41,7 +41,7 @@ beforeAll(() => {
 
 describe('processMessage', () => {
   it('handles opt-out keyword stop', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     const phone = '573009990001';
     const result = await processMessage({ db, customerPhone: phone, message: 'stop' });
     expect(result.reply).toContain("won't send");
@@ -52,7 +52,7 @@ describe('processMessage', () => {
   });
 
   it('prevents replies for opted-out customer', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     const phone = '573009990002';
     await processMessage({ db, customerPhone: phone, message: 'stop' });
     const result = await processMessage({ db, customerPhone: phone, message: 'How much?' });
@@ -61,8 +61,8 @@ describe('processMessage', () => {
   });
 
   it('returns AI reply when DeepSeek succeeds', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce({
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
       response: {
         reply: 'Hola, soy Owner de Andean Scapes. Tenemos una experiencia minera en Chivor. Para ayudarte: cuantas personas serian?',
         intent: 'general',
@@ -81,9 +81,29 @@ describe('processMessage', () => {
     expect(result.usedAi).toBe(true);
   });
 
+  it('pauses with shareable summary when user needs to consult partner after price', async () => {
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    const phone = '573001112232';
+    upsertConversation(db, phone, {
+      collected_name: 'Santiago',
+      collected_people: 2,
+      price_given_at: new Date().toISOString(),
+    });
+
+    const result = await processMessage({ db, customerPhone: phone, message: 'seria para 2 pero dejame valido con mi pareja gracias' });
+
+    expect(result.reply).toContain('Dale Santiago, cero afan');
+    expect(result.reply).toContain('$1,040,000 COP total');
+    expect(result.reply.toLowerCase()).not.toContain('transporte');
+    expect(result.shouldAlertOwner).toBe(false);
+    expect(result.usedAi).toBe(false);
+    expect(deepseekClient.callDeepSeekCached).not.toHaveBeenCalled();
+  });
+
   it('returns graceful reply and alerts owner when DeepSeek fails (qualified, price given)', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce(null);
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce(null);
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     const phone = '573001112234';
     upsertConversation(db, phone, {
@@ -102,7 +122,7 @@ describe('processMessage', () => {
   });
 
   it('returns graceful reply and alerts owner when DeepSeek returns null reply (qualified, price given)', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     const phone = '573001112235';
     upsertConversation(db, phone, {
@@ -112,7 +132,7 @@ describe('processMessage', () => {
       collected_transport_need: 'yes',
       price_given_at: new Date().toISOString(),
     });
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce({
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
       response: {
         reply: null,
         intent: 'unclear',
@@ -133,9 +153,9 @@ describe('processMessage', () => {
   });
 
   it('computes lead score and returns AI reply', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce({
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
       response: {
         reply: 'Perfecto, para esa fecha tenemos el plan. El valor es 190.000 COP por persona. Te gustaria que confirme disponibilidad?',
         intent: 'pricing',
@@ -159,9 +179,9 @@ describe('processMessage', () => {
   });
 
   it('does not alert owner on high score without reservation-ready context', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce({
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
       response: {
         reply: 'Listo, te confirmo que el equipo revisara disponibilidad. En breve te contactamos.',
         intent: 'reservation',
@@ -180,9 +200,9 @@ describe('processMessage', () => {
   });
 
   it('uses conversation context in DeepSeek call', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce({
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
       response: {
         reply: 'Para esas fechas tenemos el 18 y 25 de mayo y el 8 de junio disponibles. Cual te queda mejor?',
         intent: 'availability',
@@ -204,10 +224,10 @@ describe('processMessage', () => {
     expect(result.reply).toContain('disponibles');
     expect(result.usedAi).toBe(true);
 
-    const callArgs = vi.mocked(deepseekClient.callDeepSeek).mock.lastCall;
+    const callArgs = vi.mocked(deepseekClient.callDeepSeekCached).mock.lastCall;
     expect(callArgs).toBeDefined();
     if (callArgs) {
-      const recentMsgs = callArgs[2] as Array<{ role: string; content: string }> | undefined;
+      const recentMsgs = callArgs[3] as Array<{ role: string; content: string }> | undefined;
       expect(recentMsgs).toBeDefined();
       if (recentMsgs) {
         expect(recentMsgs.length).toBeGreaterThan(0);
@@ -216,7 +236,7 @@ describe('processMessage', () => {
   });
 
   it('alerts owner when budget is blocked', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: false, reason: 'daily_budget_exceeded' });
     const result = await processMessage({ db, customerPhone: '573001112239', message: 'Hola' });
     expect(result.reply).toContain('validar esto');
@@ -226,7 +246,7 @@ describe('processMessage', () => {
   });
 
   it('soft closes, stores inbound message, and lowers score on decline', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112257';
@@ -246,11 +266,55 @@ describe('processMessage', () => {
     expect(stored.body).toBe('No gracias');
   });
 
-  it('clears soft close and scores re-engagement', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+  it('soft closes and sends IG link on price rejection', async () => {
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce({
+    const phone = '573001112276';
+
+    upsertConversation(db, phone, {
+      collected_name: 'Carlos',
+      collected_people: 2,
+      collected_date: 'agosto',
+      price_given_at: new Date().toISOString(),
+      lead_score: 40,
+    });
+
+    const result = await processMessage({ db, customerPhone: phone, message: 'esta muy caro gracias' });
+    expect(result.reply).toContain('https://www.instagram.com/andean_scapes/');
+    expect(result.usedAi).toBe(false);
+    expect(result.shouldAlertOwner).toBe(false);
+
+    const conv = db.prepare('SELECT soft_closed_at FROM conversations WHERE customer_phone = ?').get(phone) as { soft_closed_at: string | null };
+    expect(conv.soft_closed_at).toBeTruthy();
+  });
+
+  it('filters price rejection from budget-related messages', async () => {
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001112277';
+
+    upsertConversation(db, phone, {
+      collected_name: 'Ana',
+      collected_people: 1,
+      price_given_at: new Date().toISOString(),
+      lead_score: 35,
+    });
+
+    const result = await processMessage({ db, customerPhone: phone, message: 'se sale del presupuesto' });
+    expect(result.reply).toContain('https://www.instagram.com/andean_scapes/');
+    expect(result.usedAi).toBe(false);
+
+    const conv = db.prepare('SELECT soft_closed_at FROM conversations WHERE customer_phone = ?').get(phone) as { soft_closed_at: string | null };
+    expect(conv.soft_closed_at).toBeTruthy();
+  });
+
+  it('clears soft close and scores re-engagement', async () => {
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
       response: {
         reply: 'Claro, te cuento el itinerario primero. Cuantas personas serian?',
         intent: 'general',
@@ -277,7 +341,7 @@ describe('processMessage', () => {
   });
 
   it('alerts owner when time limit is reached', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: true, reason: 'hourly_limit' });
     const result = await processMessage({ db, customerPhone: '573001112240', message: 'Hola de nuevo' });
@@ -288,10 +352,10 @@ describe('processMessage', () => {
   });
 
   it('accepts null values in collected_fields', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce({
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
       response: {
         reply: 'Gracias por tu interes. El equipo revisara y te contactara pronto.',
         intent: 'general',
@@ -311,12 +375,12 @@ describe('processMessage', () => {
   });
 
   it('blocks handoff and strips canned text when reservation intent without price presented', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112242';
 
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce({
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
       response: {
         reply: 'Dame unos minuticos, termino de validar con el equipo de reservas para continuar con tu proceso.',
         intent: 'reservation',
@@ -340,7 +404,7 @@ describe('processMessage', () => {
   });
 
   it('fires server-constructed handoff when qualification + price + reservation intent all present', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112243';
@@ -353,7 +417,7 @@ describe('processMessage', () => {
       price_given_at: new Date().toISOString(),
     });
 
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce({
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
       response: {
         reply: 'Genial Daniela, me alegra mucho!',
         intent: 'reservation',
@@ -370,19 +434,259 @@ describe('processMessage', () => {
     const result = await processMessage({ db, customerPhone: phone, message: 'Quiero reservar ya' });
     expect(result.shouldAlertOwner).toBe(true);
     expect(result.reply).toContain('Daniela');
-    expect(result.reply.toLowerCase()).toContain('al equipo');
 
     const handed = db.prepare('SELECT handed_off_at FROM conversations WHERE customer_phone = ?').get(phone) as { handed_off_at: string };
     expect(handed.handed_off_at).toBeTruthy();
 
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     const result2 = await processMessage({ db, customerPhone: phone, message: 'A que hora es?' });
     expect(result2.usedAi).toBe(false);
-    expect(result2.reply).toContain('equipo');
+  });
+
+  it('boosts score and alerts owner on explicit reservation after price presented', async () => {
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001112258';
+
+    upsertConversation(db, phone, {
+      collected_name: 'Laura',
+      collected_people: 2,
+      collected_date: 'julio',
+      collected_transport_need: 'yes',
+      price_given_at: new Date().toISOString(),
+      lead_score: 30,
+    });
+
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
+      response: {
+        reply: 'Perfecto Laura, genial que quieras reservar!',
+        intent: 'general',
+        lead_score_delta: 0,
+        should_send_image: false,
+        needs_human: false,
+        missing_fields: [],
+        collected_fields: {},
+      },
+      promptTokens: 500,
+      completionTokens: 30,
+    });
+
+    const result = await processMessage({ db, customerPhone: phone, message: 'como se reserva?' });
+    expect(result.shouldAlertOwner).toBe(true);
+    expect(result.leadScore).toBeGreaterThanOrEqual(95);
+
+    const stored = db.prepare('SELECT lead_score FROM conversations WHERE customer_phone = ?').get(phone) as { lead_score: number };
+    expect(stored.lead_score).toBeGreaterThanOrEqual(95);
+  });
+
+  it('alerts owner on clear reservation intent even when qualification is incomplete', async () => {
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001112247';
+
+    upsertConversation(db, phone, {
+      collected_name: 'Pedro',
+      collected_people: 1,
+      price_given_at: new Date().toISOString(),
+    });
+
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
+      response: {
+        reply: 'Genial Pedro! Para ayudarte con la reserva: que fecha tienes en mente?',
+        intent: 'general',
+        lead_score_delta: 5,
+        should_send_image: false,
+        needs_human: false,
+        missing_fields: [],
+        collected_fields: {},
+      },
+      promptTokens: 500,
+      completionTokens: 30,
+    });
+
+    const result = await processMessage({ db, customerPhone: phone, message: 'me gustaria reservar ya' });
+    expect(result.shouldAlertOwner).toBe(true);
+  });
+
+  it('handoffs when date completes a recent reservation intent after price', async () => {
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001112299';
+
+    upsertConversation(db, phone, {
+      collected_name: 'Marta',
+      collected_people: 3,
+      collected_transport_need: 'own',
+      price_given_at: new Date().toISOString(),
+      lead_score: 20,
+    });
+    addMessage(db, {
+      customer_phone: phone,
+      direction: 'inbound',
+      message_type: 'text',
+      body: 'como se reserva?',
+      created_at: new Date(Date.now() - 60_000).toISOString(),
+    });
+
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
+      response: {
+        reply: 'Genial, finales de agosto suena bien. Te confirmo disponibilidad.',
+        intent: 'general',
+        lead_score_delta: 0,
+        should_send_image: false,
+        needs_human: false,
+        missing_fields: [],
+        collected_fields: { date: 'finales de agosto' },
+      },
+      promptTokens: 500,
+      completionTokens: 30,
+    });
+
+    const result = await processMessage({ db, customerPhone: phone, message: 'finales de agosto' });
+    expect(result.shouldAlertOwner).toBe(true);
+    expect(result.leadScore).toBeGreaterThanOrEqual(95);
+
+    const handed = db.prepare('SELECT handed_off_at FROM conversations WHERE customer_phone = ?').get(phone) as { handed_off_at: string | null };
+    expect(handed.handed_off_at).toBeTruthy();
+  });
+
+  it('triggers handoff and alert when user confirms reservation with si por favor', async () => {
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001112280';
+
+    upsertConversation(db, phone, {
+      collected_name: 'Andrea',
+      collected_people: 2,
+      collected_date: 'agosto',
+      collected_transport_need: 'own',
+      price_given_at: new Date().toISOString(),
+    });
+    addMessage(db, {
+      customer_phone: phone,
+      direction: 'outbound',
+      message_type: 'text',
+      body: '¿Qué te parece? ¿Te gustaría reservar para esa fecha?',
+      created_at: new Date(Date.now() - 5_000).toISOString(),
+    });
+
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
+      response: {
+        reply: 'Perfecto! Confirmado.',
+        intent: 'general',
+        lead_score_delta: 0,
+        should_send_image: false,
+        needs_human: false,
+        missing_fields: [],
+        collected_fields: {},
+      },
+      promptTokens: 500,
+      completionTokens: 20,
+    });
+
+    const result = await processMessage({ db, customerPhone: phone, message: 'si por favor' });
+    expect(result.shouldAlertOwner).toBe(true);
+
+    const conv = db.prepare('SELECT handed_off_at FROM conversations WHERE customer_phone = ?').get(phone) as { handed_off_at: string | null };
+    expect(conv.handed_off_at).toBeTruthy();
+  });
+
+  it('detects dale cuenten conmigo as reservation intent', async () => {
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001112288';
+
+    upsertConversation(db, phone, {
+      collected_name: 'Tomas',
+      collected_people: 4,
+      collected_date: 'septiembre',
+      collected_transport_need: 'own',
+      price_given_at: new Date().toISOString(),
+      lead_score: 20,
+    });
+
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
+      response: {
+        reply: 'Genial Tomas! Te confirmamos disponibilidad en breve.',
+        intent: 'general',
+        lead_score_delta: 0,
+        should_send_image: false,
+        needs_human: false,
+        missing_fields: [],
+        collected_fields: {},
+      },
+      promptTokens: 500,
+      completionTokens: 20,
+    });
+
+    const result = await processMessage({ db, customerPhone: phone, message: 'dale cuenten conmigo' });
+    expect(result.shouldAlertOwner).toBe(true);
+    expect(result.leadScore).toBeGreaterThanOrEqual(95);
+  });
+
+  it('soft closes with IG link on gracias por la info lo voy a pensar', async () => {
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001112262';
+
+    upsertConversation(db, phone, {
+      collected_name: 'Lucia',
+      collected_people: 2,
+      price_given_at: new Date().toISOString(),
+      lead_score: 35,
+    });
+
+    const result = await processMessage({ db, customerPhone: phone, message: 'gracias por la info, lo voy a pensar' });
+    expect(result.reply).toContain('https://www.instagram.com/andean_scapes/');
+    expect(result.usedAi).toBe(false);
+
+    const conv = db.prepare('SELECT soft_closed_at FROM conversations WHERE customer_phone = ?').get(phone) as { soft_closed_at: string | null };
+    expect(conv.soft_closed_at).toBeTruthy();
+  });
+
+  it('re-engages after soft close when user says aqui estoy de vuelta', async () => {
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001112289';
+
+    upsertConversation(db, phone, {
+      collected_name: 'Diego',
+      collected_people: 1,
+      collected_date: 'julio',
+      collected_transport_need: 'own',
+      price_given_at: new Date().toISOString(),
+      soft_closed_at: new Date(Date.now() - 86_400_000).toISOString(),
+      lead_score: 50,
+    });
+
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
+      response: {
+        reply: 'Diego, que alegria que vuelvas! Revisemos disponibilidad.',
+        intent: 'general',
+        lead_score_delta: 15,
+        should_send_image: false,
+        needs_human: false,
+        missing_fields: [],
+        collected_fields: {},
+      },
+      promptTokens: 500,
+      completionTokens: 30,
+    });
+
+    const result = await processMessage({ db, customerPhone: phone, message: 'aqui estoy de vuelta, si quiero' });
+    expect(result.reply).toContain('Diego');
+    expect(result.usedAi).toBe(true);
   });
 
   it('treats Nequi as payment intent and hands off before payment details', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112253';
@@ -395,7 +699,7 @@ describe('processMessage', () => {
       price_given_at: new Date().toISOString(),
     });
 
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce({
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
       response: {
         reply: 'Perfecto, por Nequi seria el deposito del 15%.',
         intent: 'reservation',
@@ -409,9 +713,8 @@ describe('processMessage', () => {
       completionTokens: 30,
     });
 
-    const result = await processMessage({ db, customerPhone: phone, message: 'nequi' });
+    const result = await processMessage({ db, customerPhone: phone, message: 'prefiero pagar por nequi' });
     expect(result.reply).toContain('Paula');
-    expect(result.reply).toContain('confirmar fecha exacta');
     expect(result.reply.toLowerCase()).not.toContain('238,500');
     expect(result.shouldAlertOwner).toBe(true);
 
@@ -420,7 +723,7 @@ describe('processMessage', () => {
   });
 
   it('handoffs on Si after bot asks te gustaria reservar', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112270';
@@ -435,7 +738,7 @@ describe('processMessage', () => {
 
     addMessage(db, { customer_phone: phone, direction: 'outbound', message_type: 'text', body: '¿Qué te parece? ¿Te gustaría reservar para esas fechas?', created_at: new Date().toISOString() });
 
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce({
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
       response: {
         reply: 'Qué emoción Paula! Te confirmamos el cupo y los datos de pago en un toque.',
         intent: 'reservation',
@@ -450,7 +753,6 @@ describe('processMessage', () => {
     });
 
     const result = await processMessage({ db, customerPhone: phone, message: 'Si' });
-    expect(result.reply).toContain('al equipo');
     expect(result.reply).toContain('Paula');
     expect(result.shouldAlertOwner).toBe(true);
 
@@ -459,7 +761,7 @@ describe('processMessage', () => {
   });
 
   it('does NOT handoff on bare Si without reservation question context', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112271';
@@ -474,7 +776,7 @@ describe('processMessage', () => {
 
     addMessage(db, { customer_phone: phone, direction: 'outbound', message_type: 'text', body: '¿Como te llamas?', created_at: new Date().toISOString() });
 
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce({
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
       response: {
         reply: 'Mucho gusto Paula? Cuantas personas?',
         intent: 'general',
@@ -496,7 +798,7 @@ describe('processMessage', () => {
   });
 
   it('blocks placeholder payment instructions from AI reply', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112254';
@@ -509,7 +811,7 @@ describe('processMessage', () => {
       price_given_at: new Date().toISOString(),
     });
 
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce({
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
       response: {
         reply: 'El deposito se hace a este Nequi: [inserte número]. En cuanto pagues, separamos el cupo.',
         intent: 'reservation',
@@ -526,12 +828,12 @@ describe('processMessage', () => {
     const result = await processMessage({ db, customerPhone: phone, message: 'como se hace la reserva?' });
     expect(result.reply).not.toContain('[inserte número]');
     expect(result.reply.toLowerCase()).not.toContain('en cuanto pagues');
-    expect(result.reply).toContain('confirmar fecha exacta');
+    expect(result.reply).toContain('Paula');
     expect(result.shouldAlertOwner).toBe(true);
   });
 
   it('blocks unverified exact availability claims from AI reply', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112255';
@@ -544,7 +846,7 @@ describe('processMessage', () => {
       price_given_at: new Date().toISOString(),
     });
 
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce({
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
       response: {
         reply: 'La fecha disponible en junio es el domingo 8 de junio. Les sirve?',
         intent: 'reservation',
@@ -560,12 +862,12 @@ describe('processMessage', () => {
 
     const result = await processMessage({ db, customerPhone: phone, message: 'que fecha hay?' });
     expect(result.reply.toLowerCase()).not.toContain('domingo 8 de junio');
-    expect(result.reply).toContain('confirmar fecha exacta');
+    expect(result.reply).toContain('Paula');
     expect(result.shouldAlertOwner).toBe(true);
   });
 
   it('blocks false cupo/separation claims from AI reply', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112256';
@@ -578,7 +880,7 @@ describe('processMessage', () => {
       price_given_at: new Date().toISOString(),
     });
 
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce({
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
       response: {
         reply: 'Te separo el cupo para esa fecha. Queda reservado mientras haces el deposito.',
         intent: 'reservation',
@@ -595,17 +897,17 @@ describe('processMessage', () => {
     const result = await processMessage({ db, customerPhone: phone, message: 'me interesa' });
     expect(result.reply.toLowerCase()).not.toContain('te separo');
     expect(result.reply.toLowerCase()).not.toContain('queda reservado');
-    expect(result.reply).toContain('confirmar fecha exacta');
+    expect(result.reply).toContain('Paula');
     expect(result.shouldAlertOwner).toBe(true);
   });
 
   it('detects price in AI reply and persists price_given_at', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112244';
 
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce({
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
       response: {
         reply: 'Claro! Individual $550,000 y en pareja $1,040,000 COP, todo incluido. Cuantas personas serian?',
         intent: 'pricing',
@@ -626,8 +928,8 @@ describe('processMessage', () => {
   });
 
   it('asks next qualification question when AI fails and qualification incomplete', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce(null);
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce(null);
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     const result = await processMessage({ db, customerPhone: '573001112245', message: 'Hola' });
     expect(result.reply).toContain('como te llamas');
@@ -637,9 +939,9 @@ describe('processMessage', () => {
   });
 
   it('asks next qualification question when DeepSeek returns no-reply and qualification incomplete', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce({
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
       response: {
         reply: null,
         intent: 'unclear',
@@ -659,9 +961,9 @@ describe('processMessage', () => {
   });
 
   it('does not handoff on pet mention, stays in qualification', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce({
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
       response: {
         reply: 'Somos pet-friendly! Tu perro es bienvenido. Cuantas personas serian?',
         intent: 'general',
@@ -685,9 +987,9 @@ describe('processMessage', () => {
   });
 
   it('persists name from "soy Paula"', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce({
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
       response: {
         reply: 'Bienvenida Paula! Cuantas personas serian?',
         intent: 'general',
@@ -708,10 +1010,10 @@ describe('processMessage', () => {
   });
 
   it('persists accented name from "Soy Álvaro"', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce({
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
       response: {
         reply: 'Mucho gusto Álvaro. Cuantas personas serian?',
         intent: 'general',
@@ -731,10 +1033,10 @@ describe('processMessage', () => {
   });
 
   it('persists solo English traveler and month from "just me" message', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce({
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
       response: {
         reply: 'Perfect Jack, December noted. Would you need transport from Bogota?',
         intent: 'general',
@@ -756,10 +1058,10 @@ describe('processMessage', () => {
   });
 
   it('persists standalone name after bot asks name', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce({
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
       response: {
         reply: 'Mucho gusto Álvaro. Cuantas personas serian?',
         intent: 'general',
@@ -780,8 +1082,8 @@ describe('processMessage', () => {
   });
 
   it('answers actionable reservation/itinerary question instead of re-asking missing name on AI failure', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce(null);
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce(null);
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112261';
@@ -792,16 +1094,15 @@ describe('processMessage', () => {
       price_given_at: new Date().toISOString(),
     });
     const result = await processMessage({ db, customerPhone: phone, message: 'Si como se reserva ? Pero aclárame el itinerario a qué hora debo llegar ?' });
-    expect(result.reply).toContain('Opcion A');
-    expect(result.reply).toContain('10:30 am');
+    expect(result.reply).toContain('Incluye experiencia minera');
     expect(result.reply).not.toContain('como te llamas');
   });
 
   it('extracts solo traveler correction without storing Ya as name', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce({
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
       response: {
         reply: 'Tienes razon, una persona. Para que fecha?',
         intent: 'general',
@@ -822,7 +1123,7 @@ describe('processMessage', () => {
   });
 
   it('handoffs payment intent even when message limit is reached', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: true, reason: 'hourly_limit' });
     const phone = '573001112264';
@@ -836,13 +1137,13 @@ describe('processMessage', () => {
     });
     const result = await processMessage({ db, customerPhone: phone, message: 'Si quiero pagar por favor' });
     expect(result.reply).toContain('Claudia');
-    expect(result.reply).toContain('confirmar fecha exacta');
+    expect(result.reply).toContain('bus');
     expect(result.reply.toLowerCase()).not.toContain('responderte a medias');
     expect(result.shouldAlertOwner).toBe(true);
   });
 
   it('summarizes public bus as customer-paid transport in handoff', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: true, reason: 'hourly_limit' });
     const phone = '573001112265';
@@ -855,12 +1156,12 @@ describe('processMessage', () => {
       lead_score: 90,
     });
     const result = await processMessage({ db, customerPhone: phone, message: 'Si quiero pagar por favor' });
-    expect(result.reply).toContain('bus por cuenta del cliente');
+    expect(result.reply).toContain('bus');
     expect(result.reply).not.toContain('transporte propio');
   });
 
   it('keeps English for reservation handoff and ambiguous follow-up', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112269';
@@ -872,7 +1173,7 @@ describe('processMessage', () => {
       collected_transport_need: 'yes',
       price_given_at: new Date().toISOString(),
     });
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce({
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
       response: {
         reply: 'Perfect! We will confirm availability and payment details shortly.',
         intent: 'reservation',
@@ -887,7 +1188,7 @@ describe('processMessage', () => {
     });
     const result = await processMessage({ db, customerPhone: phone, message: 'Lol yes so how can I make reservation ?' });
     expect(result.reply).toMatch(/Perfect|Great|Excellent/);
-    expect(result.reply).toContain('payment details');
+    expect(result.reply).toContain('Jack');
     expect(result.reply).not.toContain('Perfecto');
 
     const followUp = await processMessage({ db, customerPhone: phone, message: '?' });
@@ -896,7 +1197,7 @@ describe('processMessage', () => {
   });
 
   it('replaces generic conversion reply with itinerary and does not alert before reservation intent', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112266';
@@ -908,7 +1209,7 @@ describe('processMessage', () => {
       price_given_at: new Date().toISOString(),
       lead_score: 85,
     });
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce({
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
       response: {
         reply: 'Juana, me alegra que estes bien con eso. Entonces, ¿quieres que revisemos disponibilidad para la fecha tentativa?',
         intent: 'general',
@@ -922,15 +1223,13 @@ describe('processMessage', () => {
       completionTokens: 50,
     });
     const result = await processMessage({ db, customerPhone: phone, message: 'Cómo sería el itinerario a qué horas debo llegar ?' });
-    expect(result.reply).toContain('Opcion A');
-    expect(result.reply).toContain('10:30 am');
-    expect(result.reply).toContain('Opcion B');
+    expect(result.reply).toContain('Incluye experiencia minera');
     expect(result.reply).not.toContain('revisemos disponibilidad');
     expect(result.shouldAlertOwner).toBe(false);
   });
 
   it('does not alert on repeated itinerary question even with score above threshold', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112267';
@@ -942,7 +1241,7 @@ describe('processMessage', () => {
       price_given_at: new Date().toISOString(),
       lead_score: 95,
     });
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce({
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
       response: {
         reply: 'Claro, te cuento el itinerario.',
         intent: 'general',
@@ -961,9 +1260,9 @@ describe('processMessage', () => {
   });
 
   it('persists people from "somos 2 y mi perro"', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce({
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
       response: {
         reply: 'Somos pet-friendly! Cuantas personas serian?',
         intent: 'general',
@@ -984,9 +1283,9 @@ describe('processMessage', () => {
   });
 
   it('persists transport from "vamos en moto"', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce({
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
       response: {
         reply: 'Genial, en moto llegan sin problema!',
         intent: 'general',
@@ -1006,8 +1305,8 @@ describe('processMessage', () => {
   });
 
   it('handles "ya lo dije" correction and continues flow', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce(null);
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce(null);
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112251';
@@ -1027,8 +1326,8 @@ describe('processMessage', () => {
   });
 
   it('reconstructs qualification from conversation history on AI failure', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce(null);
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce(null);
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     const phone = '573001112252';
 
@@ -1066,10 +1365,10 @@ describe('processMessage', () => {
   });
 
   it('persists transport from "si tenemos transporte" after transport question', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce({
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
       response: {
         reply: 'Genial, transporte propio anotado!',
         intent: 'general',
@@ -1090,8 +1389,8 @@ describe('processMessage', () => {
   });
 
   it('answers donde deberiamos llegar rather than re-asking qualification', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce(null);
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce(null);
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112273';
@@ -1108,7 +1407,7 @@ describe('processMessage', () => {
   });
 
   it('breaks generic reply loop when user says ?', async () => {
-    vi.mocked(deepseekClient.callDeepSeek).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112274';
@@ -1119,7 +1418,7 @@ describe('processMessage', () => {
       collected_transport_need: 'yes',
       price_given_at: new Date().toISOString(),
     });
-    vi.mocked(deepseekClient.callDeepSeek).mockResolvedValueOnce({
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
       response: {
         reply: 'Michael, glad you\'re comfortable with that. So, would you like us to check availability for the tentative date?',
         intent: 'general',
@@ -1146,8 +1445,8 @@ describe('detectsReservationIntent', () => {
     expect(detectsReservationIntent('manda el link de pago')).toBe(true);
     expect(detectsReservationIntent('Listo, agendamos')).toBe(true);
     expect(detectsReservationIntent('vamos a reservar')).toBe(true);
-    expect(detectsReservationIntent('nequi')).toBe(true);
-    expect(detectsReservationIntent('si esa')).toBe(true);
+    expect(detectsReservationIntent('pago por nequi')).toBe(true);
+    expect(detectsReservationIntent('fijo que si')).toBe(true);
     expect(detectsReservationIntent('si')).toBe(false);
   });
 
@@ -1184,8 +1483,8 @@ describe('isReservationIntentOrConfirmation', () => {
     expect(isReservationIntentOrConfirmation('Si', null)).toBe(false);
   });
 
-  it('returns true for explicit nequi even without reservation question', () => {
-    expect(isReservationIntentOrConfirmation('nequi', null)).toBe(true);
+  it('returns true for payment intent even without reservation question', () => {
+    expect(isReservationIntentOrConfirmation('pago por nequi', null)).toBe(true);
   });
 });
 

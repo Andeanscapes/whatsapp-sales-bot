@@ -32,6 +32,8 @@ console.log(`lead_score=${result.leadScore}`);
 console.log(`used_ai=${result.usedAi}`);
 console.log(`should_alert_owner=${result.shouldAlertOwner}`);
 console.log(`should_send_image=${result.shouldSendImage}`);
+console.log(`price_just_given=${result.priceJustGiven}`);
+if (result.priceFollowUpText) console.log(`price_follow_up_text=${result.priceFollowUpText}`);
 
 if (result.shouldSendReply) {
   addMessage(db, {

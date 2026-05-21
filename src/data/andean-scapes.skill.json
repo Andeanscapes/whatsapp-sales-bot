@@ -5,6 +5,9 @@
     "location": "Chivor, Boyacá, Colombia",
     "mainExperience": "Emerald Mining Tour",
     "publicTourUrlEnv": "PUBLIC_TOUR_URL",
+    "socialLinks": {
+      "instagram": "https://www.instagram.com/andean_scapes/"
+    },
     "languages": ["English", "Spanish", "French on request"]
   },
   "experiences": [
@@ -12,8 +15,8 @@
       "id": "emerald_mining_tour",
       "name": "Emerald Mining Tour",
       "status": "active",
-      "shortDescription": "Aventura Minera 2 Dias/1 Noche en Hacienda El Recuerdo, Chivor (Boyaca). Plan todo incluido: alojamiento, 3 comidas, mina, charla esmeraldera. Pet-friendly. Experiencia cultural y de aventura en la zona esmeraldifera de Colombia.",
-      "fullDescription": "Plan todo incluido de 2 dias y 1 noche. Somos pet-friendly. Edad minima: 5 anios. Ideal para personas que les gusta caminar y las aventuras. La Hacienda El Recuerdo es una finca dedicada a la ganaderia y apicultura, con ambiente rural comodo para descansar. Tiene WiFi para trabajar remotamente si se requiere. La distancia desde Bogota hace necesario el hospedaje. Se recomienda llegar a Chivor maximo 10:30 am. La experiencia minera dura ~6 horas y termina en la tarde, por eso se incluye alojamiento con 3 comidas. Menu local estandar, se tienen en cuenta restricciones alimentarias. Si el cliente tiene vehiculo que no es 4x4, se puede dejar en el pueblo en un lugar seguro y nosotros lo transportamos a las minas en vehiculo 4x4 (~45 min). Si el cliente viaja en bus publico, debe comprarlo directamente por su cuenta en la terminal que corresponda segun su ciudad de origen (Bogota, Tunja u otra). El costo del bus NO se suma al precio final del plan; solo se orienta al cliente y se validan horarios para cumplir el itinerario. Si se necesita transporte privado 4x4 desde Bogota, tiene costo de $1,700,000 COP (capacidad maxima 4 personas, mismo precio para 1-4 personas; grupos mas grandes requieren vehiculos adicionales). Cancelacion o reagendamiento: maximo 2 veces, hasta 4 dias antes del tour. Despues de eso no se hacen reembolsos de reservas. Traductor disponible con costo adicional.",
+      "shortDescription": "Aventura Minera 2 Dias/1 Noche en Hacienda El Recuerdo, Chivor (Boyaca). Experiencia inmersiva de aventura real — no es un plan turistico convencional. Mina con lodo y agua, caminatas, comunidad local. Plan todo incluido: alojamiento, 3 comidas, mina, charla esmeraldera. Pet-friendly. Para quien busca algo autentico, no piscina con vista.",
+      "fullDescription": "Para que lo tengas claro: esta NO es una experiencia de descanso con piscina. Es una aventura real de 2 dias y 1 noche con caminatas, esfuerzo fisico, terrenos rurales, lodo y humedad dentro de la mina. El ultimo tramo de via es en carretera terciaria (destapada). Si vienes en carro propio, debe estar preparado para via sin pavimentar. No es un plan para quien busca un tour facil de pocas horas — es para quienes quieren vivir algo genuino al lado de la comunidad esmeraldera. Somos pet-friendly. Edad minima: 5 anios. Ideal para personas que les gusta caminar y las aventuras. La Hacienda El Recuerdo es una finca dedicada a la ganaderia y apicultura, con ambiente rural comodo para descansar. Tiene WiFi para trabajar remotamente si se requiere. La distancia desde Bogota hace necesario el hospedaje. Se recomienda llegar a Chivor maximo 10:30 am. La experiencia minera dura ~6 horas y termina en la tarde, por eso se incluye alojamiento con 3 comidas. Menu local estandar, se tienen en cuenta restricciones alimentarias. Si el cliente tiene vehiculo que no es 4x4, se puede dejar en el pueblo en un lugar seguro y nosotros lo transportamos a las minas en vehiculo 4x4 (~45 min). Si el cliente viaja en bus publico, debe comprarlo directamente por su cuenta en la terminal que corresponda segun su ciudad de origen (Bogota, Tunja u otra). El costo del bus NO se suma al precio final del plan; solo se orienta al cliente y se validan horarios para cumplir el itinerario. Si se necesita transporte privado 4x4 desde Bogota, tiene costo de $1,700,000 COP (capacidad maxima 4 personas, mismo precio para 1-4 personas; grupos mas grandes requieren vehiculos adicionales). Cancelacion o reagendamiento: maximo 2 veces, hasta 4 dias antes del tour. Despues de eso no se hacen reembolsos de reservas. Traductor disponible con costo adicional.",
       "meetingPoint": "Chivor town center",
       "route": {
         "fromBogota": "Bogota → Tunja → bajar por El Sisga → Macanal (ferry) → via destapada → Chivor. Tiempo total aprox 5-6 horas. El ferry funciona lunes a domingo de 6:00 am a 5:20 pm. Despues del ferry son ~40 min hasta Chivor.",
@@ -32,29 +35,47 @@
         ]
       },
       "availability": {
-        "lastUpdated": "2026-05-06",
+        "lastUpdated": "2026-05-20",
         "timezone": "America/Bogota",
         "availableDates": [
           {
-            "date": "2026-05-18",
-            "status": "available",
-            "slotsApprox": null,
-            "internalNote": "verify_before_production"
+            "date": "2026-07-04",
+            "status": "limited",
+            "slotsApprox": 4,
+            "internalNote": "july_weekend_1"
           },
           {
-            "date": "2026-05-25",
-            "status": "available",
-            "slotsApprox": null,
-            "internalNote": "verify_before_production"
+            "date": "2026-07-18",
+            "status": "limited",
+            "slotsApprox": 4,
+            "internalNote": "july_weekend_3"
           },
           {
-            "date": "2026-06-08",
-            "status": "available",
-            "slotsApprox": null,
-            "internalNote": "verify_before_production"
+            "date": "2026-08-01",
+            "status": "limited",
+            "slotsApprox": 4,
+            "internalNote": "august_weekend_1"
+          },
+          {
+            "date": "2026-08-15",
+            "status": "limited",
+            "slotsApprox": 4,
+            "internalNote": "august_weekend_3"
+          },
+          {
+            "date": "2026-09-05",
+            "status": "limited",
+            "slotsApprox": 4,
+            "internalNote": "september_weekend_1"
+          },
+          {
+            "date": "2026-09-19",
+            "status": "limited",
+            "slotsApprox": 4,
+            "internalNote": "september_weekend_3"
           }
         ],
-        "botRule": "Never confirm final availability, exact cupo, weekday, or final booking. Say the date can be validated with the reservations team. If no confirmed availability data exists for the customer's requested date, say clearly that sales has not confirmed that date yet and the team can validate it. Never invent a date."
+        "botRule": "These are the planned weekend dates for the 2D/1N mining experience in Chivor. NEVER say all dates are booked or sold out as a definitive statement. Always frame it: the team needs to review actual availability for these dates or others. The team can check any date the customer is interested in, including dates not listed here. If the customer asks 'cuales estan libres?', list the planned dates and say the team validates all of them. Never confirm or deny availability — always route through the team."
       },
       "pricing": {
         "currency": "COP",
@@ -149,7 +170,9 @@
         "notes": "La hacienda es una finca ganadera y apicola donde se puede descansar comodamente en ambiente rural. Cuenta con WiFi para trabajar remotamente si se requiere."
       },
       "whatToBring": [
-        "Zapatos comodos para caminar",
+        "Zapatos que se puedan mojar y ensuciar (el lodo es real)",
+        "Ropa de cambio completa (vas a sudar y probablemente mojarte)",
+        "Toalla pequeña",
         "Chaqueta ligera o impermeable",
         "Botella de agua",
         "Protector solar",
@@ -171,7 +194,7 @@
       "mineDetails": {
         "type": "Minas de carbon convertidas en experiencia esmeraldera",
         "multipleMines": true,
-        "notes": "El tour se realiza en cualquiera de las minas con las que tenemos convenio. No se asegura una mina en particular. Dentro de la mina hay zonas humedas, es normal mojarse un poco."
+        "notes": "El tour se realiza en cualquiera de las minas con las que tenemos convenio. No se asegura una mina en particular. Dentro de la mina hay agua, lodo y humedad. Es normal mojarse. Se camina sobre terreno irregular ~6 horas con casco, botas y linterna. Es parte de la experiencia real, no un montaje turistico."
       },
       "emeraldPolicy": {
         "guaranteed": false,
@@ -190,11 +213,20 @@
         "climate": "Templado, llevar chaqueta ligera para la noche."
       },
       "difficulty": {
-        "level": "Easy to moderate",
+        "level": "Moderate",
         "notes": [
-          "Some walking and rural terrain may be involved.",
-          "The team should confirm suitability for children, older adults, or people with mobility limitations."
+          "Caminatas en terreno rural irregular, lodo, humedad dentro de la mina y esfuerzo fisico moderado.",
+          "No es un plan de descanso ni un paseo de pocas horas. Es aventura real con comunidad local.",
+          "No recomendado para personas con movilidad severamente reducida o que busquen una experiencia de descanso."
         ]
+      },
+      "experienceReality": {
+        "whatItIs": "Una aventura autentica de 2 dias al lado de mineros y comunidad local en la region esmeraldera de Colombia. Experiencia inmersiva: caminas, te metes a la mina de verdad, te mojas, compartes con la gente local. No es un tour montado para turistas — es la vida real de la region.",
+        "whatItIsNot": "No es un plan de piscina, ni un paseo de pocas horas, ni un tour masivo. No es para quien busca comodidad tipo hotel todo el tiempo. Es rustico, real y genuino.",
+        "physicalDemands": "Caminatas en terreno rural irregular, ~6 horas dentro de la mina con humedad y lodo, esfuerzo fisico moderado. Vas a sudar y probablemente mojarte.",
+        "roadConditions": "Los ultimos ~45 min de via son en carretera terciaria (destapada). Si vienes en carro propio, necesita estar en buen estado para via sin pavimentar. No es necesario 4x4 pero si un vehiculo preparado para terreno rural.",
+        "idealFor": "Personas con ganas de aventura real, que disfrutan la naturaleza, la cultura local y no le tienen miedo al lodo ni al esfuerzo fisico. Viajeros que buscan experiencias autenticas, no turismo de vitrina.",
+        "notIdealFor": "Personas que buscan descanso, piscina, planes urbanos, o que no estan dispuestas a caminar o mojarse. No recomendado para movilidad severamente reducida."
       },
       "reservationFlow": [
         "Preguntar nombre del cliente.",
@@ -409,6 +441,18 @@
           "intent": "emerald",
           "question": "Can we find emeralds?",
           "answer": "We can't guarantee you'll find an emerald. When it occasionally happens, we share the findings with the group in a fun way. Hopefully it happens, but it's not guaranteed. It's part of the mining experience excitement."
+        },
+        {
+          "lang": "es",
+          "intent": "availability",
+          "question": "¿Hay fechas disponibles?",
+          "answer": "Fechas planeadas que tenemos en el radar (el equipo debe validar disponibilidad real): Julio: sábado 4 y sábado 18. Agosto: sábado 1 y sábado 15. Septiembre: sábado 5 y sábado 19. Si te sirve alguna de estas (u otra fecha), podemos pedirle al equipo que la revise. No tenemos confirmación final sin el equipo — pero él puede validar cualquier fecha que te interese."
+        },
+        {
+          "lang": "en",
+          "intent": "availability",
+          "question": "Are there available dates?",
+          "answer": "Planned weekends we have on radar (all under review by the reservations team): July: Saturday 4 and Saturday 18. August: Saturday 1 and Saturday 15. September: Saturday 5 and Saturday 19. If any works for you, we can validate it with the team. No final confirmation without the team."
         },
         {
           "lang": "es",
