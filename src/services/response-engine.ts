@@ -4,7 +4,6 @@ import { scoreMessage } from './lead-scoring.js';
 import { isOptedOut, setOptOut } from './opt-out-service.js';
 import { addMessage, getRecentMessages, upsertConversation } from './conversation-store.js';
 import { checkTimeWindow } from './time-window-policy.js';
-import { canSendImage } from './media-service.js';
 import { checkBudget } from './budget-guard.js';
 import {
   buildSystemPrompt,
@@ -21,6 +20,7 @@ import {
   resolveLanguage,
   isQualificationComplete,
   nextQualificationQuestion,
+  PET_KEYWORDS,
 } from './qualification-engine.js';
 import {
   isSoftCloseMessage,
@@ -42,6 +42,7 @@ import {
   safeReservationHandoff,
   buildFallbackReply,
   containsUnsafeReservationClaim,
+  colombiaTimeAwareReply,
 } from './reply-guard.js';
 
 export {
@@ -63,12 +64,25 @@ function formatPeso(n: number): string {
   return n.toLocaleString('en-US');
 }
 
-function computePriceFollowUp(personas: unknown, lang: string, skills: Skills): string | undefined {
+function getPlanPricing(planId: string | undefined | null, skills: Skills): { individualPrice: number | null; couplePrice: number | null; planName: string; duration: string } {
+  const plans = (skills.andeanScapes.experiences[0] as Record<string, unknown>)?.plans as Array<Record<string, unknown>> | undefined;
+  if (!plans?.length) return { individualPrice: null, couplePrice: null, planName: 'plan', duration: 'plan' };
+  const selectedPlan = planId ? plans.find(p => p.id === planId) : plans[0];
+  if (!selectedPlan) return { individualPrice: null, couplePrice: null, planName: 'plan', duration: 'plan' };
   const pricingItems = skills.andeanScapes.experiences[0]?.pricing?.items ?? [];
-  const individual = pricingItems.find(i => i.id === 'individual');
-  const couple = pricingItems.find(i => i.id === 'couple');
-  const individualPrice = individual?.pricePerPerson;
-  const couplePrice = couple?.couplePrice;
+  const planPricingItems = pricingItems.filter(i => i.planId === selectedPlan.id);
+  const individual = planPricingItems.find(i => i.pricePerPerson != null);
+  const couple = planPricingItems.find(i => i.couplePrice != null);
+  return {
+    individualPrice: (individual?.pricePerPerson as number) ?? null,
+    couplePrice: (couple?.couplePrice as number) ?? null,
+    planName: selectedPlan.name as string,
+    duration: selectedPlan.duration as string,
+  };
+}
+
+function computePriceFollowUp(personas: unknown, planId: string | undefined | null, lang: string, skills: Skills): string | undefined {
+  const { individualPrice, couplePrice, duration } = getPlanPricing(planId, skills);
 
   if (individualPrice == null || couplePrice == null) {
     return undefined;
@@ -77,8 +91,8 @@ function computePriceFollowUp(personas: unknown, lang: string, skills: Skills): 
   const n = typeof personas === 'number' ? personas : parseInt(String(personas), 10);
   if (isNaN(n) || n <= 0) {
     return lang === 'es'
-      ? `Plan 2D/1N. Individual: $${formatPeso(individualPrice)} COP. Pareja: $${formatPeso(couplePrice)} COP.`
-      : `2D/1N Plan. Individual: $${formatPeso(individualPrice)} COP. Couple: $${formatPeso(couplePrice)} COP.`;
+      ? `Plan ${duration}. Individual: $${formatPeso(individualPrice)} COP. Pareja: $${formatPeso(couplePrice)} COP.`
+      : `${duration} Plan. Individual: $${formatPeso(individualPrice)} COP. Couple: $${formatPeso(couplePrice)} COP.`;
   }
 
   let label: string;
@@ -104,20 +118,16 @@ function computePriceFollowUp(personas: unknown, lang: string, skills: Skills): 
     : `In your case, ${label}: $${formatPeso(amount)} COP all-inclusive.`;
 }
 
-function computePartnerPriceLine(personas: unknown, lang: string, skills: Skills): string | undefined {
-  const pricingItems = skills.andeanScapes.experiences[0]?.pricing?.items ?? [];
-  const individual = pricingItems.find(i => i.id === 'individual');
-  const couple = pricingItems.find(i => i.id === 'couple');
-  const individualPrice = individual?.pricePerPerson;
-  const couplePrice = couple?.couplePrice;
+function computePartnerPriceLine(personas: unknown, planId: string | undefined | null, lang: string, skills: Skills): string | undefined {
+  const { individualPrice, couplePrice, duration } = getPlanPricing(planId, skills);
 
   if (individualPrice == null || couplePrice == null) return undefined;
 
   const n = typeof personas === 'number' ? personas : parseInt(String(personas), 10);
   if (isNaN(n) || n <= 0) {
     return lang === 'es'
-      ? `Individual: $${formatPeso(individualPrice)} COP. Pareja: $${formatPeso(couplePrice)} COP.`
-      : `Individual: $${formatPeso(individualPrice)} COP. Couple: $${formatPeso(couplePrice)} COP.`;
+      ? `Plan ${duration}. Individual: $${formatPeso(individualPrice)} COP. Pareja: $${formatPeso(couplePrice)} COP.`
+      : `Plan ${duration}. Individual: $${formatPeso(individualPrice)} COP. Couple: $${formatPeso(couplePrice)} COP.`;
   }
 
   let amount: number;
@@ -136,7 +146,7 @@ function computePartnerPriceLine(personas: unknown, lang: string, skills: Skills
 
 function buildPartnerConsultSummary(q: MergedQualification, lang: 'es' | 'en', skills: Skills): string {
   const name = String(q.nombre ?? '').trim();
-  const priceLine = computePartnerPriceLine(q.personas, lang, skills)
+  const priceLine = computePartnerPriceLine(q.personas, q.plan as string | undefined, lang, skills)
     ?? (lang === 'es'
       ? 'El valor final lo validamos segun cantidad de personas.'
       : 'We validate the final price based on the group size.');
@@ -285,11 +295,12 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   if (!rawCollected.fecha && richCollected.fecha) missingFromDb.collected_date = richCollected.fecha;
   if (!rawCollected.transporte && richCollected.transporte) missingFromDb.collected_transport_need = richCollected.transporte;
   if (!rawCollected.mascota && richCollected.mascota) missingFromDb.collected_pet = richCollected.mascota;
+  if (richCollected.plan && richCollected.plan !== rawCollected.plan) missingFromDb.collected_plan = richCollected.plan;
   if (Object.keys(missingFromDb).length > 0) {
     upsertConversation(db, customerPhone, missingFromDb);
   }
 
-  const collectedFields = reconstructFromHistory(db, customerPhone, rawCollected);
+  const collectedFields = reconstructFromHistory(db, customerPhone, getCollectedFields(db, customerPhone));
   const dbQualification = buildDbQualification(collectedFields);
   const recentMessages = getRecentMessages(db, customerPhone, 21).filter((_, i, arr) => i < arr.length - 1);
 
@@ -372,8 +383,9 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
       };
     }
     if (preLimitPriceRow?.price_given_at) {
+      const fb = skills.fallbackReplies[lang];
       return {
-        reply: skills.fallbackReplies[lang].messageLimitAfterPrice,
+        reply: colombiaTimeAwareReply(fb.messageLimitAfterPrice, fb.messageLimitAfterPriceAfterHours, fb.messageLimitAfterPriceMorningHours),
         shouldSendReply: true,
         leadScore: currentScore,
         usedAi: false,
@@ -397,8 +409,9 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   const budget = checkBudget(db, customerPhone);
   if (!budget.aiAllowed) {
     logger.warn({ reason: budget.reason }, '[AI] budget blocked');
+    const fb2 = skills.fallbackReplies[lang];
     const gracefulReply = preLimitPriceRow?.price_given_at
-      ? skills.fallbackReplies[lang].messageLimitAfterPrice
+      ? colombiaTimeAwareReply(fb2.messageLimitAfterPrice, fb2.messageLimitAfterPriceAfterHours, fb2.messageLimitAfterPriceMorningHours)
       : skills.fallbackReplies[lang].aiFailureQualified;
     return {
       reply: gracefulReply,
@@ -454,6 +467,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   const collectedFromAi = aiResponse.collected_fields ?? {};
   const dbFields: Record<string, unknown> = {};
   if (collectedFromAi.name != null) dbFields.collected_name = collectedFromAi.name;
+  if (collectedFromAi.plan != null) dbFields.collected_plan = collectedFromAi.plan;
   if (collectedFromAi.people != null) dbFields.collected_people = collectedFromAi.people;
   if (collectedFromAi.date != null) dbFields.collected_date = collectedFromAi.date;
   if (collectedFromAi.transport_need != null) dbFields.collected_transport_need = collectedFromAi.transport_need;
@@ -465,12 +479,13 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     upsertConversation(db, customerPhone, { lead_score: finalScore });
   }
 
-  const shouldSendImage = aiResponse.should_send_image && canSendImage(db, customerPhone);
+  const shouldSendImage = aiResponse.should_send_image;
 
   let replyText = stripHandoffPhrases(aiResponse.reply);
 
   const merged: MergedQualification = {
     nombre: collectedFields.nombre ?? collectedFromAi.name,
+    plan: collectedFields.plan ?? collectedFromAi.plan,
     personas: collectedFields.personas ?? collectedFromAi.people,
     fecha: collectedFields.fecha ?? collectedFromAi.date,
     transporte: collectedFields.transporte ?? collectedFromAi.transport_need,
@@ -522,7 +537,9 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
       'UPDATE conversations SET handed_off_at = ? WHERE customer_phone = ?'
     ).run(new Date().toISOString(), customerPhone);
   } else {
-    if (containsUnsafeReservationClaim(replyText) && isQualificationComplete(merged) && pricePresented) {
+    if (!merged.plan && pricePresented && (reservationIntent || recentReservation || containsUnsafeReservationClaim(replyText))) {
+      replyText = nextQualificationQuestion(merged, skills.fallbackReplies[lang]);
+    } else if (containsUnsafeReservationClaim(replyText) && isQualificationComplete(merged) && pricePresented) {
       logger.warn({ phone: customerPhone, pricePresented, reservationIntent }, '[BOT] blocked unsafe reservation claim');
       replyText = safeReservationHandoff(merged, skills.fallbackReplies[lang], lang);
       needsHumanEffective = true;
@@ -571,8 +588,14 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
 
   const outputPriceJustGiven = !needsHumanEffective && finalPriceJustGiven;
   const outputPriceFollowUpText = outputPriceJustGiven
-    ? computePriceFollowUp(merged.personas, lang, skills)
+    ? computePriceFollowUp(merged.personas, merged.plan as string | undefined, lang, skills)
     : undefined;
+
+  if (merged.mascota && PET_KEYWORDS.test(message) && !/pet[- ]friendly|mascotas?|perros?|dogs?|pets?/i.test(replyText)) {
+    replyText = lang === 'es'
+      ? `Si, somos pet-friendly. Tu mascota es bienvenida. ${replyText}`
+      : `Yes, we are pet-friendly. Your pet is welcome. ${replyText}`;
+  }
 
   const shouldAlertOwner = needsHumanEffective || (
     finalScore >= skills.salesStrategy.hotLeadThreshold

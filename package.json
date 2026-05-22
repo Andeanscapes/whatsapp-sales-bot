@@ -14,7 +14,10 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
     "test": "vitest run",
+    "start:tunnel": "cloudflared tunnel --url http://127.0.0.1:3000",
     "simulate": "AI_ENABLED=false tsx src/scripts/simulate-message.ts",
+    "validate:skills": "tsx src/scripts/validate-skill.ts",
+    "validate:prompt": "tsx src/scripts/validate-prompt.ts",
     "scan:secrets": "secretlint \"**/*\" --secretlintignore .gitignore"
   },
   "dependencies": {

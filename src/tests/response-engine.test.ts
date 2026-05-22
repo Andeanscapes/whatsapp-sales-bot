@@ -30,6 +30,9 @@ vi.mock('../services/time-window-policy.js', () => ({
 import * as deepseekClient from '../services/deepseek-client.js';
 import { checkBudget } from '../services/budget-guard.js';
 import { checkTimeWindow } from '../services/time-window-policy.js';
+import { safeReservationHandoff, afterHoursReply, colombiaTimeAwareReply } from '../services/reply-guard.js';
+import { selectImageForPlan, canSendPlanImage } from '../services/media-service.js';
+import { getSkills } from '../services/skill-loader.js';
 
 let db: Database.Database;
 
@@ -108,6 +111,7 @@ describe('processMessage', () => {
     const phone = '573001112234';
     upsertConversation(db, phone, {
       collected_name: 'Maria',
+      collected_plan: '2d1n_mining',
       collected_people: 2,
       collected_date: 'junio',
       collected_transport_need: 'yes',
@@ -127,6 +131,7 @@ describe('processMessage', () => {
     const phone = '573001112235';
     upsertConversation(db, phone, {
       collected_name: 'Carlos',
+      collected_plan: '2d1n_mining',
       collected_people: 2,
       collected_date: 'mayo',
       collected_transport_need: 'yes',
@@ -411,6 +416,7 @@ describe('processMessage', () => {
 
     upsertConversation(db, phone, {
       collected_name: 'Daniela',
+      collected_plan: '2d1n_mining',
       collected_people: 2,
       collected_date: 'junio',
       collected_transport_need: 'yes',
@@ -518,6 +524,7 @@ describe('processMessage', () => {
 
     upsertConversation(db, phone, {
       collected_name: 'Marta',
+      collected_plan: '2d1n_mining',
       collected_people: 3,
       collected_transport_need: 'own',
       price_given_at: new Date().toISOString(),
@@ -561,6 +568,7 @@ describe('processMessage', () => {
 
     upsertConversation(db, phone, {
       collected_name: 'Andrea',
+      collected_plan: '2d1n_mining',
       collected_people: 2,
       collected_date: 'agosto',
       collected_transport_need: 'own',
@@ -693,6 +701,7 @@ describe('processMessage', () => {
 
     upsertConversation(db, phone, {
       collected_name: 'Paula',
+      collected_plan: '2d1n_mining',
       collected_people: 3,
       collected_date: 'junio',
       collected_transport_need: 'own',
@@ -730,6 +739,7 @@ describe('processMessage', () => {
 
     upsertConversation(db, phone, {
       collected_name: 'Paula',
+      collected_plan: '2d1n_mining',
       collected_people: 1,
       collected_date: 'agosto',
       collected_transport_need: 'own',
@@ -805,6 +815,7 @@ describe('processMessage', () => {
 
     upsertConversation(db, phone, {
       collected_name: 'Paula',
+      collected_plan: '2d1n_mining',
       collected_people: 3,
       collected_date: 'junio',
       collected_transport_need: 'own',
@@ -840,6 +851,7 @@ describe('processMessage', () => {
 
     upsertConversation(db, phone, {
       collected_name: 'Paula',
+      collected_plan: '2d1n_mining',
       collected_people: 3,
       collected_date: 'junio',
       collected_transport_need: 'own',
@@ -874,6 +886,7 @@ describe('processMessage', () => {
 
     upsertConversation(db, phone, {
       collected_name: 'Paula',
+      collected_plan: '2d1n_mining',
       collected_people: 3,
       collected_date: 'junio',
       collected_transport_need: 'own',
@@ -1129,6 +1142,7 @@ describe('processMessage', () => {
     const phone = '573001112264';
     upsertConversation(db, phone, {
       collected_name: 'Claudia',
+      collected_plan: '2d1n_mining',
       collected_people: 1,
       collected_date: 'agosto',
       collected_transport_need: 'public_bus',
@@ -1149,6 +1163,7 @@ describe('processMessage', () => {
     const phone = '573001112265';
     upsertConversation(db, phone, {
       collected_name: 'Claudia',
+      collected_plan: '2d1n_mining',
       collected_people: 1,
       collected_date: 'agosto',
       collected_transport_need: 'public_bus',
@@ -1168,6 +1183,7 @@ describe('processMessage', () => {
     upsertConversation(db, phone, {
       language: 'en',
       collected_name: 'Jack',
+      collected_plan: '2d1n_mining',
       collected_people: 1,
       collected_date: 'december',
       collected_transport_need: 'yes',
@@ -1312,6 +1328,7 @@ describe('processMessage', () => {
     const phone = '573001112251';
     upsertConversation(db, phone, {
       collected_name: 'Paula',
+      collected_plan: '2d1n_mining',
       collected_people: 2,
       collected_date: 'agosto',
       collected_transport_need: 'own',
@@ -1343,6 +1360,424 @@ describe('processMessage', () => {
     expect(conv.collected_name).toBe('Paula');
     expect(conv.collected_people).toBe(2);
     expect(conv.collected_transport_need).toBe('own');
+  });
+
+  it('greeting never mentions specific plans, locations, or experiences', async () => {
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
+      response: {
+        reply: 'Hola! Soy Heinner, co-founder de Andean Scapes junto con Alexandra. Creamos experiencias autenticas en Boyaca con cultura local, naturaleza y comunidades anfitrionas. ¿como te llamas?',
+        intent: 'general',
+        lead_score_delta: 5,
+        should_send_image: false,
+        needs_human: false,
+        missing_fields: [],
+        collected_fields: {},
+      },
+      promptTokens: 500,
+      completionTokens: 40,
+    });
+    const result = await processMessage({ db, customerPhone: '573001113005', message: 'Hola' });
+
+    expect(result.reply).toContain('Boyaca');
+    expect(result.reply).not.toMatch(/\b(?:mina|esmeralda|chivor|hacienda|apicultura|ganader[ií]a|artesan[ií]a|R[aá]quira)\b/i);
+    expect(result.reply).toMatch(/como te llamas/i);
+  });
+
+  it('asks plan after name and replaces name token', async () => {
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce(null);
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001113001';
+
+    const result = await processMessage({ db, customerPhone: phone, message: 'soy Ana' });
+
+    expect(result.reply).toContain('Ana');
+    expect(result.reply).toContain('tipo de experiencia');
+    expect(result.reply).not.toContain('{{name}}');
+  });
+
+  it('detects 3D/2N plan and persists it', async () => {
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
+      response: {
+        reply: 'Genial, el plan de 3 dias incluye apicultura y ganaderia.',
+        intent: 'general',
+        lead_score_delta: 5,
+        should_send_image: false,
+        needs_human: false,
+        missing_fields: [],
+        collected_fields: {},
+      },
+      promptTokens: 500,
+      completionTokens: 30,
+    });
+    const phone = '573001113002';
+
+    await processMessage({ db, customerPhone: phone, message: 'quiero el plan de 3 dias con abejas' });
+
+    const conv = db.prepare('SELECT collected_plan FROM conversations WHERE customer_phone = ?').get(phone) as { collected_plan: string | null };
+    expect(conv.collected_plan).toBe('3d2n_rural');
+  });
+
+  it('detects 3D/2N when message also mentions mine', async () => {
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
+      response: {
+        reply: 'Genial, el plan de 3 dias incluye mina, apicultura y ganaderia.',
+        intent: 'general',
+        lead_score_delta: 5,
+        should_send_image: false,
+        needs_human: false,
+        missing_fields: [],
+        collected_fields: {},
+      },
+      promptTokens: 500,
+      completionTokens: 30,
+    });
+    const phone = '573001113007';
+
+    await processMessage({ db, customerPhone: phone, message: 'quiero el plan de la mina de 3 dias' });
+
+    const conv = db.prepare('SELECT collected_plan FROM conversations WHERE customer_phone = ?').get(phone) as { collected_plan: string | null };
+    expect(conv.collected_plan).toBe('3d2n_rural');
+  });
+
+  it('latest explicit 3D/2N mention overrides older stored 2D/1N plan', async () => {
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001113006';
+    upsertConversation(db, phone, {
+      collected_name: 'David',
+      collected_plan: '2d1n_mining',
+      collected_date: 'agosto',
+      collected_transport_need: 'own',
+    });
+    addMessage(db, {
+      customer_phone: phone,
+      direction: 'inbound',
+      message_type: 'text',
+      body: 'quiero validar el plan de 3 dias',
+      created_at: new Date(Date.now() - 1000).toISOString(),
+    });
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
+      response: {
+        reply: 'Para 3 personas en el plan de 3 dias seria $2,150,000 COP.',
+        intent: 'pricing',
+        lead_score_delta: 10,
+        should_send_image: false,
+        needs_human: false,
+        missing_fields: [],
+        collected_fields: {},
+      },
+      promptTokens: 500,
+      completionTokens: 30,
+    });
+
+    const result = await processMessage({ db, customerPhone: phone, message: 'somos tres que precio tiene?' });
+
+    expect(result.priceFollowUpText).toContain('$2,150,000 COP');
+    const conv = db.prepare('SELECT collected_plan FROM conversations WHERE customer_phone = ?').get(phone) as { collected_plan: string | null };
+    expect(conv.collected_plan).toBe('3d2n_rural');
+  });
+
+  it('uses 3D/2N image after ambiguous mine plus 3 days plan mention', async () => {
+    const skills = getSkills();
+    const image = selectImageForPlan(skills.media.images, '3d2n_rural');
+    expect(image?.value).toBe('https://cdn.andeanscapes.com/whatsapp_bot/3d2n_1.png');
+  });
+
+  it('blocks handoff until plan is selected', async () => {
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001113003';
+    upsertConversation(db, phone, {
+      collected_name: 'Ana',
+      collected_people: 2,
+      collected_date: 'agosto',
+      collected_transport_need: 'own',
+      price_given_at: new Date().toISOString(),
+    });
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
+      response: {
+        reply: 'Perfecto Ana, te confirmamos cupo.',
+        intent: 'reservation',
+        lead_score_delta: 30,
+        should_send_image: false,
+        needs_human: false,
+        missing_fields: [],
+        collected_fields: {},
+      },
+      promptTokens: 500,
+      completionTokens: 30,
+    });
+
+    const result = await processMessage({ db, customerPhone: phone, message: 'quiero reservar' });
+
+    expect(result.shouldAlertOwner).toBe(true);
+    expect(result.reply).toContain('tipo de experiencia');
+    const conv = db.prepare('SELECT handed_off_at FROM conversations WHERE customer_phone = ?').get(phone) as { handed_off_at: string | null };
+    expect(conv.handed_off_at).toBeNull();
+  });
+
+  describe('safeReservationHandoff after-hours', () => {
+    it('uses standard handoff before 8 PM Colombia', () => {
+      const skills = getSkills();
+      const fb = skills.fallbackReplies.es;
+      const q = { nombre: 'Claudia', personas: 2, fecha: 'agosto', transporte: 'own' };
+      const before8pm = new Date('2026-06-15T19:59:00-05:00');
+      const reply = safeReservationHandoff(q, fb, 'es', before8pm);
+      expect(reply).toContain('Claudia');
+      expect(reply).not.toContain('mañana en la mañana');
+      expect(reply).not.toContain('tomorrow morning');
+    });
+
+    it('uses after-hours handoff at or after 8 PM Colombia', () => {
+      const skills = getSkills();
+      const fb = skills.fallbackReplies.es;
+      const q = { nombre: 'Claudia', personas: 2, fecha: 'agosto', transporte: 'own' };
+      const at8pm = new Date('2026-06-15T20:00:00-05:00');
+      const reply = safeReservationHandoff(q, fb, 'es', at8pm);
+      expect(reply).toContain('Claudia');
+      expect(reply).toContain('mañana en la mañana');
+    });
+
+    it('uses after-hours handoff in English at 9 PM Colombia', () => {
+      const skills = getSkills();
+      const fb = skills.fallbackReplies.en;
+      const q = { nombre: 'Jack', personas: 1, fecha: 'june', transporte: 'yes' };
+      const at9pm = new Date('2026-06-15T21:00:00-05:00');
+      const reply = safeReservationHandoff(q, fb, 'en', at9pm);
+      expect(reply).toContain('Jack');
+      expect(reply).toContain('tomorrow morning');
+    });
+
+    it('uses morning handoff at 8:59 AM Colombia', () => {
+      const skills = getSkills();
+      const fb = skills.fallbackReplies.es;
+      const q = { nombre: 'Pedro', personas: 1, fecha: 'julio', transporte: 'own' };
+      const early = new Date('2026-06-16T08:59:00-05:00');
+      const reply = safeReservationHandoff(q, fb, 'es', early);
+      expect(reply).toContain('después de las 9:00 a.m.');
+      expect(reply).not.toContain('mañana en la mañana');
+    });
+
+    it('uses standard handoff at 9:00 AM Colombia', () => {
+      const skills = getSkills();
+      const fb = skills.fallbackReplies.es;
+      const q = { nombre: 'Pedro', personas: 1, fecha: 'julio', transporte: 'own' };
+      const at9am = new Date('2026-06-16T09:00:00-05:00');
+      const reply = safeReservationHandoff(q, fb, 'es', at9am);
+      expect(reply).not.toContain('mañana en la mañana');
+    });
+  });
+
+  describe('selectImageForPlan', () => {
+    it('selects 2D/1N image for 2d1n_mining plan', () => {
+      const skills = getSkills();
+      const image = selectImageForPlan(skills.media.images, '2d1n_mining');
+      expect(image?.id).toBe('emerald_mining_preview_1');
+    });
+
+    it('selects 3D/2N image for 3d2n_rural plan', () => {
+      const skills = getSkills();
+      const image = selectImageForPlan(skills.media.images, '3d2n_rural');
+      expect(image?.id).toBe('rural_experience_preview_1');
+    });
+
+    it('falls back to first valid image when plan is unknown', () => {
+      const skills = getSkills();
+      const image = selectImageForPlan(skills.media.images, 'nonexistent_plan');
+      expect(image?.id).toBe('emerald_mining_preview_1');
+    });
+
+    it('falls back to first valid image when plan is null', () => {
+      const skills = getSkills();
+      const image = selectImageForPlan(skills.media.images, null);
+      expect(image?.id).toBe('emerald_mining_preview_1');
+    });
+  });
+
+  describe('afterHoursReply helper', () => {
+    it('returns after-hours text for 8 PM Colombia time', () => {
+      const at8pm = new Date('2026-06-15T20:00:00-05:00');
+      const result = afterHoursReply('normal text', 'after-hours text', at8pm);
+      expect(result).toBe('after-hours text');
+    });
+
+    it('returns after-hours text for 8:59 AM Colombia time', () => {
+      const early = new Date('2026-06-16T08:59:00-05:00');
+      const result = afterHoursReply('normal text', 'after-hours text', early);
+      expect(result).toBe('after-hours text');
+    });
+
+    it('returns normal text for 9:00 AM Colombia time', () => {
+      const at9am = new Date('2026-06-16T09:00:00-05:00');
+      const result = afterHoursReply('normal text', 'after-hours text', at9am);
+      expect(result).toBe('normal text');
+    });
+
+    it('returns normal text for noon Colombia time', () => {
+      const noon = new Date('2026-06-16T12:00:00-05:00');
+      const result = afterHoursReply('normal text', 'after-hours text', noon);
+      expect(result).toBe('normal text');
+    });
+  });
+
+  describe('colombiaTimeAwareReply helper', () => {
+    it('returns night text for 8 PM Colombia time', () => {
+      const at8pm = new Date('2026-06-15T20:00:00-05:00');
+      const result = colombiaTimeAwareReply('normal', 'night', 'morning', at8pm);
+      expect(result).toBe('night');
+    });
+
+    it('returns morning text for 8:59 AM Colombia time', () => {
+      const early = new Date('2026-06-16T08:59:00-05:00');
+      const result = colombiaTimeAwareReply('normal', 'night', 'morning', early);
+      expect(result).toBe('morning');
+    });
+
+    it('returns normal text for 9:00 AM Colombia time', () => {
+      const at9am = new Date('2026-06-16T09:00:00-05:00');
+      const result = colombiaTimeAwareReply('normal', 'night', 'morning', at9am);
+      expect(result).toBe('normal');
+    });
+  });
+
+  describe('canSendPlanImage', () => {
+    it('allows first image for a customer', () => {
+      expect(canSendPlanImage(db, '573001119001', 'emerald_mining_preview_1')).toBe(true);
+    });
+
+    it('allows different plan image when last image was for another plan', () => {
+      db.prepare(
+        "INSERT INTO media_sends (customer_phone, media_id, sent_at) VALUES (?, ?, ?)"
+      ).run('573001119002', 'emerald_mining_preview_1', new Date(Date.now() - 1000).toISOString());
+      expect(canSendPlanImage(db, '573001119002', 'rural_experience_preview_1')).toBe(true);
+    });
+
+    it('blocks same image sent recently', () => {
+      db.prepare(
+        "INSERT INTO media_sends (customer_phone, media_id, sent_at) VALUES (?, ?, ?)"
+      ).run('573001119003', 'rural_experience_preview_1', new Date(Date.now() - 1000).toISOString());
+      expect(canSendPlanImage(db, '573001119003', 'rural_experience_preview_1')).toBe(false);
+    });
+
+    it('blocks same image even when another image was sent later', () => {
+      const phone = '573001119004';
+      db.prepare(
+        "INSERT INTO media_sends (customer_phone, media_id, sent_at) VALUES (?, ?, ?)"
+      ).run(phone, 'emerald_mining_preview_1', new Date(Date.now() - 2000).toISOString());
+      db.prepare(
+        "INSERT INTO media_sends (customer_phone, media_id, sent_at) VALUES (?, ?, ?)"
+      ).run(phone, 'rural_experience_preview_1', new Date(Date.now() - 1000).toISOString());
+      expect(canSendPlanImage(db, phone, 'emerald_mining_preview_1')).toBe(false);
+    });
+  });
+
+  it('keeps shouldSendImage true when plan image changed inside 72h', async () => {
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001119005';
+    upsertConversation(db, phone, {
+      collected_name: 'Ana',
+      collected_plan: '3d2n_rural',
+      collected_people: 2,
+      collected_date: 'agosto',
+      collected_transport_need: 'own',
+    });
+    db.prepare(
+      "INSERT INTO media_sends (customer_phone, media_id, sent_at) VALUES (?, ?, ?)"
+    ).run(phone, 'emerald_mining_preview_1', new Date(Date.now() - 1000).toISOString());
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
+      response: {
+        reply: 'Claro, te puedo mostrar una imagen del plan 3D/2N.',
+        intent: 'general',
+        lead_score_delta: 5,
+        should_send_image: true,
+        needs_human: false,
+        missing_fields: [],
+        collected_fields: {},
+      },
+      promptTokens: 500,
+      completionTokens: 30,
+    });
+
+    const result = await processMessage({ db, customerPhone: phone, message: 'me muestras foto del plan de 3 dias?' });
+
+    expect(result.shouldSendImage).toBe(true);
+  });
+
+  it('uses 3D/2N JSON pricing for price follow-up', async () => {
+    vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001113004';
+    upsertConversation(db, phone, {
+      collected_name: 'Ana',
+      collected_plan: '3d2n_rural',
+      collected_people: 2,
+      collected_date: 'agosto',
+      collected_transport_need: 'own',
+    });
+    vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
+      response: {
+        reply: 'Para pareja el plan queda en $1,590,000 COP.',
+        intent: 'pricing',
+        lead_score_delta: 10,
+        should_send_image: false,
+        needs_human: false,
+        missing_fields: [],
+        collected_fields: {},
+      },
+      promptTokens: 500,
+      completionTokens: 30,
+    });
+
+    const result = await processMessage({ db, customerPhone: phone, message: 'cuanto cuesta?' });
+
+    expect(result.priceFollowUpText).toContain('$1,400,000 COP');
+  });
+
+  it('migrates old conversations table with collected_plan column', () => {
+    const oldDb = new Database(':memory:');
+    oldDb.exec(`CREATE TABLE conversations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_phone TEXT NOT NULL UNIQUE,
+      language TEXT,
+      first_seen_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL,
+      lead_score INTEGER DEFAULT 0,
+      hot_alert_sent_at TEXT,
+      urgent_alert_sent_at TEXT,
+      opt_out_at TEXT,
+      free_entry_detected INTEGER DEFAULT 0,
+      ad_referral_json TEXT,
+      collected_name TEXT,
+      collected_date TEXT,
+      collected_people INTEGER,
+      collected_transport_need TEXT,
+      collected_lodging_need TEXT,
+      collected_pet TEXT,
+      price_given_at TEXT,
+      handed_off_at TEXT,
+      soft_closed_at TEXT
+    )`);
+
+    migrate(oldDb);
+
+    const columns = oldDb.prepare('PRAGMA table_info(conversations)').all() as Array<{ name: string }>;
+    expect(columns.map(c => c.name)).toContain('collected_plan');
   });
 
   it('renders owner alert name in template', async () => {

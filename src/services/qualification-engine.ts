@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import { normalizeText, detectLanguageOrNull, type SupportedLanguage } from './language-service.js';
 import type { FallbackReplies } from './skill-loader.js';
+import { getSkills } from './skill-loader.js';
 import type { MergedQualification } from './types.js';
 
 export const MONTH_NAMES = [
@@ -35,6 +36,42 @@ export const TRANSPORT_OWN_CONTEXT_PATTERNS = [
 
 export const PET_KEYWORDS = /\b(?:perro|perrito|mascota|mascotas|gato|gatos|perra|perros|gatito|pet|dog|cat|dogs|cats|puppy|kitten)\b/i;
 
+export function detectPlan(message: string): string | null {
+  const norm = normalizeText(message);
+  const skills = getSkills();
+  const plans = (skills.andeanScapes.experiences[0] as Record<string, unknown>).plans as Array<Record<string, unknown>> | undefined;
+  if (!plans) return null;
+
+  const durationBoosts = new Map<string, RegExp>([
+    ['3d2n_rural', /\b(3\s*d|3\s*dias|3\s*días|tres\s+dias|tres\s+días|2\s*noches|dos\s+noches)\b/],
+    ['2d1n_mining', /\b(2\s*d|2\s*dias|2\s*días|dos\s+dias|dos\s+días|1\s*noche|una\s+noche)\b/],
+  ]);
+
+  let best: { id: string; score: number } | null = null;
+  let tied = false;
+
+  for (const plan of plans) {
+    const id = plan.id as string;
+    const keywords = plan.keywords as string[];
+    let score = keywords.reduce((total, keyword) => {
+      return norm.includes(normalizeText(keyword)) ? total + 1 : total;
+    }, 0);
+
+    const durationBoost = durationBoosts.get(id);
+    if (durationBoost?.test(norm)) score += 10;
+
+    if (score === 0) continue;
+    if (!best || score > best.score) {
+      best = { id, score };
+      tied = false;
+    } else if (score === best.score) {
+      tied = true;
+    }
+  }
+
+  return best && !tied ? best.id : null;
+}
+
 export function isCorrectionMessage(text: string): boolean {
   const norm = normalizeText(text);
   return /ya (te |lo )?(dije|mencione|habia dicho|habia digo|habia mencionado|lo he dicho)/i.test(norm)
@@ -50,11 +87,12 @@ export function getLastAssistantQuestion(db: Database.Database, phone: string): 
 }
 
 export function isQualificationComplete(q: MergedQualification): boolean {
-  return q.nombre != null && q.personas != null && q.fecha != null && q.transporte != null;
+  return q.nombre != null && q.plan != null && q.personas != null && q.fecha != null && q.transporte != null;
 }
 
 export function nextQualificationQuestion(q: MergedQualification, fb: FallbackReplies['es']): string {
   if (q.nombre == null) return fb.askName;
+  if (q.plan == null) return fb.askPlan.replace('{{name}}', String(q.nombre));
   if (q.personas == null) return fb.askPeople;
   if (q.fecha == null) return fb.askDate;
   return fb.askTransport;
@@ -132,6 +170,9 @@ export function extractBookingFields(text: string): Record<string, unknown> {
     fields.collected_pet = 'yes';
   }
 
+  const detectedPlan = detectPlan(text);
+  if (detectedPlan) fields.collected_plan = detectedPlan;
+
   return fields;
 }
 
@@ -182,6 +223,19 @@ export function contextAwareExtract(message: string, db: Database.Database, phon
     }
   }
 
+  if (lastQuestion && !fields.collected_plan) {
+    const askedPlan = /que plan|which plan|cual plan|2 dias|3 dias|2d|3d/i.test(lastQuestion);
+    if (askedPlan) {
+      const detectedPlan = detectPlan(norm);
+      if (detectedPlan) fields.collected_plan = detectedPlan;
+    }
+  }
+
+  if (!fields.collected_plan) {
+    const detectedPlan = detectPlan(norm);
+    if (detectedPlan) fields.collected_plan = detectedPlan;
+  }
+
   return fields;
 }
 
@@ -197,10 +251,12 @@ export function reconstructFromHistory(db: Database.Database, phone: string, cur
     transporte: !fields.transporte,
     mascota: !fields.mascota,
   };
+  let planChecked = false;
   for (const row of allInbound) {
-    if (!row.body || (!need.nombre && !need.personas && !need.fecha && !need.transporte && !need.mascota)) continue;
+    if (!row.body || (!need.nombre && planChecked && !need.personas && !need.fecha && !need.transporte && !need.mascota)) continue;
     const extracted = extractBookingFields(row.body);
     if (need.nombre && extracted.collected_name) { fields.nombre = extracted.collected_name; need.nombre = false; }
+    if (!planChecked && extracted.collected_plan) { fields.plan = extracted.collected_plan; planChecked = true; }
     if (need.personas && extracted.collected_people) { fields.personas = extracted.collected_people; need.personas = false; }
     if (need.fecha && extracted.collected_date) { fields.fecha = extracted.collected_date; need.fecha = false; }
     if (need.transporte && extracted.collected_transport_need) { fields.transporte = extracted.collected_transport_need; need.transporte = false; }
@@ -212,6 +268,7 @@ export function reconstructFromHistory(db: Database.Database, phone: string, cur
 export function buildDbQualification(collected: Record<string, unknown>): MergedQualification {
   return {
     nombre: collected.nombre,
+    plan: collected.plan,
     personas: collected.personas,
     fecha: collected.fecha,
     transporte: collected.transporte,
@@ -221,7 +278,7 @@ export function buildDbQualification(collected: Record<string, unknown>): Merged
 
 export function getCollectedFields(db: Database.Database, phone: string): Record<string, unknown> {
   const row = db.prepare(
-    'SELECT collected_name, collected_date, collected_people, collected_transport_need, collected_lodging_need, collected_pet, language FROM conversations WHERE customer_phone = ?'
+    'SELECT collected_name, collected_date, collected_people, collected_transport_need, collected_lodging_need, collected_pet, collected_plan, language FROM conversations WHERE customer_phone = ?'
   ).get(phone) as Record<string, unknown> | undefined;
   if (!row) return {};
   const fields: Record<string, unknown> = {};
@@ -231,6 +288,7 @@ export function getCollectedFields(db: Database.Database, phone: string): Record
   if (row.collected_transport_need) fields.transporte = row.collected_transport_need;
   if (row.collected_lodging_need) fields.hospedaje = row.collected_lodging_need;
   if (row.collected_pet) fields.mascota = row.collected_pet;
+  if (row.collected_plan) fields.plan = row.collected_plan;
   if (row.language) fields.idioma = row.language;
   return fields;
 }

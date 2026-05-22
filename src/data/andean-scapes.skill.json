@@ -2,8 +2,9 @@
   "skillVersion": "2026-05-06-v1",
   "business": {
     "name": "Andean Scapes",
-    "location": "Chivor, Boyacá, Colombia",
-    "mainExperience": "Emerald Mining Tour",
+    "location": "Boyacá, Colombia",
+    "shortBrandIntro": "Creamos experiencias autenticas en Boyaca con cultura local, naturaleza y comunidades anfitrionas.",
+    "mainExperience": "Adventure Experiences",
     "publicTourUrlEnv": "PUBLIC_TOUR_URL",
     "socialLinks": {
       "instagram": "https://www.instagram.com/andean_scapes/"
@@ -83,7 +84,8 @@
         "items": [
           {
             "id": "individual",
-            "label": "Individual (1 persona)",
+            "planId": "2d1n_mining",
+            "label": "Individual (1 persona) — 2D/1N",
             "pricePerPerson": 550000,
             "peopleIncluded": 1,
             "publiclyShow": true,
@@ -91,11 +93,30 @@
           },
           {
             "id": "couple",
-            "label": "Pareja (2 personas)",
+            "planId": "2d1n_mining",
+            "label": "Pareja (2 personas) — 2D/1N",
             "couplePrice": 1040000,
             "peopleIncluded": 2,
             "publiclyShow": true,
             "description": "1 noche en habitacion privada compartida con bano privado. Comidas completas para 2: 2 desayunos, 2 almuerzos fiambre, 2 cenas. Experiencia minera Mina La Union ~6h. Taller y charla esmeraldera ~1h. Acompanamiento local."
+          },
+          {
+            "id": "individual_3d2n",
+            "planId": "3d2n_rural",
+            "label": "Individual (1 persona) — 3D/2N",
+            "pricePerPerson": 750000,
+            "peopleIncluded": 1,
+            "publiclyShow": true,
+            "description": "2 noches en habitacion privada con bano privado. 6 comidas completas. Dia 1: llegada, charla esmeraldera, cena. Dia 2: almuerzo (en mina o hacienda), mina La Union ~6h, cena. Dia 3: apicultura (abejas) y ganaderia. Equipo de seguridad, acompanamiento local."
+          },
+          {
+            "id": "couple_3d2n",
+            "planId": "3d2n_rural",
+            "label": "Pareja (2 personas) — 3D/2N",
+            "couplePrice": 1400000,
+            "peopleIncluded": 2,
+            "publiclyShow": true,
+            "description": "2 noches en habitacion privada compartida con bano privado. 6 comidas completas para 2. Dia 1: llegada, charla esmeraldera, cena. Dia 2: almuerzo (en mina o hacienda), mina La Union ~6h, cena. Dia 3: apicultura y ganaderia. Equipo de seguridad, acompanamiento local."
           },
           {
             "id": "apiary_cattle_addon",
@@ -115,13 +136,14 @@
           }
         ],
         "botRules": [
-          "Plan base: Individual $550,000 (1p) o Pareja $1,040,000 (2p, habitacion compartida).",
-          "3 personas: Pareja ($1,040,000) + Individual ($550,000) = $1,590,000 (2 habitaciones).",
-          "4 personas (2 parejas): $1,040,000 x 2 = $2,080,000.",
+          "Hay 2 planes. 2D/1N: Individual $550,000 (1p) o Pareja $1,040,000 (2p). 3D/2N: Individual $750,000 (1p) o Pareja $1,400,000 (2p) — incluye noche extra, apicultura y ganaderia.",
+          "Siempre usa el precio del plan que eligio el cliente (planId en Pricing items).",
+          "3 personas: Pareja + Individual del plan seleccionado.",
+          "4 personas (2 parejas): Pareja x2 del plan seleccionado.",
           "Transporte privado 4x4 desde Bogota: $1,700,000 COP (1-4 personas, mismo precio). 5+ personas: vehiculos adicionales.",
           "SI el cliente pide transporte privado desde Bogota, SUMA $1,700,000 al plan base y da el total.",
           "Bus publico: el cliente lo compra directamente por su cuenta en la terminal que corresponda segun ciudad de origen (Bogota, Tunja u otra). NO sumes bus al precio final del plan. Solo orienta y valida horarios para itinerario.",
-          "Adicional apicultura/ganaderia: $55,000 COP/persona (opcional, dia de salida antes del mediodia).",
+          "Adicional apicultura/ganaderia SOLO se ofrece en el plan 2D/1N (en el 3D/2N ya viene incluido). Precio: $55,000 COP/persona (opcional, dia de salida antes del mediodia).",
           "Traductor disponible con costo adicional (consultar).",
           "Somos pet-friendly. Edad minima: 5 anios. Ideal para quienes les gusta caminar y la aventura.",
           "Cancelacion/reagendamiento: maximo 2 veces, hasta 4 dias antes del tour. Despues no hay reembolso.",
@@ -230,12 +252,33 @@
       },
       "reservationFlow": [
         "Preguntar nombre del cliente.",
+        "Preguntar cual plan le interesa (2D/1N o 3D/2N).",
         "Preguntar cuantas personas.",
         "Preguntar fecha preferida.",
         "Preguntar si tienen transporte propio o necesitan desde Bogota.",
-        "Dar precio exacto segun cantidad de personas.",
+        "Dar precio exacto segun cantidad de personas y plan seleccionado.",
         "Explicar que la reserva se hace con 15% via Nequi o Mercado Pago.",
         "Cuando el cliente quiere reservar o elige Nequi/Mercado Pago, escalar a humano antes de dar datos de pago."
+      ],
+      "plans": [
+        {
+          "id": "2d1n_mining",
+          "name": "2 Dias / 1 Noche — Mina Esmeralda",
+          "duration": "2D/1N",
+          "shortDescription": "Aventura minera en Chivor (Boyaca). 1 noche en Hacienda El Recuerdo, experiencia minera real en Mina La Union (~6h), taller esmeraldero. Todo incluido: alojamiento, 3 comidas, mina, charla. Pet-friendly.",
+          "benefits": "Plan ideal para quienes buscan una experiencia de aventura real en la mina. Dormis en la Hacienda, vivis la mina el dia central, y salis al dia siguiente. Intenso, autentico, bien aprovechado.",
+          "keywords": ["mina", "esmeralda", "emerald", "mining", "chivor", "mineria", "2d", "2 dias", "2 días", "1 noche", "un dia", "una noche", "minera"],
+          "imageId": "emerald_mining_preview_1"
+        },
+        {
+          "id": "3d2n_rural",
+          "name": "3 Dias / 2 Noches — Mina + Apicultura + Ganaderia",
+          "duration": "3D/2N",
+          "shortDescription": "Experiencia completa de 3 dias en Chivor (Boyaca). Dia 1: llegada y charla esmeraldera. Dia 2: almuerzo y mina La Union (~6h). Dia 3: apicultura y ganaderia en la hacienda. 2 noches, 6 comidas todo incluido. Pet-friendly. Ideal para vivir la mina y conectar con la vida rural.",
+          "benefits": "Plan mas completo con itinerario relajado. Dia 1: llegas por la tarde, charla esmeraldera, cena y primera noche en la Hacienda. Dia 2: almuerzo (en mina o hacienda, a eleccion), mina La Union ~6h con equipo, regreso a la hacienda, cena, segunda noche. Dia 3: apicultura (colmenas reales) y ganaderia (ordeño, manejo). WiFi disponible para trabajo remoto. 6 comidas incluidas. Sin afan, con tiempo para disfrutar cada actividad.",
+          "keywords": ["apicultura", "abejas", "abeja", "ganaderia", "ganado", "vacas", "vaca", "ordeño", "beekeeping", "livestock", "rural", "3d", "3 dias", "3 días", "2 noches", "dos noches", "completo", "full", "colmenas", "apiario"],
+          "imageId": "rural_experience_preview_1"
+        }
       ],
       "commonQuestions": [
         {
@@ -478,7 +521,20 @@
           "question": "Which mine do we visit?",
           "answer": "The tour takes place in any of the partner mines we work with. We don't guarantee a specific mine. All offer an authentic and safe experience with an expert guide."
         }
-      ]
+      ],
+      "botBehavior": {
+        "adventureFilter": "FASE 0 — FILTRO DE AVENTURA: Antes de empezar la calificacion, deja claro que esta NO es una experiencia de descanso. En los primeros 2-3 mensajes, comunica sutilmente: usa solo los datos de dificultad, realidad de la experiencia y ruta que vienen en el contexto. Contrasta la experiencia con turismo convencional sin inventar detalles. Si el cliente pregunta si hay piscina, plan relax, jacuzzi o tour de pocas horas → responde usando Ideal for / NOT ideal for del contexto. Si no encaja, dilo con honestidad y cero presion. NUNCA filtres con tono negativo ni de advertencia. Presentalo como lo que ES: una experiencia UNICA y DIFERENTE que no existe en otro lado. Si el cliente muestra entusiasmo por la aventura, celebralo y segui con calificacion.",
+        "qualificationPhases": {
+          "phase1": "CALIFICACION: Recoge en orden flexible 5 datos: nombre, plan (cual de los planes disponibles quiere), cuantas personas, fecha tentativa, transporte propio o necesitan desde Bogota. Si el cliente menciona mina, chivor, esmeralda, mining, emerald → asigna plan 2D/1N automaticamente. Si menciona apicultura, abejas, ganaderia, 3 dias, beekeeping → asigna plan 3D/2N. Si no es claro, pregunta explicitamente cual plan. Si el cliente pregunta precio antes de tener los 5 datos: da precio breve (usa Pricing del contexto) e INMEDIATAMENTE pregunta la siguiente data faltante en el MISMO mensaje.",
+          "phase2": "PRECIO TOTAL: Cuando tengas los 5 datos (incluyendo plan), calcula el TOTAL usando Pricing del contexto para el plan seleccionado: base segun personas + SOLO transporte privado 4x4 si lo piden. Si el cliente va en bus publico, NO sumes bus al total del plan. Cierra con un toque emocional.",
+          "phase3": "CHEQUEO DE INTERES: Despues del precio total, pregunta suave para entender si es lo que busca. NUNCA cierres tu. Espera a que el cliente diga explicitamente 'quiero reservar' / 'como pago' / 'agendamos'."
+        },
+        "handoffExactReply": {
+          "es": "Perfecto! Te confirmamos el cupo y los datos de pago en un toque.",
+          "en": "Perfect! We'll confirm availability and payment details shortly."
+        },
+        "negativeExamples": "EJEMPLOS NEGATIVOS (que NO hacer): Cliente 'Somos 2 personas' → segui al siguiente dato (fecha o transporte). NO cierres. Cliente 'En junio' → pregunta transporte. NO cierres. Cliente 'Cuanto cuesta' + ya sabes nombre + personas → da TOTAL y pregunta interes. NO cierres. Cliente 'Si me interesa' → confirma entusiasmo y pregunta '¿Te gustaria reservar?'. NO cierres unilateralmente. Cliente 'Soy Brian' → pregunta personas. NO cierres."
+      }
     }
   ]
 }

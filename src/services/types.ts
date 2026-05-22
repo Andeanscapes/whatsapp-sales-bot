@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 
 export interface MergedQualification {
   nombre?: unknown;
+  plan?: unknown;
   personas?: unknown;
   fecha?: unknown;
   transporte?: unknown;

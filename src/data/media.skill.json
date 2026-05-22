@@ -14,9 +14,18 @@
     {
       "id": "emerald_mining_preview_1",
       "experienceId": "emerald_mining_tour",
+      "planId": "2d1n_mining",
       "type": "public_url",
       "value": "https://cdn.andeanscapes.com/whatsapp_bot/2d1n_1.png",
-      "caption": "Imagen de referencia de la experiencia. Validamos detalles según tu grupo."
+      "caption": "Imagen de referencia de la experiencia. Validamos detalles segun tu grupo."
+    },
+    {
+      "id": "rural_experience_preview_1",
+      "experienceId": "emerald_mining_tour",
+      "planId": "3d2n_rural",
+      "type": "public_url",
+      "value": "https://cdn.andeanscapes.com/whatsapp_bot/3d2n_1.png",
+      "caption": "Imagen de referencia del plan 3D/2N. Mina, apicultura y ganaderia en la Hacienda El Recuerdo."
     }
   ]
 }

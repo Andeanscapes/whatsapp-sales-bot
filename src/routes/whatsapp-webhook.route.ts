@@ -7,7 +7,7 @@ import { getSkills } from '../services/skill-loader.js';
 import { isProcessed, markProcessed } from '../services/dedupe-service.js';
 import { processMessage } from '../services/response-engine.js';
 import { sendText, sendImageUrl } from '../services/whatsapp-client.js';
-import { canSendImage, recordImageSend } from '../services/media-service.js';
+import { recordImageSend, selectImageForPlan, canSendPlanImage } from '../services/media-service.js';
 import { sendAlert } from '../services/alert-service.js';
 import { addMessage } from '../services/conversation-store.js';
 import { logger } from '../config/logger.js';
@@ -134,8 +134,9 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { db: Da
 
         if (result.priceJustGiven) {
           const skills = getSkills();
-          const image = skills.media.images[0];
-          if (image && image.value !== 'REPLACE_WITH_PUBLIC_IMAGE_URL' && canSendImage(db, msg.from)) {
+          const conversation = db.prepare('SELECT collected_plan FROM conversations WHERE customer_phone = ?').get(msg.from) as { collected_plan: string | null } | undefined;
+          const image = selectImageForPlan(skills.media.images, conversation?.collected_plan);
+          if (image && image.value !== 'REPLACE_WITH_PUBLIC_IMAGE_URL' && canSendPlanImage(db, msg.from, image.id)) {
             const caption = result.priceFollowUpText ?? image.caption;
             await sendImageUrl(msg.from, image.value, caption);
             recordImageSend(db, msg.from, image.id);
@@ -151,8 +152,9 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { db: Da
 
         if (result.shouldSendImage && !result.priceJustGiven) {
           const skills = getSkills();
-          const image = skills.media.images[0];
-          if (image && image.value !== 'REPLACE_WITH_PUBLIC_IMAGE_URL') {
+          const conversation = db.prepare('SELECT collected_plan FROM conversations WHERE customer_phone = ?').get(msg.from) as { collected_plan: string | null } | undefined;
+          const image = selectImageForPlan(skills.media.images, conversation?.collected_plan);
+          if (image && image.value !== 'REPLACE_WITH_PUBLIC_IMAGE_URL' && canSendPlanImage(db, msg.from, image.id)) {
             await sendImageUrl(msg.from, image.value, image.caption);
             recordImageSend(db, msg.from, image.id);
           }

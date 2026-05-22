@@ -95,6 +95,7 @@ export function buildSystemPrompt(skills: Skills, lang?: string, collectedFields
   const alternateRoute = String(route.alternateRoute ?? '');
   const arrivalTips = String(route.arrivalTips ?? '');
   const fromBogota = String(route.fromBogota ?? '');
+  const routeBotRules = (route.botRules as string[] ?? []).join('; ');
 
   const cancellation = typeof exp.cancellationPolicy === 'string' ? exp.cancellationPolicy : '';
   const petPolicy = typeof exp.petPolicy === 'string' ? exp.petPolicy : '';
@@ -117,13 +118,29 @@ export function buildSystemPrompt(skills: Skills, lang?: string, collectedFields
   const idealFor = reality?.idealFor ?? '';
   const notIdealFor = reality?.notIdealFor ?? '';
 
+  const botBehavior = exp.botBehavior as Record<string, unknown> | undefined;
+  const adventureFilter = String(botBehavior?.adventureFilter ?? '');
+  const qualPhases = botBehavior?.qualificationPhases as Record<string, string> | undefined;
+  const handoffExactReply = botBehavior?.handoffExactReply as Record<string, string> | undefined;
+  const negativeExamples = String(botBehavior?.negativeExamples ?? '');
+
+  const plans = exp.plans as Array<Record<string, unknown>> | undefined;
+  const plansList = plans
+    ? plans.map(p => `${p.id} — ${p.name} (${p.duration}): ${p.shortDescription} | Benefits: ${p.benefits}`).join('\n')
+    : '';
+
   const facts = [
     `Business: ${skills.andeanScapes.business.name} — ${shortDesc}`,
+    `Brand intro: ${(skills.andeanScapes.business as Record<string, unknown>).shortBrandIntro ?? ''}`,
     `Location: ${skills.andeanScapes.business.location}${meetingPt ? '. Meeting point: ' + meetingPt : ''}`,
+    '---',
+    `AVAILABLE PLANS:\n${plansList}`,
+    '---',
     `Route from Bogota: ${fromBogota}`,
     alternateRoute ? `Alternate route: ${alternateRoute}` : null,
     ferryInfo ? `Ferry: ${ferryInfo}` : null,
     arrivalTips ? `Arrival tips: ${arrivalTips}` : null,
+    routeBotRules ? `Route rules: ${routeBotRules}` : null,
     '---',
     `Availability (last updated: ${availabilityLastUpdated}): ${dateList}`,
     `Availability rule: ${availabilityRule}`,
@@ -143,6 +160,14 @@ export function buildSystemPrompt(skills: Skills, lang?: string, collectedFields
     difficultyText ? `Difficulty: ${difficultyText}` : null,
     idealFor ? `Ideal for: ${idealFor}` : null,
     notIdealFor ? `NOT ideal for: ${notIdealFor}` : null,
+    '---',
+    `Adventure filter: ${adventureFilter}`,
+    qualPhases?.phase1 ? `Phase 1: ${qualPhases.phase1}` : null,
+    qualPhases?.phase2 ? `Phase 2: ${qualPhases.phase2}` : null,
+    qualPhases?.phase3 ? `Phase 3: ${qualPhases.phase3}` : null,
+    handoffExactReply ? `Handoff Exact Reply (ES): ${handoffExactReply.es}` : null,
+    handoffExactReply ? `Handoff Exact Reply (EN): ${handoffExactReply.en}` : null,
+    negativeExamples ? `Negative examples: ${negativeExamples}` : null,
   ].filter((f): f is string => f !== null);
 
   if (tactics) {
@@ -151,7 +176,10 @@ export function buildSystemPrompt(skills: Skills, lang?: string, collectedFields
       `Power confidence: ${(tactics.powerConfidence as Record<string, unknown>)?.attitude || ''}`,
       `Closing: ${(tactics.closing as Record<string, unknown>)?.assumptive || ''} | ${(tactics.closing as Record<string, unknown>)?.softTakeaway || ''}`,
       `Service rule: ${tactics.serviceOverSales || ''}`,
-      `Meta: ${tactics.metaRule || ''}`
+      `Meta: ${tactics.metaRule || ''}`,
+      `First contact: ${tactics.firstContact || ''}`,
+      `Typo handling: ${tactics.typoHandling || ''}`,
+      `Human sell formula: ${tactics.humanSellFormula || ''}`
     );
   }
 

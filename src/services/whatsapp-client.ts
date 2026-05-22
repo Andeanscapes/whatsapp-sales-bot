@@ -20,7 +20,7 @@ export async function sendText(to: string, text: string): Promise<void> {
       messaging_product: 'whatsapp',
       to,
       type: 'text',
-      text: { body: text },
+      text: { body: text, preview_url: true },
     }),
   });
   if (!response.ok) {

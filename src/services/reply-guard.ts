@@ -12,6 +12,40 @@ import { upsertConversation } from './conversation-store.js';
 
 export { isCorrectionMessage, getLastAssistantQuestion };
 
+function colombiaHour(now: Date = new Date()): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Bogota',
+    hour: '2-digit',
+    hour12: false,
+  }).formatToParts(now);
+  const hourPart = parts.find(p => p.type === 'hour');
+  return hourPart ? parseInt(hourPart.value, 10) : 0;
+}
+
+type ColombiaBusinessHoursPeriod = 'business' | 'night' | 'morning';
+
+function colombiaBusinessHoursPeriod(now: Date = new Date()): ColombiaBusinessHoursPeriod {
+  const hour = colombiaHour(now);
+  if (hour >= 20) return 'night';
+  if (hour < 9) return 'morning';
+  return 'business';
+}
+
+function isAfterColombiaBusinessHours(now: Date = new Date()): boolean {
+  return colombiaBusinessHoursPeriod(now) !== 'business';
+}
+
+export function afterHoursReply(normal: string, afterHours: string, now: Date = new Date()): string {
+  return isAfterColombiaBusinessHours(now) && afterHours ? afterHours : normal;
+}
+
+export function colombiaTimeAwareReply(normal: string, night: string, morning: string, now: Date = new Date()): string {
+  const period = colombiaBusinessHoursPeriod(now);
+  if (period === 'night' && night) return night;
+  if (period === 'morning' && morning) return morning;
+  return normal;
+}
+
 const HANDOFF_PHRASE_REGEX = /(dame unos minuticos[^.]*equipo de reservas[^.]*\.?)|(give me a few minutes[^.]*reservations team[^.]*\.?)/i;
 const HANDOFF_PHRASE_GLOBAL_REGEX = /(dame unos minuticos[^.]*equipo de reservas[^.]*\.?)|(give me a few minutes[^.]*reservations team[^.]*\.?)/gi;
 
@@ -174,9 +208,18 @@ export function qualificationSummary(q: MergedQualification, lang: 'es' | 'en'):
   return parts.length > 0 ? parts.join(', ') : (lang === 'es' ? 'tus datos' : 'your details');
 }
 
-export function safeReservationHandoff(q: MergedQualification, fb: FallbackReplies['es'], lang: 'es' | 'en'): string {
+export function safeReservationHandoff(q: MergedQualification, fb: FallbackReplies['es'], lang: 'es' | 'en', now: Date = new Date()): string {
+  const period = colombiaBusinessHoursPeriod(now);
+  if (period !== 'business') {
+    const template = period === 'night'
+      ? fb.safeReservationHandoffAfterHours
+      : fb.safeReservationHandoffMorningHours;
+    return template
+      .replace('{{name}}', String(q.nombre ?? ''))
+      .replace('{{summary}}', qualificationSummary(q, lang));
+  }
   const variants = [fb.safeReservationHandoff, fb.safeReservationHandoffAlt1, fb.safeReservationHandoffAlt2];
-  const template = variants[Math.floor(Date.now() / 1000) % variants.length];
+  const template = variants[Math.floor(now.getTime() / 1000) % variants.length];
   return template
     .replace('{{name}}', String(q.nombre ?? ''))
     .replace('{{summary}}', qualificationSummary(q, lang));

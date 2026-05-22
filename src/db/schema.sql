@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS conversations (
   collected_transport_need TEXT,
   collected_lodging_need TEXT,
   collected_pet TEXT,
+  collected_plan TEXT,
   price_given_at TEXT,
   handed_off_at TEXT,
   soft_closed_at TEXT
