@@ -1,14 +1,18 @@
 import type Database from 'better-sqlite3';
 import { env } from '../config/env.js';
 import { getSkills } from './skill-loader.js';
+import { logger } from '../config/logger.js';
 
 const ALERT_FETCH_TIMEOUT_MS = 10_000;
+
+let startupWarned = false;
 
 export interface AlertRequest {
   customerPhone: string;
   score: number;
   intent: string;
   message: string;
+  name?: string;
   date?: string;
   people?: string;
   transport?: string;
@@ -54,27 +58,41 @@ function wasOwnerAlertedToday(db: Database.Database, customerPhone: string, aler
 }
 
 export async function sendAlert(request: AlertRequest, db: Database.Database): Promise<void> {
-  const alertType = request.score >= env.URGENT_LEAD_THRESHOLD ? 'urgent' : 'hot';
-  if (wasOwnerAlertedToday(db, request.customerPhone, alertType)) return;
+  const alertType = request.intent === 'reservation_handoff' || request.intent === 'reservation_intent'
+    ? request.intent
+    : request.score >= env.URGENT_LEAD_THRESHOLD ? 'urgent' : 'hot';
+  if (wasOwnerAlertedToday(db, request.customerPhone, alertType)) {
+    logger.info({ customerPhone: request.customerPhone, alertType }, '[ALERT] skipped duplicate owner alert');
+    return;
+  }
 
   const skills = getSkills();
   const template = skills.salesStrategy.ownerAlertTemplate;
 
   const body = template
     .replace('{{score}}', String(request.score))
-    .replace('{{customerPhone}}', request.customerPhone)
+    .replaceAll('{{customerPhone}}', request.customerPhone)
+    .replace('{{name}}', request.name ?? 'unknown')
     .replace('{{intent}}', request.intent)
     .replace('{{date}}', request.date ?? 'unknown')
     .replace('{{people}}', request.people ?? 'unknown')
     .replace('{{transportNeed}}', request.transport ?? 'unknown')
     .replace('{{lastMessage}}', request.message);
 
-  if (env.ALERT_CHANNEL === 'telegram' && env.TELEGRAM_BOT_TOKEN) {
-    await sendTelegram(body);
+  if (env.ALERT_CHANNEL === 'telegram') {
+    if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) {
+      if (!startupWarned) {
+        logger.warn('[ALERT] ALERT_CHANNEL=telegram but TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is empty — alerts will be logged, not sent to Telegram');
+        startupWarned = true;
+      }
+      logger.info({ body }, '[ALERT] log channel (telegram misconfigured)');
+    } else {
+      await sendTelegram(body);
+    }
   } else if (env.ALERT_CHANNEL === 'whatsapp') {
     await sendWhatsAppAlert(body);
   } else {
-    console.log('[ALERT]', body);
+    logger.info({ body }, '[ALERT] log channel');
   }
 
   db.prepare(
