@@ -1,12 +1,6 @@
 import type { Skills } from './skill-loader.js';
 import { detectLanguage, normalizeText } from './language-service.js';
-
-const MONTH_NAMES = [
-  'january', 'february', 'march', 'april', 'may', 'june',
-  'july', 'august', 'september', 'october', 'november', 'december',
-  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
-  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
-];
+import { MONTH_NAMES } from './constants.js';
 
 export interface FaqResult {
   answer: string;

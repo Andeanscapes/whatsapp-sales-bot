@@ -1,17 +1,10 @@
-import type Database from 'better-sqlite3';
 import type { Skills } from './skill-loader.js';
+import { MONTH_NAMES } from './constants.js';
 
 export interface ScoreResult {
   score: number;
   signals: string[];
 }
-
-const MONTH_NAMES = [
-  'january', 'february', 'march', 'april', 'may', 'june',
-  'july', 'august', 'september', 'october', 'november', 'december',
-  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
-  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
-];
 
 function matchesPattern(text: string, pattern: string): boolean {
   if (pattern === 'month-name') return MONTH_NAMES.some(m => text.includes(m));
@@ -49,16 +42,4 @@ export function scoreMessage(text: string, skills: Skills): ScoreResult {
     score: Math.max(-skills.salesStrategy.maxScore, Math.min(skills.salesStrategy.maxScore, score)),
     signals: matchedSignals,
   };
-}
-
-export function getRunningScore(db: Database.Database, phone: string): number {
-  const row = db.prepare('SELECT lead_score FROM conversations WHERE customer_phone = ?').get(phone) as { lead_score: number } | undefined;
-  return row?.lead_score ?? 0;
-}
-
-export function updateRunningScore(db: Database.Database, phone: string, delta: number): number {
-  const current = getRunningScore(db, phone);
-  const capped = Math.max(0, Math.min(100, current + delta));
-  db.prepare('UPDATE conversations SET lead_score = ? WHERE customer_phone = ?').run(capped, phone);
-  return capped;
 }

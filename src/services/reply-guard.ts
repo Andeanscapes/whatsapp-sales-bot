@@ -1,4 +1,4 @@
-import type Database from 'better-sqlite3';
+import type { Repositories } from '../db/repositories/index.js';
 import { normalizeText } from './language-service.js';
 import type { FallbackReplies, Skills } from './skill-loader.js';
 import type { MergedQualification } from './types.js';
@@ -8,7 +8,7 @@ import {
   nextQualificationQuestion,
   getLastAssistantQuestion,
 } from './qualification-engine.js';
-import { upsertConversation } from './conversation-store.js';
+import { getActiveExperience, getCommonQuestions } from './product-registry.js';
 
 export { isCorrectionMessage, getLastAssistantQuestion };
 
@@ -226,11 +226,11 @@ export function safeReservationHandoff(q: MergedQualification, fb: FallbackRepli
 }
 
 function experienceSummary(skills: Skills): string {
-  return skills.andeanScapes.experiences[0]?.shortDescription ?? '';
+  return getActiveExperience(skills).shortDescription ?? '';
 }
 
 function itinerarySummary(skills: Skills, lang: 'es' | 'en'): string {
-  const questions = skills.andeanScapes.experiences[0]?.commonQuestions ?? [];
+  const questions = getCommonQuestions(getActiveExperience(skills));
   const activities = questions.find(q => q.lang === lang && q.intent === 'activities')?.answer;
   const arrival = questions.find(q => q.lang === lang && q.intent === 'arrival')?.answer;
   return [activities, arrival].filter(Boolean).join(' ');
@@ -247,7 +247,7 @@ export function buildFallbackReply(
   q: MergedQualification,
   lastMessage: string,
   lang: 'es' | 'en',
-  db: Database.Database,
+  repos: Repositories,
   phone: string,
   skills: Skills,
 ): string {
@@ -259,10 +259,8 @@ export function buildFallbackReply(
       const nextQ = nextQualificationQuestion(q, fb);
       return fb.disculpaYaDicho.replace('{{name}}', name).replace('{{continuation}}', nextQ.replace(/^[^,]+, /, '').toLowerCase());
     }
-    const priceRow = db.prepare(
-      'SELECT price_given_at FROM conversations WHERE customer_phone = ?'
-    ).get(phone) as { price_given_at: string | null } | undefined;
-    if (priceRow?.price_given_at) {
+    const priceRow = repos.conversation.getPriceGivenAt(phone);
+    if (priceRow) {
       return fb.disculpaYaDicho.replace('{{name}}', name).replace('{{continuation}}', fb.confirmReservationPrompt);
     }
     return fb.disculpaYaDicho.replace('{{name}}', name).replace('{{continuation}}', fb.repairPricePresented.replace('{{name}}', name).toLowerCase());
@@ -276,13 +274,12 @@ export function buildFallbackReply(
     return nextQualificationQuestion(q, fb);
   }
 
-  const priceRow2 = db.prepare(
-    'SELECT price_given_at FROM conversations WHERE customer_phone = ?'
-  ).get(phone) as { price_given_at: string | null } | undefined;
-  if (!priceRow2?.price_given_at) {
+  const priceGiven = repos.conversation.getPriceGivenAt(phone);
+  if (!priceGiven) {
     const name = String(q.nombre ?? '');
-    upsertConversation(db, phone, { price_given_at: new Date().toISOString() });
-    const coupleItem = skills.andeanScapes.experiences[0]?.pricing?.items?.find((i: { id: string }) => i.id === 'couple');
+    repos.conversation.setPriceGiven(phone);
+    const items = getActiveExperience(skills).pricing.items;
+    const coupleItem = items.find((i) => i.id === 'couple');
     if (coupleItem?.couplePrice == null) return fb.aiFailureQualified;
     const couplePriceFormatted = coupleItem.couplePrice.toLocaleString('en-US');
     return fb.repairPriceNotPresented

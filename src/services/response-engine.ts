@@ -1,8 +1,6 @@
 import { getSkills, type Skills } from './skill-loader.js';
 import { logger } from '../config/logger.js';
 import { scoreMessage } from './lead-scoring.js';
-import { isOptedOut, setOptOut } from './opt-out-service.js';
-import { addMessage, getRecentMessages, upsertConversation } from './conversation-store.js';
 import { checkTimeWindow } from './time-window-policy.js';
 import { checkBudget } from './budget-guard.js';
 import {
@@ -11,6 +9,7 @@ import {
   recordAiUsage,
 } from './deepseek-client.js';
 import type { MergedQualification, ProcessMessageInput, ProcessMessageOutput } from './types.js';
+import { getActiveExperience, getPlans, getPricingItems, getShortDescription } from './product-registry.js';
 import {
   extractBookingFields,
   contextAwareExtract,
@@ -65,19 +64,20 @@ function formatPeso(n: number): string {
 }
 
 function getPlanPricing(planId: string | undefined | null, skills: Skills): { individualPrice: number | null; couplePrice: number | null; planName: string; duration: string } {
-  const plans = (skills.andeanScapes.experiences[0] as Record<string, unknown>)?.plans as Array<Record<string, unknown>> | undefined;
-  if (!plans?.length) return { individualPrice: null, couplePrice: null, planName: 'plan', duration: 'plan' };
+  const exp = getActiveExperience(skills);
+  const plans = getPlans(exp);
+  if (!plans.length) return { individualPrice: null, couplePrice: null, planName: 'plan', duration: 'plan' };
   const selectedPlan = planId ? plans.find(p => p.id === planId) : plans[0];
   if (!selectedPlan) return { individualPrice: null, couplePrice: null, planName: 'plan', duration: 'plan' };
-  const pricingItems = skills.andeanScapes.experiences[0]?.pricing?.items ?? [];
+  const pricingItems = getPricingItems(exp);
   const planPricingItems = pricingItems.filter(i => i.planId === selectedPlan.id);
   const individual = planPricingItems.find(i => i.pricePerPerson != null);
   const couple = planPricingItems.find(i => i.couplePrice != null);
   return {
-    individualPrice: (individual?.pricePerPerson as number) ?? null,
-    couplePrice: (couple?.couplePrice as number) ?? null,
-    planName: selectedPlan.name as string,
-    duration: selectedPlan.duration as string,
+    individualPrice: individual?.pricePerPerson ?? null,
+    couplePrice: couple?.couplePrice ?? null,
+    planName: selectedPlan.name,
+    duration: selectedPlan.duration,
   };
 }
 
@@ -152,26 +152,24 @@ function buildPartnerConsultSummary(q: MergedQualification, lang: 'es' | 'en', s
       : 'We validate the final price based on the group size.');
   return skills.fallbackReplies[lang].partnerConsultSummary
     .replace('{{name}}', name)
-    .replace('{{experienceSummary}}', skills.andeanScapes.experiences[0]?.shortDescription ?? '')
+    .replace('{{experienceSummary}}', getShortDescription(getActiveExperience(skills)))
     .replace('{{priceLine}}', priceLine)
     .trim();
 }
 
 function instagramUrl(skills: Skills): string {
-  const socialLinks = skills.andeanScapes.business.socialLinks as Record<string, unknown> | undefined;
-  return typeof socialLinks?.instagram === 'string' ? socialLinks.instagram : '';
+  return skills.andeanScapes.business.socialLinks?.instagram ?? '';
 }
 
 export async function processMessage(input: ProcessMessageInput): Promise<ProcessMessageOutput> {
-  const { db, customerPhone, message, messageId } = input;
+  const { repos, customerPhone, message, messageId } = input;
   const skills = getSkills();
 
-  const handedOffRow = db.prepare(
-    'SELECT handed_off_at FROM conversations WHERE customer_phone = ?'
-  ).get(customerPhone) as { handed_off_at: string | null } | undefined;
+  const handedOffRow = repos.conversation.getHandedOffAt(customerPhone);
+  const handedOffAt = handedOffRow;
 
-  if (handedOffRow?.handed_off_at) {
-    const fb = skills.fallbackReplies[resolveLanguage(db, customerPhone, message)];
+  if (handedOffAt) {
+    const fb = skills.fallbackReplies[resolveLanguage(repos, customerPhone, message)];
     const norm = message.toLowerCase().trim();
 
     const looksTypo = norm.length <= 15 && /^[a-záéíóúñ\s]{1,15}$/.test(norm) && !/^(?:si|no|ok|gracias|thanks|vale|listo|hola|hello|hi|buenas|bye|chao|adios|perfecto|excelente|genial|great|excellent)$/i.test(norm);
@@ -224,7 +222,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     };
   }
 
-  const lang = resolveLanguage(db, customerPhone, message);
+  const lang = resolveLanguage(repos, customerPhone, message);
 
   if (isAdcodeNoise(message)) {
     return {
@@ -238,7 +236,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     };
   }
 
-  if (isOptedOut(db, customerPhone)) {
+  if (repos.optOut.isOptedOut(customerPhone)) {
     return {
       reply: '',
       shouldSendReply: false,
@@ -253,8 +251,8 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   const normalized = message.toLowerCase().trim();
   const optOutKeywords = lang === 'es' ? OPT_OUT_KEYWORDS_ES : OPT_OUT_KEYWORDS_EN;
   if (optOutKeywords.some(k => normalized.includes(k)) || ALL_OPT_OUT_KEYWORDS.some(k => normalized.includes(k))) {
-    if (!isOptedOut(db, customerPhone)) {
-      setOptOut(db, customerPhone);
+    if (!repos.optOut.isOptedOut(customerPhone)) {
+      repos.optOut.setOptOut(customerPhone);
     }
     const optOutMsg = skills.fallbackReplies[lang].optOutConfirmation;
     return {
@@ -268,11 +266,10 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     };
   }
 
-  const softCloseRow = db.prepare(
-    'SELECT soft_closed_at FROM conversations WHERE customer_phone = ?'
-  ).get(customerPhone) as { soft_closed_at: string | null } | undefined;
+  const softCloseRow = repos.conversation.getSoftClosedAt(customerPhone);
+  const softClosedAt = softCloseRow;
 
-  addMessage(db, {
+  repos.message.addMessage({
     whatsapp_message_id: messageId,
     customer_phone: customerPhone,
     direction: 'inbound',
@@ -283,11 +280,11 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   });
 
   const bookingFields = extractBookingFields(message);
-  const contextFields = contextAwareExtract(message, db, customerPhone, bookingFields);
-  upsertConversation(db, customerPhone, { language: lang, ...contextFields });
+  const contextFields = contextAwareExtract(message, repos, customerPhone, bookingFields);
+  repos.conversation.upsert(customerPhone, { language: lang, ...contextFields });
 
-  const rawCollected = getCollectedFields(db, customerPhone);
-  const richCollected = reconstructFromHistory(db, customerPhone, rawCollected);
+  const rawCollected = getCollectedFields(repos, customerPhone);
+  const richCollected = reconstructFromHistory(repos, customerPhone, rawCollected);
 
   const missingFromDb: Record<string, unknown> = {};
   if (!rawCollected.nombre && richCollected.nombre) missingFromDb.collected_name = richCollected.nombre;
@@ -297,25 +294,24 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   if (!rawCollected.mascota && richCollected.mascota) missingFromDb.collected_pet = richCollected.mascota;
   if (richCollected.plan && richCollected.plan !== rawCollected.plan) missingFromDb.collected_plan = richCollected.plan;
   if (Object.keys(missingFromDb).length > 0) {
-    upsertConversation(db, customerPhone, missingFromDb);
+    repos.conversation.upsert(customerPhone, missingFromDb);
   }
 
-  const collectedFields = reconstructFromHistory(db, customerPhone, getCollectedFields(db, customerPhone));
+  const collectedFields = reconstructFromHistory(repos, customerPhone, getCollectedFields(repos, customerPhone));
   const dbQualification = buildDbQualification(collectedFields);
-  const recentMessages = getRecentMessages(db, customerPhone, 21).filter((_, i, arr) => i < arr.length - 1);
+  const recentMessages = repos.message.getRecentMessages(customerPhone, 21).filter((_, i, arr) => i < arr.length - 1);
 
   const scoreDelta = scoreMessage(normalized, skills);
   const currentScore = (() => {
-    const row = db.prepare('SELECT lead_score FROM conversations WHERE customer_phone = ?').get(customerPhone) as { lead_score: number } | undefined;
-    const existing = row?.lead_score ?? 0;
+    const existing = repos.conversation.getLeadScore(customerPhone);
     return Math.max(0, Math.min(100, existing + scoreDelta.score));
   })();
 
-  upsertConversation(db, customerPhone, { lead_score: currentScore });
+  repos.conversation.upsert(customerPhone, { lead_score: currentScore });
 
   if (isSoftCloseMessage(message)) {
-    if (!softCloseRow?.soft_closed_at) {
-      upsertConversation(db, customerPhone, { soft_closed_at: new Date().toISOString() });
+    if (!softClosedAt) {
+      repos.conversation.upsert(customerPhone, { soft_closed_at: new Date().toISOString() });
     }
     const softCloseReply = skills.fallbackReplies[lang].softCloseReply.replace('{{instagramUrl}}', instagramUrl(skills));
     return {
@@ -329,9 +325,9 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     };
   }
 
-  if (softCloseRow?.soft_closed_at) {
+  if (softClosedAt) {
     if (isReEngagementMessage(message)) {
-      db.prepare('UPDATE conversations SET soft_closed_at = NULL WHERE customer_phone = ?').run(customerPhone);
+      repos.conversation.clearSoftClosed(customerPhone);
     } else {
       return {
         reply: '',
@@ -345,15 +341,13 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     }
   }
 
-  const preLimitPriceRow = db.prepare(
-    'SELECT price_given_at FROM conversations WHERE customer_phone = ?'
-  ).get(customerPhone) as { price_given_at: string | null } | undefined;
-  const lastAssistantQuestion = getLastAssistantQuestion(db, customerPhone);
+  const preLimitPriceRow = repos.conversation.getPriceGivenAt(customerPhone);
+  const lastAssistantQuestion = getLastAssistantQuestion(repos, customerPhone);
   const preLimitHandoffAllowed = isQualificationComplete(dbQualification)
-    && !!preLimitPriceRow?.price_given_at
+    && !!preLimitPriceRow
     && isReservationIntentOrConfirmation(message, lastAssistantQuestion);
 
-  if (preLimitPriceRow?.price_given_at && isPartnerConsultPause(message)) {
+  if (preLimitPriceRow && isPartnerConsultPause(message)) {
     return {
       reply: buildPartnerConsultSummary(dbQualification, lang, skills),
       shouldSendReply: true,
@@ -365,13 +359,11 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     };
   }
 
-  const limits = checkTimeWindow(db, customerPhone);
+  const limits = checkTimeWindow(repos, customerPhone);
   if (limits.isLimited) {
     logger.warn({ phone: customerPhone, reason: limits.reason }, '[BOT] message limit reached');
     if (preLimitHandoffAllowed) {
-      db.prepare(
-        'UPDATE conversations SET handed_off_at = ? WHERE customer_phone = ?'
-      ).run(new Date().toISOString(), customerPhone);
+      repos.conversation.setHandedOff(customerPhone);
       return {
         reply: safeReservationHandoff(dbQualification, skills.fallbackReplies[lang], lang),
         shouldSendReply: true,
@@ -382,7 +374,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
         priceJustGiven: false,
       };
     }
-    if (preLimitPriceRow?.price_given_at) {
+    if (preLimitPriceRow) {
       const fb = skills.fallbackReplies[lang];
       return {
         reply: colombiaTimeAwareReply(fb.messageLimitAfterPrice, fb.messageLimitAfterPriceAfterHours, fb.messageLimitAfterPriceMorningHours),
@@ -406,11 +398,11 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     };
   }
 
-  const budget = checkBudget(db, customerPhone);
+  const budget = checkBudget(repos, customerPhone);
   if (!budget.aiAllowed) {
     logger.warn({ reason: budget.reason }, '[AI] budget blocked');
     const fb2 = skills.fallbackReplies[lang];
-    const gracefulReply = preLimitPriceRow?.price_given_at
+    const gracefulReply = preLimitPriceRow
       ? colombiaTimeAwareReply(fb2.messageLimitAfterPrice, fb2.messageLimitAfterPriceAfterHours, fb2.messageLimitAfterPriceMorningHours)
       : skills.fallbackReplies[lang].aiFailureQualified;
     return {
@@ -425,11 +417,11 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   }
 
   const systemPrompt = buildSystemPrompt(skills, lang, collectedFields);
-  const aiResult = await callDeepSeekCached(db, message, systemPrompt, recentMessages);
+  const aiResult = await callDeepSeekCached(repos, message, systemPrompt, recentMessages);
 
   if (!aiResult) {
     logger.warn('[AI] DeepSeek call failed, sending graceful reply');
-    const fallbackReply = buildFallbackReply(dbQualification, message, lang, db, customerPhone, skills);
+    const fallbackReply = buildFallbackReply(dbQualification, message, lang, repos, customerPhone, skills);
     return {
       reply: fallbackReply,
       shouldSendReply: true,
@@ -443,14 +435,14 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
 
   const { response: aiResponse } = aiResult;
 
-  recordAiUsage(db, customerPhone, {
+  recordAiUsage(repos, customerPhone, {
     prompt_tokens: aiResult.promptTokens,
     completion_tokens: aiResult.completionTokens,
   });
 
   if (aiResponse.reply === null || aiResponse.reply === '') {
     logger.warn('[AI] DeepSeek returned null reply, sending graceful reply');
-    const fallbackReply = buildFallbackReply(dbQualification, message, lang, db, customerPhone, skills);
+    const fallbackReply = buildFallbackReply(dbQualification, message, lang, repos, customerPhone, skills);
     return {
       reply: fallbackReply,
       shouldSendReply: true,
@@ -474,9 +466,9 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   if (collectedFromAi.lodging_need != null) dbFields.collected_lodging_need = collectedFromAi.lodging_need;
   if (collectedFromAi.pet != null) dbFields.collected_pet = collectedFromAi.pet;
   if (Object.keys(dbFields).length > 0) {
-    upsertConversation(db, customerPhone, { lead_score: finalScore, ...dbFields });
+    repos.conversation.upsert(customerPhone, { lead_score: finalScore, ...dbFields });
   } else {
-    upsertConversation(db, customerPhone, { lead_score: finalScore });
+    repos.conversation.upsert(customerPhone, { lead_score: finalScore });
   }
 
   const shouldSendImage = aiResponse.should_send_image;
@@ -495,10 +487,8 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   if (asksItinerary(message) && isGenericConversionReply(replyText)) {
     replyText = itineraryReply(merged, skills.fallbackReplies[lang], skills, lang);
   } else if (isUserConfusedOrRepeating(message) && isGenericConversionReply(replyText)) {
-    const preCheckPrice = db.prepare(
-      'SELECT price_given_at FROM conversations WHERE customer_phone = ?'
-    ).get(customerPhone) as { price_given_at: string | null } | undefined;
-    if (preCheckPrice?.price_given_at) {
+    const preCheckPrice = repos.conversation.getPriceGivenAt(customerPhone);
+    if (preCheckPrice) {
       const name = String(merged.nombre ?? '');
       replyText = lang === 'es'
         ? `${name}, perdón, me enredé. Para resumir: el plan sale bien, y si quieres, valido disponibilidad exacta con el equipo y te confirmo.`
@@ -507,12 +497,10 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   }
 
   const initialPriceJustGiven = replyMentionsPrice(replyText);
-  const priceRow = db.prepare(
-    'SELECT price_given_at FROM conversations WHERE customer_phone = ?'
-  ).get(customerPhone) as { price_given_at: string | null } | undefined;
-  const pricePresented = !!(initialPriceJustGiven || priceRow?.price_given_at);
-  if (initialPriceJustGiven && !priceRow?.price_given_at) {
-    upsertConversation(db, customerPhone, { price_given_at: new Date().toISOString() });
+  const priceRow = repos.conversation.getPriceGivenAt(customerPhone);
+  const pricePresented = !!(initialPriceJustGiven || priceRow);
+  if (initialPriceJustGiven && !priceRow) {
+    repos.conversation.upsert(customerPhone, { price_given_at: new Date().toISOString() });
   }
 
   const reservationIntent = isReservationIntentOrConfirmation(message, lastAssistantQuestion);
@@ -525,7 +513,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
 
   if (pricePresented && (explicitReservation || reservationIntent || recentReservation)) {
     finalScore = Math.max(finalScore, skills.salesStrategy.urgentLeadThreshold);
-    upsertConversation(db, customerPhone, { lead_score: finalScore });
+    repos.conversation.upsert(customerPhone, { lead_score: finalScore });
   }
 
   let needsHumanEffective = false;
@@ -533,9 +521,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   if (handoffAllowed) {
     replyText = safeReservationHandoff(merged, skills.fallbackReplies[lang], lang);
     needsHumanEffective = true;
-    db.prepare(
-      'UPDATE conversations SET handed_off_at = ? WHERE customer_phone = ?'
-    ).run(new Date().toISOString(), customerPhone);
+    repos.conversation.setHandedOff(customerPhone);
   } else {
     if (!merged.plan && pricePresented && (reservationIntent || recentReservation || containsUnsafeReservationClaim(replyText))) {
       replyText = nextQualificationQuestion(merged, skills.fallbackReplies[lang]);
@@ -543,9 +529,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
       logger.warn({ phone: customerPhone, pricePresented, reservationIntent }, '[BOT] blocked unsafe reservation claim');
       replyText = safeReservationHandoff(merged, skills.fallbackReplies[lang], lang);
       needsHumanEffective = true;
-      db.prepare(
-        'UPDATE conversations SET handed_off_at = ? WHERE customer_phone = ?'
-      ).run(new Date().toISOString(), customerPhone);
+      repos.conversation.setHandedOff(customerPhone);
     }
 
     const modelTriedHandoff =
@@ -558,11 +542,11 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
           : hasActionableUserQuestion(message)
             ? skills.fallbackReplies[lang].answerQuestionBeforeQualification
           : nextQualificationQuestion(merged, skills.fallbackReplies[lang]);
-        const lastAssistant = getLastAssistantQuestion(db, customerPhone);
+        const lastAssistant = getLastAssistantQuestion(repos, customerPhone);
         if (lastAssistant && lastAssistant.trim().toLowerCase() === nextQ.trim().toLowerCase()) {
           const extractedNow = extractBookingFields(message);
           if (extractedNow.collected_people && !merged.personas) {
-            upsertConversation(db, customerPhone, { collected_people: extractedNow.collected_people });
+            repos.conversation.upsert(customerPhone, { collected_people: extractedNow.collected_people });
             replyText = nextQualificationQuestion({ ...merged, personas: extractedNow.collected_people }, skills.fallbackReplies[lang]);
           } else {
             replyText = lang === 'es'
@@ -574,7 +558,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
         }
       } else if (!pricePresented) {
         replyText = skills.fallbackReplies[lang].repairPriceNotPresented.replace('{{name}}', String(merged.nombre ?? ''));
-        upsertConversation(db, customerPhone, { price_given_at: new Date().toISOString() });
+        repos.conversation.upsert(customerPhone, { price_given_at: new Date().toISOString() });
       } else {
         replyText = skills.fallbackReplies[lang].repairPricePresented.replace('{{name}}', String(merged.nombre ?? ''));
       }
@@ -582,8 +566,8 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   }
 
   const finalPriceJustGiven = replyMentionsPrice(replyText);
-  if (finalPriceJustGiven && !priceRow?.price_given_at) {
-    upsertConversation(db, customerPhone, { price_given_at: new Date().toISOString() });
+  if (finalPriceJustGiven && !priceRow) {
+    repos.conversation.upsert(customerPhone, { price_given_at: new Date().toISOString() });
   }
 
   const outputPriceJustGiven = !needsHumanEffective && finalPriceJustGiven;

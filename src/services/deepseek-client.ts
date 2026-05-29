@@ -3,11 +3,12 @@ import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { createHash } from 'crypto';
-import type Database from 'better-sqlite3';
+import type { Repositories } from '../db/repositories/index.js';
 import type { Skills } from './skill-loader.js';
 import { substituteTokens } from './skill-loader.js';
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
+import { getActiveExperience, getPlans } from './product-registry.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -64,74 +65,61 @@ export function readSystemPrompt(): string {
 
 export function buildSystemPrompt(skills: Skills, lang?: string, collectedFields?: Record<string, unknown>): string {
   const base = readSystemPrompt();
-  const exp = skills.andeanScapes.experiences[0] as Record<string, unknown>;
-  const route = exp.route as Record<string, unknown>;
-  const tactics = skills.salesStrategy.salesTactics as Record<string, unknown> | undefined;
+  const exp = getActiveExperience(skills);
+  const route = exp.route;
+  const tactics = skills.salesStrategy.salesTactics;
 
-  const dateList = ((exp.availability as Record<string, unknown>).availableDates as Array<Record<string, unknown>>)
+  const dateList = exp.availability.availableDates
     .map(d => {
-      const dObj = new Date((d.date as string) + 'T00:00:00');
+      const dObj = new Date(d.date + 'T00:00:00');
       const dayName = dObj.toLocaleDateString(lang === 'en' ? 'en-US' : 'es-CO', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
       return `${dayName} (${d.status}${d.slotsApprox ? `, ~${d.slotsApprox} slots` : ''})`;
     })
     .join(', ');
 
-  const pricingItems = ((exp.pricing as Record<string, unknown>).items as Array<Record<string, unknown>>)
-    .filter((i: Record<string, unknown>) => i.publiclyShow)
-    .map((i: Record<string, unknown>) =>
-      i.couplePrice ? `${i.label}: ${(i.couplePrice as number).toLocaleString('en-US')} COP total` : i.pricePerPerson ? `${i.label}: ${(i.pricePerPerson as number).toLocaleString('en-US')} COP` : `${i.label}: consultar`
+  const pricingItems = exp.pricing.items
+    .filter(i => i.publiclyShow)
+    .map(i =>
+      i.couplePrice ? `${i.label}: ${i.couplePrice.toLocaleString('en-US')} COP total` : i.pricePerPerson ? `${i.label}: ${i.pricePerPerson.toLocaleString('en-US')} COP` : `${i.label}: consultar`
     ).join(' | ');
 
-  const pricingRules = ((exp.pricing as Record<string, unknown>).botRules as string[]).join('; ');
+  const pricingRules = exp.pricing.botRules.join('; ');
+  const included = exp.included.join(', ');
+  const notIncluded = exp.notIncludedUnlessConfirmed.join(', ');
+  const reservationFlow = exp.reservationFlow.join('; ');
 
-  const included = (exp.included as string[]).join(', ');
-  const notIncluded = (exp.notIncludedUnlessConfirmed as string[]).join(', ');
-  const reservationFlow = (exp.reservationFlow as string[]).join('; ');
+  const availabilityLastUpdated = exp.availability.lastUpdated;
+  const availabilityRule = exp.availability.botRule;
 
-  const availabilityLastUpdated = (exp.availability as Record<string, unknown>).lastUpdated as string;
-  const availabilityRule = (exp.availability as Record<string, unknown>).botRule as string;
+  const ferryInfo = route.ferryInfo ?? '';
+  const alternateRoute = route.alternateRoute ?? '';
+  const arrivalTips = route.arrivalTips ?? '';
+  const fromBogota = route.fromBogota ?? '';
+  const routeBotRules = route.botRules.join('; ');
 
-  const ferryInfo = String(route.ferryInfo ?? '');
-  const alternateRoute = String(route.alternateRoute ?? '');
-  const arrivalTips = String(route.arrivalTips ?? '');
-  const fromBogota = String(route.fromBogota ?? '');
-  const routeBotRules = (route.botRules as string[] ?? []).join('; ');
-
-  const cancellation = typeof exp.cancellationPolicy === 'string' ? exp.cancellationPolicy : '';
-  const petPolicy = typeof exp.petPolicy === 'string' ? exp.petPolicy : '';
-  const ageMin = typeof exp.ageMinimum === 'string' || typeof exp.ageMinimum === 'number' ? String(exp.ageMinimum) : '';
-  const shortDesc = String(exp.shortDescription ?? '');
-  const meetingPt = String(exp.meetingPoint ?? '');
-
-  const climate = exp.climateInfo as Record<string, unknown> | undefined;
-  const climateText = climate
-    ? `${climate.temperature ?? ''}. ${climate.rainySeason ?? ''}. ${climate.notes ?? ''}`
+  const climateText = exp.climateInfo
+    ? `${exp.climateInfo.temperature ?? ''}. ${exp.climateInfo.rainySeason ?? ''}. ${exp.climateInfo.notes ?? ''}`
     : '';
 
-  const difficulty = exp.difficulty as Record<string, unknown> | undefined;
-  const difficultyText = difficulty
-    ? `${difficulty.level ?? 'Moderate'}. ${(difficulty.notes as string[] ?? []).join('; ')}`
-    : '';
+  const difficultyText = `${exp.difficulty.level}. ${exp.difficulty.notes.join('; ')}`;
 
-  const reality = exp.experienceReality as Record<string, unknown> | undefined;
-  const roadInfo = reality?.roadConditions ?? '';
-  const idealFor = reality?.idealFor ?? '';
-  const notIdealFor = reality?.notIdealFor ?? '';
+  const roadInfo = exp.experienceReality?.roadConditions ?? '';
+  const idealFor = exp.experienceReality?.idealFor ?? '';
+  const notIdealFor = exp.experienceReality?.notIdealFor ?? '';
 
-  const botBehavior = exp.botBehavior as Record<string, unknown> | undefined;
-  const adventureFilter = String(botBehavior?.adventureFilter ?? '');
-  const qualPhases = botBehavior?.qualificationPhases as Record<string, string> | undefined;
-  const handoffExactReply = botBehavior?.handoffExactReply as Record<string, string> | undefined;
-  const negativeExamples = String(botBehavior?.negativeExamples ?? '');
+  const adventureFilter = exp.botBehavior?.adventureFilter ?? '';
+  const qualPhases = exp.botBehavior?.qualificationPhases;
+  const handoffExactReply = exp.botBehavior?.handoffExactReply;
+  const negativeExamples = exp.botBehavior?.negativeExamples ?? '';
 
-  const plans = exp.plans as Array<Record<string, unknown>> | undefined;
-  const plansList = plans
-    ? plans.map(p => `${p.id} — ${p.name} (${p.duration}): ${p.shortDescription} | Benefits: ${p.benefits}`).join('\n')
-    : '';
+  const shortDesc = exp.shortDescription;
+  const meetingPt = exp.meetingPoint;
+  const plansList = getPlans(exp)
+    .map(p => `${p.id} — ${p.name} (${p.duration}): ${p.shortDescription} | Benefits: ${p.benefits}`).join('\n');
 
   const facts = [
     `Business: ${skills.andeanScapes.business.name} — ${shortDesc}`,
-    `Brand intro: ${(skills.andeanScapes.business as Record<string, unknown>).shortBrandIntro ?? ''}`,
+    `Brand intro: ${skills.andeanScapes.business.shortBrandIntro ?? ''}`,
     `Location: ${skills.andeanScapes.business.location}${meetingPt ? '. Meeting point: ' + meetingPt : ''}`,
     '---',
     `AVAILABLE PLANS:\n${plansList}`,
@@ -152,9 +140,6 @@ export function buildSystemPrompt(skills: Skills, lang?: string, collectedFields
     `NOT included: ${notIncluded}`,
     `Reservation flow: ${reservationFlow}`,
     '---',
-    cancellation ? `Cancellation: ${cancellation}` : null,
-    petPolicy ? `Pet policy: ${petPolicy}` : null,
-    ageMin ? `Age minimum: ${ageMin}` : null,
     climateText ? `Climate: ${climateText}` : null,
     roadInfo ? `Road info: ${roadInfo}` : null,
     difficultyText ? `Difficulty: ${difficultyText}` : null,
@@ -173,8 +158,8 @@ export function buildSystemPrompt(skills: Skills, lang?: string, collectedFields
   if (tactics) {
     facts.push(
       `Sales attitude: ${tactics.tonePersonality || ''}`,
-      `Power confidence: ${(tactics.powerConfidence as Record<string, unknown>)?.attitude || ''}`,
-      `Closing: ${(tactics.closing as Record<string, unknown>)?.assumptive || ''} | ${(tactics.closing as Record<string, unknown>)?.softTakeaway || ''}`,
+      `Power confidence: ${tactics.powerConfidence?.attitude || ''}`,
+      `Closing: ${tactics.closing?.assumptive || ''} | ${tactics.closing?.softTakeaway || ''}`,
       `Service rule: ${tactics.serviceOverSales || ''}`,
       `Meta: ${tactics.metaRule || ''}`,
       `First contact: ${tactics.firstContact || ''}`,
@@ -203,12 +188,12 @@ export function callDeepSeek(
 }
 
 export function callDeepSeekCached(
-  db: Database.Database,
+  repos: Repositories,
   message: string,
   systemPrompt: string,
   recentMessages?: RecentMessageContext[],
 ): Promise<DeepSeekResult | null> {
-  return callDeepSeekInternal(message, systemPrompt, recentMessages, db);
+  return callDeepSeekInternal(message, systemPrompt, recentMessages, repos);
 }
 
 function hashCacheKey(systemPrompt: string, message: string, recentMessages?: RecentMessageContext[]): string {
@@ -221,39 +206,28 @@ function hashCacheKey(systemPrompt: string, message: string, recentMessages?: Re
   return hash.digest('hex');
 }
 
-function checkCache(db: Database.Database, cacheKey: string): DeepSeekResult | null {
-  const row = db.prepare(
-    "SELECT response_json FROM ai_cache WHERE cache_key = ? AND expires_at > ?"
-  ).get(cacheKey, new Date().toISOString()) as { response_json: string } | undefined;
-  if (!row) return null;
-
-  try {
-    const parsed = JSON.parse(row.response_json) as DeepSeekResult;
+function checkCache(repos: Repositories, cacheKey: string): DeepSeekResult | null {
+  const cached = repos.aiCache.get(cacheKey);
+  if (cached) {
     logger.info({ cacheKey: cacheKey.slice(0, 12) }, '[AI] cache hit');
-    return parsed;
-  } catch {
-    return null;
   }
+  return cached;
 }
 
-function storeCache(db: Database.Database, cacheKey: string, result: DeepSeekResult): void {
-  const now = new Date();
-  const expiresAt = new Date(now.getTime() + (env.AI_CACHE_TTL_SECONDS * 1000)).toISOString();
-  db.prepare(
-    'INSERT OR REPLACE INTO ai_cache (cache_key, response_json, created_at, expires_at) VALUES (?, ?, ?, ?)'
-  ).run(cacheKey, JSON.stringify(result), now.toISOString(), expiresAt);
+function storeCache(repos: Repositories, cacheKey: string, result: DeepSeekResult): void {
+  repos.aiCache.set(cacheKey, result, env.AI_CACHE_TTL_SECONDS);
 }
 
 async function callDeepSeekInternal(
   message: string,
   systemPrompt: string,
   recentMessages: RecentMessageContext[] | undefined,
-  db: Database.Database | null,
+  repos: Repositories | null,
 ): Promise<DeepSeekResult | null> {
   const cacheKey = hashCacheKey(systemPrompt, message, recentMessages);
 
-  if (db) {
-    const cached = checkCache(db, cacheKey);
+  if (repos) {
+    const cached = checkCache(repos, cacheKey);
     if (cached) return cached;
   }
 
@@ -322,8 +296,8 @@ async function callDeepSeekInternal(
       completionTokens,
     };
 
-    if (db) {
-      storeCache(db, cacheKey, result);
+    if (repos) {
+      storeCache(repos, cacheKey, result);
     }
 
     return result;
@@ -404,12 +378,10 @@ function parseDeepSeekReply(content: string): DeepSeekResponse | null {
 }
 
 export function recordAiUsage(
-  db: Database.Database,
+  repos: Repositories,
   customerPhone: string,
   usage: { prompt_tokens: number; completion_tokens: number; cached_tokens?: number }
 ): void {
   const estimatedCost = usage.prompt_tokens * INPUT_COST_PER_TOKEN + usage.completion_tokens * OUTPUT_COST_PER_TOKEN;
-  db.prepare(
-    'INSERT INTO ai_usage (customer_phone, model, prompt_tokens, completion_tokens, cached_tokens, estimated_cost_usd, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).run(customerPhone, env.DEEPSEEK_MODEL, usage.prompt_tokens, usage.completion_tokens, usage.cached_tokens ?? 0, estimatedCost, new Date().toISOString());
+  repos.aiUsage.recordUsage(customerPhone, env.DEEPSEEK_MODEL, usage.prompt_tokens, usage.completion_tokens, usage.cached_tokens ?? 0, estimatedCost);
 }

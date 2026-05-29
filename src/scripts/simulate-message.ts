@@ -1,7 +1,7 @@
 import { createAndMigrate } from '../db/migrate.js';
+import { createRepositories } from '../db/repositories/index.js';
 import { loadSkills } from '../services/skill-loader.js';
 import { processMessage } from '../services/response-engine.js';
-import { addMessage } from '../services/conversation-store.js';
 import { mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -19,9 +19,10 @@ if (!message) {
 const tmpDir = mkdtempSync(join(tmpdir(), 'andean-bot-'));
 const dbPath = join(tmpDir, 'sim.sqlite');
 const db = createAndMigrate(dbPath);
+const repos = createRepositories(db);
 
 const result = await processMessage({
-  db,
+  repos,
   customerPhone: '573000000001',
   message,
   messageId: `sim_${Date.now()}`,
@@ -36,7 +37,7 @@ console.log(`price_just_given=${result.priceJustGiven}`);
 if (result.priceFollowUpText) console.log(`price_follow_up_text=${result.priceFollowUpText}`);
 
 if (result.shouldSendReply) {
-  addMessage(db, {
+  repos.message.addMessage({
     customer_phone: '573000000001',
     direction: 'outbound',
     message_type: 'text',
