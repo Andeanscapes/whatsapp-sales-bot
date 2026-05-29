@@ -1,15 +1,10 @@
-import type Database from 'better-sqlite3';
+import type { Repositories } from '../db/repositories/index.js';
 import { normalizeText, detectLanguageOrNull, type SupportedLanguage } from './language-service.js';
 import type { FallbackReplies } from './skill-loader.js';
 import { getSkills } from './skill-loader.js';
 import type { MergedQualification } from './types.js';
-
-export const MONTH_NAMES = [
-  'january', 'february', 'march', 'april', 'may', 'june',
-  'july', 'august', 'september', 'october', 'november', 'december',
-  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
-  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
-];
+import { getActiveExperience, getPlans } from './product-registry.js';
+import { MONTH_NAMES } from './constants.js';
 
 export const NAME_PATTERNS = [
   /soy ([A-ZÁÉÍÓÚÜÑ][a-záéíóúüñ]+)/i,
@@ -39,8 +34,8 @@ export const PET_KEYWORDS = /\b(?:perro|perrito|mascota|mascotas|gato|gatos|perr
 export function detectPlan(message: string): string | null {
   const norm = normalizeText(message);
   const skills = getSkills();
-  const plans = (skills.andeanScapes.experiences[0] as Record<string, unknown>).plans as Array<Record<string, unknown>> | undefined;
-  if (!plans) return null;
+  const plans = getPlans(getActiveExperience(skills));
+  if (!plans.length) return null;
 
   const durationBoosts = new Map<string, RegExp>([
     ['3d2n_rural', /\b(3\s*d|3\s*dias|3\s*días|tres\s+dias|tres\s+días|2\s*noches|dos\s+noches)\b/],
@@ -51,18 +46,16 @@ export function detectPlan(message: string): string | null {
   let tied = false;
 
   for (const plan of plans) {
-    const id = plan.id as string;
-    const keywords = plan.keywords as string[];
-    let score = keywords.reduce((total, keyword) => {
+    let score = plan.keywords.reduce((total, keyword) => {
       return norm.includes(normalizeText(keyword)) ? total + 1 : total;
     }, 0);
 
-    const durationBoost = durationBoosts.get(id);
+    const durationBoost = durationBoosts.get(plan.id);
     if (durationBoost?.test(norm)) score += 10;
 
     if (score === 0) continue;
     if (!best || score > best.score) {
-      best = { id, score };
+      best = { id: plan.id, score };
       tied = false;
     } else if (score === best.score) {
       tied = true;
@@ -79,11 +72,8 @@ export function isCorrectionMessage(text: string): boolean {
     || /(i already|already) (told|said|mentioned)/i.test(norm);
 }
 
-export function getLastAssistantQuestion(db: Database.Database, phone: string): string | null {
-  const row = db.prepare(
-    "SELECT body FROM messages WHERE customer_phone = ? AND direction = 'outbound' ORDER BY id DESC LIMIT 1"
-  ).get(phone) as { body: string | null } | undefined;
-  return row?.body ?? null;
+export function getLastAssistantQuestion(repos: Repositories, phone: string): string | null {
+  return repos.message.getLastOutboundBody(phone);
 }
 
 export function isQualificationComplete(q: MergedQualification): boolean {
@@ -176,9 +166,9 @@ export function extractBookingFields(text: string): Record<string, unknown> {
   return fields;
 }
 
-export function contextAwareExtract(message: string, db: Database.Database, phone: string, existing: Record<string, unknown>): Record<string, unknown> {
+export function contextAwareExtract(message: string, repos: Repositories, phone: string, existing: Record<string, unknown>): Record<string, unknown> {
   const fields = { ...existing };
-  const lastQuestion = getLastAssistantQuestion(db, phone);
+  const lastQuestion = getLastAssistantQuestion(repos, phone);
   const norm = message.trim();
 
   if (lastQuestion && !fields.collected_people) {
@@ -239,11 +229,9 @@ export function contextAwareExtract(message: string, db: Database.Database, phon
   return fields;
 }
 
-export function reconstructFromHistory(db: Database.Database, phone: string, current: Record<string, unknown>): Record<string, unknown> {
+export function reconstructFromHistory(repos: Repositories, phone: string, current: Record<string, unknown>): Record<string, unknown> {
   const fields = { ...current };
-  const allInbound = db.prepare(
-    "SELECT body FROM messages WHERE customer_phone = ? AND direction = 'inbound' ORDER BY created_at DESC LIMIT 20"
-  ).all(phone) as { body: string | null }[];
+  const allInbound = repos.message.getLastInboundBodies(phone, 20);
   const need = {
     nombre: !fields.nombre,
     personas: !fields.personas,
@@ -276,26 +264,12 @@ export function buildDbQualification(collected: Record<string, unknown>): Merged
   };
 }
 
-export function getCollectedFields(db: Database.Database, phone: string): Record<string, unknown> {
-  const row = db.prepare(
-    'SELECT collected_name, collected_date, collected_people, collected_transport_need, collected_lodging_need, collected_pet, collected_plan, language FROM conversations WHERE customer_phone = ?'
-  ).get(phone) as Record<string, unknown> | undefined;
-  if (!row) return {};
-  const fields: Record<string, unknown> = {};
-  if (row.collected_name) fields.nombre = row.collected_name;
-  if (row.collected_date) fields.fecha = row.collected_date;
-  if (row.collected_people) fields.personas = row.collected_people;
-  if (row.collected_transport_need) fields.transporte = row.collected_transport_need;
-  if (row.collected_lodging_need) fields.hospedaje = row.collected_lodging_need;
-  if (row.collected_pet) fields.mascota = row.collected_pet;
-  if (row.collected_plan) fields.plan = row.collected_plan;
-  if (row.language) fields.idioma = row.language;
-  return fields;
+export function getCollectedFields(repos: Repositories, phone: string): Record<string, unknown> {
+  return repos.conversation.getCollectedFields(phone);
 }
 
-export function resolveLanguage(db: Database.Database, phone: string, message: string): SupportedLanguage {
+export function resolveLanguage(repos: Repositories, phone: string, message: string): SupportedLanguage {
   const detected = detectLanguageOrNull(message);
   if (detected) return detected;
-  const row = db.prepare('SELECT language FROM conversations WHERE customer_phone = ?').get(phone) as { language: SupportedLanguage | null } | undefined;
-  return row?.language ?? 'es';
+  return repos.conversation.getLanguage(phone) ?? 'es';
 }

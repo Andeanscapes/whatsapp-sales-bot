@@ -2,6 +2,8 @@ import { describe, it, expect, beforeAll, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { loadSkills } from '../services/skill-loader.js';
 import { migrate } from '../db/migrate.js';
+import { createRepositories } from '../db/repositories/index.js';
+import type { Repositories } from '../db/repositories/index.js';
 import {
   processMessage,
   detectsReservationIntent,
@@ -11,8 +13,8 @@ import {
   stripHandoffPhrases,
   isTruncatedReply,
 } from '../services/response-engine.js';
-import { addMessage, upsertConversation } from '../services/conversation-store.js';
 import { sendAlert } from '../services/alert-service.js';
+import { insertMediaSendAt, getLatestOwnerAlertBody } from './helpers/db-test-helpers.js';
 
 vi.mock('../services/deepseek-client.js', async () => {
   const actual = await vi.importActual('../services/deepseek-client.js');
@@ -34,19 +36,21 @@ import { safeReservationHandoff, afterHoursReply, colombiaTimeAwareReply } from 
 import { selectImageForPlan, canSendPlanImage } from '../services/media-service.js';
 import { getSkills } from '../services/skill-loader.js';
 
+let repos: Repositories;
 let db: Database.Database;
 
 beforeAll(() => {
   loadSkills();
   db = new Database(':memory:');
   migrate(db);
+  repos = createRepositories(db);
 });
 
 describe('processMessage', () => {
   it('handles opt-out keyword stop', async () => {
     vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     const phone = '573009990001';
-    const result = await processMessage({ db, customerPhone: phone, message: 'stop' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'stop' });
     expect(result.reply).toContain("won't send");
     expect(result.shouldSendReply).toBe(true);
     expect(result.leadScore).toBe(0);
@@ -57,8 +61,8 @@ describe('processMessage', () => {
   it('prevents replies for opted-out customer', async () => {
     vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     const phone = '573009990002';
-    await processMessage({ db, customerPhone: phone, message: 'stop' });
-    const result = await processMessage({ db, customerPhone: phone, message: 'How much?' });
+    await processMessage({ repos, customerPhone: phone, message: 'stop' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'How much?' });
     expect(result.reply).toBe('');
     expect(result.shouldSendReply).toBe(false);
   });
@@ -78,7 +82,7 @@ describe('processMessage', () => {
       promptTokens: 500,
       completionTokens: 80,
     });
-    const result = await processMessage({ db, customerPhone: '573001112233', message: 'Hola' });
+    const result = await processMessage({ repos, customerPhone: '573001112233', message: 'Hola' });
     expect(result.reply).toContain('Owner');
     expect(result.shouldSendReply).toBe(true);
     expect(result.usedAi).toBe(true);
@@ -88,13 +92,13 @@ describe('processMessage', () => {
     vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     const phone = '573001112232';
-    upsertConversation(db, phone, {
+    repos.conversation.upsert(phone, {
       collected_name: 'Santiago',
       collected_people: 2,
       price_given_at: new Date().toISOString(),
     });
 
-    const result = await processMessage({ db, customerPhone: phone, message: 'seria para 2 pero dejame valido con mi pareja gracias' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'seria para 2 pero dejame valido con mi pareja gracias' });
 
     expect(result.reply).toContain('Dale Santiago, cero afan');
     expect(result.reply).toContain('$1,040,000 COP total');
@@ -109,7 +113,7 @@ describe('processMessage', () => {
     vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce(null);
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     const phone = '573001112234';
-    upsertConversation(db, phone, {
+    repos.conversation.upsert(phone, {
       collected_name: 'Maria',
       collected_plan: '2d1n_mining',
       collected_people: 2,
@@ -117,7 +121,7 @@ describe('processMessage', () => {
       collected_transport_need: 'yes',
       price_given_at: new Date().toISOString(),
     });
-    const result = await processMessage({ db, customerPhone: phone, message: 'Quiero reservar' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'Quiero reservar' });
     expect(result.reply).toContain('Maria');
     expect(result.reply).toContain('revisemos');
     expect(result.shouldSendReply).toBe(true);
@@ -129,7 +133,7 @@ describe('processMessage', () => {
     vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     const phone = '573001112235';
-    upsertConversation(db, phone, {
+    repos.conversation.upsert(phone, {
       collected_name: 'Carlos',
       collected_plan: '2d1n_mining',
       collected_people: 2,
@@ -150,7 +154,7 @@ describe('processMessage', () => {
       promptTokens: 400,
       completionTokens: 30,
     });
-    const result = await processMessage({ db, customerPhone: phone, message: 'asdfghjkl' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'asdfghjkl' });
     expect(result.reply).toContain('Carlos');
     expect(result.reply).toContain('revisemos');
     expect(result.shouldSendReply).toBe(true);
@@ -174,7 +178,7 @@ describe('processMessage', () => {
       completionTokens: 100,
     });
     const result = await processMessage({
-      db,
+      repos,
       customerPhone: '573001112236',
       message: 'Quiero reservar junio 8 para 2 personas con transporte desde Bogota',
     });
@@ -199,7 +203,7 @@ describe('processMessage', () => {
       promptTokens: 500,
       completionTokens: 50,
     });
-    const result = await processMessage({ db, customerPhone: '573001112237', message: 'Quiero reservar mayo 18 para 4 personas' });
+    const result = await processMessage({ repos, customerPhone: '573001112237', message: 'Quiero reservar mayo 18 para 4 personas' });
     expect(result.shouldAlertOwner).toBe(false);
     expect(result.reply).toBeTruthy();
   });
@@ -221,11 +225,11 @@ describe('processMessage', () => {
       completionTokens: 60,
     });
     const phone = '573001112238';
-    addMessage(db, { customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'Hola', created_at: new Date(Date.now() - 60000).toISOString() });
-    addMessage(db, { customer_phone: phone, direction: 'outbound', message_type: 'text', body: 'Hola, soy Owner de Andean Scapes. En que te puedo ayudar?', created_at: new Date(Date.now() - 50000).toISOString() });
-    addMessage(db, { customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'Quiero saber fechas disponibles', created_at: new Date(Date.now() - 40000).toISOString() });
+    repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'Hola', created_at: new Date(Date.now() - 60000).toISOString() });
+    repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: 'Hola, soy Owner de Andean Scapes. En que te puedo ayudar?', created_at: new Date(Date.now() - 50000).toISOString() });
+    repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'Quiero saber fechas disponibles', created_at: new Date(Date.now() - 40000).toISOString() });
 
-    const result = await processMessage({ db, customerPhone: phone, message: 'fecha' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'fecha' });
     expect(result.reply).toContain('disponibles');
     expect(result.usedAi).toBe(true);
 
@@ -243,7 +247,7 @@ describe('processMessage', () => {
   it('alerts owner when budget is blocked', async () => {
     vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: false, reason: 'daily_budget_exceeded' });
-    const result = await processMessage({ db, customerPhone: '573001112239', message: 'Hola' });
+    const result = await processMessage({ repos, customerPhone: '573001112239', message: 'Hola' });
     expect(result.reply).toContain('validar esto');
     expect(result.reply.toLowerCase()).not.toContain('dame unos minuticos');
     expect(result.shouldSendReply).toBe(true);
@@ -255,19 +259,19 @@ describe('processMessage', () => {
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112257';
-    upsertConversation(db, phone, { lead_score: 40 });
+    repos.conversation.upsert(phone, { lead_score: 40 });
 
-    const result = await processMessage({ db, customerPhone: phone, message: 'No gracias' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'No gracias' });
 
     expect(result.reply).toContain('Entendido');
     expect(result.usedAi).toBe(false);
     expect(result.leadScore).toBe(25);
 
-    const conv = db.prepare('SELECT lead_score, soft_closed_at FROM conversations WHERE customer_phone = ?').get(phone) as { lead_score: number; soft_closed_at: string | null };
+    const conv = repos.conversation.getByPhone(phone) as { lead_score: number; soft_closed_at: string | null };
     expect(conv.lead_score).toBe(25);
     expect(conv.soft_closed_at).toBeTruthy();
 
-    const stored = db.prepare('SELECT body FROM messages WHERE customer_phone = ? AND direction = ? ORDER BY id DESC LIMIT 1').get(phone, 'inbound') as { body: string };
+    const stored = { body: repos.message.getLastInboundBodies(phone, 1)[0]?.body } as { body: string };
     expect(stored.body).toBe('No gracias');
   });
 
@@ -277,7 +281,7 @@ describe('processMessage', () => {
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112276';
 
-    upsertConversation(db, phone, {
+    repos.conversation.upsert(phone, {
       collected_name: 'Carlos',
       collected_people: 2,
       collected_date: 'agosto',
@@ -285,12 +289,12 @@ describe('processMessage', () => {
       lead_score: 40,
     });
 
-    const result = await processMessage({ db, customerPhone: phone, message: 'esta muy caro gracias' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'esta muy caro gracias' });
     expect(result.reply).toContain('https://www.instagram.com/andean_scapes/');
     expect(result.usedAi).toBe(false);
     expect(result.shouldAlertOwner).toBe(false);
 
-    const conv = db.prepare('SELECT soft_closed_at FROM conversations WHERE customer_phone = ?').get(phone) as { soft_closed_at: string | null };
+    const conv = repos.conversation.getByPhone(phone) as { soft_closed_at: string | null };
     expect(conv.soft_closed_at).toBeTruthy();
   });
 
@@ -300,18 +304,18 @@ describe('processMessage', () => {
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112277';
 
-    upsertConversation(db, phone, {
+    repos.conversation.upsert(phone, {
       collected_name: 'Ana',
       collected_people: 1,
       price_given_at: new Date().toISOString(),
       lead_score: 35,
     });
 
-    const result = await processMessage({ db, customerPhone: phone, message: 'se sale del presupuesto' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'se sale del presupuesto' });
     expect(result.reply).toContain('https://www.instagram.com/andean_scapes/');
     expect(result.usedAi).toBe(false);
 
-    const conv = db.prepare('SELECT soft_closed_at FROM conversations WHERE customer_phone = ?').get(phone) as { soft_closed_at: string | null };
+    const conv = repos.conversation.getByPhone(phone) as { soft_closed_at: string | null };
     expect(conv.soft_closed_at).toBeTruthy();
   });
 
@@ -333,14 +337,14 @@ describe('processMessage', () => {
       completionTokens: 40,
     });
     const phone = '573001112258';
-    upsertConversation(db, phone, { lead_score: 10, soft_closed_at: new Date().toISOString() });
+    repos.conversation.upsert(phone, { lead_score: 10, soft_closed_at: new Date().toISOString() });
 
-    const result = await processMessage({ db, customerPhone: phone, message: 'Bueno después de pensar cuál es el itinerario?' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'Bueno después de pensar cuál es el itinerario?' });
 
     expect(result.shouldSendReply).toBe(true);
     expect(result.leadScore).toBeGreaterThan(10);
 
-    const conv = db.prepare('SELECT lead_score, soft_closed_at FROM conversations WHERE customer_phone = ?').get(phone) as { lead_score: number; soft_closed_at: string | null };
+    const conv = repos.conversation.getByPhone(phone) as { lead_score: number; soft_closed_at: string | null };
     expect(conv.lead_score).toBeGreaterThan(10);
     expect(conv.soft_closed_at).toBeNull();
   });
@@ -349,7 +353,7 @@ describe('processMessage', () => {
     vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: true, reason: 'hourly_limit' });
-    const result = await processMessage({ db, customerPhone: '573001112240', message: 'Hola de nuevo' });
+    const result = await processMessage({ repos, customerPhone: '573001112240', message: 'Hola de nuevo' });
     expect(result.reply).toContain('Te leo');
     expect(result.reply.toLowerCase()).not.toContain('automaticos');
     expect(result.shouldSendReply).toBe(true);
@@ -373,7 +377,7 @@ describe('processMessage', () => {
       promptTokens: 500,
       completionTokens: 60,
     });
-    const result = await processMessage({ db, customerPhone: '573001112241', message: 'Hola' });
+    const result = await processMessage({ repos, customerPhone: '573001112241', message: 'Hola' });
     expect(result.reply).toBeTruthy();
     expect(result.shouldSendReply).toBe(true);
     expect(result.usedAi).toBe(true);
@@ -399,12 +403,12 @@ describe('processMessage', () => {
       completionTokens: 40,
     });
 
-    const result = await processMessage({ db, customerPhone: phone, message: 'Quiero reservar ya' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'Quiero reservar ya' });
     expect(result.reply.toLowerCase()).not.toContain('dame unos minuticos');
     expect(result.reply.toLowerCase()).not.toContain('equipo de reservas');
     expect(result.shouldSendReply).toBe(true);
 
-    const handed = db.prepare('SELECT handed_off_at FROM conversations WHERE customer_phone = ?').get(phone) as { handed_off_at: string | null };
+    const handed = repos.conversation.getByPhone(phone) as { handed_off_at: string | null };
     expect(handed?.handed_off_at).toBeNull();
   });
 
@@ -414,7 +418,7 @@ describe('processMessage', () => {
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112243';
 
-    upsertConversation(db, phone, {
+    repos.conversation.upsert(phone, {
       collected_name: 'Daniela',
       collected_plan: '2d1n_mining',
       collected_people: 2,
@@ -437,15 +441,15 @@ describe('processMessage', () => {
       completionTokens: 30,
     });
 
-    const result = await processMessage({ db, customerPhone: phone, message: 'Quiero reservar ya' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'Quiero reservar ya' });
     expect(result.shouldAlertOwner).toBe(true);
     expect(result.reply).toContain('Daniela');
 
-    const handed = db.prepare('SELECT handed_off_at FROM conversations WHERE customer_phone = ?').get(phone) as { handed_off_at: string };
+    const handed = repos.conversation.getByPhone(phone) as { handed_off_at: string };
     expect(handed.handed_off_at).toBeTruthy();
 
     vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
-    const result2 = await processMessage({ db, customerPhone: phone, message: 'A que hora es?' });
+    const result2 = await processMessage({ repos, customerPhone: phone, message: 'A que hora es?' });
     expect(result2.usedAi).toBe(false);
   });
 
@@ -455,7 +459,7 @@ describe('processMessage', () => {
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112258';
 
-    upsertConversation(db, phone, {
+    repos.conversation.upsert(phone, {
       collected_name: 'Laura',
       collected_people: 2,
       collected_date: 'julio',
@@ -478,11 +482,11 @@ describe('processMessage', () => {
       completionTokens: 30,
     });
 
-    const result = await processMessage({ db, customerPhone: phone, message: 'como se reserva?' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'como se reserva?' });
     expect(result.shouldAlertOwner).toBe(true);
     expect(result.leadScore).toBeGreaterThanOrEqual(95);
 
-    const stored = db.prepare('SELECT lead_score FROM conversations WHERE customer_phone = ?').get(phone) as { lead_score: number };
+    const stored = repos.conversation.getByPhone(phone) as { lead_score: number };
     expect(stored.lead_score).toBeGreaterThanOrEqual(95);
   });
 
@@ -492,7 +496,7 @@ describe('processMessage', () => {
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112247';
 
-    upsertConversation(db, phone, {
+    repos.conversation.upsert(phone, {
       collected_name: 'Pedro',
       collected_people: 1,
       price_given_at: new Date().toISOString(),
@@ -512,7 +516,7 @@ describe('processMessage', () => {
       completionTokens: 30,
     });
 
-    const result = await processMessage({ db, customerPhone: phone, message: 'me gustaria reservar ya' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'me gustaria reservar ya' });
     expect(result.shouldAlertOwner).toBe(true);
   });
 
@@ -522,7 +526,7 @@ describe('processMessage', () => {
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112299';
 
-    upsertConversation(db, phone, {
+    repos.conversation.upsert(phone, {
       collected_name: 'Marta',
       collected_plan: '2d1n_mining',
       collected_people: 3,
@@ -530,7 +534,7 @@ describe('processMessage', () => {
       price_given_at: new Date().toISOString(),
       lead_score: 20,
     });
-    addMessage(db, {
+    repos.message.addMessage({
       customer_phone: phone,
       direction: 'inbound',
       message_type: 'text',
@@ -552,11 +556,11 @@ describe('processMessage', () => {
       completionTokens: 30,
     });
 
-    const result = await processMessage({ db, customerPhone: phone, message: 'finales de agosto' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'finales de agosto' });
     expect(result.shouldAlertOwner).toBe(true);
     expect(result.leadScore).toBeGreaterThanOrEqual(95);
 
-    const handed = db.prepare('SELECT handed_off_at FROM conversations WHERE customer_phone = ?').get(phone) as { handed_off_at: string | null };
+    const handed = repos.conversation.getByPhone(phone) as { handed_off_at: string | null };
     expect(handed.handed_off_at).toBeTruthy();
   });
 
@@ -566,7 +570,7 @@ describe('processMessage', () => {
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112280';
 
-    upsertConversation(db, phone, {
+    repos.conversation.upsert(phone, {
       collected_name: 'Andrea',
       collected_plan: '2d1n_mining',
       collected_people: 2,
@@ -574,7 +578,7 @@ describe('processMessage', () => {
       collected_transport_need: 'own',
       price_given_at: new Date().toISOString(),
     });
-    addMessage(db, {
+    repos.message.addMessage({
       customer_phone: phone,
       direction: 'outbound',
       message_type: 'text',
@@ -596,10 +600,10 @@ describe('processMessage', () => {
       completionTokens: 20,
     });
 
-    const result = await processMessage({ db, customerPhone: phone, message: 'si por favor' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'si por favor' });
     expect(result.shouldAlertOwner).toBe(true);
 
-    const conv = db.prepare('SELECT handed_off_at FROM conversations WHERE customer_phone = ?').get(phone) as { handed_off_at: string | null };
+    const conv = repos.conversation.getByPhone(phone) as { handed_off_at: string | null };
     expect(conv.handed_off_at).toBeTruthy();
   });
 
@@ -609,7 +613,7 @@ describe('processMessage', () => {
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112288';
 
-    upsertConversation(db, phone, {
+    repos.conversation.upsert(phone, {
       collected_name: 'Tomas',
       collected_people: 4,
       collected_date: 'septiembre',
@@ -632,7 +636,7 @@ describe('processMessage', () => {
       completionTokens: 20,
     });
 
-    const result = await processMessage({ db, customerPhone: phone, message: 'dale cuenten conmigo' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'dale cuenten conmigo' });
     expect(result.shouldAlertOwner).toBe(true);
     expect(result.leadScore).toBeGreaterThanOrEqual(95);
   });
@@ -643,18 +647,18 @@ describe('processMessage', () => {
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112262';
 
-    upsertConversation(db, phone, {
+    repos.conversation.upsert(phone, {
       collected_name: 'Lucia',
       collected_people: 2,
       price_given_at: new Date().toISOString(),
       lead_score: 35,
     });
 
-    const result = await processMessage({ db, customerPhone: phone, message: 'gracias por la info, lo voy a pensar' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'gracias por la info, lo voy a pensar' });
     expect(result.reply).toContain('https://www.instagram.com/andean_scapes/');
     expect(result.usedAi).toBe(false);
 
-    const conv = db.prepare('SELECT soft_closed_at FROM conversations WHERE customer_phone = ?').get(phone) as { soft_closed_at: string | null };
+    const conv = repos.conversation.getByPhone(phone) as { soft_closed_at: string | null };
     expect(conv.soft_closed_at).toBeTruthy();
   });
 
@@ -664,7 +668,7 @@ describe('processMessage', () => {
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112289';
 
-    upsertConversation(db, phone, {
+    repos.conversation.upsert(phone, {
       collected_name: 'Diego',
       collected_people: 1,
       collected_date: 'julio',
@@ -688,7 +692,7 @@ describe('processMessage', () => {
       completionTokens: 30,
     });
 
-    const result = await processMessage({ db, customerPhone: phone, message: 'aqui estoy de vuelta, si quiero' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'aqui estoy de vuelta, si quiero' });
     expect(result.reply).toContain('Diego');
     expect(result.usedAi).toBe(true);
   });
@@ -699,7 +703,7 @@ describe('processMessage', () => {
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112253';
 
-    upsertConversation(db, phone, {
+    repos.conversation.upsert(phone, {
       collected_name: 'Paula',
       collected_plan: '2d1n_mining',
       collected_people: 3,
@@ -722,12 +726,12 @@ describe('processMessage', () => {
       completionTokens: 30,
     });
 
-    const result = await processMessage({ db, customerPhone: phone, message: 'prefiero pagar por nequi' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'prefiero pagar por nequi' });
     expect(result.reply).toContain('Paula');
     expect(result.reply.toLowerCase()).not.toContain('238,500');
     expect(result.shouldAlertOwner).toBe(true);
 
-    const handed = db.prepare('SELECT handed_off_at FROM conversations WHERE customer_phone = ?').get(phone) as { handed_off_at: string | null };
+    const handed = repos.conversation.getByPhone(phone) as { handed_off_at: string | null };
     expect(handed.handed_off_at).toBeTruthy();
   });
 
@@ -737,7 +741,7 @@ describe('processMessage', () => {
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112270';
 
-    upsertConversation(db, phone, {
+    repos.conversation.upsert(phone, {
       collected_name: 'Paula',
       collected_plan: '2d1n_mining',
       collected_people: 1,
@@ -746,7 +750,7 @@ describe('processMessage', () => {
       price_given_at: new Date().toISOString(),
     });
 
-    addMessage(db, { customer_phone: phone, direction: 'outbound', message_type: 'text', body: '¿Qué te parece? ¿Te gustaría reservar para esas fechas?', created_at: new Date().toISOString() });
+    repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: '¿Qué te parece? ¿Te gustaría reservar para esas fechas?', created_at: new Date().toISOString() });
 
     vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
       response: {
@@ -762,11 +766,11 @@ describe('processMessage', () => {
       completionTokens: 40,
     });
 
-    const result = await processMessage({ db, customerPhone: phone, message: 'Si' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'Si' });
     expect(result.reply).toContain('Paula');
     expect(result.shouldAlertOwner).toBe(true);
 
-    const handed = db.prepare('SELECT handed_off_at FROM conversations WHERE customer_phone = ?').get(phone) as { handed_off_at: string | null };
+    const handed = repos.conversation.getByPhone(phone) as { handed_off_at: string | null };
     expect(handed.handed_off_at).toBeTruthy();
   });
 
@@ -776,7 +780,7 @@ describe('processMessage', () => {
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112271';
 
-    upsertConversation(db, phone, {
+    repos.conversation.upsert(phone, {
       collected_name: 'Paula',
       collected_people: 1,
       collected_date: 'agosto',
@@ -784,7 +788,7 @@ describe('processMessage', () => {
       price_given_at: new Date().toISOString(),
     });
 
-    addMessage(db, { customer_phone: phone, direction: 'outbound', message_type: 'text', body: '¿Como te llamas?', created_at: new Date().toISOString() });
+    repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: '¿Como te llamas?', created_at: new Date().toISOString() });
 
     vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
       response: {
@@ -800,10 +804,10 @@ describe('processMessage', () => {
       completionTokens: 30,
     });
 
-    const result = await processMessage({ db, customerPhone: phone, message: 'Si' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'Si' });
     expect(result.shouldAlertOwner).toBe(false);
 
-    const handed = db.prepare('SELECT handed_off_at FROM conversations WHERE customer_phone = ?').get(phone) as { handed_off_at: string | null };
+    const handed = repos.conversation.getByPhone(phone) as { handed_off_at: string | null };
     expect(handed.handed_off_at).toBeNull();
   });
 
@@ -813,7 +817,7 @@ describe('processMessage', () => {
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112254';
 
-    upsertConversation(db, phone, {
+    repos.conversation.upsert(phone, {
       collected_name: 'Paula',
       collected_plan: '2d1n_mining',
       collected_people: 3,
@@ -836,7 +840,7 @@ describe('processMessage', () => {
       completionTokens: 60,
     });
 
-    const result = await processMessage({ db, customerPhone: phone, message: 'como se hace la reserva?' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'como se hace la reserva?' });
     expect(result.reply).not.toContain('[inserte número]');
     expect(result.reply.toLowerCase()).not.toContain('en cuanto pagues');
     expect(result.reply).toContain('Paula');
@@ -849,7 +853,7 @@ describe('processMessage', () => {
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112255';
 
-    upsertConversation(db, phone, {
+    repos.conversation.upsert(phone, {
       collected_name: 'Paula',
       collected_plan: '2d1n_mining',
       collected_people: 3,
@@ -872,7 +876,7 @@ describe('processMessage', () => {
       completionTokens: 50,
     });
 
-    const result = await processMessage({ db, customerPhone: phone, message: 'que fecha hay?' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'que fecha hay?' });
     expect(result.reply.toLowerCase()).not.toContain('domingo 8 de junio');
     expect(result.reply).toContain('Paula');
     expect(result.shouldAlertOwner).toBe(true);
@@ -884,7 +888,7 @@ describe('processMessage', () => {
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112256';
 
-    upsertConversation(db, phone, {
+    repos.conversation.upsert(phone, {
       collected_name: 'Paula',
       collected_plan: '2d1n_mining',
       collected_people: 3,
@@ -907,7 +911,7 @@ describe('processMessage', () => {
       completionTokens: 50,
     });
 
-    const result = await processMessage({ db, customerPhone: phone, message: 'me interesa' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'me interesa' });
     expect(result.reply.toLowerCase()).not.toContain('te separo');
     expect(result.reply.toLowerCase()).not.toContain('queda reservado');
     expect(result.reply).toContain('Paula');
@@ -934,9 +938,9 @@ describe('processMessage', () => {
       completionTokens: 70,
     });
 
-    await processMessage({ db, customerPhone: phone, message: 'cuanto cuesta?' });
+    await processMessage({ repos, customerPhone: phone, message: 'cuanto cuesta?' });
 
-    const row = db.prepare('SELECT price_given_at FROM conversations WHERE customer_phone = ?').get(phone) as { price_given_at: string | null };
+    const row = repos.conversation.getByPhone(phone) as { price_given_at: string | null };
     expect(row.price_given_at).toBeTruthy();
   });
 
@@ -944,7 +948,7 @@ describe('processMessage', () => {
     vi.mocked(deepseekClient.callDeepSeekCached).mockReset();
     vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce(null);
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
-    const result = await processMessage({ db, customerPhone: '573001112245', message: 'Hola' });
+    const result = await processMessage({ repos, customerPhone: '573001112245', message: 'Hola' });
     expect(result.reply).toContain('como te llamas');
     expect(result.shouldSendReply).toBe(true);
     expect(result.shouldAlertOwner).toBe(false);
@@ -967,7 +971,7 @@ describe('processMessage', () => {
       promptTokens: 400,
       completionTokens: 30,
     });
-    const result = await processMessage({ db, customerPhone: '573001112246', message: '???' });
+    const result = await processMessage({ repos, customerPhone: '573001112246', message: '???' });
     expect(result.reply).toContain('como te llamas');
     expect(result.shouldSendReply).toBe(true);
     expect(result.shouldAlertOwner).toBe(false);
@@ -990,12 +994,12 @@ describe('processMessage', () => {
       completionTokens: 40,
     });
     const phone = '573001112247';
-    const result = await processMessage({ db, customerPhone: phone, message: 'Soy Luis, mi esposo y yo y mi perro' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'Soy Luis, mi esposo y yo y mi perro' });
     expect(result.reply).toContain('pet-friendly');
     expect(result.shouldAlertOwner).toBe(false);
     expect(result.reply).not.toContain('equipo de reservas');
 
-    const handed = db.prepare('SELECT handed_off_at FROM conversations WHERE customer_phone = ?').get(phone) as { handed_off_at: string | null };
+    const handed = repos.conversation.getByPhone(phone) as { handed_off_at: string | null };
     expect(handed?.handed_off_at).toBeNull();
   });
 
@@ -1016,9 +1020,9 @@ describe('processMessage', () => {
       completionTokens: 30,
     });
     const phone = '573001112248';
-    const result = await processMessage({ db, customerPhone: phone, message: 'hola soy Paula' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'hola soy Paula' });
     expect(result.reply).toContain('Paula');
-    const conv = db.prepare('SELECT collected_name FROM conversations WHERE customer_phone = ?').get(phone) as { collected_name: string | null };
+    const conv = repos.conversation.getByPhone(phone) as { collected_name: string | null };
     expect(conv.collected_name).toBe('Paula');
   });
 
@@ -1040,8 +1044,8 @@ describe('processMessage', () => {
       completionTokens: 30,
     });
     const phone = '573001112259';
-    await processMessage({ db, customerPhone: phone, message: 'Soy Álvaro' });
-    const conv = db.prepare('SELECT collected_name FROM conversations WHERE customer_phone = ?').get(phone) as { collected_name: string | null };
+    await processMessage({ repos, customerPhone: phone, message: 'Soy Álvaro' });
+    const conv = repos.conversation.getByPhone(phone) as { collected_name: string | null };
     expect(conv.collected_name).toBe('Álvaro');
   });
 
@@ -1063,8 +1067,8 @@ describe('processMessage', () => {
       completionTokens: 30,
     });
     const phone = '573001112268';
-    await processMessage({ db, customerPhone: phone, message: 'Just me I am planning to visit Colombia next december' });
-    const conv = db.prepare('SELECT collected_people, collected_date, language FROM conversations WHERE customer_phone = ?').get(phone) as { collected_people: number | null; collected_date: string | null; language: string | null };
+    await processMessage({ repos, customerPhone: phone, message: 'Just me I am planning to visit Colombia next december' });
+    const conv = repos.conversation.getByPhone(phone) as { collected_people: number | null; collected_date: string | null; language: string | null };
     expect(conv.collected_people).toBe(1);
     expect(conv.collected_date).toBe('december');
     expect(conv.language).toBe('en');
@@ -1088,9 +1092,9 @@ describe('processMessage', () => {
       completionTokens: 30,
     });
     const phone = '573001112260';
-    addMessage(db, { customer_phone: phone, direction: 'outbound', message_type: 'text', body: 'Antes de seguir, ¿como te llamas?', created_at: new Date().toISOString() });
-    await processMessage({ db, customerPhone: phone, message: 'Álvaro' });
-    const conv = db.prepare('SELECT collected_name FROM conversations WHERE customer_phone = ?').get(phone) as { collected_name: string | null };
+    repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: 'Antes de seguir, ¿como te llamas?', created_at: new Date().toISOString() });
+    await processMessage({ repos, customerPhone: phone, message: 'Álvaro' });
+    const conv = repos.conversation.getByPhone(phone) as { collected_name: string | null };
     expect(conv.collected_name).toBe('Álvaro');
   });
 
@@ -1100,13 +1104,13 @@ describe('processMessage', () => {
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112261';
-    upsertConversation(db, phone, {
+    repos.conversation.upsert(phone, {
       collected_people: 2,
       collected_date: 'agosto',
       collected_transport_need: 'own',
       price_given_at: new Date().toISOString(),
     });
-    const result = await processMessage({ db, customerPhone: phone, message: 'Si como se reserva ? Pero aclárame el itinerario a qué hora debo llegar ?' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'Si como se reserva ? Pero aclárame el itinerario a qué hora debo llegar ?' });
     expect(result.reply).toContain('Incluye experiencia minera');
     expect(result.reply).not.toContain('como te llamas');
   });
@@ -1129,8 +1133,8 @@ describe('processMessage', () => {
       completionTokens: 30,
     });
     const phone = '573001112263';
-    await processMessage({ db, customerPhone: phone, message: 'Ya dije que yo sola' });
-    const conv = db.prepare('SELECT collected_name, collected_people FROM conversations WHERE customer_phone = ?').get(phone) as { collected_name: string | null; collected_people: number | null };
+    await processMessage({ repos, customerPhone: phone, message: 'Ya dije que yo sola' });
+    const conv = repos.conversation.getByPhone(phone) as { collected_name: string | null; collected_people: number | null };
     expect(conv.collected_name).toBeNull();
     expect(conv.collected_people).toBe(1);
   });
@@ -1140,7 +1144,7 @@ describe('processMessage', () => {
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: true, reason: 'hourly_limit' });
     const phone = '573001112264';
-    upsertConversation(db, phone, {
+    repos.conversation.upsert(phone, {
       collected_name: 'Claudia',
       collected_plan: '2d1n_mining',
       collected_people: 1,
@@ -1149,7 +1153,7 @@ describe('processMessage', () => {
       price_given_at: new Date().toISOString(),
       lead_score: 70,
     });
-    const result = await processMessage({ db, customerPhone: phone, message: 'Si quiero pagar por favor' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'Si quiero pagar por favor' });
     expect(result.reply).toContain('Claudia');
     expect(result.reply).toContain('bus');
     expect(result.reply.toLowerCase()).not.toContain('responderte a medias');
@@ -1161,7 +1165,7 @@ describe('processMessage', () => {
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: true, reason: 'hourly_limit' });
     const phone = '573001112265';
-    upsertConversation(db, phone, {
+    repos.conversation.upsert(phone, {
       collected_name: 'Claudia',
       collected_plan: '2d1n_mining',
       collected_people: 1,
@@ -1170,7 +1174,7 @@ describe('processMessage', () => {
       price_given_at: new Date().toISOString(),
       lead_score: 90,
     });
-    const result = await processMessage({ db, customerPhone: phone, message: 'Si quiero pagar por favor' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'Si quiero pagar por favor' });
     expect(result.reply).toContain('bus');
     expect(result.reply).not.toContain('transporte propio');
   });
@@ -1180,7 +1184,7 @@ describe('processMessage', () => {
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112269';
-    upsertConversation(db, phone, {
+    repos.conversation.upsert(phone, {
       language: 'en',
       collected_name: 'Jack',
       collected_plan: '2d1n_mining',
@@ -1202,12 +1206,12 @@ describe('processMessage', () => {
       promptTokens: 500,
       completionTokens: 30,
     });
-    const result = await processMessage({ db, customerPhone: phone, message: 'Lol yes so how can I make reservation ?' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'Lol yes so how can I make reservation ?' });
     expect(result.reply).toMatch(/Perfect|Great|Excellent/);
     expect(result.reply).toContain('Jack');
     expect(result.reply).not.toContain('Perfecto');
 
-    const followUp = await processMessage({ db, customerPhone: phone, message: '?' });
+    const followUp = await processMessage({ repos, customerPhone: phone, message: '?' });
     expect(followUp.reply).toMatch(/team|info|reservation/i);
     expect(followUp.reply).not.toContain('equipo');
   });
@@ -1217,7 +1221,7 @@ describe('processMessage', () => {
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112266';
-    upsertConversation(db, phone, {
+    repos.conversation.upsert(phone, {
       collected_name: 'Juana',
       collected_people: 3,
       collected_date: 'agosto',
@@ -1238,7 +1242,7 @@ describe('processMessage', () => {
       promptTokens: 500,
       completionTokens: 50,
     });
-    const result = await processMessage({ db, customerPhone: phone, message: 'Cómo sería el itinerario a qué horas debo llegar ?' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'Cómo sería el itinerario a qué horas debo llegar ?' });
     expect(result.reply).toContain('Incluye experiencia minera');
     expect(result.reply).not.toContain('revisemos disponibilidad');
     expect(result.shouldAlertOwner).toBe(false);
@@ -1249,7 +1253,7 @@ describe('processMessage', () => {
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112267';
-    upsertConversation(db, phone, {
+    repos.conversation.upsert(phone, {
       collected_name: 'Juana',
       collected_people: 3,
       collected_date: 'agosto',
@@ -1270,7 +1274,7 @@ describe('processMessage', () => {
       promptTokens: 500,
       completionTokens: 30,
     });
-    const result = await processMessage({ db, customerPhone: phone, message: 'Como es el itinerario no me dijiste' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'Como es el itinerario no me dijiste' });
     expect(result.leadScore).toBe(100);
     expect(result.shouldAlertOwner).toBe(false);
   });
@@ -1292,8 +1296,8 @@ describe('processMessage', () => {
       completionTokens: 40,
     });
     const phone = '573001112249';
-    await processMessage({ db, customerPhone: phone, message: 'somos 2 y mi perro' });
-    const conv = db.prepare('SELECT collected_people, collected_pet FROM conversations WHERE customer_phone = ?').get(phone) as { collected_people: number | null; collected_pet: string | null };
+    await processMessage({ repos, customerPhone: phone, message: 'somos 2 y mi perro' });
+    const conv = repos.conversation.getByPhone(phone) as { collected_people: number | null; collected_pet: string | null };
     expect(conv.collected_people).toBe(2);
     expect(conv.collected_pet).toBe('yes');
   });
@@ -1315,8 +1319,8 @@ describe('processMessage', () => {
       completionTokens: 30,
     });
     const phone = '573001112250';
-    await processMessage({ db, customerPhone: phone, message: 'si tenemos vehiculo propio moto' });
-    const conv = db.prepare('SELECT collected_transport_need FROM conversations WHERE customer_phone = ?').get(phone) as { collected_transport_need: string | null };
+    await processMessage({ repos, customerPhone: phone, message: 'si tenemos vehiculo propio moto' });
+    const conv = repos.conversation.getByPhone(phone) as { collected_transport_need: string | null };
     expect(conv.collected_transport_need).toBe('own');
   });
 
@@ -1326,7 +1330,7 @@ describe('processMessage', () => {
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112251';
-    upsertConversation(db, phone, {
+    repos.conversation.upsert(phone, {
       collected_name: 'Paula',
       collected_plan: '2d1n_mining',
       collected_people: 2,
@@ -1335,7 +1339,7 @@ describe('processMessage', () => {
       collected_pet: 'yes',
       price_given_at: new Date().toISOString(),
     });
-    const result = await processMessage({ db, customerPhone: phone, message: 'Paula ya lo dije antes' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'Paula ya lo dije antes' });
     expect(result.reply).toContain('razon');
     expect(result.reply).toContain('Paula');
     expect(result.reply).not.toContain('como te llamas');
@@ -1348,15 +1352,15 @@ describe('processMessage', () => {
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     const phone = '573001112252';
 
-    addMessage(db, { customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'soy Paula', created_at: new Date(Date.now() - 300000).toISOString() });
-    addMessage(db, { customer_phone: phone, direction: 'outbound', message_type: 'text', body: 'Cuantas personas?', created_at: new Date(Date.now() - 280000).toISOString() });
-    addMessage(db, { customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'somos 2', created_at: new Date(Date.now() - 260000).toISOString() });
-    addMessage(db, { customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'vamos en moto', created_at: new Date(Date.now() - 200000).toISOString() });
+    repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'soy Paula', created_at: new Date(Date.now() - 300000).toISOString() });
+    repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: 'Cuantas personas?', created_at: new Date(Date.now() - 280000).toISOString() });
+    repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'somos 2', created_at: new Date(Date.now() - 260000).toISOString() });
+    repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'vamos en moto', created_at: new Date(Date.now() - 200000).toISOString() });
 
-    const result = await processMessage({ db, customerPhone: phone, message: 'si esta bien' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'si esta bien' });
     expect(result.reply).not.toContain('como te llamas');
 
-    const conv = db.prepare('SELECT collected_name, collected_people, collected_transport_need FROM conversations WHERE customer_phone = ?').get(phone) as Record<string, unknown>;
+    const conv = repos.conversation.getByPhone(phone)!;
     expect(conv.collected_name).toBe('Paula');
     expect(conv.collected_people).toBe(2);
     expect(conv.collected_transport_need).toBe('own');
@@ -1379,7 +1383,7 @@ describe('processMessage', () => {
       promptTokens: 500,
       completionTokens: 40,
     });
-    const result = await processMessage({ db, customerPhone: '573001113005', message: 'Hola' });
+    const result = await processMessage({ repos, customerPhone: '573001113005', message: 'Hola' });
 
     expect(result.reply).toContain('Boyaca');
     expect(result.reply).not.toMatch(/\b(?:mina|esmeralda|chivor|hacienda|apicultura|ganader[ií]a|artesan[ií]a|R[aá]quira)\b/i);
@@ -1393,7 +1397,7 @@ describe('processMessage', () => {
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001113001';
 
-    const result = await processMessage({ db, customerPhone: phone, message: 'soy Ana' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'soy Ana' });
 
     expect(result.reply).toContain('Ana');
     expect(result.reply).toContain('tipo de experiencia');
@@ -1419,9 +1423,9 @@ describe('processMessage', () => {
     });
     const phone = '573001113002';
 
-    await processMessage({ db, customerPhone: phone, message: 'quiero el plan de 3 dias con abejas' });
+    await processMessage({ repos, customerPhone: phone, message: 'quiero el plan de 3 dias con abejas' });
 
-    const conv = db.prepare('SELECT collected_plan FROM conversations WHERE customer_phone = ?').get(phone) as { collected_plan: string | null };
+    const conv = repos.conversation.getByPhone(phone) as { collected_plan: string | null };
     expect(conv.collected_plan).toBe('3d2n_rural');
   });
 
@@ -1444,9 +1448,9 @@ describe('processMessage', () => {
     });
     const phone = '573001113007';
 
-    await processMessage({ db, customerPhone: phone, message: 'quiero el plan de la mina de 3 dias' });
+    await processMessage({ repos, customerPhone: phone, message: 'quiero el plan de la mina de 3 dias' });
 
-    const conv = db.prepare('SELECT collected_plan FROM conversations WHERE customer_phone = ?').get(phone) as { collected_plan: string | null };
+    const conv = repos.conversation.getByPhone(phone) as { collected_plan: string | null };
     expect(conv.collected_plan).toBe('3d2n_rural');
   });
 
@@ -1455,13 +1459,13 @@ describe('processMessage', () => {
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001113006';
-    upsertConversation(db, phone, {
+    repos.conversation.upsert(phone, {
       collected_name: 'David',
       collected_plan: '2d1n_mining',
       collected_date: 'agosto',
       collected_transport_need: 'own',
     });
-    addMessage(db, {
+    repos.message.addMessage({
       customer_phone: phone,
       direction: 'inbound',
       message_type: 'text',
@@ -1482,10 +1486,10 @@ describe('processMessage', () => {
       completionTokens: 30,
     });
 
-    const result = await processMessage({ db, customerPhone: phone, message: 'somos tres que precio tiene?' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'somos tres que precio tiene?' });
 
     expect(result.priceFollowUpText).toContain('$2,150,000 COP');
-    const conv = db.prepare('SELECT collected_plan FROM conversations WHERE customer_phone = ?').get(phone) as { collected_plan: string | null };
+    const conv = repos.conversation.getByPhone(phone) as { collected_plan: string | null };
     expect(conv.collected_plan).toBe('3d2n_rural');
   });
 
@@ -1500,7 +1504,7 @@ describe('processMessage', () => {
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001113003';
-    upsertConversation(db, phone, {
+    repos.conversation.upsert(phone, {
       collected_name: 'Ana',
       collected_people: 2,
       collected_date: 'agosto',
@@ -1521,11 +1525,11 @@ describe('processMessage', () => {
       completionTokens: 30,
     });
 
-    const result = await processMessage({ db, customerPhone: phone, message: 'quiero reservar' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'quiero reservar' });
 
     expect(result.shouldAlertOwner).toBe(true);
     expect(result.reply).toContain('tipo de experiencia');
-    const conv = db.prepare('SELECT handed_off_at FROM conversations WHERE customer_phone = ?').get(phone) as { handed_off_at: string | null };
+    const conv = repos.conversation.getByPhone(phone) as { handed_off_at: string | null };
     expect(conv.handed_off_at).toBeNull();
   });
 
@@ -1655,32 +1659,24 @@ describe('processMessage', () => {
 
   describe('canSendPlanImage', () => {
     it('allows first image for a customer', () => {
-      expect(canSendPlanImage(db, '573001119001', 'emerald_mining_preview_1')).toBe(true);
+      expect(canSendPlanImage(repos, '573001119001', 'emerald_mining_preview_1')).toBe(true);
     });
 
     it('allows different plan image when last image was for another plan', () => {
-      db.prepare(
-        "INSERT INTO media_sends (customer_phone, media_id, sent_at) VALUES (?, ?, ?)"
-      ).run('573001119002', 'emerald_mining_preview_1', new Date(Date.now() - 1000).toISOString());
-      expect(canSendPlanImage(db, '573001119002', 'rural_experience_preview_1')).toBe(true);
+      insertMediaSendAt(db, '573001119002', 'emerald_mining_preview_1', new Date(Date.now() - 1000).toISOString());
+      expect(canSendPlanImage(repos, '573001119002', 'rural_experience_preview_1')).toBe(true);
     });
 
     it('blocks same image sent recently', () => {
-      db.prepare(
-        "INSERT INTO media_sends (customer_phone, media_id, sent_at) VALUES (?, ?, ?)"
-      ).run('573001119003', 'rural_experience_preview_1', new Date(Date.now() - 1000).toISOString());
-      expect(canSendPlanImage(db, '573001119003', 'rural_experience_preview_1')).toBe(false);
+      insertMediaSendAt(db, '573001119003', 'rural_experience_preview_1', new Date(Date.now() - 1000).toISOString());
+      expect(canSendPlanImage(repos, '573001119003', 'rural_experience_preview_1')).toBe(false);
     });
 
     it('blocks same image even when another image was sent later', () => {
       const phone = '573001119004';
-      db.prepare(
-        "INSERT INTO media_sends (customer_phone, media_id, sent_at) VALUES (?, ?, ?)"
-      ).run(phone, 'emerald_mining_preview_1', new Date(Date.now() - 2000).toISOString());
-      db.prepare(
-        "INSERT INTO media_sends (customer_phone, media_id, sent_at) VALUES (?, ?, ?)"
-      ).run(phone, 'rural_experience_preview_1', new Date(Date.now() - 1000).toISOString());
-      expect(canSendPlanImage(db, phone, 'emerald_mining_preview_1')).toBe(false);
+      insertMediaSendAt(db, phone, 'emerald_mining_preview_1', new Date(Date.now() - 2000).toISOString());
+      insertMediaSendAt(db, phone, 'rural_experience_preview_1', new Date(Date.now() - 1000).toISOString());
+      expect(canSendPlanImage(repos, phone, 'emerald_mining_preview_1')).toBe(false);
     });
   });
 
@@ -1689,16 +1685,14 @@ describe('processMessage', () => {
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001119005';
-    upsertConversation(db, phone, {
+    repos.conversation.upsert(phone, {
       collected_name: 'Ana',
       collected_plan: '3d2n_rural',
       collected_people: 2,
       collected_date: 'agosto',
       collected_transport_need: 'own',
     });
-    db.prepare(
-      "INSERT INTO media_sends (customer_phone, media_id, sent_at) VALUES (?, ?, ?)"
-    ).run(phone, 'emerald_mining_preview_1', new Date(Date.now() - 1000).toISOString());
+    insertMediaSendAt(db, phone, 'emerald_mining_preview_1', new Date(Date.now() - 1000).toISOString());
     vi.mocked(deepseekClient.callDeepSeekCached).mockResolvedValueOnce({
       response: {
         reply: 'Claro, te puedo mostrar una imagen del plan 3D/2N.',
@@ -1713,7 +1707,7 @@ describe('processMessage', () => {
       completionTokens: 30,
     });
 
-    const result = await processMessage({ db, customerPhone: phone, message: 'me muestras foto del plan de 3 dias?' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'me muestras foto del plan de 3 dias?' });
 
     expect(result.shouldSendImage).toBe(true);
   });
@@ -1723,7 +1717,7 @@ describe('processMessage', () => {
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001113004';
-    upsertConversation(db, phone, {
+    repos.conversation.upsert(phone, {
       collected_name: 'Ana',
       collected_plan: '3d2n_rural',
       collected_people: 2,
@@ -1744,7 +1738,7 @@ describe('processMessage', () => {
       completionTokens: 30,
     });
 
-    const result = await processMessage({ db, customerPhone: phone, message: 'cuanto cuesta?' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'cuanto cuesta?' });
 
     expect(result.priceFollowUpText).toContain('$1,400,000 COP');
   });
@@ -1792,11 +1786,11 @@ describe('processMessage', () => {
       date: 'agosto',
       people: '2',
       transport: 'own',
-    }, db);
-    const alert = db.prepare('SELECT body FROM owner_alerts WHERE customer_phone = ?').get('573001112262') as { body: string };
-    expect(alert.body).toContain('Name: Álvaro');
-    expect(alert.body).toContain('WhatsApp: https://wa.me/573001112262');
-    expect(alert.body).not.toContain('{{name}}');
+    }, repos);
+    const body = getLatestOwnerAlertBody(db, '573001112262')!;
+    expect(body).toContain('Name: Álvaro');
+    expect(body).toContain('WhatsApp: https://wa.me/573001112262');
+    expect(body).not.toContain('{{name}}');
   });
 
   it('persists transport from "si tenemos transporte" after transport question', async () => {
@@ -1817,9 +1811,9 @@ describe('processMessage', () => {
       completionTokens: 30,
     });
     const phone = '573001112272';
-    addMessage(db, { customer_phone: phone, direction: 'outbound', message_type: 'text', body: '¿Van con transporte propio o necesitan desde Bogotá?', created_at: new Date().toISOString() });
-    await processMessage({ db, customerPhone: phone, message: 'si tenemos transporte' });
-    const conv = db.prepare('SELECT collected_transport_need FROM conversations WHERE customer_phone = ?').get(phone) as { collected_transport_need: string | null };
+    repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: '¿Van con transporte propio o necesitan desde Bogotá?', created_at: new Date().toISOString() });
+    await processMessage({ repos, customerPhone: phone, message: 'si tenemos transporte' });
+    const conv = repos.conversation.getByPhone(phone) as { collected_transport_need: string | null };
     expect(conv.collected_transport_need).toBe('own');
   });
 
@@ -1829,14 +1823,14 @@ describe('processMessage', () => {
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112273';
-    upsertConversation(db, phone, {
+    repos.conversation.upsert(phone, {
       collected_name: 'Clara',
       collected_people: 5,
       collected_date: 'agosto',
       collected_transport_need: 'own',
       price_given_at: new Date().toISOString(),
     });
-    const result = await processMessage({ db, customerPhone: phone, message: 'si tenemos vehiculo. donde deberiamos llegar ?' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'si tenemos vehiculo. donde deberiamos llegar ?' });
     expect(result.reply).not.toContain('como te llamas');
     expect(result.reply).not.toContain('Cuantas personas');
   });
@@ -1846,7 +1840,7 @@ describe('processMessage', () => {
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112274';
-    upsertConversation(db, phone, {
+    repos.conversation.upsert(phone, {
       collected_name: 'Michael',
       collected_people: 1,
       collected_date: 'june',
@@ -1866,7 +1860,7 @@ describe('processMessage', () => {
       promptTokens: 500,
       completionTokens: 50,
     });
-    const result = await processMessage({ db, customerPhone: phone, message: '?' });
+    const result = await processMessage({ repos, customerPhone: phone, message: '?' });
     expect(result.reply).not.toContain('glad you\'re comfortable');
     expect(result.reply).toContain('Michael');
   });
