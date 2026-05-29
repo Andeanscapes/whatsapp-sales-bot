@@ -13,7 +13,7 @@ export async function buildApp(db: Database.Database) {
 
   
 
-  await app.register(healthRoutes);
+  await app.register(healthRoutes, { db });
   await app.register(whatsappWebhookRoutes, { db });
 
   app.get('/', async () => ({ ok: true }));

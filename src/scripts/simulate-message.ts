@@ -22,7 +22,7 @@ const db = createAndMigrate(dbPath);
 
 const result = await processMessage({
   db,
-  customerPhone: '573001112233',
+  customerPhone: '573000000001',
   message,
   messageId: `sim_${Date.now()}`,
 });
@@ -32,10 +32,12 @@ console.log(`lead_score=${result.leadScore}`);
 console.log(`used_ai=${result.usedAi}`);
 console.log(`should_alert_owner=${result.shouldAlertOwner}`);
 console.log(`should_send_image=${result.shouldSendImage}`);
+console.log(`price_just_given=${result.priceJustGiven}`);
+if (result.priceFollowUpText) console.log(`price_follow_up_text=${result.priceFollowUpText}`);
 
 if (result.shouldSendReply) {
   addMessage(db, {
-    customer_phone: '573001112233',
+    customer_phone: '573000000001',
     direction: 'outbound',
     message_type: 'text',
     body: result.reply,

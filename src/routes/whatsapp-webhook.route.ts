@@ -7,9 +7,12 @@ import { getSkills } from '../services/skill-loader.js';
 import { isProcessed, markProcessed } from '../services/dedupe-service.js';
 import { processMessage } from '../services/response-engine.js';
 import { sendText, sendImageUrl } from '../services/whatsapp-client.js';
-import { recordImageSend } from '../services/media-service.js';
+import { recordImageSend, selectImageForPlan, canSendPlanImage } from '../services/media-service.js';
 import { sendAlert } from '../services/alert-service.js';
 import { addMessage } from '../services/conversation-store.js';
+import { logger } from '../config/logger.js';
+
+const processingPhones = new Set<string>();
 
 type RequestWithRawBody = FastifyRequest & { rawBody?: Buffer };
 
@@ -106,8 +109,14 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { db: Da
 
     for (const msg of messages) {
       if (isProcessed(db, msg.id)) continue;
-      markProcessed(db, msg.id);
 
+      if (processingPhones.has(msg.from)) {
+        logger.warn({ phone: msg.from }, '[WEBHOOK] skipped — already processing a message from this phone');
+        continue;
+      }
+
+      processingPhones.add(msg.from);
+      markProcessed(db, msg.id);
       try {
         const result = await processMessage({ db, customerPhone: msg.from, message: msg.text, messageId: msg.id });
 
@@ -123,10 +132,29 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { db: Da
           });
         }
 
-        if (result.shouldSendImage) {
+        if (result.priceJustGiven) {
           const skills = getSkills();
-          const image = skills.media.images[0];
-          if (image && image.value !== 'REPLACE_WITH_PUBLIC_IMAGE_URL') {
+          const conversation = db.prepare('SELECT collected_plan FROM conversations WHERE customer_phone = ?').get(msg.from) as { collected_plan: string | null } | undefined;
+          const image = selectImageForPlan(skills.media.images, conversation?.collected_plan);
+          if (image && image.value !== 'REPLACE_WITH_PUBLIC_IMAGE_URL' && canSendPlanImage(db, msg.from, image.id)) {
+            const caption = result.priceFollowUpText ?? image.caption;
+            await sendImageUrl(msg.from, image.value, caption);
+            recordImageSend(db, msg.from, image.id);
+            addMessage(db, {
+              customer_phone: msg.from,
+              direction: 'outbound',
+              message_type: 'image',
+              body: caption,
+              created_at: new Date().toISOString(),
+            });
+          }
+        }
+
+        if (result.shouldSendImage && !result.priceJustGiven) {
+          const skills = getSkills();
+          const conversation = db.prepare('SELECT collected_plan FROM conversations WHERE customer_phone = ?').get(msg.from) as { collected_plan: string | null } | undefined;
+          const image = selectImageForPlan(skills.media.images, conversation?.collected_plan);
+          if (image && image.value !== 'REPLACE_WITH_PUBLIC_IMAGE_URL' && canSendPlanImage(db, msg.from, image.id)) {
             await sendImageUrl(msg.from, image.value, image.caption);
             recordImageSend(db, msg.from, image.id);
           }
@@ -137,8 +165,9 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { db: Da
           await sendAlert({
             customerPhone: msg.from,
             score: result.leadScore,
-            intent: 'lead',
+            intent: result.ownerAlertType ?? 'lead',
             message: msg.text,
+            name: String(conversation?.collected_name ?? 'unknown'),
             date: String(conversation?.collected_date ?? 'unknown'),
             people: String(conversation?.collected_people ?? 'unknown'),
             transport: String(conversation?.collected_transport_need ?? 'unknown'),
@@ -146,6 +175,8 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { db: Da
         }
       } catch (err) {
         req.log.error({ err, phone: msg.from }, 'Failed to process webhook message');
+      } finally {
+        processingPhones.delete(msg.from);
       }
     }
   });

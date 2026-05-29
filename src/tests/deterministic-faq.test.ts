@@ -93,7 +93,7 @@ describe('findIntent Spanish', () => {
     const result = findIntent('¿Hay fechas disponibles en junio?', skills, 'es');
     expect(result).not.toBeNull();
     expect(result!.intent).toBe('availability');
-    expect(result!.answer).toContain('Fechas disponibles');
+    expect(result!.answer).toContain('Fechas planeadas');
     expect(result!.confidence).toBeGreaterThanOrEqual(0.75);
   });
 

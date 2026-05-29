@@ -11,6 +11,26 @@ export function migrate(db: Database.Database): void {
   } catch {
     // column already exists — safe to ignore
   }
+  try {
+    db.exec('ALTER TABLE conversations ADD COLUMN price_given_at TEXT');
+  } catch {
+    // column already exists — safe to ignore
+  }
+  try {
+    db.exec('ALTER TABLE conversations ADD COLUMN collected_pet TEXT');
+  } catch {
+    // column already exists — safe to ignore
+  }
+  try {
+    db.exec('ALTER TABLE conversations ADD COLUMN soft_closed_at TEXT');
+  } catch {
+    // column already exists — safe to ignore
+  }
+  try {
+    db.exec('ALTER TABLE conversations ADD COLUMN collected_plan TEXT');
+  } catch {
+    // column already exists — safe to ignore
+  }
 }
 
 export function createAndMigrate(dbPath: string): Database.Database {

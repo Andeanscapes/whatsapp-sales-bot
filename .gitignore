@@ -3,8 +3,8 @@
 .env.local
 .env.*.local
 
-# data
-data/
+# runtime data
+/data/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
@@ -17,4 +17,5 @@ node_modules/
 .DS_Store
 .vscode/
 .idea/
+.claude/
 *.log
