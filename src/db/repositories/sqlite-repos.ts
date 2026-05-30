@@ -11,7 +11,6 @@ import type {
   MediaSendRepository,
   StoredMessage,
   RecentMessage,
-  DeepSeekResult,
 } from './types.js';
 
 const ALLOWED_CONVERSATION_COLUMNS = new Set([
@@ -22,6 +21,7 @@ const ALLOWED_CONVERSATION_COLUMNS = new Set([
   'free_entry_detected', 'ad_referral_json',
   'hot_alert_sent_at', 'urgent_alert_sent_at',
   'price_given_at', 'soft_closed_at',
+  'sales_phase', 'lead_intent',
 ]);
 
 export class SqliteConversationRepo implements ConversationRepository {
@@ -146,6 +146,28 @@ export class SqliteConversationRepo implements ConversationRepository {
     ).get(phone) as { language: 'es' | 'en' | null } | undefined;
     return row?.language ?? null;
   }
+
+  getSalesPhase(phone: string): string | null {
+    const row = this.db.prepare(
+      'SELECT sales_phase FROM conversations WHERE customer_phone = ?'
+    ).get(phone) as { sales_phase: string | null } | undefined;
+    return row?.sales_phase ?? null;
+  }
+
+  setSalesPhase(phone: string, phase: string): void {
+    this.upsert(phone, { sales_phase: phase });
+  }
+
+  getLeadIntent(phone: string): string | null {
+    const row = this.db.prepare(
+      'SELECT lead_intent FROM conversations WHERE customer_phone = ?'
+    ).get(phone) as { lead_intent: string | null } | undefined;
+    return row?.lead_intent ?? null;
+  }
+
+  setLeadIntent(phone: string, intent: string): void {
+    this.upsert(phone, { lead_intent: intent });
+  }
 }
 
 export class SqliteMessageRepo implements MessageRepository {
@@ -227,24 +249,24 @@ export class SqliteOptOutRepo implements OptOutRepository {
 export class SqliteAiCacheRepo implements AiCacheRepository {
   constructor(private db: Database.Database) {}
 
-  get(key: string): DeepSeekResult | null {
+  get(key: string): unknown | null {
     const row = this.db.prepare(
       'SELECT response_json FROM ai_cache WHERE cache_key = ? AND expires_at > ?'
     ).get(key, new Date().toISOString()) as { response_json: string } | undefined;
     if (!row) return null;
     try {
-      return JSON.parse(row.response_json) as DeepSeekResult;
+      return JSON.parse(row.response_json) as unknown;
     } catch {
       return null;
     }
   }
 
-  set(key: string, result: DeepSeekResult, ttlSeconds: number): void {
+  set(key: string, value: unknown, ttlSeconds: number): void {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + (ttlSeconds * 1000)).toISOString();
     this.db.prepare(
       'INSERT OR REPLACE INTO ai_cache (cache_key, response_json, created_at, expires_at) VALUES (?, ?, ?, ?)'
-    ).run(key, JSON.stringify(result), now.toISOString(), expiresAt);
+    ).run(key, JSON.stringify(value), now.toISOString(), expiresAt);
   }
 }
 
@@ -290,10 +312,11 @@ export class SqliteOwnerAlertRepo implements OwnerAlertRepository {
   constructor(private db: Database.Database) {}
 
   wasAlertedToday(phone: string, alertType: string): boolean {
-    const todayStart = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const todayUtcMidnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
     const row = this.db.prepare(
-      "SELECT 1 FROM owner_alerts WHERE customer_phone = ? AND alert_type = ? AND sent_at >= ?"
-    ).get(phone, alertType, todayStart);
+      'SELECT 1 FROM owner_alerts WHERE customer_phone = ? AND alert_type = ? AND sent_at >= ?'
+    ).get(phone, alertType, todayUtcMidnight);
     return !!row;
   }
 

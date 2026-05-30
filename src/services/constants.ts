@@ -5,11 +5,15 @@ export const MONTH_NAMES = [
   'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
 ] as const;
 
-export function clampScore(value: number): number {
-  return Math.max(0, Math.min(100, value));
-}
-
 export const MS_72H = 72 * 60 * 60 * 1000;
 
 export const COLOMBIA_MIDNIGHT_HOUR = 20;
 export const COLOMBIA_MORNING_HOUR = 9;
+
+export const SCORE_DECAY_PER_IDLE_TURN = -2;
+export const SCORE_REENGAGE_BUMP = 15;
+export const SCORE_REGEX_BACKUP_WEIGHT = 0.2;
+export const SCORE_REGEX_BACKUP_THRESHOLD_MULTIPLIER = 2;
+export const SCORE_CONFIDENCE_FLOOR = 0.3;
+export const SCORE_HOT_THRESHOLD_MARGIN = 10;
+export const SCORE_BLOCKER_PENALTY_FLOOR = -5;
