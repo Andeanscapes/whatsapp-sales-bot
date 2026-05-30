@@ -1,14 +1,16 @@
 import { buildApp } from './app.js';
 import { env } from './config/env.js';
 import { createAndMigrate } from './db/migrate.js';
+import { createRepositories } from './db/repositories/index.js';
 import { loadSkills } from './services/skill-loader.js';
 import { logger } from './config/logger.js';
 
 async function start() {
   loadSkills();
   const db = createAndMigrate(env.SQLITE_PATH);
+  const repos = createRepositories(db);
 
-  const app = await buildApp(db);
+  const app = await buildApp(repos);
 
   await app.listen({ host: env.HOST, port: env.PORT });
   logger.info({ host: env.HOST, port: env.PORT }, 'server started');

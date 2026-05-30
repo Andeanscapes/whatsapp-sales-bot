@@ -45,12 +45,16 @@ const experienceSchema = z.object({
   name: z.string(),
   status: z.string(),
   shortDescription: z.string(),
+  fullDescription: z.string().optional(),
   meetingPoint: z.string(),
   route: z.object({
     fromBogota: z.string(),
+    alternateRoute: z.string().optional(),
     localAccess: z.string(),
+    arrivalTips: z.string().optional(),
+    ferryInfo: z.string().optional(),
     botRules: z.array(z.string()),
-  }).passthrough(),
+  }),
   availability: z.object({
     lastUpdated: dateSchema,
     timezone: z.string(),
@@ -75,10 +79,39 @@ const experienceSchema = z.object({
     keywords: z.array(z.string()),
     imageId: z.string(),
   })),
+  petPolicy: z.object({
+    allowed: z.boolean(),
+    notes: z.string(),
+  }).optional(),
+  agePolicy: z.object({
+    minimumAge: z.number().int(),
+    notes: z.string(),
+  }).optional(),
+  cancellationPolicy: z.object({
+    maxReschedules: z.number().int(),
+    deadlineDaysBefore: z.number().int(),
+    refundAfterDeadline: z.boolean(),
+    notes: z.string(),
+  }).optional(),
+  climateInfo: z.object({
+    altitude: z.string().optional(),
+    temperature: z.string().optional(),
+    rainySeason: z.string().optional(),
+    drySeason: z.string().optional(),
+    notes: z.string().optional(),
+  }).optional(),
   difficulty: z.object({
     level: z.string(),
     notes: z.array(z.string()),
   }),
+  experienceReality: z.object({
+    whatItIs: z.string(),
+    whatItIsNot: z.string(),
+    physicalDemands: z.string(),
+    roadConditions: z.string(),
+    idealFor: z.string(),
+    notIdealFor: z.string(),
+  }).optional(),
   reservationFlow: z.array(z.string()),
   commonQuestions: z.array(commonQuestionSchema),
   botBehavior: z.object({
@@ -94,7 +127,7 @@ const experienceSchema = z.object({
     }),
     negativeExamples: z.string(),
   }).optional(),
-}).passthrough();
+});
 
 const andeanScapesSchema = z.object({
   skillVersion: z.string(),
@@ -104,8 +137,11 @@ const andeanScapesSchema = z.object({
     shortBrandIntro: z.string().optional(),
     mainExperience: z.string(),
     publicTourUrlEnv: z.string(),
+    socialLinks: z.object({
+      instagram: z.string(),
+    }).optional(),
     languages: z.array(z.string()),
-  }).passthrough(),
+  }),
   experiences: z.array(experienceSchema).min(1),
 });
 
@@ -158,7 +194,7 @@ const salesStrategySchema = z.object({
   negativeSignals: z.array(negativeSignalSchema),
   ownerAlertTemplate: z.string(),
   salesTactics: salesTacticsSchema,
-}).passthrough();
+});
 
 const mediaPolicySchema = z.object({
   sendImagesEnabled: z.boolean(),
@@ -189,6 +225,7 @@ const langFallbackSchema = z.object({
   askDate: z.string(),
   askTransport: z.string(),
   aiFailureQualified: z.string(),
+  llmFailureWarm: z.string().optional(),
   messageLimitReached: z.string(),
   messageLimitAfterPrice: z.string(),
   messageLimitAfterPriceAfterHours: z.string(),

@@ -1,15 +1,13 @@
 import { createHmac, timingSafeEqual } from 'crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import type Database from 'better-sqlite3';
 import { z } from 'zod';
+import type { Repositories } from '../db/repositories/index.js';
 import { env } from '../config/env.js';
 import { getSkills } from '../services/skill-loader.js';
-import { isProcessed, markProcessed } from '../services/dedupe-service.js';
 import { processMessage } from '../services/response-engine.js';
 import { sendText, sendImageUrl } from '../services/whatsapp-client.js';
 import { recordImageSend, selectImageForPlan, canSendPlanImage } from '../services/media-service.js';
 import { sendAlert } from '../services/alert-service.js';
-import { addMessage } from '../services/conversation-store.js';
 import { logger } from '../config/logger.js';
 
 const processingPhones = new Set<string>();
@@ -71,8 +69,8 @@ function extractMessages(body: unknown): ExtractedMessage[] | null {
   return result.length > 0 ? result : null;
 }
 
-export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { db: Database.Database }): Promise<void> {
-  const db = opts.db;
+export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos: Repositories }): Promise<void> {
+  const repos = opts.repos;
 
   app.addContentTypeParser<Buffer>('application/json', { parseAs: 'buffer' }, function (_req, body, done) {
     (_req as RequestWithRawBody).rawBody = body;
@@ -108,7 +106,7 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { db: Da
     if (!messages) return;
 
     for (const msg of messages) {
-      if (isProcessed(db, msg.id)) continue;
+      if (repos.dedupe.isProcessed(msg.id)) continue;
 
       if (processingPhones.has(msg.from)) {
         logger.warn({ phone: msg.from }, '[WEBHOOK] skipped — already processing a message from this phone');
@@ -116,14 +114,14 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { db: Da
       }
 
       processingPhones.add(msg.from);
-      markProcessed(db, msg.id);
+      repos.dedupe.markProcessed(msg.id);
       try {
-        const result = await processMessage({ db, customerPhone: msg.from, message: msg.text, messageId: msg.id });
+        const result = await processMessage({ repos, customerPhone: msg.from, message: msg.text, messageId: msg.id });
 
         if (result.shouldSendReply) {
           await sendText(msg.from, result.reply);
 
-          addMessage(db, {
+          repos.message.addMessage({
             customer_phone: msg.from,
             direction: 'outbound',
             message_type: 'text',
@@ -134,13 +132,13 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { db: Da
 
         if (result.priceJustGiven) {
           const skills = getSkills();
-          const conversation = db.prepare('SELECT collected_plan FROM conversations WHERE customer_phone = ?').get(msg.from) as { collected_plan: string | null } | undefined;
-          const image = selectImageForPlan(skills.media.images, conversation?.collected_plan);
-          if (image && image.value !== 'REPLACE_WITH_PUBLIC_IMAGE_URL' && canSendPlanImage(db, msg.from, image.id)) {
+          const collectedPlan = repos.conversation.getCollectedPlan(msg.from);
+          const image = selectImageForPlan(skills.media.images, collectedPlan);
+          if (image && image.value !== 'REPLACE_WITH_PUBLIC_IMAGE_URL' && canSendPlanImage(repos, msg.from, image.id)) {
             const caption = result.priceFollowUpText ?? image.caption;
             await sendImageUrl(msg.from, image.value, caption);
-            recordImageSend(db, msg.from, image.id);
-            addMessage(db, {
+            recordImageSend(repos, msg.from, image.id);
+            repos.message.addMessage({
               customer_phone: msg.from,
               direction: 'outbound',
               message_type: 'image',
@@ -152,16 +150,16 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { db: Da
 
         if (result.shouldSendImage && !result.priceJustGiven) {
           const skills = getSkills();
-          const conversation = db.prepare('SELECT collected_plan FROM conversations WHERE customer_phone = ?').get(msg.from) as { collected_plan: string | null } | undefined;
-          const image = selectImageForPlan(skills.media.images, conversation?.collected_plan);
-          if (image && image.value !== 'REPLACE_WITH_PUBLIC_IMAGE_URL' && canSendPlanImage(db, msg.from, image.id)) {
+          const collectedPlan = repos.conversation.getCollectedPlan(msg.from);
+          const image = selectImageForPlan(skills.media.images, collectedPlan);
+          if (image && image.value !== 'REPLACE_WITH_PUBLIC_IMAGE_URL' && canSendPlanImage(repos, msg.from, image.id)) {
             await sendImageUrl(msg.from, image.value, image.caption);
-            recordImageSend(db, msg.from, image.id);
+            recordImageSend(repos, msg.from, image.id);
           }
         }
 
         if (result.shouldAlertOwner) {
-          const conversation = db.prepare('SELECT * FROM conversations WHERE customer_phone = ?').get(msg.from) as Record<string, unknown> | undefined;
+          const conversation = repos.conversation.getByPhone(msg.from);
           await sendAlert({
             customerPhone: msg.from,
             score: result.leadScore,
@@ -171,7 +169,7 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { db: Da
             date: String(conversation?.collected_date ?? 'unknown'),
             people: String(conversation?.collected_people ?? 'unknown'),
             transport: String(conversation?.collected_transport_need ?? 'unknown'),
-          }, db);
+          }, repos);
         }
       } catch (err) {
         req.log.error({ err, phone: msg.from }, 'Failed to process webhook message');

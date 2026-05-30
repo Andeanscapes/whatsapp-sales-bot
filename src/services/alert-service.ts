@@ -1,4 +1,4 @@
-import type Database from 'better-sqlite3';
+import type { Repositories } from '../db/repositories/index.js';
 import { env } from '../config/env.js';
 import { getSkills } from './skill-loader.js';
 import { logger } from '../config/logger.js';
@@ -49,19 +49,15 @@ async function sendWhatsAppAlert(body: string): Promise<void> {
   if (!response.ok) throw new Error(`WhatsApp owner alert failed: ${response.status}`);
 }
 
-function wasOwnerAlertedToday(db: Database.Database, customerPhone: string, alertType: string): boolean {
-  const todayStart = new Date().toISOString().split('T')[0];
-  const row = db.prepare(
-    "SELECT 1 FROM owner_alerts WHERE customer_phone = ? AND alert_type = ? AND sent_at >= ?"
-  ).get(customerPhone, alertType, todayStart);
-  return !!row;
+function wasOwnerAlertedToday(repos: Repositories, customerPhone: string, alertType: string): boolean {
+  return repos.ownerAlert.wasAlertedToday(customerPhone, alertType);
 }
 
-export async function sendAlert(request: AlertRequest, db: Database.Database): Promise<void> {
+export async function sendAlert(request: AlertRequest, repos: Repositories): Promise<void> {
   const alertType = request.intent === 'reservation_handoff' || request.intent === 'reservation_intent'
     ? request.intent
     : request.score >= env.URGENT_LEAD_THRESHOLD ? 'urgent' : 'hot';
-  if (wasOwnerAlertedToday(db, request.customerPhone, alertType)) {
+  if (wasOwnerAlertedToday(repos, request.customerPhone, alertType)) {
     logger.info({ customerPhone: request.customerPhone, alertType }, '[ALERT] skipped duplicate owner alert');
     return;
   }
@@ -95,7 +91,5 @@ export async function sendAlert(request: AlertRequest, db: Database.Database): P
     logger.info({ body }, '[ALERT] log channel');
   }
 
-  db.prepare(
-    'INSERT INTO owner_alerts (customer_phone, channel, score, alert_type, sent_at, body) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(request.customerPhone, env.ALERT_CHANNEL, request.score, alertType, new Date().toISOString(), body);
+  repos.ownerAlert.insert(request.customerPhone, env.ALERT_CHANNEL, request.score, alertType, body);
 }
