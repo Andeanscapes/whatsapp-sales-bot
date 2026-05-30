@@ -24,7 +24,3 @@ export function getShortDescription(exp: ActiveExperience): string {
 export function getCommonQuestions(exp: ActiveExperience): ActiveExperience['commonQuestions'] {
   return exp.commonQuestions;
 }
-
-export function getRoute(exp: ActiveExperience): Record<string, unknown> {
-  return exp.route;
-}

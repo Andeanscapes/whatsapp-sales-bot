@@ -14,20 +14,6 @@ export interface RecentMessage {
   content: string;
 }
 
-export interface DeepSeekResult {
-  response: {
-    reply: string | null;
-    intent: string;
-    lead_score_delta: number;
-    should_send_image: boolean;
-    needs_human: boolean;
-    missing_fields: string[];
-    collected_fields: Record<string, unknown>;
-  };
-  promptTokens: number;
-  completionTokens: number;
-}
-
 export interface ConversationRepository {
   getByPhone(phone: string): ConversationRow | undefined;
   upsert(phone: string, data: Record<string, unknown>): void;
@@ -43,6 +29,10 @@ export interface ConversationRepository {
   getCollectedFields(phone: string): Record<string, unknown>;
   getCollectedPlan(phone: string): string | null;
   getLanguage(phone: string): 'es' | 'en' | null;
+  getSalesPhase(phone: string): string | null;
+  setSalesPhase(phone: string, phase: string): void;
+  getLeadIntent(phone: string): string | null;
+  setLeadIntent(phone: string, intent: string): void;
 }
 
 export interface MessageRepository {
@@ -64,8 +54,8 @@ export interface OptOutRepository {
 }
 
 export interface AiCacheRepository {
-  get(key: string): DeepSeekResult | null;
-  set(key: string, result: DeepSeekResult, ttlSeconds: number): void;
+  get(key: string): unknown | null;
+  set(key: string, value: unknown, ttlSeconds: number): void;
 }
 
 export interface AiUsageRepository {
@@ -109,6 +99,8 @@ export interface ConversationRow {
   price_given_at: string | null;
   handed_off_at: string | null;
   soft_closed_at: string | null;
+  sales_phase: string | null;
+  lead_intent: string | null;
 }
 
 export interface Repositories {

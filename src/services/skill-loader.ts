@@ -225,6 +225,7 @@ const langFallbackSchema = z.object({
   askDate: z.string(),
   askTransport: z.string(),
   aiFailureQualified: z.string(),
+  llmFailureWarm: z.string().optional(),
   messageLimitReached: z.string(),
   messageLimitAfterPrice: z.string(),
   messageLimitAfterPriceAfterHours: z.string(),

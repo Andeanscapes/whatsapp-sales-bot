@@ -31,6 +31,16 @@ export function migrate(db: Database.Database): void {
   } catch {
     // column already exists — safe to ignore
   }
+  try {
+    db.exec('ALTER TABLE conversations ADD COLUMN sales_phase TEXT');
+  } catch {
+    // column already exists — safe to ignore
+  }
+  try {
+    db.exec('ALTER TABLE conversations ADD COLUMN lead_intent TEXT');
+  } catch {
+    // column already exists — safe to ignore
+  }
 }
 
 export function createAndMigrate(dbPath: string): Database.Database {
