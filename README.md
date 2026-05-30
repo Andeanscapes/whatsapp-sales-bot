@@ -9,12 +9,14 @@ Runs on a single Node 24 process behind a Cloudflare Tunnel. No cloud dependenci
 ```
 Mini PC (Fedora) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Cloud API
                   ↓
-             SQLite (state, dedupe, scoring, AI cache)
+              Repositories (SQLite via better-sqlite3)
                   ↓
         JSON skill files (business source of truth)
+                  ↓
+          Product Registry (typed access to experiences/plans)
 ```
 
-See [AGENTS.md](AGENTS.md) for full implementation phases and contributor docs.
+See [AGENTS.md](AGENTS.md) for full architecture, invariants, and contributor docs.
 
 ## Quickstart
 
@@ -69,11 +71,10 @@ npm run simulate -- "Hola, cuanto vale el tour?"
 ## Security
 
 - Required-secret env validation (zod) — no silent placeholder fallbacks.
+- Webhook HMAC SHA-256 verification (`X-Hub-Signature-256`) with constant-time comparison.
 - `.gitignore` excludes `.env`, `data/`, `*.sqlite*`, `dist/`, IDE state.
 - Pre-commit secret scan via `npm run scan:secrets` (secretlint).
 - Token-substituted owner identity — real names ship via env, not source.
-
-Open issues for follow-up hardening (webhook HMAC, rate limit, helmet, log redaction) tracked separately.
 
 ## License
 

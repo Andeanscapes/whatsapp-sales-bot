@@ -1,33 +1,26 @@
-import type Database from 'better-sqlite3';
+import type { Repositories } from '../db/repositories/index.js';
 import { env } from '../config/env.js';
 import type { MediaSkill } from './skill-loader.js';
+import { MS_72H } from './constants.js';
 
-export function canSendImage(db: Database.Database, phone: string): boolean {
+export function canSendImage(repos: Repositories, phone: string): boolean {
   if (!env.SEND_IMAGES_ENABLED) return false;
 
-  const cutoff = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
-  const recent = db.prepare(
-    'SELECT COUNT(*) as cnt FROM media_sends WHERE customer_phone = ? AND sent_at >= ?'
-  ).get(phone, cutoff) as { cnt: number };
+  const cutoff = new Date(Date.now() - MS_72H).toISOString();
+  const recent = repos.mediaSend.countRecentImages(phone, cutoff);
 
-  return recent.cnt < env.MAX_IMAGES_PER_CUSTOMER_PER_72H;
+  return recent < env.MAX_IMAGES_PER_CUSTOMER_PER_72H;
 }
 
-export function canSendPlanImage(db: Database.Database, phone: string, imageId: string): boolean {
+export function canSendPlanImage(repos: Repositories, phone: string, imageId: string): boolean {
   if (!env.SEND_IMAGES_ENABLED) return false;
 
-  const cutoff = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
-  const recentSameImage = db.prepare(
-    'SELECT 1 FROM media_sends WHERE customer_phone = ? AND media_id = ? AND sent_at >= ? LIMIT 1'
-  ).get(phone, imageId, cutoff);
-
-  return !recentSameImage;
+  const cutoff = new Date(Date.now() - MS_72H).toISOString();
+  return !repos.mediaSend.hasRecentSameImage(phone, imageId, cutoff);
 }
 
-export function recordImageSend(db: Database.Database, phone: string, mediaId: string): void {
-  db.prepare(
-    'INSERT INTO media_sends (customer_phone, media_id, sent_at) VALUES (?, ?, ?)'
-  ).run(phone, mediaId, new Date().toISOString());
+export function recordImageSend(repos: Repositories, phone: string, mediaId: string): void {
+  repos.mediaSend.recordSend(phone, mediaId);
 }
 
 export function selectImageForPlan(images: MediaSkill['images'], planId: string | null | undefined): MediaSkill['images'][number] | undefined {

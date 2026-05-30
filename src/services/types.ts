@@ -1,4 +1,4 @@
-import type Database from 'better-sqlite3';
+import type { Repositories } from '../db/repositories/index.js';
 
 export interface MergedQualification {
   nombre?: unknown;
@@ -10,7 +10,7 @@ export interface MergedQualification {
 }
 
 export interface ProcessMessageInput {
-  db: Database.Database;
+  repos: Repositories;
   customerPhone: string;
   message: string;
   messageId?: string;

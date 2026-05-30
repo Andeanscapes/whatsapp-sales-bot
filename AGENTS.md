@@ -12,10 +12,30 @@
 ```
 Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Cloud API
                      ↓
-                SQLite (state, dedupe, scoring, AI cache)
+         Repositories (SQLite via better-sqlite3)
                      ↓
            JSON skill files (business source of truth)
+                     ↓
+           Product Registry (typed access to experiences/plans)
 ```
+
+### Architecture Invariants (do NOT violate)
+
+1. **Single source of truth:** `andean-scapes.skill.json` is the sole source of business facts (plans, pricing, route, availability, FAQs). Never hardcode business reply text in TypeScript.
+2. **Product registry:** Always access experience data via `src/services/product-registry.ts`. Never access `skills.andeanScapes.experiences[0]` directly.
+3. **Repository seam:** All database access goes through `src/db/repositories/` interfaces. Never write raw `db.prepare(...)` SQL in service or route files.
+4. **No MySQL:** The bot uses SQLite via `better-sqlite3`. There is no MySQL/Postgres dependency. A future DB swap requires writing a new repository implementation.
+5. **Fully typed skills:** Skill JSON is validated with strict zod schemas (no `.passthrough()`). The compiler enforces the contract between JSON and code.
+
+### Multi-Agent Guardrails
+
+- One phase per PR. Never combine phases.
+- Run `npm run typecheck && npm run lint && npm test && npm run build` after each change. Stop on red.
+- The 125 existing tests in `src/tests/` are the regression safety net. Never weaken them.
+- Simulate snapshot at `npm run simulate -- "Hola, cuanto vale el tour?"` must produce identical output unless explicitly noted.
+- Never use `any`. Never weaken existing zod/HMAC/pino-redact configs.
+- Never log `WHATSAPP_ACCESS_TOKEN`, `DEEPSEEK_API_KEY`, `ADMIN_SECRET`, `WHATSAPP_APP_SECRET`, or `TELEGRAM_BOT_TOKEN`.
+- Bind Fastify to `127.0.0.1` only. No external port binding.
 
 ## Implementation phases (do in order)
 
@@ -142,7 +162,8 @@ Rules:
 [x] Max 1 image per customer per 72h
 [x] Lead scoring works
 [x] Opt-out works
-[x] All tests pass
+[x] All tests pass (125/125)
+[x] HMAC SHA-256 webhook signature verification (X-Hub-Signature-256)
 [ ] Meta webhook verification works (requires live WhatsApp)
 [ ] WhatsApp POST webhook receives messages (requires Cloudflare tunnel + live)
 [ ] Duplicate messages ignored (requires live webhook)
