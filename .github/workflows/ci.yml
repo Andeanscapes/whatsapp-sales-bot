@@ -31,4 +31,5 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+      - run: npm run validate:dynamic -- scripts/bot-dynamic.json
       - run: npm run scan:secrets

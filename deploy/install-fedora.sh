@@ -21,7 +21,7 @@ sudo chown -R "$APP_USER:$APP_USER" "$DB_DIR"
 sudo chown -R "$APP_USER:$APP_USER" "$LOG_DIR"
 
 echo "[3/7] Installing system dependencies..."
-sudo dnf install -y nodejs git curl
+sudo dnf install -y nodejs git curl rsync
 
 echo "[4/7] Setting up env file..."
 if [ ! -f "$ENV_FILE" ]; then
@@ -30,7 +30,15 @@ if [ ! -f "$ENV_FILE" ]; then
 fi
 
 echo "[5/7] Deploying app..."
-sudo cp -r . "$APP_DATA_DIR"
+sudo rsync -a --delete \
+  --exclude '.env' \
+  --exclude '.env.*' \
+  --exclude '.git' \
+  --exclude 'node_modules' \
+  --exclude 'dist' \
+  --exclude 'data' \
+  --exclude '.claude' \
+  ./ "$APP_DATA_DIR/"
 sudo chown -R "$APP_USER:$APP_USER" "$APP_DATA_DIR"
 sudo -u "$APP_USER" bash -c "cd $APP_DATA_DIR && npm ci && npm run build"
 

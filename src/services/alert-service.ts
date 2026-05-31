@@ -2,6 +2,7 @@ import type { Repositories } from '../db/repositories/index.js';
 import { env } from '../config/env.js';
 import { getSkills } from './skill-loader.js';
 import { logger } from '../config/logger.js';
+import { sendTelegramMessage } from './telegram-bot.js';
 
 const ALERT_FETCH_TIMEOUT_MS = 10_000;
 
@@ -16,18 +17,6 @@ export interface AlertRequest {
   date?: string;
   people?: string;
   transport?: string;
-}
-
-async function sendTelegram(text: string): Promise<void> {
-  if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) return;
-  const url = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`;
-  const response = await fetch(url, {
-    method: 'POST',
-    signal: AbortSignal.timeout(ALERT_FETCH_TIMEOUT_MS),
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID, text }),
-  });
-  if (!response.ok) throw new Error(`Telegram alert failed: ${response.status}`);
 }
 
 async function sendWhatsAppAlert(body: string): Promise<void> {
@@ -83,7 +72,7 @@ export async function sendAlert(request: AlertRequest, repos: Repositories): Pro
       }
       logger.info({ body }, '[ALERT] log channel (telegram misconfigured)');
     } else {
-      await sendTelegram(body);
+      await sendTelegramMessage(env.TELEGRAM_CHAT_ID, body);
     }
   } else if (env.ALERT_CHANNEL === 'whatsapp') {
     await sendWhatsAppAlert(body);

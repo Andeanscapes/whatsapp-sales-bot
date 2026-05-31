@@ -103,6 +103,44 @@ export interface ConversationRow {
   lead_intent: string | null;
 }
 
+export interface DailyStats {
+  date: string;
+  totalConversations: number;
+  newConversations: number;
+  activeConversations: number;
+  messagesInbound: number;
+  messagesOutbound: number;
+  hotLeads: number;
+  hotLeadPercentage: number;
+  optedOut: number;
+  handedOff: number;
+  softClosed: number;
+  aiSpentUsd: number;
+}
+
+export interface ConversationSummary {
+  customerPhone: string;
+  name: string | null;
+  score: number;
+  phase: string | null;
+  plan: string | null;
+  people: number | null;
+  date: string | null;
+  lastSeenAt: string;
+}
+
+export interface PhaseBreakdown {
+  phase: string;
+  count: number;
+}
+
+export interface StatsRepository {
+  getDailyStats(todayStart: string, hotLeadThreshold: number): DailyStats;
+  getRecentConversations(limit: number): ConversationSummary[];
+  getTopLeads(limit: number, threshold: number): ConversationSummary[];
+  getPhaseBreakdown(): PhaseBreakdown[];
+}
+
 export interface Repositories {
   conversation: ConversationRepository;
   message: MessageRepository;
@@ -112,5 +150,8 @@ export interface Repositories {
   aiUsage: AiUsageRepository;
   ownerAlert: OwnerAlertRepository;
   mediaSend: MediaSendRepository;
+  stats: StatsRepository;
+  isPaused(): boolean;
+  setPaused(paused: boolean): void;
   ping(): boolean;
 }
