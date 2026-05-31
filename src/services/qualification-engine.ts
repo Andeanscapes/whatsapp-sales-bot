@@ -17,16 +17,18 @@ export const NAME_PATTERNS = [
 export const NAME_BLACKLIST = /^(?:hola|buenas|hello|hi|hey|ok|si|no|yes|ya|gracias|thanks|quiero|cual|como|cuanto|donde|cuando|que|qué|cual|cuál|precio|itinerario|agenda|actividades|what|how|where|when|porque|por qu[eé]|me|te|se|el|la|los|las|es|own|solo|sola|bien|listo)$/i;
 
 export const TRANSPORT_OWN_PATTERNS = [
-  /\b(?:veh[ií]culo propio|carro propio|moto|moto propia|vamos en (?:carro|moto|auto)|tenemos (?:carro|moto|auto|veh[ií]culo)|transporte propio|transporte si|si tenemos)\b/i,
-  /\b(?:propio transporte|transporte propio|coche propio|no necesitamos transporte|nosotros manejamos|manejamos|si propio|yo manejo|manejo)\b/i,
-  /\b(?:we have (?:our own|a) (?:car|motorcycle|vehicle|transport|truck)|own transport|driving ourselves|yes own|i have (?:my )?own)\b/i,
+  /\b(?:veh[ií]culo propio|carro propio|mi carro|mi coche|mi auto|mi camioneta|en mi carro|voy en carro|voy con carro|llevo carro|tengo mi carro|moto|moto propia|vamos en (?:carro|moto|auto)|tenemos (?:carro|moto|auto|veh[ií]culo)|transporte propio|transporte si|si tenemos)\b/i,
+  /\b(?:propio transporte|transporte propio|coche propio|no necesitamos transporte|nosotros manejamos|manejamos|si propio|yo manejo|manejo|si[,.]?\s*mi\s+(?:carro|auto|coche|camioneta)|s[ií][,.]?\s*(?:mi\s+)?(?:carro|auto|coche|camioneta|propio))\b/i,
+  /\b(?:we have (?:our own|a) (?:car|motorcycle|vehicle|transport|truck)|own transport|driving ourselves|yes own|i have (?:my )?own|my (?:own )?car|my car|my vehicle|rental car|we'?ll? drive|coming by car|driving there)\b/i,
+  /\b(?:yes[,.]?\s*(?:i have|my|own|driving|car|vehicle)|yeah[,.]?\s*(?:my|own|car))\b/i,
 ];
 
 export const TRANSPORT_OWN_CONTEXT_PATTERNS = [
-  /\b(?:si|s[ií])\b.*\b(?:propio|tengo|tenemos|transporte)\b/i,
-  /\b(?:propio|tengo carro|tengo moto|tengo veh[ií]culo|en carro|en moto|manejando)\b/i,
-  /\b(?:yes|yeah|yep)\b.*\b(?:own|have (?:a |my )?(?:car|transport|vehicle|ride))\b/i,
+  /\b(?:si|s[ií])\b.*\b(?:propio|tengo|tenemos|transporte|mi\s+(?:carro|auto|coche|camioneta))\b/i,
+  /\b(?:propio|tengo carro|tengo moto|tengo veh[ií]culo|en carro|en moto|manejando|mi carro|mi auto|mi coche|voy en|voy con)\b/i,
+  /\b(?:yes|yeah|yep)\b.*\b(?:own|have (?:a |my )?(?:car|transport|vehicle|ride)|my car|i drive)\b/i,
   /\b(?:i (?:have|drive) (?:a |my own )?(?:car|motorcycle|vehicle))\b/i,
+  /\b(?:si[,.]?\s*(?:tengo|mi|con)\s*(?:carro|auto|coche|camioneta))\b/i,
 ];
 
 export const PET_KEYWORDS = /\b(?:perro|perrito|mascota|mascotas|gato|gatos|perra|perros|gatito|pet|dog|cat|dogs|cats|puppy|kitten)\b/i;
@@ -96,11 +98,64 @@ export function extractStandaloneName(text: string): string | null {
   return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
 }
 
+const ORDINAL_MAP: Record<string, number> = {
+  primero: 1, '1': 1, primera: 1, '1ero': 1,
+  segundo: 2, segunda: 2, '2': 2, '2do': 2,
+  tercero: 3, tercera: 3, '3': 3, '3ro': 3,
+  cuarto: 4, cuarta: 4, '4': 4, '4to': 4,
+  quinto: 5, quinta: 5, '5': 5, '5to': 5,
+};
+
+const RELATIVE_DATE_RE = /\b(?:la del|la|el|la de|la del dia|el dia|(?:fecha|date)\s+(?:numero|number)|numero|number)\s+(?:d[ií]a\s+)?((?:primero|primera|segundo|segunda|tercero|tercera|cuarto|cuarta|quinto|quinta|1ero|2do|3ro|4to|5to|[1-5])|(?:the\s+)?(?:first|second|third|fourth|fifth|(?:number|#)\s*[1-5]))\b/i;
+
+function resolveRelativeDate(text: string): string | null {
+  const match = text.match(RELATIVE_DATE_RE);
+  if (!match) return null;
+  const ordinalWord = match[1]?.toLowerCase().replace(/^the\s+/, '').replace(/^number\s*|^#\s*/, '');
+  const n = ORDINAL_MAP[ordinalWord];
+  if (n == null) return null;
+  return `_relative_ordinal_${n}`;
+}
+
 export function extractBookingFields(text: string): Record<string, unknown> {
   const fields: Record<string, unknown> = {};
 
+  const relDate = resolveRelativeDate(text);
+  if (relDate) {
+    fields.collected_date = relDate;
+    fields._relative_date_token = true;
+  }
+
+  const exactDateEs = text.match(/\b(?:s[aá]bado|domingo|lunes|martes|mi[eé]rcoles|jueves|viernes)\s+(\d{1,2})\s+de\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\b/i);
+  if (exactDateEs) {
+    fields.collected_date = exactDateEs[0].toLowerCase();
+  }
+
+  if (!fields.collected_date) {
+    const exactDateEn = text.match(/\b(?:saturday|sunday|monday|tuesday|wednesday|thursday|friday)\s+(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?(january|february|march|april|may|june|july|august|september|october|november|december)\b/i);
+    if (exactDateEn) {
+      fields.collected_date = exactDateEn[0].toLowerCase();
+    }
+  }
+
+  if (!fields.collected_date) {
+    const dayMonthEs = text.match(/\b(\d{1,2})\s+de\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\b/i);
+    if (dayMonthEs) {
+      fields.collected_date = dayMonthEs[0].toLowerCase();
+    }
+  }
+
+  if (!fields.collected_date) {
+    const monthDayEn = text.match(/\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(?:st|nd|rd|th)?\b/i);
+    if (monthDayEn) {
+      fields.collected_date = monthDayEn[0].toLowerCase();
+    }
+  }
+
   const monthInText = MONTH_NAMES.find(m => text.toLowerCase().includes(m));
-  if (monthInText) fields.collected_date = monthInText;
+  if (monthInText && !fields.collected_date) {
+    fields.collected_date = monthInText;
+  }
 
   const peopleMatch = text.match(/(\d+)\s*(?:people|person|persons|personas|pax)/i);
   if (peopleMatch) fields.collected_people = parseInt(peopleMatch[1], 10);
@@ -200,6 +255,18 @@ export function contextAwareExtract(message: string, repos: Repositories, phone:
       const hasOwn = TRANSPORT_OWN_PATTERNS.some(p => p.test(norm)) || TRANSPORT_OWN_CONTEXT_PATTERNS.some(p => p.test(norm));
       if (hasOwn) fields.collected_transport_need = 'own';
     }
+  }
+
+  if (existing._relative_date_token && typeof fields.collected_date === 'string' && (fields.collected_date as string).startsWith('_relative_ordinal_') && lastQuestion) {
+    const n = parseInt((fields.collected_date as string).replace('_relative_ordinal_', ''), 10);
+    if (!isNaN(n) && n > 0) {
+      const datePattern = /\b(?:s[aá]bado|domingo|lunes|martes|mi[eé]rcoles|jueves|viernes|saturday|sunday|monday|tuesday|wednesday|thursday|friday)\s+\d{1,2}\s+(?:de\s+)?\w+/gi;
+      const dates = lastQuestion?.match(datePattern) ?? [];
+      if (n <= dates.length) {
+        fields.collected_date = dates[n - 1].toLowerCase();
+      }
+    }
+    delete fields._relative_date_token;
   }
 
   if (!fields.collected_date && lastQuestion) {

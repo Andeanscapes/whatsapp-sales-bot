@@ -1,4 +1,5 @@
 import type { Skills, AndeanScapesSkill } from './skill-loader.js';
+import { PRICING_NOT_AVAILABLE, AVAILABILITY_NOT_AVAILABLE } from './dynamic-data-service.js';
 
 type Experience = AndeanScapesSkill['experiences'][number];
 
@@ -23,4 +24,12 @@ export function getShortDescription(exp: ActiveExperience): string {
 
 export function getCommonQuestions(exp: ActiveExperience): ActiveExperience['commonQuestions'] {
   return exp.commonQuestions;
+}
+
+export function isPricingAvailable(exp: ActiveExperience): boolean {
+  return exp.pricing.items.length > 0 && !exp.pricing.botRules.includes(PRICING_NOT_AVAILABLE);
+}
+
+export function isAvailabilityAvailable(exp: ActiveExperience): boolean {
+  return exp.availability.availableDates.length > 0 && exp.availability.botRule !== AVAILABILITY_NOT_AVAILABLE;
 }

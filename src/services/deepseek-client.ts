@@ -3,7 +3,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import type { Skills } from './skill-loader.js';
 import { substituteTokens } from './skill-loader.js';
-import { getActiveExperience, getPlans } from './product-registry.js';
+import { getActiveExperience, getPlans, isPricingAvailable, isAvailabilityAvailable } from './product-registry.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -19,27 +19,31 @@ export function buildSystemPrompt(skills: Skills, lang?: string, collectedFields
   const route = exp.route;
   const tactics = skills.salesStrategy.salesTactics;
 
-  const dateList = exp.availability.availableDates
-    .map(d => {
-      const dObj = new Date(d.date + 'T00:00:00');
-      const dayName = dObj.toLocaleDateString(lang === 'en' ? 'en-US' : 'es-CO', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
-      return `${dayName} (${d.status}${d.slotsApprox ? `, ~${d.slotsApprox} slots` : ''})`;
-    })
-    .join(', ');
+  const pricingAvailable = isPricingAvailable(exp);
+  const availabilityAvailable = isAvailabilityAvailable(exp);
 
-  const pricingItems = exp.pricing.items
-    .filter(i => i.publiclyShow)
-    .map(i =>
-      i.couplePrice ? `${i.label}: ${i.couplePrice.toLocaleString('en-US')} COP total` : i.pricePerPerson ? `${i.label}: ${i.pricePerPerson.toLocaleString('en-US')} COP` : `${i.label}: consultar`
-    ).join(' | ');
+  const dateList = availabilityAvailable
+    ? exp.availability.availableDates
+        .map(d => {
+          const dObj = new Date(d.date + 'T00:00:00');
+          const dayName = dObj.toLocaleDateString(lang === 'en' ? 'en-US' : 'es-CO', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+          return `${dayName} (${d.status}${d.slotsApprox ? `, ~${d.slotsApprox} slots` : ''})`;
+        })
+        .join(', ')
+    : null;
 
-  const pricingRules = exp.pricing.botRules.join('; ');
+  const pricingItems = pricingAvailable
+    ? exp.pricing.items
+        .filter(i => i.publiclyShow)
+        .map(i =>
+          i.couplePrice ? `${i.label}: ${i.couplePrice.toLocaleString('en-US')} COP total` : i.pricePerPerson ? `${i.label}: ${i.pricePerPerson.toLocaleString('en-US')} COP` : `${i.label}: consultar`
+        ).join(' | ')
+    : null;
+
+  const pricingRules = pricingAvailable ? exp.pricing.botRules.join('; ') : null;
   const included = exp.included.join(', ');
   const notIncluded = exp.notIncludedUnlessConfirmed.join(', ');
   const reservationFlow = exp.reservationFlow.join('; ');
-
-  const availabilityLastUpdated = exp.availability.lastUpdated;
-  const availabilityRule = exp.availability.botRule;
 
   const ferryInfo = route.ferryInfo ?? '';
   const alternateRoute = route.alternateRoute ?? '';
@@ -67,6 +71,10 @@ export function buildSystemPrompt(skills: Skills, lang?: string, collectedFields
   const plansList = getPlans(exp)
     .map(p => `${p.id} — ${p.name} (${p.duration}): ${p.shortDescription} | Benefits: ${p.benefits}`).join('\n');
 
+  const dataUnavailableRule = (!pricingAvailable || !availabilityAvailable)
+    ? '[CRITICAL RULE] NO hay precios ni fechas disponibles — el equipo los esta ajustando. IGNORA las fases de precio/fechas. NO des ninguna cifra. NO des ninguna fecha concreta. Responde solo con la info que SI tienes (ruta, inclusiones, clima, etc) y di que el equipo confirmara precios y disponibilidad.'
+    : null;
+
   const facts = [
     `Business: ${skills.andeanScapes.business.name} — ${shortDesc}`,
     `Brand intro: ${skills.andeanScapes.business.shortBrandIntro ?? ''}`,
@@ -80,11 +88,11 @@ export function buildSystemPrompt(skills: Skills, lang?: string, collectedFields
     arrivalTips ? `Arrival tips: ${arrivalTips}` : null,
     routeBotRules ? `Route rules: ${routeBotRules}` : null,
     '---',
-    `Availability (last updated: ${availabilityLastUpdated}): ${dateList}`,
-    `Availability rule: ${availabilityRule}`,
+    availabilityAvailable ? `Availability: ${dateList}` : null,
+    availabilityAvailable ? `Availability rule: ${exp.availability.botRule}` : null,
     '---',
-    `Pricing: ${pricingItems}`,
-    `Pricing rules: ${pricingRules}`,
+    pricingAvailable ? `Pricing: ${pricingItems}` : null,
+    pricingAvailable ? `Pricing rules: ${pricingRules}` : null,
     '---',
     `Included: ${included}`,
     `NOT included: ${notIncluded}`,
@@ -105,17 +113,23 @@ export function buildSystemPrompt(skills: Skills, lang?: string, collectedFields
     negativeExamples ? `Negative examples: ${negativeExamples}` : null,
   ].filter((f): f is string => f !== null);
 
+  if (dataUnavailableRule) {
+    facts.unshift(dataUnavailableRule);
+  }
+
   if (tactics) {
     facts.push(
       `Sales attitude: ${tactics.tonePersonality || ''}`,
       `Power confidence: ${tactics.powerConfidence?.attitude || ''}`,
-      `Closing: ${tactics.closing?.assumptive || ''} | ${tactics.closing?.softTakeaway || ''}`,
       `Service rule: ${tactics.serviceOverSales || ''}`,
       `Meta: ${tactics.metaRule || ''}`,
       `First contact: ${tactics.firstContact || ''}`,
       `Typo handling: ${tactics.typoHandling || ''}`,
       `Human sell formula: ${tactics.humanSellFormula || ''}`
     );
+    if (pricingAvailable) {
+      facts.push(`Closing: ${tactics.closing?.assumptive || ''} | ${tactics.closing?.softTakeaway || ''}`);
+    }
   }
 
   if (collectedFields && Object.keys(collectedFields).length > 0) {

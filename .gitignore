@@ -1,6 +1,8 @@
 # env
 .env
 .env.local
+.env.*
+!.env.example
 .env.*.local
 
 # runtime data

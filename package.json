@@ -18,6 +18,7 @@
     "simulate": "AI_ENABLED=false tsx src/scripts/simulate-message.ts",
     "validate:skills": "tsx src/scripts/validate-skill.ts",
     "validate:prompt": "tsx src/scripts/validate-prompt.ts",
+    "validate:dynamic": "tsx src/scripts/validate-dynamic.ts",
     "scan:secrets": "secretlint \"**/*\" --secretlintignore .gitignore"
   },
   "dependencies": {
