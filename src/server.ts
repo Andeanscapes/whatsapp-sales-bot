@@ -4,6 +4,7 @@ import { createAndMigrate } from './db/migrate.js';
 import { createRepositories } from './db/repositories/index.js';
 import { loadSkills } from './services/skill-loader.js';
 import { logger } from './config/logger.js';
+import { startTelegramBot } from './services/telegram-bot.js';
 
 async function start() {
   loadSkills();
@@ -14,6 +15,8 @@ async function start() {
 
   await app.listen({ host: env.HOST, port: env.PORT });
   logger.info({ host: env.HOST, port: env.PORT }, 'server started');
+
+  startTelegramBot(repos);
 
   process.on('SIGTERM', gracefulShutdown('SIGTERM', db, app));
   process.on('SIGINT', gracefulShutdown('SIGINT', db, app));

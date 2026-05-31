@@ -165,6 +165,11 @@ function buildMergedQualification(dbFields: Record<string, unknown>, llmTurn: Ll
 
 export async function processMessage(input: ProcessMessageInput): Promise<ProcessMessageOutput> {
   const { repos, customerPhone, message, messageId } = input;
+
+  if (repos.isPaused()) {
+    return { reply: '', shouldSendReply: false, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendImage: false, priceJustGiven: false };
+  }
+
   const skills = getSkills();
 
   const handedOffRow = repos.conversation.getHandedOffAt(customerPhone);
