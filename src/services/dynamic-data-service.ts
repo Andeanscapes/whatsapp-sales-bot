@@ -89,7 +89,7 @@ export class DynamicDataService {
       }
 
       if (!res.ok) {
-        logger.warn({ status: res.status, url: this.url }, '[DYNAMIC] fetch failed');
+        logger.warn({ status: res.status }, '[DYNAMIC] fetch failed');
         return;
       }
 
