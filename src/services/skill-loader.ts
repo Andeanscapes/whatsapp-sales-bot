@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import type { DynamicDataService, InternalDynamicData, InternalPricingItem } from './dynamic-data-service.js';
+import { PRICING_NOT_AVAILABLE, AVAILABILITY_NOT_AVAILABLE } from './dynamic-data-service.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -249,6 +251,9 @@ const langFallbackSchema = z.object({
   safeReservationHandoffMorningHours: z.string(),
   softCloseReply: z.string(),
   confirmReservationPrompt: z.string(),
+  priceUnavailable: z.string(),
+  dateSelectedLimited: z.string(),
+  dateSelectedLimitedNoDate: z.string(),
   answerQuestionBeforeQualification: z.string(),
   itineraryReply: z.string(),
 });
@@ -271,11 +276,79 @@ export interface Skills {
 }
 
 let cached: Skills | null = null;
+let cachedService: DynamicDataService | null = null;
 
 function loadJson(filename: string): unknown {
   const path = join(__dirname, '..', 'data', filename);
   const raw = readFileSync(path, 'utf-8');
   return JSON.parse(substituteTokens(raw));
+}
+
+function applyDynamicPricingItems(
+  staticItems: readonly AndeanScapesSkill['experiences'][number]['pricing']['items'][number][],
+  dynamicItems: readonly InternalPricingItem[],
+): AndeanScapesSkill['experiences'][number]['pricing']['items'] {
+  return dynamicItems.map(dynamicItem => {
+    const staticItem = staticItems.find(item => item.id === dynamicItem.id)
+      ?? staticItems.find(item => item.planId === dynamicItem.planId && dynamicItem.pricePerPerson != null && item.pricePerPerson != null)
+      ?? staticItems.find(item => item.planId === dynamicItem.planId && dynamicItem.couplePrice != null && item.couplePrice != null);
+
+    return staticItem
+      ? { ...staticItem, ...dynamicItem, id: staticItem.id, label: staticItem.label }
+      : dynamicItem;
+  });
+}
+
+function applyDynamicToExperiences(
+  exps: readonly AndeanScapesSkill['experiences'][number][],
+  dynData: InternalDynamicData | null,
+): AndeanScapesSkill['experiences'] {
+  return exps.map(exp => {
+    const dyn = dynData?.experiences[exp.id];
+    if (!dyn) return exp as AndeanScapesSkill['experiences'][number];
+    return {
+      ...exp,
+      pricing: {
+        currency: dyn.pricing.currency,
+        lastUpdated: dyn.pricing.lastUpdated,
+        items: applyDynamicPricingItems(exp.pricing.items, dyn.pricing.items),
+        botRules: dyn.pricing.botRules,
+      },
+      availability: {
+        lastUpdated: dyn.availability.lastUpdated,
+        timezone: dyn.availability.timezone,
+        availableDates: dyn.availability.availableDates.map(d => ({
+          date: d.date,
+          status: d.status,
+          slotsApprox: d.slotsApprox,
+        })),
+        botRule: dyn.availability.botRule,
+      },
+    } as AndeanScapesSkill['experiences'][number];
+  });
+}
+
+function mergeDynamicIntoStatic(dynData: InternalDynamicData | null): void {
+  if (!cached) return;
+  const mergedExperiences = applyDynamicToExperiences(cached.andeanScapes.experiences, dynData);
+  cached = {
+    ...cached,
+    andeanScapes: { ...cached.andeanScapes, experiences: mergedExperiences },
+  };
+}
+
+export function setDynamicService(service: DynamicDataService): void {
+  cachedService = service;
+}
+
+export async function refreshSkills(): Promise<void> {
+  if (!cachedService) return;
+  const before = cachedService.getData();
+  await cachedService.refreshIfStale();
+  const after = cachedService.getData();
+  if (after !== before) {
+    mergeDynamicIntoStatic(after);
+  }
 }
 
 export function loadSkills(): Skills {
@@ -291,6 +364,13 @@ export function loadSkills(): Skills {
     fallbackReplies: fallbackRepliesSchema.parse(rawFallback),
   };
 
+  if (cachedService) {
+    const dynData = cachedService.getData();
+    if (dynData) {
+      skills.andeanScapes.experiences = applyDynamicToExperiences(skills.andeanScapes.experiences, dynData);
+    }
+  }
+
   cached = skills;
   return skills;
 }
@@ -300,4 +380,19 @@ export function getSkills(): Skills {
     return loadSkills();
   }
   return cached;
+}
+
+export function stripSkillsPricing(): void {
+  if (!cached) return;
+  cached = {
+    ...cached,
+    andeanScapes: {
+      ...cached.andeanScapes,
+      experiences: cached.andeanScapes.experiences.map(exp => ({
+        ...exp,
+        pricing: { currency: 'COP', lastUpdated: '1970-01-01', items: [], botRules: [PRICING_NOT_AVAILABLE] },
+        availability: { lastUpdated: '1970-01-01', timezone: 'America/Bogota', availableDates: [], botRule: AVAILABILITY_NOT_AVAILABLE },
+      })) as typeof cached.andeanScapes.experiences,
+    },
+  };
 }

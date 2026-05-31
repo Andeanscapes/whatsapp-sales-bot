@@ -32,6 +32,9 @@
     "safeReservationHandoffMorningHours": "Perfecto {{name}}, ya lo tengo todo. Son {{summary}}. Le paso esto al equipo para que lo revisen; por la hora en Colombia, te confirmamos después de las 9:00 a.m. con fecha exacta y datos de pago.",
     "confirmReservationPrompt": "¿quieres reservar?",
     "answerQuestionBeforeQualification": "Claro. Para reservar, primero validamos fecha exacta y datos de pago con el equipo. Sobre la experiencia: segun el plan que elijas, incluye alojamiento, comidas y actividades en campo con guia y equipo. La hora exacta la validamos segun la fecha.",
+    "priceUnavailable": "Estamos ajustando precios y fechas en este momento. Dejame confirmarlo con el equipo y te paso la info exacta enseguida. ¿Para cuantas personas y que fecha tienes en mente?",
+    "dateSelectedLimited": "Perfecto, tomo {{date}} como fecha tentativa. Te confirmo disponibilidad exacta con el equipo. ¿Quieres que lo dejemos para revisión de reserva?",
+    "dateSelectedLimitedNoDate": "Perfecto, tomo nota de tu fecha tentativa. Te confirmo disponibilidad exacta con el equipo. ¿Quieres que lo dejemos para revision de reserva?",
     "itineraryReply": "Claro {{name}}, te lo explico bien. {{itinerarySummary}}"
   },
   "en": {
@@ -67,6 +70,9 @@
     "safeReservationHandoffMorningHours": "Perfect {{name}}, got everything down. It's {{summary}}. I'm passing this to the team; because of the time in Colombia, we'll confirm after 9:00 a.m. with the exact date and payment details.",
     "confirmReservationPrompt": "would you like to book?",
     "answerQuestionBeforeQualification": "Sure. To book, we first validate the exact date and payment details with the team. About the experience: depending on the plan you choose, it includes lodging, meals, and field activities with a guide and equipment. Exact time is validated based on the date.",
+    "priceUnavailable": "We're updating prices and dates right now. Let me confirm with the team and send you the exact info shortly. For how many people and what date are you thinking?",
+    "dateSelectedLimited": "Perfect, I'll take {{date}} as the tentative date. I'll confirm exact availability with the team. Would you like us to review it for reservation?",
+    "dateSelectedLimitedNoDate": "Perfect, I'll note your tentative date. I'll confirm exact availability with the team. Would you like us to review it for reservation?",
     "itineraryReply": "Sure {{name}}, here is the clear version. {{itinerarySummary}}"
   }
 }

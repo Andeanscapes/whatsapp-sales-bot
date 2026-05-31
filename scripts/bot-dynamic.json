@@ -1,0 +1,46 @@
+{
+  "v": 1,
+  "updated": "2026-05-30T00:00:00Z",
+  "experiences": {
+    "emerald_mining_tour": {
+      "pricing": {
+        "currency": "COP",
+        "plans": {
+          "2d1n_mining": {
+            "individual": 550000,
+            "couple": 1040000
+          },
+          "3d2n_rural": {
+            "individual": 750000,
+            "couple": 1400000
+          }
+        },
+        "addons": {
+          "apiary_cattle": {
+            "label": "Apicultura y ganaderia (opcional, por persona)",
+            "pp": 55000,
+            "plans": ["2d1n_mining"]
+          },
+          "private_transport": {
+            "label": "Transporte privado 4x4 desde Bogota",
+            "price": 1700000,
+            "max": 4
+          }
+        },
+        "rules": "3p = Pareja + Individual | 4p (2 parejas) = Pareja x2 | Transporte privado 4x4: $1,700,000 COP (1-4p, mismo precio) | Sumar transporte al plan base si lo pide | Bus publico: NO sumar al plan, el cliente lo compra | No dar datos de pago | 15% deposito via Nequi o Mercado Pago"
+      },
+      "availability": {
+        "tz": "America/Bogota",
+        "dates": [
+          { "d": "2026-07-04", "s": "limited", "sl": 4 },
+          { "d": "2026-07-18", "s": "limited", "sl": 4 },
+          { "d": "2026-08-01", "s": "limited", "sl": 4 },
+          { "d": "2026-08-15", "s": "limited", "sl": 4 },
+          { "d": "2026-09-05", "s": "limited", "sl": 4 },
+          { "d": "2026-09-19", "s": "limited", "sl": 4 }
+        ],
+        "rule": "Nunca digas que todo esta vendido. El equipo valida disponibilidad para cualquier fecha. Si preguntan 'cuales estan libres?', lista las fechas planeadas y di que el equipo las valida. Siempre deriva la confirmacion al equipo."
+      }
+    }
+  }
+}

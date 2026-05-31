@@ -36,25 +36,28 @@ export function findIntent(text: string, skills: Skills, lang?: string): FaqResu
           lines.push(`${item.label}: ${(item.pricePerPerson as number).toLocaleString('es-CO')} ${exp.pricing.currency}`);
         }
       }
-      if (lines.length > 0) {
-        const answer = detectedLang === 'es'
+      const answer = lines.length > 0
+        ? (detectedLang === 'es'
           ? `Precios de referencia:\n${lines.join('\n')}\nPara un presupuesto final, cuéntanos tu fecha preferida y el tamaño del grupo.`
-          : `Reference prices:\n${lines.join('\n')}\nFor a final quote, tell us your preferred date and group size.`;
-        return { answer, intent: 'pricing', confidence: 0.85 };
-      }
+          : `Reference prices:\n${lines.join('\n')}\nFor a final quote, tell us your preferred date and group size.`)
+        : (detectedLang === 'es'
+          ? 'Consulta los precios actualizados con el equipo de reservas — te darán toda la información precisa.'
+          : 'Check current prices with the booking team — they will give you accurate information.');
+      return { answer, intent: 'pricing', confidence: 0.85 };
     }
 
     const availKeywords = ['available', 'availability', 'date', 'fecha', 'disponible', 'dates', 'calendar',
       'disponibilidad', 'agenda', 'cupo'];
     if (availKeywords.some(k => normalized.includes(k)) || MONTH_NAMES.some(m => normalized.includes(m))) {
-      const dates = exp.availability.availableDates.filter(d => d.status === 'available');
-      if (dates.length > 0) {
-        const dateList = dates.map(d => d.date).join(', ');
-        const answer = detectedLang === 'es'
-          ? `Fechas disponibles actualmente: ${dateList}.\nTen en cuenta que el equipo debe confirmar la disponibilidad final antes de la reserva. ¿Qué fecha te interesa?`
-          : `Currently listed available dates: ${dateList}.\nPlease note the team must confirm final availability before reservation. What date are you interested in?`;
-        return { answer, intent: 'availability', confidence: 0.85 };
-      }
+      const dates = exp.availability.availableDates.filter(d => d.status === 'available' || d.status === 'limited');
+      const answer = dates.length > 0
+        ? (detectedLang === 'es'
+          ? `Fechas disponibles actualmente: ${dates.map(d => d.date).join(', ')}.\nTen en cuenta que el equipo debe confirmar la disponibilidad final antes de la reserva. ¿Qué fecha te interesa?`
+          : `Currently listed available dates: ${dates.map(d => d.date).join(', ')}.\nPlease note the team must confirm final availability before reservation. What date are you interested in?`)
+        : (detectedLang === 'es'
+          ? 'El equipo de reservas puede confirmar la disponibilidad para la fecha que te interesa. Escríbenos tu fecha preferida.'
+          : 'The booking team can confirm availability for your preferred date. Write us your preferred date.');
+      return { answer, intent: 'availability', confidence: 0.85 };
     }
   }
 

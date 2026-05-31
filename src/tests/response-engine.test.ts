@@ -13,6 +13,7 @@ import {
   stripHandoffPhrases,
   isTruncatedReply,
 } from '../services/response-engine.js';
+import { PRICING_NOT_AVAILABLE, AVAILABILITY_NOT_AVAILABLE } from '../services/dynamic-data-service.js';
 import { sendAlert } from '../services/alert-service.js';
 import { insertMediaSendAt, getLatestOwnerAlertBody } from './helpers/db-test-helpers.js';
 
@@ -1205,6 +1206,57 @@ describe('processMessage', () => {
     expect(result.shouldAlertOwner).toBe(true);
   });
 
+  it('handoffs and sets urgent score on reservation intent after price when limit reached', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: true, reason: 'hourly_limit' });
+    const phone = '573001112288';
+    repos.conversation.upsert(phone, {
+      collected_name: 'Juana',
+      collected_plan: '2d1n_mining',
+      collected_people: 1,
+      collected_date: 'sabado 5 de septiembre',
+      collected_transport_need: 'own',
+      price_given_at: new Date().toISOString(),
+      lead_score: 23,
+    });
+    repos.message.addMessage({
+      customer_phone: phone, direction: 'outbound', message_type: 'text',
+      body: '¿Te gustaría reservar para esa fecha?',
+      created_at: new Date(Date.now() - 5_000).toISOString(),
+    });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'Si me gustaria reservar' });
+    expect(result.reply).toContain('Juana');
+    expect(result.shouldAlertOwner).toBe(true);
+    expect(result.leadScore).toBeGreaterThanOrEqual(95);
+    expect(result.reply.toLowerCase()).not.toContain('responderte a medias');
+  });
+
+  it('uses date selection fallback and boosts score when date selected after price under limit', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: true, reason: 'hourly_limit' });
+    const phone = '573001112292';
+    repos.conversation.upsert(phone, {
+      collected_name: 'Juana',
+      collected_plan: '2d1n_mining',
+      collected_people: 1,
+      collected_transport_need: 'public_bus',
+      price_given_at: new Date().toISOString(),
+      lead_score: 23,
+    });
+    repos.message.addMessage({
+      customer_phone: phone, direction: 'outbound', message_type: 'text',
+      body: 'Sábado 1 de agosto\nSábado 15 de agosto',
+      created_at: new Date(Date.now() - 5_000).toISOString(),
+    });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'la del primero esta bien' });
+    expect(result.reply).toContain('fecha tentativa');
+    expect(result.leadScore).toBeGreaterThanOrEqual(50);
+    expect(result.shouldAlertOwner).toBe(true);
+    expect(result.reply.toLowerCase()).not.toContain('confundirte con el valor');
+  });
+
   it('summarizes public bus as customer-paid transport in handoff', async () => {
     mockLlmComplete.mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
@@ -1366,6 +1418,89 @@ describe('processMessage', () => {
     await processMessage({ repos, customerPhone: phone, message: 'si tenemos vehiculo propio moto' });
     const conv = repos.conversation.getByPhone(phone) as { collected_transport_need: string | null };
     expect(conv.collected_transport_need).toBe('own');
+  });
+
+  it('captures transport from "si mi carro"', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: { reply: 'Perfecto, con tu carro esta bien!', intent: 'general', lead_score_delta: 5, should_send_image: false, needs_human: false, missing_fields: [], collected_fields: {} },
+      promptTokens: 500, completionTokens: 30,
+    }));
+    const phone = '573001112286';
+    await processMessage({ repos, customerPhone: phone, message: 'si mi carro' });
+    const conv = repos.conversation.getByPhone(phone) as { collected_transport_need: string | null };
+    expect(conv.collected_transport_need).toBe('own');
+  });
+
+  it('does not classify "necesito carro desde Bogota" as own transport', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: { reply: 'Claro, lo validamos.', intent: 'general', lead_score_delta: 5, should_send_image: false, needs_human: false, missing_fields: [], collected_fields: {} },
+      promptTokens: 500, completionTokens: 30,
+    }));
+    const phone = '573001112289';
+    await processMessage({ repos, customerPhone: phone, message: 'necesito carro desde Bogota' });
+    const conv = repos.conversation.getByPhone(phone) as { collected_transport_need: string | null };
+    expect(conv.collected_transport_need).not.toBe('own');
+  });
+
+  it('does not classify "hay transporte en carro" as own transport', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: { reply: 'Te cuento.', intent: 'general', lead_score_delta: 5, should_send_image: false, needs_human: false, missing_fields: [], collected_fields: {} },
+      promptTokens: 500, completionTokens: 30,
+    }));
+    const phone = '573001112290';
+    await processMessage({ repos, customerPhone: phone, message: 'hay transporte en carro?' });
+    const conv = repos.conversation.getByPhone(phone) as { collected_transport_need: string | null };
+    expect(conv.collected_transport_need).not.toBe('own');
+  });
+
+  it('captures public bus from "voy en bus"', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: { reply: 'Perfecto, bus publico por tu cuenta.', intent: 'general', lead_score_delta: 5, should_send_image: false, needs_human: false, missing_fields: [], collected_fields: {} },
+      promptTokens: 500, completionTokens: 30,
+    }));
+    const phone = '573001112291';
+    await processMessage({ repos, customerPhone: phone, message: 'voy en bus' });
+    const conv = repos.conversation.getByPhone(phone) as { collected_transport_need: string | null };
+    expect(conv.collected_transport_need).toBe('public_bus');
+  });
+
+  it('captures exact date from "sabado 5 de septiembre"', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: { reply: 'Perfecto! Sabado 5 de septiembre.', intent: 'general', lead_score_delta: 5, should_send_image: false, needs_human: false, missing_fields: [], collected_fields: {} },
+      promptTokens: 500, completionTokens: 30,
+    }));
+    const phone = '573001112287';
+    await processMessage({ repos, customerPhone: phone, message: 'para sabado 5 de septiembre' });
+    const conv = repos.conversation.getByPhone(phone) as { collected_date: string | null };
+    expect(conv.collected_date).toBe('sabado 5 de septiembre');
+  });
+
+  it('resolves "la del primero" to date from availability list', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: { reply: 'Perfecto! Tomamos el 1 de agosto.', intent: 'general', lead_score_delta: 15, should_send_image: false, needs_human: false, missing_fields: [], collected_fields: {} },
+      promptTokens: 500, completionTokens: 30,
+    }));
+    const phone = '573001112293';
+    repos.message.addMessage({
+      customer_phone: phone, direction: 'outbound', message_type: 'text',
+      body: '- Sábado 1 de agosto\n- Sábado 15 de agosto\n¿Cuál te llama la atención?',
+      created_at: new Date(Date.now() - 5_000).toISOString(),
+    });
+    await processMessage({ repos, customerPhone: phone, message: 'la del primero esta bien' });
+    const conv = repos.conversation.getByPhone(phone) as { collected_date: string | null };
+    expect(conv.collected_date).toBe('sábado 1 de agosto');
   });
 
   it('handles "ya lo dije" correction and continues flow', async () => {
@@ -1903,6 +2038,44 @@ describe('processMessage', () => {
     const result = await processMessage({ repos, customerPhone: phone, message: '?' });
     expect(result.reply).toContain('glad');
     expect(result.reply).toContain('Michael');
+  });
+
+  it('replaces fabricated price reply when pricing is unavailable', async () => {
+    const skills = getSkills();
+    const exp = skills.andeanScapes.experiences[0];
+    const origPricing = exp.pricing;
+    const origAvailability = exp.availability;
+    exp.pricing = { currency: 'COP', lastUpdated: '1970-01-01', items: [], botRules: [PRICING_NOT_AVAILABLE] };
+    exp.availability = { lastUpdated: '1970-01-01', timezone: 'America/Bogota', availableDates: [], botRule: AVAILABILITY_NOT_AVAILABLE };
+    try {
+      mockLlmComplete.mockReset();
+      vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+      vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+      const phone = '573001112281';
+      repos.conversation.upsert(phone, { collected_name: 'Juana', collected_people: 2 });
+
+      mockLlmComplete.mockResolvedValue({
+        turn: {
+          reply: 'Para dos personas el plan 2D/1N tiene un valor de $1.300.000 COP total.',
+          sales_phase: 'pricing',
+          action: 'present_price',
+          collected_fields: { name: null, plan: null, people: null, date: null, transport_need: null, pet: null },
+          lead: { intent: 'qualifying', buying_signals: [], blockers: [], score_delta: 5, confidence: 0.8 },
+          img: true,
+        },
+        tokens: { prompt: 100, completion: 20 },
+      });
+
+      const result = await processMessage({ repos, customerPhone: phone, message: 'somos 2' });
+
+      expect(result.reply).toContain('ajustando precios');
+      expect(result.reply).not.toContain('$1.300.000');
+      expect(result.shouldSendImage).toBe(false);
+      expect(result.priceJustGiven).toBe(false);
+    } finally {
+      exp.pricing = origPricing;
+      exp.availability = origAvailability;
+    }
   });
 });
 
