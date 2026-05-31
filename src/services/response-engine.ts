@@ -1,4 +1,4 @@
-import { getSkills, type Skills } from './skill-loader.js';
+import { getSkills, refreshSkills, type Skills } from './skill-loader.js';
 import { logger } from '../config/logger.js';
 import { env } from '../config/env.js';
 import { scoreMessage, computeHybridScore, type LlmLeadInput } from './lead-scoring.js';
@@ -8,7 +8,7 @@ import { buildSystemPrompt } from './deepseek-client.js';
 import { DeepSeekLlmClient } from './llm/deepseek-llm-client.js';
 import type { LlmTurn } from './llm/llm-client.js';
 import type { MergedQualification, ProcessMessageInput, ProcessMessageOutput } from './types.js';
-import { getActiveExperience, getPlans, getPricingItems, getShortDescription } from './product-registry.js';
+import { getActiveExperience, getPlans, getPricingItems, getShortDescription, isPricingAvailable } from './product-registry.js';
 import {
   extractBookingFields,
   contextAwareExtract,
@@ -170,6 +170,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     return { reply: '', shouldSendReply: false, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendImage: false, priceJustGiven: false };
   }
 
+  await refreshSkills();
   const skills = getSkills();
 
   const handedOffRow = repos.conversation.getHandedOffAt(customerPhone);
@@ -252,6 +253,10 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   const preLimitHandoffAllowed = isQualificationComplete(dbQualification) && !!preLimitPriceRow
     && isReservationIntentOrConfirmation(message, lastAssistantQuestion);
 
+  const preLimitReservationIntent = !!preLimitPriceRow && isReservationIntentOrConfirmation(message, lastAssistantQuestion);
+
+  const preLimitDateSelected = !!preLimitPriceRow && !!dbQualification.fecha;
+
   if (preLimitPriceRow && isPartnerConsultPause(message)) {
     return { reply: buildPartnerConsultSummary(dbQualification, lang, skills), shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: false, shouldSendImage: false, priceJustGiven: false };
   }
@@ -259,12 +264,23 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   const limits = checkTimeWindow(repos, customerPhone);
   if (limits.isLimited) {
     logger.warn({ phone: customerPhone, reason: limits.reason }, '[BOT] message limit reached');
-    if (preLimitHandoffAllowed) {
+    if (preLimitHandoffAllowed || preLimitReservationIntent) {
       repos.conversation.setHandedOff(customerPhone);
-      return { reply: safeReservationHandoff(dbQualification, skills.fallbackReplies[lang], lang), shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: true, shouldSendImage: false, priceJustGiven: false };
+      const overrideScore = Math.max(currentScore, skills.salesStrategy.urgentLeadThreshold);
+      repos.conversation.upsert(customerPhone, { lead_score: overrideScore });
+      return { reply: safeReservationHandoff(dbQualification, skills.fallbackReplies[lang], lang), shouldSendReply: true, leadScore: overrideScore, usedAi: false, shouldAlertOwner: true, shouldSendImage: false, priceJustGiven: false };
     }
     if (preLimitPriceRow) {
       const fb = skills.fallbackReplies[lang];
+      if (preLimitDateSelected) {
+        const newDate = String(dbQualification.fecha ?? '');
+        const dateReply = newDate
+          ? fb.dateSelectedLimited.replace('{{date}}', newDate)
+          : fb.dateSelectedLimitedNoDate;
+        const boostScore = Math.max(currentScore, skills.salesStrategy.hotLeadThreshold - 5);
+        repos.conversation.upsert(customerPhone, { lead_score: boostScore });
+        return { reply: dateReply, shouldSendReply: true, leadScore: boostScore, usedAi: false, shouldAlertOwner: true, shouldSendImage: false, priceJustGiven: false };
+      }
       return { reply: colombiaTimeAwareReply(fb.messageLimitAfterPrice, fb.messageLimitAfterPriceAfterHours, fb.messageLimitAfterPriceMorningHours), shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: true, shouldSendImage: false, priceJustGiven: false };
     }
     return { reply: skills.fallbackReplies[lang].messageLimitReached, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: false, shouldSendImage: false, priceJustGiven: false };
@@ -319,6 +335,13 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   let replyText = llmTurn.reply || '';
   replyText = stripHandoffPhrases(replyText);
 
+  const exp = getActiveExperience(skills);
+  const pricingAvailable = isPricingAvailable(exp);
+  if (!pricingAvailable && replyMentionsPrice(replyText)) {
+    replyText = skills.fallbackReplies[lang].priceUnavailable;
+    llmTurn.img = false;
+  }
+
   if (!replyText.trim()) {
     const fallbackText = collectedFields?.nombre
       ? (skills.fallbackReplies[lang].llmFailureWarm?.replace('{{name}}', String(collectedFields.nombre)) ?? skills.fallbackReplies[lang].aiFailureQualified)
@@ -368,7 +391,8 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   if (finalPriceJustGiven && !priceRow) repos.conversation.upsert(customerPhone, { price_given_at: new Date().toISOString() });
 
   const outputPriceJustGiven = !needsHumanEffective && finalPriceJustGiven;
-  const outputPriceFollowUpText = outputPriceJustGiven ? computePriceFollowUp(merged.personas, merged.plan as string | undefined, lang, skills) : undefined;
+  const llmAlreadyGaveDetailedPrice = initialPriceJustGiven && replyText.length > 150;
+  const outputPriceFollowUpText = outputPriceJustGiven && !llmAlreadyGaveDetailedPrice ? computePriceFollowUp(merged.personas, merged.plan as string | undefined, lang, skills) : undefined;
 
   if (merged.mascota && PET_KEYWORDS.test(message) && !/pet[- ]friendly|mascotas?|perros?|dogs?|pets?/i.test(replyText)) {
     replyText = lang === 'es'

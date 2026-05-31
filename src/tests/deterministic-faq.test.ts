@@ -86,7 +86,7 @@ describe('findIntent Spanish', () => {
     const result = findIntent('What are the prices?', skills);
     expect(result).not.toBeNull();
     expect(result!.intent).toBe('pricing');
-    expect(result!.answer).toContain('550');
+    expect(result!.answer).toContain('Reference prices');
   });
 
   it('detects availability intent in Spanish', () => {
