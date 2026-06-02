@@ -10,6 +10,7 @@ export interface BotCommand {
   name: string;
   description: string;
   usage?: string;
+  requiresSecret?: boolean;
   handler: (ctx: CommandContext) => Promise<string>;
 }
 
