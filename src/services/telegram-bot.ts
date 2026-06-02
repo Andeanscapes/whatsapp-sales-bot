@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'crypto';
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 import type { Repositories } from '../db/repositories/index.js';
@@ -78,6 +79,21 @@ async function processUpdate(update: TelegramUpdate, repos: Repositories): Promi
     return;
   }
 
+  if (cmd.requiresSecret) {
+    if (parsed.args.length < 1) {
+      await sendTelegramMessage(msg.chat.id, 'Token de administrador requerido.');
+      return;
+    }
+    const providedSecret = parsed.args[parsed.args.length - 1];
+    const expectedBuf = Buffer.from(env.ADMIN_SECRET);
+    const providedBuf = Buffer.from(providedSecret);
+    if (expectedBuf.length !== providedBuf.length || !timingSafeEqual(expectedBuf, providedBuf)) {
+      await sendTelegramMessage(msg.chat.id, 'Token de administrador invalido.');
+      return;
+    }
+    parsed.args.pop();
+  }
+
   const ctx: CommandContext = {
     repos,
     args: parsed.args,
@@ -118,14 +134,16 @@ function registerCommands(): void {
   registerCommand({
     name: 'customer',
     description: 'Perfil completo de cliente',
-    usage: '<telefono>',
+    usage: '<telefono> <secret>',
+    requiresSecret: true,
     handler: customerHandler,
   });
 
   registerCommand({
     name: 'send',
     description: 'Enviar WhatsApp a cliente',
-    usage: '<telefono> <mensaje>',
+    usage: '<telefono> <mensaje> <secret>',
+    requiresSecret: true,
     handler: sendHandler,
   });
 
@@ -139,21 +157,24 @@ function registerCommands(): void {
   registerCommand({
     name: 'block',
     description: 'Bloquear numero (opt-out)',
-    usage: '<telefono>',
+    usage: '<telefono> <secret>',
+    requiresSecret: true,
     handler: blockHandler,
   });
 
   registerCommand({
     name: 'pause',
     description: 'Pausar respuestas del bot a clientes',
-    usage: '',
+    usage: '<secret>',
+    requiresSecret: true,
     handler: pauseHandler,
   });
 
   registerCommand({
     name: 'resume',
     description: 'Reactivar respuestas del bot',
-    usage: '',
+    usage: '<secret>',
+    requiresSecret: true,
     handler: resumeHandler,
   });
 

@@ -1,11 +1,7 @@
 import { env } from '../config/env.js';
+import { logger } from '../config/logger.js';
 
 const WHATSAPP_FETCH_TIMEOUT_MS = 10_000;
-
-interface WhatsAppApiError {
-  status: number;
-  body: string;
-}
 
 export async function sendText(to: string, text: string): Promise<void> {
   const url = `https://graph.facebook.com/${env.WHATSAPP_GRAPH_API_VERSION}/${env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
@@ -24,8 +20,8 @@ export async function sendText(to: string, text: string): Promise<void> {
     }),
   });
   if (!response.ok) {
-    const error: WhatsAppApiError = { status: response.status, body: await response.text() };
-    throw new Error(`WhatsApp API error: ${error.status} ${error.body}`);
+    logger.warn({ status: response.status }, '[WHATSAPP] text send failed');
+    throw new Error(`WhatsApp API error: HTTP ${response.status}`);
   }
 }
 
@@ -46,7 +42,7 @@ export async function sendImageUrl(to: string, imageUrl: string, caption: string
     }),
   });
   if (!response.ok) {
-    const error: WhatsAppApiError = { status: response.status, body: await response.text() };
-    throw new Error(`WhatsApp image API error: ${error.status} ${error.body}`);
+    logger.warn({ status: response.status }, '[WHATSAPP] image send failed');
+    throw new Error(`WhatsApp API error: HTTP ${response.status}`);
   }
 }

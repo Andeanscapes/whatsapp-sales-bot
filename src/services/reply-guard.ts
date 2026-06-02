@@ -198,6 +198,39 @@ export function containsUnsafeReservationClaim(reply: string): boolean {
     || /\b(listo,? ya|ya,? listo)\s*(?:esta|qued[oó]|confirmado|reservado|agendado|separado)\b/i.test(reply);
 }
 
+export function containsPromptLeakOrPolicyViolation(reply: string): boolean {
+  const norm = normalizeText(reply);
+
+  const leakPatterns = [
+    /\bSALES CONTEXT\b/i,
+    /\bBUSINESS CONTEXT\b/i,
+    /\bFASE [0-5]\b/i,
+    /\bPHASE [0-5]\b/i,
+    /\bsystem prompt\b/i,
+    /\binstrucciones del sistema\b/i,
+    /\bLO QUE YA SABEMOS\b/i,
+    /\bSALES[- ]SCORING\b/i,
+    /\bSALES PHASE ACTUAL\b/i,
+    /\bFORMATO DE RESPUESTA\b/i,
+    /\bDATOS SENSIBLES\b/i,
+    /\bREAL[- ]PERSON PACING\b/i,
+    /\bCONVERSACION NATURAL\b/i,
+  ];
+  if (leakPatterns.some(p => p.test(norm))) return true;
+
+  if (/\bdescuento\b/i.test(norm)
+    && !/\b(no hay|no tenemos|no ofrecemos|sin descuento|ningun descuento)\b/i.test(norm)) {
+    return true;
+  }
+
+  if (/\bgratis\b/i.test(norm)
+    && !/\b(no es|no son|no incluye|gratuito|gratuita)\b/i.test(norm)) {
+    return true;
+  }
+
+  return false;
+}
+
 export function qualificationSummary(q: MergedQualification, lang: 'es' | 'en'): string {
   const parts: string[] = [];
   if (q.personas != null) parts.push(lang === 'es' ? `${q.personas} personas` : `${q.personas} people`);
