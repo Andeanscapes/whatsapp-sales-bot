@@ -1,14 +1,12 @@
 import Fastify from 'fastify';
 import type { Repositories } from './db/repositories/index.js';
-import { env } from './config/env.js';
+import { logger } from './config/logger.js';
 import { healthRoutes } from './routes/health.route.js';
 import { whatsappWebhookRoutes } from './routes/whatsapp-webhook.route.js';
 
 export async function buildApp(repos: Repositories) {
   const app = Fastify({
-    logger: {
-      level: env.LOG_LEVEL,
-    },
+    loggerInstance: logger,
   });
 
   await app.register(healthRoutes, { repos });
