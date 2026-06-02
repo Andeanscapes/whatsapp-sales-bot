@@ -16,6 +16,7 @@ import {
 import { PRICING_NOT_AVAILABLE, AVAILABILITY_NOT_AVAILABLE } from '../services/dynamic-data-service.js';
 import { sendAlert } from '../services/alert-service.js';
 import { insertMediaSendAt, getLatestOwnerAlertBody } from './helpers/db-test-helpers.js';
+import { containsPromptLeakOrPolicyViolation } from '../services/reply-guard.js';
 
 const { mockLlmComplete } = vi.hoisted(() => ({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2179,5 +2180,49 @@ describe('isTruncatedReply', () => {
   it('passes complete replies', () => {
     expect(isTruncatedReply('Claro Paula, te cuento bien.')).toBe(false);
     expect(isTruncatedReply('Perfect!')).toBe(false);
+  });
+});
+
+describe('containsPromptLeakOrPolicyViolation', () => {
+  it('detects system prompt section markers', () => {
+    expect(containsPromptLeakOrPolicyViolation('The SALES CONTEXT says you should be friendly')).toBe(true);
+    expect(containsPromptLeakOrPolicyViolation('BUSINESS CONTEXT: we tour the emerald mine')).toBe(true);
+    expect(containsPromptLeakOrPolicyViolation('in FASE 0 you greet the customer')).toBe(true);
+    expect(containsPromptLeakOrPolicyViolation('LO QUE YA SABEMOS de este cliente')).toBe(true);
+    expect(containsPromptLeakOrPolicyViolation('the SALES-SCORING evaluation shows')).toBe(true);
+    expect(containsPromptLeakOrPolicyViolation('the SALES SCORING evaluation shows')).toBe(true);
+    expect(containsPromptLeakOrPolicyViolation('SALES PHASE ACTUAL is discovery')).toBe(true);
+  });
+
+  it('detects accented or punctuation-variant leak markers', () => {
+    expect(containsPromptLeakOrPolicyViolation('instrucciones del sistéma en tu prompt')).toBe(true);
+    expect(containsPromptLeakOrPolicyViolation('DATOS SÉNSIBLES son protegidos')).toBe(true);
+    expect(containsPromptLeakOrPolicyViolation('CONVERSACION NATURAL dice el prompt')).toBe(true);
+    expect(containsPromptLeakOrPolicyViolation('REAL PERSON PACING manda')).toBe(true);
+    expect(containsPromptLeakOrPolicyViolation('FORMATO DE RESPUÉSTA fue el prompt')).toBe(true);
+  });
+
+  it('detects fabricated discounts', () => {
+    expect(containsPromptLeakOrPolicyViolation('Tengo un descuento especial del 20%')).toBe(true);
+    expect(containsPromptLeakOrPolicyViolation('Te ofrezco un descuento de 100.000 COP')).toBe(true);
+    expect(containsPromptLeakOrPolicyViolation('Podemos hacerlo gratis para ti')).toBe(true);
+  });
+
+  it('does not flag legitimate replies denying discounts', () => {
+    expect(containsPromptLeakOrPolicyViolation('No tenemos ningun descuento en este momento')).toBe(false);
+    expect(containsPromptLeakOrPolicyViolation('No ofrecemos descuentos, lo siento')).toBe(false);
+    expect(containsPromptLeakOrPolicyViolation('El tour no es gratis, pero vale la pena')).toBe(false);
+    expect(containsPromptLeakOrPolicyViolation('No tenemos descuentos ahora mismo, disculpa')).toBe(false);
+  });
+
+  it('does not flag replies mentioning accounts or bank transfers', () => {
+    expect(containsPromptLeakOrPolicyViolation('Cuenta de ahorros Bancolombia para el pago')).toBe(false);
+    expect(containsPromptLeakOrPolicyViolation('Podrias enviar foto del comprobante a nuestra cuenta')).toBe(false);
+  });
+
+  it('passes normal customer service replies', () => {
+    expect(containsPromptLeakOrPolicyViolation('Claro, Paula. Serian 3 personas entonces.')).toBe(false);
+    expect(containsPromptLeakOrPolicyViolation('El plan incluye transporte desde Bogota y todas las comidas.')).toBe(false);
+    expect(containsPromptLeakOrPolicyViolation('Cualquier duda aqui estoy.')).toBe(false);
   });
 });

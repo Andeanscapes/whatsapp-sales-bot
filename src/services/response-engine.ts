@@ -32,6 +32,7 @@ import {
   stripHandoffPhrases,
   safeReservationHandoff,
   containsUnsafeReservationClaim,
+  containsPromptLeakOrPolicyViolation,
   colombiaTimeAwareReply,
   isTruncatedReply,
 } from './reply-guard.js';
@@ -46,6 +47,8 @@ export {
 };
 
 export type { ProcessMessageInput, ProcessMessageOutput };
+
+const MAX_INBOUND_CHARS = 1500;
 
 const OPT_OUT_KEYWORDS_ES = ['detener', 'cancelar mensajes', 'no me escriban', 'basta', 'suficiente', 'dejen de escribirme', 'no me contacten', 'no me contacte', 'sacame de la lista', 'no quiero recibir mensajes', 'no quiero mas mensajes', 'borra mis datos', 'eliminame', 'eliminame de la lista', 'no me vuelvan a escribir', 'no me manden mas mensajes', 'dejen de molestar', 'paren', 'bloqueo', 'reporto'];
 const OPT_OUT_KEYWORDS_EN = ['stop', 'unsubscribe', 'no more messages', 'remove me', 'do not contact me', 'take me off', 'take me off the list', 'please stop', 'enough', "i'm done", 'i am done', 'unsubscribe me', 'do not text', 'do not message', 'stop messaging', 'leave me alone', 'do not disturb', 'block', 'report spam'];
@@ -299,8 +302,9 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   const salesPhase = repos.conversation.getSalesPhase(customerPhone);
   const systemPrompt = buildSystemPrompt(skills, lang, collectedFields, salesPhase ?? undefined);
   const llmHistory = recentMessages.map(m => ({ role: m.role, content: m.content }));
+  const llmMessage = message.length > MAX_INBOUND_CHARS ? message.slice(0, MAX_INBOUND_CHARS) : message;
 
-  const llmResult = await llmClient.complete({ systemPrompt, message, history: llmHistory, lang });
+  const llmResult = await llmClient.complete({ systemPrompt, message: llmMessage, history: llmHistory, lang });
 
   if (!llmResult) {
     logger.warn('[LLM] DeepSeek call failed, sending minimal fallback');
@@ -385,6 +389,11 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     } else {
       replyText = skills.fallbackReplies[lang].aiFailureQualified;
     }
+  }
+
+  if (!needsHumanEffective && containsPromptLeakOrPolicyViolation(replyText)) {
+    logger.warn({ phone: customerPhone }, '[BOT] blocked prompt leak or policy violation');
+    replyText = skills.fallbackReplies[lang].aiFailureQualified;
   }
 
   const finalPriceJustGiven = replyMentionsPrice(replyText);

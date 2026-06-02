@@ -82,7 +82,7 @@ export class DeepSeekLlmClient implements LlmClient {
       messages.push({ role: h.role, content: h.content });
     }
 
-    messages.push({ role: 'user', content: input.message });
+    messages.push({ role: 'user', content: `<customer_message>${input.message.replace(/<\/customer_message>/gi, '')}</customer_message>` });
 
     const body: Record<string, unknown> = {
       model: this.model,
