@@ -14,7 +14,6 @@ export default defineConfig({
       PARTNER_NAME: 'Test Partner',
       OWNER_PERSONAL_WHATSAPP_NUMBER: '573000000000',
       DEEPSEEK_API_KEY: 'test',
-      ADMIN_SECRET: 'test',
     },
   },
 });

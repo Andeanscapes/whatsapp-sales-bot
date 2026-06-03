@@ -23,3 +23,15 @@ export function checkTimeWindow(repos: Repositories, phone: string): TimeWindowR
 
   return { isLimited: false };
 }
+
+const CUSTOMER_SERVICE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * WhatsApp only allows free-form (non-template) messages within 24h of the
+ * customer's last inbound message. Returns false when the window is closed.
+ */
+export function isWithinServiceWindow(repos: Repositories, phone: string, now: Date = new Date()): boolean {
+  const lastInboundAt = repos.message.getLastInboundAt(phone);
+  if (!lastInboundAt) return false;
+  return now.getTime() - new Date(lastInboundAt).getTime() < CUSTOMER_SERVICE_WINDOW_MS;
+}

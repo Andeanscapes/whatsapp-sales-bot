@@ -249,6 +249,7 @@ const langFallbackSchema = z.object({
   safeReservationHandoffAlt2: z.string(),
   safeReservationHandoffAfterHours: z.string(),
   safeReservationHandoffMorningHours: z.string(),
+  referralHandoff: z.string(),
   softCloseReply: z.string(),
   confirmReservationPrompt: z.string(),
   priceUnavailable: z.string(),

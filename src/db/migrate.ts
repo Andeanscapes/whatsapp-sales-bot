@@ -41,6 +41,32 @@ export function migrate(db: Database.Database): void {
   } catch {
     // column already exists — safe to ignore
   }
+  try {
+    db.exec('ALTER TABLE conversations ADD COLUMN assigned_line_id TEXT');
+  } catch {
+    // column already exists — safe to ignore
+  }
+  try {
+    db.exec('ALTER TABLE conversations ADD COLUMN assigned_agent_chat TEXT');
+  } catch {
+    // column already exists — safe to ignore
+  }
+  try {
+    db.exec("ALTER TABLE conversations ADD COLUMN conversation_mode TEXT DEFAULT 'bot'");
+  } catch {
+    // column already exists — safe to ignore
+  }
+  try {
+    db.exec('ALTER TABLE conversations ADD COLUMN converted_at TEXT');
+  } catch {
+    // column already exists — safe to ignore
+  }
+  db.exec(`CREATE TABLE IF NOT EXISTS bridge_sessions (
+    agent_chat_id TEXT PRIMARY KEY,
+    customer_phone TEXT NOT NULL,
+    opened_at TEXT NOT NULL,
+    last_activity_at TEXT NOT NULL
+  )`);
 }
 
 export function createAndMigrate(dbPath: string): Database.Database {

@@ -19,7 +19,11 @@ CREATE TABLE IF NOT EXISTS conversations (
   collected_plan TEXT,
   price_given_at TEXT,
   handed_off_at TEXT,
-  soft_closed_at TEXT
+  soft_closed_at TEXT,
+  converted_at TEXT,
+  assigned_line_id TEXT,
+  assigned_agent_chat TEXT,
+  conversation_mode TEXT DEFAULT 'bot'
 );
 
 CREATE TABLE IF NOT EXISTS messages (
@@ -71,4 +75,11 @@ CREATE TABLE IF NOT EXISTS media_sends (
   customer_phone TEXT NOT NULL,
   media_id TEXT NOT NULL,
   sent_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS bridge_sessions (
+  agent_chat_id TEXT PRIMARY KEY,
+  customer_phone TEXT NOT NULL,
+  opened_at TEXT NOT NULL,
+  last_activity_at TEXT NOT NULL
 );

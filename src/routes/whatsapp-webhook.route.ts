@@ -4,10 +4,14 @@ import { z } from 'zod';
 import type { Repositories } from '../db/repositories/index.js';
 import { env } from '../config/env.js';
 import { getSkills } from '../services/skill-loader.js';
-import { processMessage } from '../services/response-engine.js';
+import { buildHandedOffReply, processMessage } from '../services/response-engine.js';
 import { sendText, sendImageUrl } from '../services/whatsapp-client.js';
 import { recordImageSend, selectImageForPlan, canSendPlanImage } from '../services/media-service.js';
 import { sendAlert } from '../services/alert-service.js';
+import { sendTelegramMessage } from '../services/telegram-bot.js';
+import { getLineById, hasRoutingConfig, isReferralLine } from '../services/lead-routing.js';
+import { isBridgeActive } from '../services/bridge-service.js';
+import { bridgeMessages } from '../services/bridge-messages.js';
 import { logger } from '../config/logger.js';
 
 const processingPhones = new Set<string>();
@@ -44,7 +48,7 @@ const webhookPayloadSchema = z.object({
   })),
 }).passthrough();
 
-interface ExtractedMessage {
+export interface ExtractedMessage {
   from: string;
   id: string;
   text: string;
@@ -67,6 +71,80 @@ function extractMessages(body: unknown): ExtractedMessage[] | null {
     }
   }
   return result.length > 0 ? result : null;
+}
+
+/**
+ * When a human agent is actively bridging this customer (same API line), the
+ * bot must stay silent: store the inbound and forward it to the assigned agent.
+ * Opted-out customers are ignored. Only a live `bridge_active` session bypasses
+ * the bot — `isBridgeActive` reaps stale/abandoned sessions and reverts the mode
+ * to `bot`, so the bot resumes and the conversation is never silently dropped.
+ * `referred` customers (handed to another line) keep getting bot replies here.
+ */
+export async function forwardBridgeMessage(repos: Repositories, msg: ExtractedMessage): Promise<boolean> {
+  if (!hasRoutingConfig()) return false;
+  if (repos.isPaused()) return false;
+  if (repos.optOut.isOptedOut(msg.from)) return false;
+  if (!isBridgeActive(repos, msg.from)) return false;
+
+  const session = repos.bridgeSession.getByCustomer(msg.from);
+  if (!session) return false;
+
+  repos.message.addMessage({
+    whatsapp_message_id: msg.id,
+    customer_phone: msg.from,
+    direction: 'inbound',
+    message_type: 'text',
+    body: msg.text,
+    created_at: new Date().toISOString(),
+    raw_json: null,
+  });
+
+  try {
+    await sendTelegramMessage(session.agentChatId, bridgeMessages.newCustomerMessage(msg.from, msg.text));
+    return true;
+  } catch (err) {
+    logger.warn({ err, phone: msg.from, chatId: session.agentChatId }, '[BRIDGE] failed to notify active agent; resuming bot path');
+    repos.bridgeSession.close(session.agentChatId);
+    repos.conversation.setMode(msg.from, 'bot');
+    return false;
+  }
+}
+
+export async function forwardPostHandoffMessage(repos: Repositories, msg: ExtractedMessage): Promise<string | null> {
+  if (!hasRoutingConfig()) return null;
+  if (repos.isPaused()) return null;
+  if (repos.optOut.isOptedOut(msg.from)) return null;
+  if (!repos.conversation.getHandedOffAt(msg.from)) return null;
+
+  const assignment = repos.conversation.getAssignment(msg.from);
+  if (!assignment) return null;
+
+  const line = getLineById(assignment.assignedLineId);
+  const isReferral = isReferralLine(line);
+
+  repos.message.addMessage({
+    whatsapp_message_id: msg.id,
+    customer_phone: msg.from,
+    direction: 'inbound',
+    message_type: 'text',
+    body: msg.text,
+    created_at: new Date().toISOString(),
+    raw_json: null,
+  });
+
+  try {
+    await sendTelegramMessage(assignment.assignedAgentChat, bridgeMessages.postHandoffCustomerMessage({
+      phone: msg.from,
+      text: msg.text,
+      bridge: line?.type === 'bridge',
+      displayNumber: isReferral ? line.displayNumber : undefined,
+    }));
+  } catch (err) {
+    logger.warn({ err, phone: msg.from, chatId: assignment.assignedAgentChat }, '[HANDOFF] failed to notify assigned agent');
+  }
+
+  return buildHandedOffReply(repos, msg.from, msg.text);
 }
 
 export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos: Repositories }): Promise<void> {
@@ -116,6 +194,23 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
       processingPhones.add(msg.from);
       repos.dedupe.markProcessed(msg.id);
       try {
+        // Inbound routing precedence: live bridge session > post-handoff notify > bot.
+        // The first two short-circuit the AI path entirely (no LLM tokens spent).
+        if (await forwardBridgeMessage(repos, msg)) continue;
+
+        const handoffReply = await forwardPostHandoffMessage(repos, msg);
+        if (handoffReply !== null) {
+          await sendText(msg.from, handoffReply);
+          repos.message.addMessage({
+            customer_phone: msg.from,
+            direction: 'outbound',
+            message_type: 'text',
+            body: handoffReply,
+            created_at: new Date().toISOString(),
+          });
+          continue;
+        }
+
         const result = await processMessage({ repos, customerPhone: msg.from, message: msg.text, messageId: msg.id });
 
         if (result.shouldSendReply) {
