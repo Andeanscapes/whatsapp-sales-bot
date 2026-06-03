@@ -6,6 +6,7 @@ import { loadSkills, setDynamicService, stripSkillsPricing } from './services/sk
 import { DynamicDataService, shouldStripStaticPricing } from './services/dynamic-data-service.js';
 import { logger } from './config/logger.js';
 import { startTelegramBot } from './services/telegram-bot.js';
+import { getRoutingConfig } from './services/lead-routing.js';
 
 async function start() {
   let hasDynamicData = false;
@@ -20,6 +21,7 @@ async function start() {
   }
 
   loadSkills();
+  getRoutingConfig();
 
   if (shouldStripStaticPricing(env.DYNAMIC_SKILL_URL, hasDynamicData)) {
     stripSkillsPricing();

@@ -1,4 +1,3 @@
-import { timingSafeEqual } from 'crypto';
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 import type { Repositories } from '../db/repositories/index.js';
@@ -8,10 +7,18 @@ import { leadsHandler } from '../commands/leads.command.js';
 import { recentHandler } from '../commands/recent.command.js';
 import { customerHandler } from '../commands/customer.command.js';
 import { sendHandler } from '../commands/send.command.js';
+import { leadHandler } from '../commands/lead.command.js';
+import { chatHandler } from '../commands/chat.command.js';
+import { endHandler } from '../commands/end.command.js';
 import { phasesHandler } from '../commands/phases.command.js';
 import { blockHandler } from '../commands/block.command.js';
+import { bookingHandler } from '../commands/booking.command.js';
 import { pauseHandler } from '../commands/pause.command.js';
 import { resumeHandler } from '../commands/resume.command.js';
+import { statusHandler } from '../commands/status.command.js';
+import { statsHandler } from '../commands/stats.command.js';
+import { isAllowedTelegramChat } from './lead-routing.js';
+import { sendBridgeReply } from './bridge-service.js';
 
 const ALERT_FETCH_TIMEOUT_MS = 10_000;
 const POLL_INTERVAL_MS = 5_000;
@@ -20,7 +27,7 @@ function telegramApiUrl(path: string): string {
   return `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}${path}`;
 }
 
-interface TelegramUpdate {
+export interface TelegramUpdate {
   update_id: number;
   message?: {
     message_id: number;
@@ -63,35 +70,31 @@ function parseCommand(text: string): { command: string; args: string[] } | null 
   return { command, args };
 }
 
-async function processUpdate(update: TelegramUpdate, repos: Repositories): Promise<void> {
+export async function processUpdate(update: TelegramUpdate, repos: Repositories): Promise<void> {
   const msg = update.message;
   if (!msg || !msg.text || !msg.from) return;
 
   const chatIdStr = String(msg.chat.id);
-  if (chatIdStr !== env.TELEGRAM_CHAT_ID) return;
+  if (!isAllowedTelegramChat(chatIdStr)) {
+    logger.warn({ chatId: chatIdStr, username: msg.from.username }, '[TELEGRAM_BOT] ignored message from unregistered chat');
+    return;
+  }
 
   const parsed = parseCommand(msg.text);
-  if (!parsed) return;
+  if (!parsed) {
+    const session = repos.bridgeSession.getByAgentChat(chatIdStr);
+    if (!session) return;
+
+    const result = await sendBridgeReply(repos, session.customerPhone, msg.text);
+    if (result.ok) repos.bridgeSession.touch(chatIdStr);
+    await sendTelegramMessage(msg.chat.id, result.message);
+    return;
+  }
 
   const cmd = getCommand(parsed.command);
   if (!cmd) {
     await sendTelegramMessage(msg.chat.id, 'Comando no reconocido. Usa /help para ver la lista.');
     return;
-  }
-
-  if (cmd.requiresSecret) {
-    if (parsed.args.length < 1) {
-      await sendTelegramMessage(msg.chat.id, 'Token de administrador requerido.');
-      return;
-    }
-    const providedSecret = parsed.args[parsed.args.length - 1];
-    const expectedBuf = Buffer.from(env.ADMIN_SECRET);
-    const providedBuf = Buffer.from(providedSecret);
-    if (expectedBuf.length !== providedBuf.length || !timingSafeEqual(expectedBuf, providedBuf)) {
-      await sendTelegramMessage(msg.chat.id, 'Token de administrador invalido.');
-      return;
-    }
-    parsed.args.pop();
   }
 
   const ctx: CommandContext = {
@@ -109,7 +112,7 @@ async function processUpdate(update: TelegramUpdate, repos: Repositories): Promi
   }
 }
 
-function registerCommands(): void {
+export function registerCommands(): void {
   registerCommand({
     name: 'report',
     description: 'Reporte diario de estadisticas',
@@ -134,17 +137,36 @@ function registerCommands(): void {
   registerCommand({
     name: 'customer',
     description: 'Perfil completo de cliente',
-    usage: '<telefono> <secret>',
-    requiresSecret: true,
+    usage: '<telefono>',
     handler: customerHandler,
   });
 
   registerCommand({
     name: 'send',
     description: 'Enviar WhatsApp a cliente',
-    usage: '<telefono> <mensaje> <secret>',
-    requiresSecret: true,
+    usage: '<telefono> <mensaje>',
     handler: sendHandler,
+  });
+
+  registerCommand({
+    name: 'lead',
+    description: 'Historial limpio de lead',
+    usage: '<telefono>',
+    handler: leadHandler,
+  });
+
+  registerCommand({
+    name: 'chat',
+    description: 'Abrir bridge con lead asignado',
+    usage: '<telefono>',
+    handler: chatHandler,
+  });
+
+  registerCommand({
+    name: 'end',
+    description: 'Cerrar bridge activo',
+    usage: '',
+    handler: endHandler,
   });
 
   registerCommand({
@@ -157,25 +179,43 @@ function registerCommands(): void {
   registerCommand({
     name: 'block',
     description: 'Bloquear numero (opt-out)',
-    usage: '<telefono> <secret>',
-    requiresSecret: true,
+    usage: '<telefono>',
     handler: blockHandler,
+  });
+
+  registerCommand({
+    name: 'booking',
+    description: 'Confirmar reserva (pago recibido) de un lead',
+    usage: '<telefono>',
+    handler: bookingHandler,
   });
 
   registerCommand({
     name: 'pause',
     description: 'Pausar respuestas del bot a clientes',
-    usage: '<secret>',
-    requiresSecret: true,
+    usage: '',
     handler: pauseHandler,
   });
 
   registerCommand({
     name: 'resume',
     description: 'Reactivar respuestas del bot',
-    usage: '<secret>',
-    requiresSecret: true,
+    usage: '',
     handler: resumeHandler,
+  });
+
+  registerCommand({
+    name: 'status',
+    description: 'Estado del bot, estadisticas y leads por linea',
+    usage: '',
+    handler: statusHandler,
+  });
+
+  registerCommand({
+    name: 'stats',
+    description: 'Estadisticas comparativas por periodo (hoy, ayer, semana, todo)',
+    usage: '<hoy|ayer|semana|todo>',
+    handler: statsHandler,
   });
 
   registerCommand({

@@ -1,5 +1,6 @@
 import { env } from '../config/env.js';
 import type { ConversationSummary } from '../db/repositories/types.js';
+import { resolveCallerLineId } from '../services/access-control.js';
 import type { CommandContext } from './index.js';
 
 function formatLeads(leads: ConversationSummary[]): string {
@@ -19,6 +20,7 @@ function formatLeads(leads: ConversationSummary[]): string {
 
 export async function leadsHandler(ctx: CommandContext): Promise<string> {
   const limit = parseInt(ctx.args[0], 10) || 10;
-  const leads = ctx.repos.stats.getTopLeads(limit, env.HOT_LEAD_THRESHOLD);
+  const lineId = resolveCallerLineId(ctx.chatId);
+  const leads = ctx.repos.stats.getTopLeads(limit, env.HOT_LEAD_THRESHOLD, lineId);
   return formatLeads(leads);
 }

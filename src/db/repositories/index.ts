@@ -9,6 +9,7 @@ import {
   SqliteAiUsageRepo,
   SqliteOwnerAlertRepo,
   SqliteMediaSendRepo,
+  SqliteBridgeSessionRepo,
   SqliteStatsRepo,
 } from './sqlite-repos.js';
 
@@ -28,6 +29,7 @@ export function createRepositories(db: Database.Database): Repositories {
     aiUsage: new SqliteAiUsageRepo(db),
     ownerAlert: new SqliteOwnerAlertRepo(db),
     mediaSend: new SqliteMediaSendRepo(db),
+    bridgeSession: new SqliteBridgeSessionRepo(db),
     stats: new SqliteStatsRepo(db),
     isPaused(): boolean {
       const row = db.prepare("SELECT value FROM bot_config WHERE key = 'paused'").get() as { value: string } | undefined;

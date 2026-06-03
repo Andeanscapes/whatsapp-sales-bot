@@ -31,11 +31,13 @@ import {
   containsHandoffPhrase,
   stripHandoffPhrases,
   safeReservationHandoff,
+  qualificationSummary,
   containsUnsafeReservationClaim,
   containsPromptLeakOrPolicyViolation,
   colombiaTimeAwareReply,
   isTruncatedReply,
 } from './reply-guard.js';
+import { assignLine, isReferralLine } from './lead-routing.js';
 
 export {
   detectsReservationIntent,
@@ -166,6 +168,36 @@ function buildMergedQualification(dbFields: Record<string, unknown>, llmTurn: Ll
   };
 }
 
+function routeHumanHandoff(repos: ProcessMessageInput['repos'], customerPhone: string, q: MergedQualification, lang: 'es' | 'en', skills: Skills, defaultReply: string): string {
+  const line = assignLine(repos, customerPhone);
+  if (!line) return defaultReply;
+
+  if (isReferralLine(line)) {
+    repos.conversation.setMode(customerPhone, 'referred');
+    return skills.fallbackReplies[lang].referralHandoff
+      .replace('{{name}}', String(q.nombre ?? ''))
+      .replace('{{summary}}', qualificationSummary(q, lang))
+      .replace('{{agentName}}', line.agentName)
+      .replace('{{displayNumber}}', line.displayNumber);
+  }
+
+  repos.conversation.setMode(customerPhone, 'bridge_active');
+  return defaultReply;
+}
+
+export function buildHandedOffReply(repos: ProcessMessageInput['repos'], customerPhone: string, message: string, skills: Skills = getSkills()): string {
+  const fb = skills.fallbackReplies[resolveLanguage(repos, customerPhone, message)];
+  const norm = message.toLowerCase().trim();
+  const looksTypo = norm.length <= 15 && /^[a-záéíóúñ\s]{1,15}$/.test(norm) && !/^(?:si|no|ok|gracias|thanks|vale|listo|hola|hello|hi|buenas|bye|chao|adios|perfecto|excelente|genial|great|excellent)$/i.test(norm);
+  const looksQuestion = /\?$|^(?:como|donde|cuando|cuanto|que|qu[eé]|what|how|where|when|por qu[eé]|why)\b/i.test(norm);
+  const looksThanks = /\b(gracias|thank|vale|perfecto|excelente|genial|ok|listo|great|excellent|bye|chao|adios)\b/i.test(norm);
+  if (looksTypo) return fb.handedOffTypo ?? fb.handedOffVariant0;
+  if (looksQuestion) return fb.handedOffQuestion ?? fb.handedOffVariant0;
+  if (looksThanks) return fb.handedOffThanks ?? fb.handedOffVariant1;
+  const idx = Math.floor(Date.now() / 1000) % 2;
+  return idx === 0 ? fb.handedOffVariant0 : fb.handedOffVariant1;
+}
+
 export async function processMessage(input: ProcessMessageInput): Promise<ProcessMessageOutput> {
   const { repos, customerPhone, message, messageId } = input;
 
@@ -178,16 +210,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
 
   const handedOffRow = repos.conversation.getHandedOffAt(customerPhone);
   if (handedOffRow) {
-    const fb = skills.fallbackReplies[resolveLanguage(repos, customerPhone, message)];
-    const norm = message.toLowerCase().trim();
-    const looksTypo = norm.length <= 15 && /^[a-záéíóúñ\s]{1,15}$/.test(norm) && !/^(?:si|no|ok|gracias|thanks|vale|listo|hola|hello|hi|buenas|bye|chao|adios|perfecto|excelente|genial|great|excellent)$/i.test(norm);
-    const looksQuestion = /\?$|^(?:como|donde|cuando|cuanto|que|qu[eé]|what|how|where|when|por qu[eé]|why)\b/i.test(norm);
-    const looksThanks = /\b(gracias|thank|vale|perfecto|excelente|genial|ok|listo|great|excellent|bye|chao|adios)\b/i.test(norm);
-    if (looksTypo) return { reply: fb.handedOffTypo ?? fb.handedOffVariant0, shouldSendReply: true, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendImage: false, priceJustGiven: false };
-    if (looksQuestion) return { reply: fb.handedOffQuestion ?? fb.handedOffVariant0, shouldSendReply: true, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendImage: false, priceJustGiven: false };
-    if (looksThanks) return { reply: fb.handedOffThanks ?? fb.handedOffVariant1, shouldSendReply: true, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendImage: false, priceJustGiven: false };
-    const idx = Math.floor(Date.now() / 1000) % 2;
-    return { reply: idx === 0 ? fb.handedOffVariant0 : fb.handedOffVariant1, shouldSendReply: true, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendImage: false, priceJustGiven: false };
+    return { reply: buildHandedOffReply(repos, customerPhone, message, skills), shouldSendReply: true, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendImage: false, priceJustGiven: false };
   }
 
   const lang = resolveLanguage(repos, customerPhone, message);
@@ -271,7 +294,8 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
       repos.conversation.setHandedOff(customerPhone);
       const overrideScore = Math.max(currentScore, skills.salesStrategy.urgentLeadThreshold);
       repos.conversation.upsert(customerPhone, { lead_score: overrideScore });
-      return { reply: safeReservationHandoff(dbQualification, skills.fallbackReplies[lang], lang), shouldSendReply: true, leadScore: overrideScore, usedAi: false, shouldAlertOwner: true, shouldSendImage: false, priceJustGiven: false };
+      const handoffReply = safeReservationHandoff(dbQualification, skills.fallbackReplies[lang], lang);
+      return { reply: routeHumanHandoff(repos, customerPhone, dbQualification, lang, skills, handoffReply), shouldSendReply: true, leadScore: overrideScore, usedAi: false, shouldAlertOwner: true, ownerAlertType: 'reservation_handoff', shouldSendImage: false, priceJustGiven: false };
     }
     if (preLimitPriceRow) {
       const fb = skills.fallbackReplies[lang];
@@ -371,13 +395,17 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     .filter(m => m.role === 'user')
     .slice(-6)
     .some(m => detectsReservationIntent(m.content));
+  // Trust the LLM's structured booking signal instead of growing regex coverage.
+  // The model already classifies booking readiness; this catches phrasings the
+  // deterministic patterns miss (e.g. confirming the bot's own soft-close question).
+  const llmReadyToBook = llmTurn.action === 'handoff' || llmTurn.lead.intent === 'ready_to_book';
 
-  if (qComplete && pricePresented && (reservationIntent || recentReservation)) {
-    replyText = safeReservationHandoff(merged, skills.fallbackReplies[lang], lang);
+  if (qComplete && pricePresented && (reservationIntent || recentReservation || llmReadyToBook)) {
     needsHumanEffective = true;
     repos.conversation.setHandedOff(customerPhone);
     finalScore = Math.max(hybrid.score, skills.salesStrategy.urgentLeadThreshold);
     repos.conversation.upsert(customerPhone, { lead_score: finalScore });
+    replyText = routeHumanHandoff(repos, customerPhone, merged, lang, skills, safeReservationHandoff(merged, skills.fallbackReplies[lang], lang));
   }
 
   if (!needsHumanEffective && containsUnsafeReservationClaim(replyText)) {
@@ -386,6 +414,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
       replyText = safeReservationHandoff(merged, skills.fallbackReplies[lang], lang);
       needsHumanEffective = true;
       repos.conversation.setHandedOff(customerPhone);
+      replyText = routeHumanHandoff(repos, customerPhone, merged, lang, skills, replyText);
     } else {
       replyText = skills.fallbackReplies[lang].aiFailureQualified;
     }
