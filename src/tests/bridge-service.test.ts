@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { migrate } from '../db/migrate.js';
 import { createRepositories, type Repositories } from '../db/repositories/index.js';
-import { sendBridgeReply, isBridgeActive } from '../services/bridge-service.js';
+import { sendBridgeReply, sendBridgeMedia, isBridgeActive } from '../services/bridge-service.js';
 import { isWithinServiceWindow } from '../services/time-window-policy.js';
 import * as whatsappClient from '../services/whatsapp-client.js';
 
@@ -86,6 +86,44 @@ describe('sendBridgeReply guards', () => {
 
     expect(result.ok).toBe(false);
     expect(result.message).toContain('HTTP 470');
+    expect(repos.message.getLastOutboundBody(PHONE)).toBeNull();
+  });
+});
+
+describe('sendBridgeMedia guards', () => {
+  const img = Buffer.from('fake-jpeg');
+
+  it('blocks when outside the 24h service window and never uploads', async () => {
+    const old = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+    recordInbound(PHONE, old);
+    const uploadSpy = vi.spyOn(whatsappClient, 'uploadMedia').mockResolvedValue({ id: 'media-1', kind: 'image' });
+
+    const result = await sendBridgeMedia(repos, PHONE, img, 'image/jpeg', 'pago');
+
+    expect(result.ok).toBe(false);
+    expect(uploadSpy).not.toHaveBeenCalled();
+  });
+
+  it('uploads, sends by media id, and stores an image outbound on success', async () => {
+    recordInbound(PHONE, new Date().toISOString());
+    const uploadSpy = vi.spyOn(whatsappClient, 'uploadMedia').mockResolvedValue({ id: 'media-1', kind: 'image' });
+    const sendSpy = vi.spyOn(whatsappClient, 'sendImageId').mockResolvedValue();
+
+    const result = await sendBridgeMedia(repos, PHONE, img, 'image/jpeg', 'QR de pago');
+
+    expect(result.ok).toBe(true);
+    expect(uploadSpy).toHaveBeenCalledWith(img, 'image/jpeg');
+    expect(sendSpy).toHaveBeenCalledWith(PHONE, 'media-1', 'QR de pago');
+  });
+
+  it('surfaces the API error reason and does not store on failure', async () => {
+    recordInbound(PHONE, new Date().toISOString());
+    vi.spyOn(whatsappClient, 'uploadMedia').mockRejectedValue(new Error('HTTP 413'));
+
+    const result = await sendBridgeMedia(repos, PHONE, img, 'image/jpeg');
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain('HTTP 413');
     expect(repos.message.getLastOutboundBody(PHONE)).toBeNull();
   });
 });

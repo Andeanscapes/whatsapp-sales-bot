@@ -5,10 +5,10 @@ import type { Repositories } from '../db/repositories/index.js';
 import { env } from '../config/env.js';
 import { getSkills } from '../services/skill-loader.js';
 import { buildHandedOffReply, processMessage } from '../services/response-engine.js';
-import { sendText, sendImageUrl } from '../services/whatsapp-client.js';
+import { sendText, sendImageUrl, downloadMedia } from '../services/whatsapp-client.js';
 import { recordImageSend, selectImageForPlan, canSendPlanImage } from '../services/media-service.js';
 import { sendAlert } from '../services/alert-service.js';
-import { sendTelegramMessage } from '../services/telegram-bot.js';
+import { sendTelegramMessage, sendTelegramPhoto, sendTelegramVoice } from '../services/telegram-bot.js';
 import { getLineById, hasRoutingConfig, isReferralLine } from '../services/lead-routing.js';
 import { isBridgeActive } from '../services/bridge-service.js';
 import { bridgeMessages } from '../services/bridge-messages.js';
@@ -32,6 +32,8 @@ const messageSchema = z.object({
   id: z.string(),
   type: z.string(),
   text: z.object({ body: z.string() }).optional(),
+  image: z.object({ id: z.string(), mime_type: z.string().optional(), caption: z.string().optional() }).optional(),
+  audio: z.object({ id: z.string(), mime_type: z.string().optional() }).optional(),
 });
 
 const webhookPayloadSchema = z.object({
@@ -48,10 +50,17 @@ const webhookPayloadSchema = z.object({
   })),
 }).passthrough();
 
+export interface ExtractedMedia {
+  id: string;
+  mimeType: string | null;
+}
+
 export interface ExtractedMessage {
   from: string;
   id: string;
+  type: 'text' | 'image' | 'audio';
   text: string;
+  media: ExtractedMedia | null;
   timestamp: string;
 }
 
@@ -65,8 +74,27 @@ function extractMessages(body: unknown): ExtractedMessage[] | null {
       const messages = change.value?.messages;
       if (!messages) continue;
       for (const m of messages) {
-        if (m.type !== 'text') continue;
-        result.push({ from: m.from, id: m.id, text: m.text?.body ?? '', timestamp: '' });
+        if (m.type === 'text') {
+          result.push({ from: m.from, id: m.id, type: 'text', text: m.text?.body ?? '', media: null, timestamp: '' });
+        } else if (m.type === 'image' && m.image) {
+          result.push({
+            from: m.from,
+            id: m.id,
+            type: 'image',
+            text: m.image.caption ?? '',
+            media: { id: m.image.id, mimeType: m.image.mime_type ?? null },
+            timestamp: '',
+          });
+        } else if (m.type === 'audio' && m.audio) {
+          result.push({
+            from: m.from,
+            id: m.id,
+            type: 'audio',
+            text: '',
+            media: { id: m.audio.id, mimeType: m.audio.mime_type ?? null },
+            timestamp: '',
+          });
+        }
       }
     }
   }
@@ -77,7 +105,7 @@ function extractMessages(body: unknown): ExtractedMessage[] | null {
  * When a human agent is actively bridging this customer (same API line), the
  * bot must stay silent: store the inbound and forward it to the assigned agent.
  * Opted-out customers are ignored. Only a live `bridge_active` session bypasses
- * the bot — `isBridgeActive` reaps stale/abandoned sessions and reverts the mode
+ * the bot; `isBridgeActive` reaps stale/abandoned sessions and reverts the mode
  * to `bot`, so the bot resumes and the conversation is never silently dropped.
  * `referred` customers (handed to another line) keep getting bot replies here.
  */
@@ -94,11 +122,46 @@ export async function forwardBridgeMessage(repos: Repositories, msg: ExtractedMe
     whatsapp_message_id: msg.id,
     customer_phone: msg.from,
     direction: 'inbound',
-    message_type: 'text',
+    message_type: msg.type,
     body: msg.text,
     created_at: new Date().toISOString(),
     raw_json: null,
   });
+
+  if (msg.type === 'image' && msg.media) {
+    // Image relay failure is transient (download/upload), not an abandoned
+    // session. Keep the bridge open and tell the agent; the bot cannot reply to
+    // an image, so reverting to the bot would silently drop it. Returns true to
+    // short-circuit (message already stored + agent informed).
+    try {
+      const media = await downloadMedia(msg.media.id);
+      await sendTelegramPhoto(session.agentChatId, media.buffer, media.mimeType, bridgeMessages.newCustomerImage(msg.from, msg.text));
+    } catch (err) {
+      logger.warn({ err, phone: msg.from, chatId: session.agentChatId }, '[BRIDGE] customer image relay failed; notifying agent');
+      try {
+        await sendTelegramMessage(session.agentChatId, bridgeMessages.customerImageFailed(msg.from));
+      } catch {
+        // agent notification is best-effort
+      }
+    }
+    return true;
+  }
+
+  if (msg.type === 'audio' && msg.media) {
+    try {
+      const media = await downloadMedia(msg.media.id);
+      await sendTelegramVoice(session.agentChatId, media.buffer, media.mimeType);
+      await sendTelegramMessage(session.agentChatId, bridgeMessages.newCustomerAudio(msg.from));
+    } catch (err) {
+      logger.warn({ err, phone: msg.from, chatId: session.agentChatId }, '[BRIDGE] customer audio relay failed; notifying agent');
+      try {
+        await sendTelegramMessage(session.agentChatId, bridgeMessages.customerAudioFailed(msg.from));
+      } catch {
+        // agent notification is best-effort
+      }
+    }
+    return true;
+  }
 
   try {
     await sendTelegramMessage(session.agentChatId, bridgeMessages.newCustomerMessage(msg.from, msg.text));
@@ -145,6 +208,45 @@ export async function forwardPostHandoffMessage(repos: Repositories, msg: Extrac
   }
 
   return buildHandedOffReply(repos, msg.from, msg.text);
+}
+
+/**
+ * After a /end command, a customer's next message no longer flows through an
+ * active bridge, but the agent who previously owned the bridge should still be
+ * notified so they can /chat again. The bot stays silent (short-circuits); the
+ * agent decides whether to reopen the bridge or let it expire naturally.
+ */
+export async function notifyAssignedLineIfDormant(repos: Repositories, msg: ExtractedMessage): Promise<boolean> {
+  if (!hasRoutingConfig()) return false;
+  if (repos.isPaused()) return false;
+  if (repos.optOut.isOptedOut(msg.from)) return false;
+  if (msg.type !== 'text') return false;
+  if (repos.conversation.getMode(msg.from) !== 'bot') return false;
+  if (repos.conversation.getHandedOffAt(msg.from)) return false;
+
+  const assignment = repos.conversation.getAssignment(msg.from);
+  if (!assignment) return false;
+
+  const line = getLineById(assignment.assignedLineId);
+  if (!line || line.type !== 'bridge') return false;
+
+  repos.message.addMessage({
+    whatsapp_message_id: msg.id,
+    customer_phone: msg.from,
+    direction: 'inbound',
+    message_type: 'text',
+    body: msg.text,
+    created_at: new Date().toISOString(),
+    raw_json: null,
+  });
+
+  try {
+    await sendTelegramMessage(assignment.assignedAgentChat, bridgeMessages.dormantBridgeNotice(msg.from, msg.text));
+  } catch {
+    // best-effort; don't block the bot path on failure
+    return false;
+  }
+  return true;
 }
 
 export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos: Repositories }): Promise<void> {
@@ -197,6 +299,14 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
         // Inbound routing precedence: live bridge session > post-handoff notify > bot.
         // The first two short-circuit the AI path entirely (no LLM tokens spent).
         if (await forwardBridgeMessage(repos, msg)) continue;
+
+        // Dormant bridge: the agent ended their /chat but still owns the lead via
+        // sticky assignment. Ping them so they can /chat again. Bot stays silent.
+        if (await notifyAssignedLineIfDormant(repos, msg)) continue;
+
+        // Non-text (e.g. image) only flows through the live bridge above. The
+        // bot and post-handoff text paths cannot consume media, so skip it.
+        if (msg.type !== 'text') continue;
 
         const handoffReply = await forwardPostHandoffMessage(repos, msg);
         if (handoffReply !== null) {

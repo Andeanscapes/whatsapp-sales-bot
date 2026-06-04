@@ -3,7 +3,7 @@ export interface StoredMessage {
   whatsapp_message_id?: string;
   customer_phone: string;
   direction: 'inbound' | 'outbound';
-  message_type: 'text' | 'image';
+  message_type: 'text' | 'image' | 'video' | 'audio';
   body?: string;
   created_at: string;
   raw_json?: string | null;
