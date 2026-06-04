@@ -7,6 +7,7 @@ import { DynamicDataService, shouldStripStaticPricing } from './services/dynamic
 import { logger } from './config/logger.js';
 import { startTelegramBot } from './services/telegram-bot.js';
 import { getRoutingConfig } from './services/lead-routing.js';
+import { setupGlobalErrorHandlers, setErrorRepos, pruneOldErrors } from './services/error-logger.js';
 
 async function start() {
   let hasDynamicData = false;
@@ -31,20 +32,30 @@ async function start() {
   const db = createAndMigrate(env.SQLITE_PATH);
   const repos = createRepositories(db);
 
+  setupGlobalErrorHandlers();
+  setErrorRepos(repos);
+  pruneOldErrors(repos);
+
   const app = await buildApp(repos);
 
   await app.listen({ host: env.HOST, port: env.PORT });
   logger.info({ host: env.HOST, port: env.PORT }, 'server started');
 
-  startTelegramBot(repos);
+  let telegramInterval: ReturnType<typeof setInterval> | undefined;
+  try {
+    telegramInterval = await startTelegramBot(repos);
+  } catch (err) {
+    logger.error(err, '[INIT] failed to start Telegram bot');
+  }
 
-  process.on('SIGTERM', gracefulShutdown('SIGTERM', db, app));
-  process.on('SIGINT', gracefulShutdown('SIGINT', db, app));
+  process.on('SIGTERM', gracefulShutdown('SIGTERM', db, app, telegramInterval));
+  process.on('SIGINT', gracefulShutdown('SIGINT', db, app, telegramInterval));
 }
 
-function gracefulShutdown(signal: string, db: { close: () => void }, app: { close: () => Promise<void> }) {
+function gracefulShutdown(signal: string, db: { close: () => void }, app: { close: () => Promise<void> }, telegramInterval?: ReturnType<typeof setInterval>) {
   return async () => {
     logger.info({ signal }, 'shutting down gracefully');
+    if (telegramInterval) clearInterval(telegramInterval);
     try {
       await app.close();
     } catch (err) {
