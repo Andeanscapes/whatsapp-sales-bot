@@ -9,12 +9,18 @@ import type {
   AiUsageRepository,
   OwnerAlertRepository,
   MediaSendRepository,
+  BridgeSessionRepository,
+  BridgeSessionRow,
+  ConversationAssignment,
+  ConversationMode,
   StatsRepository,
   DailyStats,
   ConversationSummary,
   PhaseBreakdown,
+  LineLeadCount,
   StoredMessage,
   RecentMessage,
+  SystemErrorRepository,
 } from './types.js';
 
 const ALLOWED_CONVERSATION_COLUMNS = new Set([
@@ -26,6 +32,8 @@ const ALLOWED_CONVERSATION_COLUMNS = new Set([
   'hot_alert_sent_at', 'urgent_alert_sent_at',
   'price_given_at', 'soft_closed_at',
   'sales_phase', 'lead_intent',
+  'assigned_line_id', 'assigned_agent_chat', 'conversation_mode',
+  'converted_at'
 ]);
 
 export class SqliteConversationRepo implements ConversationRepository {
@@ -172,6 +180,82 @@ export class SqliteConversationRepo implements ConversationRepository {
   setLeadIntent(phone: string, intent: string): void {
     this.upsert(phone, { lead_intent: intent });
   }
+
+  getAssignment(phone: string): ConversationAssignment | null {
+    const row = this.db.prepare(
+      'SELECT assigned_line_id, assigned_agent_chat FROM conversations WHERE customer_phone = ?'
+    ).get(phone) as { assigned_line_id: string | null; assigned_agent_chat: string | null } | undefined;
+    if (!row?.assigned_line_id || !row.assigned_agent_chat) return null;
+    return { assignedLineId: row.assigned_line_id, assignedAgentChat: row.assigned_agent_chat };
+  }
+
+  setAssignment(phone: string, assignment: ConversationAssignment): void {
+    this.upsert(phone, {
+      assigned_line_id: assignment.assignedLineId,
+      assigned_agent_chat: assignment.assignedAgentChat,
+    });
+  }
+
+  getMode(phone: string): ConversationMode {
+    const row = this.db.prepare(
+      'SELECT conversation_mode FROM conversations WHERE customer_phone = ?'
+    ).get(phone) as { conversation_mode: ConversationMode | null } | undefined;
+    return row?.conversation_mode ?? 'bot';
+  }
+
+  setMode(phone: string, mode: ConversationMode): void {
+    this.upsert(phone, { conversation_mode: mode });
+  }
+
+  getBookedAt(phone: string): string | null {
+    const row = this.db.prepare(
+      'SELECT converted_at FROM conversations WHERE customer_phone = ?'
+    ).get(phone) as { converted_at: string | null } | undefined;
+    return row?.converted_at ?? null;
+  }
+
+  setBooked(phone: string): void {
+    this.upsert(phone, { converted_at: new Date().toISOString() });
+  }
+}
+
+export class SqliteBridgeSessionRepo implements BridgeSessionRepository {
+  constructor(private db: Database.Database) {}
+
+  open(agentChatId: string, customerPhone: string): void {
+    const now = new Date().toISOString();
+    this.db.prepare(
+      `INSERT INTO bridge_sessions (agent_chat_id, customer_phone, opened_at, last_activity_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(agent_chat_id) DO UPDATE SET customer_phone = ?, last_activity_at = ?`
+    ).run(agentChatId, customerPhone, now, now, customerPhone, now);
+  }
+
+  close(agentChatId: string): void {
+    this.db.prepare('DELETE FROM bridge_sessions WHERE agent_chat_id = ?').run(agentChatId);
+  }
+
+  getByAgentChat(agentChatId: string): BridgeSessionRow | null {
+    const row = this.db.prepare(
+      'SELECT agent_chat_id, customer_phone, opened_at, last_activity_at FROM bridge_sessions WHERE agent_chat_id = ?'
+    ).get(agentChatId) as { agent_chat_id: string; customer_phone: string; opened_at: string; last_activity_at: string } | undefined;
+    if (!row) return null;
+    return { agentChatId: row.agent_chat_id, customerPhone: row.customer_phone, openedAt: row.opened_at, lastActivityAt: row.last_activity_at };
+  }
+
+  getByCustomer(customerPhone: string): BridgeSessionRow | null {
+    const row = this.db.prepare(
+      'SELECT agent_chat_id, customer_phone, opened_at, last_activity_at FROM bridge_sessions WHERE customer_phone = ? ORDER BY last_activity_at DESC LIMIT 1'
+    ).get(customerPhone) as { agent_chat_id: string; customer_phone: string; opened_at: string; last_activity_at: string } | undefined;
+    if (!row) return null;
+    return { agentChatId: row.agent_chat_id, customerPhone: row.customer_phone, openedAt: row.opened_at, lastActivityAt: row.last_activity_at };
+  }
+
+  touch(agentChatId: string): void {
+    this.db.prepare(
+      'UPDATE bridge_sessions SET last_activity_at = ? WHERE agent_chat_id = ?'
+    ).run(new Date().toISOString(), agentChatId);
+  }
 }
 
 export class SqliteMessageRepo implements MessageRepository {
@@ -205,6 +289,13 @@ export class SqliteMessageRepo implements MessageRepository {
     return this.db.prepare(
       "SELECT body FROM messages WHERE customer_phone = ? AND direction = 'inbound' ORDER BY created_at DESC LIMIT ?"
     ).all(phone, limit) as { body: string | null }[];
+  }
+
+  getLastInboundAt(phone: string): string | null {
+    const row = this.db.prepare(
+      "SELECT created_at FROM messages WHERE customer_phone = ? AND direction = 'inbound' ORDER BY created_at DESC, id DESC LIMIT 1"
+    ).get(phone) as { created_at: string } | undefined;
+    return row?.created_at ?? null;
   }
 
   countOutboundSince(phone: string, sinceIso: string): number {
@@ -379,75 +470,132 @@ export class SqliteStatsRepo implements StatsRepository {
   }
 
   getDailyStats(todayStart: string, hotLeadThreshold: number): DailyStats {
-    const row = this.db.prepare(`
+    const today = new Date().toISOString().slice(0, 10);
+    return this.getPeriodStats(today, todayStart, null, hotLeadThreshold);
+  }
+
+  getPeriodStats(label: string, sinceIso: string, untilIso: string | null, hotLeadThreshold: number): DailyStats {
+    // Cumulative-state snapshot (all-time): represents where the funnel stands
+    // now, not flow within the period. /report and /status rely on these totals.
+    // The `period` ('hoy'|'todo'|...) does not bound these.
+    const cumulative = this.db.prepare(`
       SELECT
         (SELECT COUNT(*) FROM conversations) as total_conversations,
-        (SELECT COUNT(*) FROM conversations WHERE first_seen_at >= ?) as new_conversations,
         (SELECT COUNT(*) FROM conversations WHERE opt_out_at IS NULL) as active_conversations,
-        (SELECT COUNT(*) FROM messages WHERE direction = 'inbound' AND created_at >= ?) as messages_inbound,
-        (SELECT COUNT(*) FROM messages WHERE direction = 'outbound' AND created_at >= ?) as messages_outbound,
-        (SELECT COUNT(*) FROM conversations WHERE lead_score >= ? AND opt_out_at IS NULL) as hot_leads,
-        (SELECT COUNT(*) FROM conversations WHERE opt_out_at >= ?) as opted_out,
-        (SELECT COUNT(*) FROM conversations WHERE handed_off_at >= ?) as handed_off,
-        (SELECT COUNT(*) FROM conversations WHERE soft_closed_at >= ?) as soft_closed,
-        (SELECT COALESCE(SUM(estimated_cost_usd), 0) FROM ai_usage WHERE created_at >= ?) as ai_spent_usd
-    `).get(todayStart, todayStart, todayStart, hotLeadThreshold, todayStart, todayStart, todayStart, todayStart) as {
+        (SELECT COUNT(*) FROM conversations WHERE lead_score >= @threshold AND opt_out_at IS NULL) as hot_leads
+    `).get({ threshold: hotLeadThreshold }) as {
       total_conversations: number;
-      new_conversations: number;
       active_conversations: number;
+      hot_leads: number;
+    };
+
+    // Flow metrics bounded to [since, until): what happened during the period.
+    const flow = this.db.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM conversations WHERE first_seen_at >= @since AND (@until IS NULL OR first_seen_at < @until)) as new_conversations,
+        (SELECT COUNT(*) FROM messages WHERE direction = 'inbound' AND created_at >= @since AND (@until IS NULL OR created_at < @until)) as messages_inbound,
+        (SELECT COUNT(*) FROM messages WHERE direction = 'outbound' AND created_at >= @since AND (@until IS NULL OR created_at < @until)) as messages_outbound,
+        (SELECT COUNT(*) FROM conversations WHERE opt_out_at >= @since AND (@until IS NULL OR opt_out_at < @until)) as opted_out,
+        (SELECT COUNT(*) FROM conversations WHERE handed_off_at >= @since AND (@until IS NULL OR handed_off_at < @until)) as handed_off,
+        (SELECT COUNT(*) FROM conversations WHERE soft_closed_at >= @since AND (@until IS NULL OR soft_closed_at < @until)) as soft_closed,
+        (SELECT COUNT(*) FROM conversations WHERE converted_at >= @since AND (@until IS NULL OR converted_at < @until)) as booked_today,
+        (SELECT COALESCE(SUM(estimated_cost_usd), 0) FROM ai_usage WHERE created_at >= @since AND (@until IS NULL OR created_at < @until)) as ai_spent_usd
+    `).get({ since: sinceIso, until: untilIso }) as {
+      new_conversations: number;
       messages_inbound: number;
       messages_outbound: number;
-      hot_leads: number;
       opted_out: number;
       handed_off: number;
       soft_closed: number;
+      booked_today: number;
       ai_spent_usd: number;
     };
 
-    const today = new Date().toISOString().slice(0, 10);
-
     return {
-      date: today,
-      totalConversations: row.total_conversations,
-      newConversations: row.new_conversations,
-      activeConversations: row.active_conversations,
-      messagesInbound: row.messages_inbound,
-      messagesOutbound: row.messages_outbound,
-      hotLeads: row.hot_leads,
-      hotLeadPercentage: row.active_conversations > 0
-        ? Math.round((row.hot_leads / row.active_conversations) * 1000) / 10
+      label,
+      totalConversations: cumulative.total_conversations,
+      newConversations: flow.new_conversations,
+      activeConversations: cumulative.active_conversations,
+      messagesInbound: flow.messages_inbound,
+      messagesOutbound: flow.messages_outbound,
+      hotLeads: cumulative.hot_leads,
+      hotLeadPercentage: cumulative.active_conversations > 0
+        ? Math.round((cumulative.hot_leads / cumulative.active_conversations) * 1000) / 10
         : 0,
-      optedOut: row.opted_out,
-      handedOff: row.handed_off,
-      softClosed: row.soft_closed,
-      aiSpentUsd: Math.round(row.ai_spent_usd * 10000) / 10000,
+      optedOut: flow.opted_out,
+      handedOff: flow.handed_off,
+      softClosed: flow.soft_closed,
+      bookedToday: flow.booked_today,
+      aiSpentUsd: Math.round(flow.ai_spent_usd * 10000) / 10000,
     };
   }
 
-  getRecentConversations(limit: number): ConversationSummary[] {
+  getRecentConversations(limit: number, lineId?: string | null): ConversationSummary[] {
+    // When a lineId is given, restrict to that line's leads PLUS not-yet-assigned
+    // (pre-handoff) leads, which have no owner yet.
+    const lineFilter = lineId ? 'AND (assigned_line_id = ? OR assigned_line_id IS NULL)' : '';
     const stmt = this.db.prepare(`
       SELECT customer_phone, collected_name, lead_score, sales_phase,
              collected_plan, collected_people, collected_date, last_seen_at
       FROM conversations
-      WHERE opt_out_at IS NULL
+      WHERE opt_out_at IS NULL ${lineFilter}
       ORDER BY last_seen_at DESC
       LIMIT ?
     `);
-    const rows = stmt.all(limit) as SummaryDbRow[];
+    const rows = (lineId ? stmt.all(lineId, limit) : stmt.all(limit)) as SummaryDbRow[];
     return rows.map(SqliteStatsRepo.mapRowToSummary);
   }
 
-  getTopLeads(limit: number, threshold: number): ConversationSummary[] {
+  getTopLeads(limit: number, threshold: number, lineId?: string | null): ConversationSummary[] {
+    const lineFilter = lineId ? 'AND (assigned_line_id = ? OR assigned_line_id IS NULL)' : '';
     const stmt = this.db.prepare(`
       SELECT customer_phone, collected_name, lead_score, sales_phase,
              collected_plan, collected_people, collected_date, last_seen_at
       FROM conversations
-      WHERE opt_out_at IS NULL AND lead_score >= ?
+      WHERE opt_out_at IS NULL AND lead_score >= ? ${lineFilter}
       ORDER BY lead_score DESC
       LIMIT ?
     `);
-    const rows = stmt.all(threshold, limit) as SummaryDbRow[];
+    const rows = (lineId ? stmt.all(threshold, lineId, limit) : stmt.all(threshold, limit)) as SummaryDbRow[];
     return rows.map(SqliteStatsRepo.mapRowToSummary);
+  }
+
+  getLeadCountsByLine(hotLeadThreshold: number): LineLeadCount[] {
+    const rows = this.db.prepare(`
+      SELECT COALESCE(assigned_line_id, 'unassigned') as line_id,
+             COUNT(*) as total,
+             SUM(CASE WHEN lead_score >= ? THEN 1 ELSE 0 END) as hot,
+             SUM(CASE WHEN converted_at IS NOT NULL THEN 1 ELSE 0 END) as booked
+      FROM conversations
+      WHERE opt_out_at IS NULL
+      GROUP BY line_id
+      ORDER BY total DESC
+    `).all(hotLeadThreshold) as { line_id: string; total: number; hot: number; booked: number }[];
+    return rows.map(r => ({ lineId: r.line_id, total: r.total, hot: r.hot, booked: r.booked }));
+  }
+
+  getLeadCountsByLineForPeriod(sinceIso: string, untilIso: string | null, hotLeadThreshold: number): LineLeadCount[] {
+    const rows = this.db.prepare(`
+      SELECT COALESCE(assigned_line_id, 'unassigned') as line_id,
+             SUM(CASE WHEN first_seen_at >= ? AND (? IS NULL OR first_seen_at < ?) THEN 1 ELSE 0 END) as total,
+             SUM(CASE WHEN lead_score >= ? AND first_seen_at >= ? AND (? IS NULL OR first_seen_at < ?) THEN 1 ELSE 0 END) as hot,
+             SUM(CASE WHEN converted_at >= ? AND (? IS NULL OR converted_at < ?) THEN 1 ELSE 0 END) as booked
+      FROM conversations
+      WHERE opt_out_at IS NULL
+        AND (
+          (first_seen_at >= ? AND (? IS NULL OR first_seen_at < ?))
+          OR (converted_at >= ? AND (? IS NULL OR converted_at < ?))
+        )
+      GROUP BY line_id
+      ORDER BY total DESC, booked DESC
+    `).all(
+      sinceIso, untilIso, untilIso,
+      hotLeadThreshold, sinceIso, untilIso, untilIso,
+      sinceIso, untilIso, untilIso,
+      sinceIso, untilIso, untilIso,
+      sinceIso, untilIso, untilIso,
+    ) as { line_id: string; total: number; hot: number; booked: number }[];
+    return rows.map(r => ({ lineId: r.line_id, total: r.total, hot: r.hot, booked: r.booked }));
   }
 
   getPhaseBreakdown(): PhaseBreakdown[] {
@@ -460,5 +608,30 @@ export class SqliteStatsRepo implements StatsRepository {
     `).all() as { phase: string; count: number }[];
 
     return rows.map(r => ({ phase: r.phase, count: r.count }));
+  }
+}
+
+export class SqliteSystemErrorRepo implements SystemErrorRepository {
+  private insertStmt: Database.Statement;
+  private pruneStmt: Database.Statement;
+
+  constructor(private db: Database.Database) {
+    this.insertStmt = db.prepare(
+      'INSERT INTO system_errors (error_type, severity, message, stack, context_json, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+    );
+    this.pruneStmt = db.prepare(
+      'DELETE FROM system_errors WHERE created_at < ?'
+    );
+  }
+
+  insert(type: string, severity: string, message: string, stack?: string, context?: Record<string, unknown>): void {
+    const contextJson = context ? JSON.stringify(context) : null;
+    this.insertStmt.run(type, severity, message, stack ?? null, contextJson, new Date().toISOString());
+  }
+
+  pruneOlderThan(days: number): number {
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const result = this.pruneStmt.run(cutoff);
+    return result.changes;
   }
 }

@@ -3,6 +3,8 @@ import { env } from '../config/env.js';
 import { getSkills } from './skill-loader.js';
 import { logger } from '../config/logger.js';
 import { sendTelegramMessage } from './telegram-bot.js';
+import { assignLine, isReferralLine } from './lead-routing.js';
+import { bridgeMessages } from './bridge-messages.js';
 
 const ALERT_FETCH_TIMEOUT_MS = 10_000;
 
@@ -53,8 +55,12 @@ export async function sendAlert(request: AlertRequest, repos: Repositories): Pro
 
   const skills = getSkills();
   const template = skills.salesStrategy.ownerAlertTemplate;
+  // Sticky, deterministic assignment. Resolving it here locks the owning line as
+  // soon as the first alert fires (not only at reservation handoff), so every
+  // alert routes to the line that owns the lead. assignLine is idempotent.
+  const assignedLine = assignLine(repos, request.customerPhone);
 
-  const body = template
+  let body = template
     .replace('{{score}}', String(request.score))
     .replaceAll('{{customerPhone}}', request.customerPhone)
     .replace('{{name}}', request.name ?? 'unknown')
@@ -64,21 +70,64 @@ export async function sendAlert(request: AlertRequest, repos: Repositories): Pro
     .replace('{{transportNeed}}', request.transport ?? 'unknown')
     .replace('{{lastMessage}}', request.message);
 
-  if (env.ALERT_CHANNEL === 'telegram') {
+  let delivered = false;
+
+  if (assignedLine) {
+    body = `${body}\n\n${bridgeMessages.alertFooter({
+      label: assignedLine.label,
+      agentName: assignedLine.agentName,
+      type: assignedLine.type,
+      bridge: assignedLine.type === 'bridge',
+      displayNumber: isReferralLine(assignedLine) ? assignedLine.displayNumber : undefined,
+    })}`;
+    try {
+      await sendTelegramMessage(assignedLine.telegramChatId, body);
+      delivered = true;
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      logger.warn({ chatId: assignedLine.telegramChatId, reason }, '[ALERT] agent Telegram delivery failed — chat may not have /started the bot');
+      // Fallback to the owner chat so a hot lead is never silently lost. A
+      // successful fallback still counts as delivered (alert gets recorded).
+      if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID && env.TELEGRAM_CHAT_ID !== assignedLine.telegramChatId) {
+        try {
+          await sendTelegramMessage(env.TELEGRAM_CHAT_ID, bridgeMessages.fallbackAlert(body));
+          delivered = true;
+        } catch {
+          logger.warn({ chatId: env.TELEGRAM_CHAT_ID }, '[ALERT] fallback owner notification also failed');
+        }
+      }
+    }
+  } else if (env.ALERT_CHANNEL === 'telegram') {
     if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) {
       if (!startupWarned) {
         logger.warn('[ALERT] ALERT_CHANNEL=telegram but TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is empty — alerts will be logged, not sent to Telegram');
         startupWarned = true;
       }
       logger.info({ body }, '[ALERT] log channel (telegram misconfigured)');
+      delivered = true;
     } else {
-      await sendTelegramMessage(env.TELEGRAM_CHAT_ID, body);
+      try {
+        await sendTelegramMessage(env.TELEGRAM_CHAT_ID, body);
+        delivered = true;
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        logger.warn({ chatId: env.TELEGRAM_CHAT_ID, reason }, '[ALERT] owner Telegram delivery failed');
+      }
     }
   } else if (env.ALERT_CHANNEL === 'whatsapp') {
-    await sendWhatsAppAlert(body);
+    try {
+      await sendWhatsAppAlert(body);
+      delivered = true;
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      logger.warn({ reason }, '[ALERT] owner WhatsApp delivery failed');
+    }
   } else {
     logger.info({ body }, '[ALERT] log channel');
+    delivered = true;
   }
 
-  repos.ownerAlert.insert(request.customerPhone, env.ALERT_CHANNEL, request.score, alertType, body);
+  if (delivered) {
+    repos.ownerAlert.insert(request.customerPhone, env.ALERT_CHANNEL, request.score, alertType, body);
+  }
 }

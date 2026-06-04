@@ -3,7 +3,7 @@ export interface StoredMessage {
   whatsapp_message_id?: string;
   customer_phone: string;
   direction: 'inbound' | 'outbound';
-  message_type: 'text' | 'image';
+  message_type: 'text' | 'image' | 'video' | 'audio';
   body?: string;
   created_at: string;
   raw_json?: string | null;
@@ -33,6 +33,12 @@ export interface ConversationRepository {
   setSalesPhase(phone: string, phase: string): void;
   getLeadIntent(phone: string): string | null;
   setLeadIntent(phone: string, intent: string): void;
+  getAssignment(phone: string): ConversationAssignment | null;
+  setAssignment(phone: string, assignment: ConversationAssignment): void;
+  getMode(phone: string): ConversationMode;
+  setMode(phone: string, mode: ConversationMode): void;
+  getBookedAt(phone: string): string | null;
+  setBooked(phone: string): void;
 }
 
 export interface MessageRepository {
@@ -40,6 +46,7 @@ export interface MessageRepository {
   getLastOutboundBody(phone: string): string | null;
   getRecentMessages(phone: string, limit?: number): RecentMessage[];
   getLastInboundBodies(phone: string, limit?: number): { body: string | null }[];
+  getLastInboundAt(phone: string): string | null;
   countOutboundSince(phone: string, sinceIso: string): number;
 }
 
@@ -77,6 +84,28 @@ export interface MediaSendRepository {
   recordSend(phone: string, mediaId: string): void;
 }
 
+export type ConversationMode = 'bot' | 'bridge_active' | 'referred';
+
+export interface ConversationAssignment {
+  assignedLineId: string;
+  assignedAgentChat: string;
+}
+
+export interface BridgeSessionRow {
+  agentChatId: string;
+  customerPhone: string;
+  openedAt: string;
+  lastActivityAt: string;
+}
+
+export interface BridgeSessionRepository {
+  open(agentChatId: string, customerPhone: string): void;
+  close(agentChatId: string): void;
+  getByAgentChat(agentChatId: string): BridgeSessionRow | null;
+  getByCustomer(customerPhone: string): BridgeSessionRow | null;
+  touch(agentChatId: string): void;
+}
+
 export interface ConversationRow {
   id: number;
   customer_phone: string;
@@ -99,12 +128,16 @@ export interface ConversationRow {
   price_given_at: string | null;
   handed_off_at: string | null;
   soft_closed_at: string | null;
+  converted_at: string | null;
   sales_phase: string | null;
   lead_intent: string | null;
+  assigned_line_id: string | null;
+  assigned_agent_chat: string | null;
+  conversation_mode: ConversationMode | null;
 }
 
 export interface DailyStats {
-  date: string;
+  label: string;
   totalConversations: number;
   newConversations: number;
   activeConversations: number;
@@ -115,6 +148,7 @@ export interface DailyStats {
   optedOut: number;
   handedOff: number;
   softClosed: number;
+  bookedToday: number;
   aiSpentUsd: number;
 }
 
@@ -134,11 +168,36 @@ export interface PhaseBreakdown {
   count: number;
 }
 
+export interface LineLeadCount {
+  lineId: string;
+  total: number;
+  hot: number;
+  booked: number;
+}
+
 export interface StatsRepository {
   getDailyStats(todayStart: string, hotLeadThreshold: number): DailyStats;
-  getRecentConversations(limit: number): ConversationSummary[];
-  getTopLeads(limit: number, threshold: number): ConversationSummary[];
+  getPeriodStats(label: string, sinceIso: string, untilIso: string | null, hotLeadThreshold: number): DailyStats;
+  getRecentConversations(limit: number, lineId?: string | null): ConversationSummary[];
+  getTopLeads(limit: number, threshold: number, lineId?: string | null): ConversationSummary[];
   getPhaseBreakdown(): PhaseBreakdown[];
+  getLeadCountsByLine(hotLeadThreshold: number): LineLeadCount[];
+  getLeadCountsByLineForPeriod(sinceIso: string, untilIso: string | null, hotLeadThreshold: number): LineLeadCount[];
+}
+
+export interface SystemErrorRow {
+  id: number;
+  error_type: string;
+  severity: string;
+  message: string;
+  stack: string | null;
+  context_json: string | null;
+  created_at: string;
+}
+
+export interface SystemErrorRepository {
+  insert(type: string, severity: string, message: string, stack?: string, context?: Record<string, unknown>): void;
+  pruneOlderThan(days: number): number;
 }
 
 export interface Repositories {
@@ -150,7 +209,9 @@ export interface Repositories {
   aiUsage: AiUsageRepository;
   ownerAlert: OwnerAlertRepository;
   mediaSend: MediaSendRepository;
+  bridgeSession: BridgeSessionRepository;
   stats: StatsRepository;
+  systemErrors: SystemErrorRepository;
   isPaused(): boolean;
   setPaused(paused: boolean): void;
   ping(): boolean;

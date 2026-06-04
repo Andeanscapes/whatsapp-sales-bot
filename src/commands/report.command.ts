@@ -1,22 +1,37 @@
 import { env } from '../config/env.js';
-import type { DailyStats } from '../db/repositories/types.js';
+import type { DailyStats, LineLeadCount } from '../db/repositories/types.js';
+import { getLineById } from '../services/lead-routing.js';
 import type { CommandContext } from './index.js';
 
-function formatReport(stats: DailyStats): string {
+function lineLabel(lineId: string): string {
+  if (lineId === 'unassigned') return 'Sin asignar';
+  const line = getLineById(lineId);
+  return line ? `${line.label} (${line.agentName})` : lineId;
+}
+
+function formatReport(stats: DailyStats, byLine: LineLeadCount[]): string {
   const lines = [
-    `📊 *Reporte Diario* — ${stats.date}`,
+    `📊 *Reporte Diario* — ${stats.label}`,
     '',
     `👥 Total conversaciones: ${stats.totalConversations}`,
     `🆕 Nuevas hoy: ${stats.newConversations}`,
     `✅ Activas: ${stats.activeConversations}`,
     `📨 Mensajes entrantes: ${stats.messagesInbound}`,
     `📤 Mensajes salientes: ${stats.messagesOutbound}`,
-    `🔥 Hot leads (>=${env.HOT_LEAD_THRESHOLD}): ${stats.hotLeads} (${stats.hotLeadPercentage}%)`,
+    `🔥 Leads calientes (>=${env.HOT_LEAD_THRESHOLD}): ${stats.hotLeads} (${stats.hotLeadPercentage}%)`,
     `🚫 Opt-out hoy: ${stats.optedOut}`,
-    `🤝 Handed off hoy: ${stats.handedOff}`,
+    `🤝 Transferidos hoy: ${stats.handedOff}`,
+    `🎉 Reservas hoy: ${stats.bookedToday}`,
     `💤 Soft closed hoy: ${stats.softClosed}`,
     `💰 IA gastada: $${stats.aiSpentUsd.toFixed(4)}`,
   ];
+
+  if (byLine.length > 0) {
+    lines.push('', '*Conversaciones por linea (global):*');
+    for (const l of byLine) {
+      lines.push(`• ${lineLabel(l.lineId)}: ${l.total} total | ${l.hot} calientes | ${l.booked} reservas`);
+    }
+  }
 
   return lines.join('\n');
 }
@@ -30,5 +45,6 @@ export async function reportHandler(ctx: CommandContext): Promise<string> {
   )).toISOString();
 
   const stats = ctx.repos.stats.getDailyStats(todayStart, env.HOT_LEAD_THRESHOLD);
-  return formatReport(stats);
+  const byLine = ctx.repos.stats.getLeadCountsByLine(env.HOT_LEAD_THRESHOLD);
+  return formatReport(stats, byLine);
 }
