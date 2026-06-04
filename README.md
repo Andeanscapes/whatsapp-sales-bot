@@ -57,7 +57,7 @@ Never commit `.env` — it is gitignored.
 
 ## Deployment
 
-Production runs as a `systemd` service on Fedora behind a Cloudflare Tunnel. See [deploy/](deploy/) for the unit file, tunnel config, install script, and update script.
+Production can run as a `systemd` service or Docker Compose on Fedora behind a Cloudflare Tunnel. See [deploy/](deploy/) and [deploy/docker-compose.md](deploy/docker-compose.md).
 
 Production env file lives at `/etc/andean-whatsapp-bot.env` (mode `0600`). SQLite database lives at `/var/lib/andean-whatsapp-bot/bot.sqlite`.
 
