@@ -1,0 +1,29 @@
+services:
+  app:
+    build: .
+    container_name: andean-whatsapp-bot
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3000
+      SQLITE_PATH: /data/bot.sqlite
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - bot-data:/data
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.5.2
+    container_name: andean-whatsapp-tunnel
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - app
+    restart: unless-stopped
+    profiles:
+      - tunnel
+
+volumes:
+  bot-data:
