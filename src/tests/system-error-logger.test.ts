@@ -18,7 +18,7 @@ describe('SystemErrorRepository', () => {
 
   afterEach(() => {
     db.close();
-    setErrorRepos(null as unknown as Repositories);
+    setErrorRepos(null);
   });
 
   it('inserts an error record into system_errors', () => {
@@ -92,7 +92,7 @@ describe('logSystemError', () => {
 
   afterEach(() => {
     db.close();
-    setErrorRepos(null as unknown as Repositories);
+    setErrorRepos(null);
   });
 
   it('writes Error instance to DB', () => {
@@ -107,6 +107,16 @@ describe('logSystemError', () => {
     expect(row?.severity).toBe('error');
   });
 
+  it('masks phone and redacts message context', () => {
+    logSystemError('pii_test', 'error', new Error('test'), { phone: '573001112233', messagePreview: 'private customer text' });
+
+    const row = db.prepare('SELECT * FROM system_errors WHERE error_type = ?').get('pii_test') as Record<string, unknown> | undefined;
+    expect(row?.context_json).toContain('573***233');
+    expect(row?.context_json).not.toContain('573001112233');
+    expect(row?.context_json).toContain('[REDACTED]');
+    expect(row?.context_json).not.toContain('private customer text');
+  });
+
   it('handles non-Error thrown values', () => {
     logSystemError('string_error', 'warning', 'plain string error', undefined);
 
@@ -117,7 +127,7 @@ describe('logSystemError', () => {
   });
 
   it('does not throw when repos is null', () => {
-    setErrorRepos(null as unknown as Repositories);
+    setErrorRepos(null);
     expect(() => logSystemError('no_repo', 'error', new Error('test'))).not.toThrow();
   });
 });

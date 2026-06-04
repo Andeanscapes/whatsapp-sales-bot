@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import type { FastifyError } from 'fastify';
 import type { Repositories } from './db/repositories/index.js';
 import { logger } from './config/logger.js';
 import { healthRoutes } from './routes/health.route.js';
@@ -11,13 +12,15 @@ export async function buildApp(repos: Repositories) {
   });
 
   app.setErrorHandler(async (error, request, reply) => {
-    const err = error as Error;
+    const err = error as FastifyError;
+    const statusCode = err.statusCode && err.statusCode >= 400 && err.statusCode < 500 ? err.statusCode : 500;
     logSystemError('fastify_error', 'error', err, {
       method: request.method,
       url: request.url,
+      statusCode,
     });
     if (!reply.sent) {
-      return reply.code(500).send({ error: 'Internal server error' });
+      return reply.code(statusCode).send({ error: statusCode === 500 ? 'Internal server error' : err.message });
     }
   });
 

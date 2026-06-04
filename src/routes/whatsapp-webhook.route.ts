@@ -19,6 +19,11 @@ const processingPhones = new Set<string>();
 
 type RequestWithRawBody = FastifyRequest & { rawBody?: Buffer };
 
+function systemErrorRetry(repos: Repositories, phone: string): string {
+  const lang = repos.conversation.getLanguage(phone) ?? 'es';
+  return getSkills().fallbackReplies[lang].systemErrorRetry;
+}
+
 function verifySignature(rawBody: Buffer, signatureHeader: string, secret: string): boolean {
   const expected = `sha256=${createHmac('sha256', secret).update(rawBody).digest('hex')}`;
   try {
@@ -311,18 +316,22 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
 
         const handoffReply = await forwardPostHandoffMessage(repos, msg);
         if (handoffReply !== null) {
+          let sent = false;
           try {
             await sendText(msg.from, handoffReply);
+            sent = true;
           } catch (err) {
             logSystemError('whatsapp_send', 'error', err, { phone: msg.from, flow: 'handoff_reply' });
           }
-          repos.message.addMessage({
-            customer_phone: msg.from,
-            direction: 'outbound',
-            message_type: 'text',
-            body: handoffReply,
-            created_at: new Date().toISOString(),
-          });
+          if (sent) {
+            repos.message.addMessage({
+              customer_phone: msg.from,
+              direction: 'outbound',
+              message_type: 'text',
+              body: handoffReply,
+              created_at: new Date().toISOString(),
+            });
+          }
           continue;
         }
 
@@ -330,40 +339,45 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
         try {
           result = await processMessage({ repos, customerPhone: msg.from, message: msg.text, messageId: msg.id });
         } catch (err) {
-          logSystemError('webhook_process', 'error', err, { phone: msg.from, messagePreview: msg.text.slice(0, 80) });
-          const lang = repos.conversation.getLanguage(msg.from);
-          const humanFallback = lang === 'en'
-            ? 'Sorry, bad connection. Can you say that again?'
-            : 'Perdon, se me fue la senal. Me repites lo ultimo?';
+          logSystemError('webhook_process', 'error', err, { phone: msg.from });
+          const humanFallback = systemErrorRetry(repos, msg.from);
+          let sent = false;
           try {
             await sendText(msg.from, humanFallback);
+            sent = true;
           } catch (sendErr) {
             logSystemError('whatsapp_send', 'error', sendErr, { phone: msg.from, flow: 'crash_fallback' });
           }
-          repos.message.addMessage({
-            customer_phone: msg.from,
-            direction: 'outbound',
-            message_type: 'text',
-            body: humanFallback,
-            created_at: new Date().toISOString(),
-          });
+          if (sent) {
+            repos.message.addMessage({
+              customer_phone: msg.from,
+              direction: 'outbound',
+              message_type: 'text',
+              body: humanFallback,
+              created_at: new Date().toISOString(),
+            });
+          }
           continue;
         }
 
         if (result.shouldSendReply) {
+          let sent = false;
           try {
             await sendText(msg.from, result.reply);
+            sent = true;
           } catch (err) {
             logSystemError('whatsapp_send', 'error', err, { phone: msg.from, flow: 'bot_reply' });
           }
 
-          repos.message.addMessage({
-            customer_phone: msg.from,
-            direction: 'outbound',
-            message_type: 'text',
-            body: result.reply,
-            created_at: new Date().toISOString(),
-          });
+          if (sent) {
+            repos.message.addMessage({
+              customer_phone: msg.from,
+              direction: 'outbound',
+              message_type: 'text',
+              body: result.reply,
+              created_at: new Date().toISOString(),
+            });
+          }
         }
 
         if (result.priceJustGiven) {
@@ -372,19 +386,23 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
           const image = selectImageForPlan(skills.media.images, collectedPlan);
           if (image && image.value !== 'REPLACE_WITH_PUBLIC_IMAGE_URL' && canSendPlanImage(repos, msg.from, image.id)) {
             const caption = result.priceFollowUpText ?? image.caption;
+            let sent = false;
             try {
               await sendImageUrl(msg.from, image.value, caption);
               recordImageSend(repos, msg.from, image.id);
+              sent = true;
             } catch (err) {
               logSystemError('whatsapp_send', 'error', err, { phone: msg.from, flow: 'price_image' });
             }
-            repos.message.addMessage({
-              customer_phone: msg.from,
-              direction: 'outbound',
-              message_type: 'image',
-              body: caption,
-              created_at: new Date().toISOString(),
-            });
+            if (sent) {
+              repos.message.addMessage({
+                customer_phone: msg.from,
+                direction: 'outbound',
+                message_type: 'image',
+                body: caption,
+                created_at: new Date().toISOString(),
+              });
+            }
           }
         }
 
