@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 import { z } from 'zod';
 import { env } from '../config/env.js';
+import { logger } from '../config/logger.js';
 import type { Repositories } from '../db/repositories/index.js';
 import type { ConversationAssignment } from '../db/repositories/types.js';
 
@@ -59,13 +60,54 @@ function substituteNames(value: string): string {
     .replace(/\{\{PARTNER_NAME\}\}/g, env.PARTNER_NAME);
 }
 
+function withNames<T extends SalesLine>(line: T): T {
+  return { ...line, label: substituteNames(line.label), agentName: substituteNames(line.agentName) };
+}
+
+let bridgeFlowFallbackWarned = false;
+
+/**
+ * Resolves the BRIDGE_FLOW override percentage. `env.BRIDGE_FLOW` is `-1` both
+ * when intentionally disabled and when the raw value failed coercion (zod
+ * `.catch(-1)`). We distinguish the two via the raw env string so a misconfig
+ * (e.g. `BRIDGE_FLOW=150`) is surfaced once instead of silently disabling.
+ */
+function resolveBridgeFlow(): number {
+  const flow = env.BRIDGE_FLOW;
+  const raw = process.env.BRIDGE_FLOW?.trim();
+  if (flow < 0 && raw && raw !== '-1' && !bridgeFlowFallbackWarned) {
+    logger.warn({ raw }, '[ROUTING] BRIDGE_FLOW invalid (expected 0-100); using raw LEAD_ROUTING_JSON weights');
+    bridgeFlowFallbackWarned = true;
+  }
+  return flow;
+}
+
 function normalizeConfig(config: RoutingConfig): RoutingConfig {
+  const bridgeFlow = resolveBridgeFlow();
+
+  const bridgeLines = config.salesLines.filter(l => l.type === 'bridge');
+  const otherLines = config.salesLines.filter(l => l.type !== 'bridge');
+
+  // No override when disabled/invalid, or when only one line group exists
+  // (BRIDGE_FLOW splits between bridge and referral groups).
+  if (bridgeFlow < 0 || bridgeFlow > 100 || bridgeLines.length === 0 || otherLines.length === 0) {
+    return { salesLines: config.salesLines.map(withNames) };
+  }
+
+  const bridgeTotal = bridgeLines.reduce((s, l) => s + l.weight, 0);
+  const otherTotal = otherLines.reduce((s, l) => s + l.weight, 0);
+  const otherFlow = 100 - bridgeFlow;
+
   return {
-    salesLines: config.salesLines.map(line => ({
-      ...line,
-      label: substituteNames(line.label),
-      agentName: substituteNames(line.agentName),
-    })),
+    salesLines: config.salesLines.map(line => {
+      const base = withNames(line);
+      if (line.type === 'bridge') {
+        const weight = bridgeTotal > 0 ? (line.weight / bridgeTotal) * bridgeFlow : bridgeFlow / bridgeLines.length;
+        return { ...base, weight };
+      }
+      const weight = otherTotal > 0 ? (line.weight / otherTotal) * otherFlow : otherFlow / otherLines.length;
+      return { ...base, weight };
+    }),
   };
 }
 
@@ -99,6 +141,7 @@ export function hasRoutingConfig(): boolean {
 /** Test-only: clears the memoized config so env changes take effect. */
 export function resetRoutingConfigCache(): void {
   cachedConfig = undefined;
+  bridgeFlowFallbackWarned = false;
 }
 
 export function isAllowedTelegramChat(chatId: string): boolean {

@@ -5,14 +5,26 @@ import { createRepositories, type Repositories } from '../db/repositories/index.
 import { env } from '../config/env.js';
 import { loadSkills } from '../services/skill-loader.js';
 import { resetRoutingConfigCache, type RoutingConfig } from '../services/lead-routing.js';
-import { forwardBridgeMessage, forwardPostHandoffMessage, type ExtractedMessage } from '../routes/whatsapp-webhook.route.js';
+import { forwardBridgeMessage, forwardPostHandoffMessage, notifyAssignedLineIfDormant, type ExtractedMessage } from '../routes/whatsapp-webhook.route.js';
 
-const { mockSendTelegram } = vi.hoisted(() => ({
+const { mockSendTelegram, mockSendTelegramPhoto, mockSendTelegramVoice, mockDownloadMedia } = vi.hoisted(() => ({
   mockSendTelegram: vi.fn<(_chatId: string, _text: string) => Promise<void>>(() => Promise.resolve()),
+  mockSendTelegramPhoto: vi.fn<(_chatId: string, _buf: Buffer, _mime: string, _caption?: string) => Promise<void>>(() => Promise.resolve()),
+  mockSendTelegramVoice: vi.fn<(_chatId: string, _buf: Buffer, _mime: string) => Promise<void>>(() => Promise.resolve()),
+  mockDownloadMedia: vi.fn<(_id: string) => Promise<{ buffer: Buffer; mimeType: string }>>(() =>
+    Promise.resolve({ buffer: Buffer.from('img'), mimeType: 'image/jpeg' })),
 }));
 
 vi.mock('../services/telegram-bot.js', () => ({
   sendTelegramMessage: mockSendTelegram,
+  sendTelegramPhoto: mockSendTelegramPhoto,
+  sendTelegramVoice: mockSendTelegramVoice,
+}));
+
+vi.mock('../services/whatsapp-client.js', () => ({
+  downloadMedia: mockDownloadMedia,
+  sendText: vi.fn(() => Promise.resolve()),
+  sendImageUrl: vi.fn(() => Promise.resolve()),
 }));
 
 const PHONE = '573001112233';
@@ -29,7 +41,15 @@ let repos: Repositories;
 let previousRoutingJson: string;
 
 function msg(text: string, id = 'wamid-1'): ExtractedMessage {
-  return { from: PHONE, id, text, timestamp: '' };
+  return { from: PHONE, id, type: 'text', text, media: null, timestamp: '' };
+}
+
+function imgMsg(caption: string, id = 'wamid-img', mediaId = 'media-1'): ExtractedMessage {
+  return { from: PHONE, id, type: 'image', text: caption, media: { id: mediaId, mimeType: 'image/jpeg' }, timestamp: '' };
+}
+
+function audioMsg(id = 'wamid-audio', mediaId = 'media-audio'): ExtractedMessage {
+  return { from: PHONE, id, type: 'audio', text: '', media: { id: mediaId, mimeType: 'audio/ogg' }, timestamp: '' };
 }
 
 function seedHandedOff(lineId: 'line1_bridge' | 'line2_referral', chatId: '111' | '222'): void {
@@ -47,6 +67,13 @@ beforeEach(() => {
   env.LEAD_ROUTING_JSON = JSON.stringify(routing);
   resetRoutingConfigCache();
   mockSendTelegram.mockReset();
+  mockSendTelegram.mockResolvedValue(undefined);
+  mockSendTelegramPhoto.mockReset();
+  mockSendTelegramPhoto.mockResolvedValue(undefined);
+  mockSendTelegramVoice.mockReset();
+  mockSendTelegramVoice.mockResolvedValue(undefined);
+  mockDownloadMedia.mockReset();
+  mockDownloadMedia.mockResolvedValue({ buffer: Buffer.from('img'), mimeType: 'image/jpeg' });
 });
 
 afterEach(() => {
@@ -127,6 +154,7 @@ describe('forwardBridgeMessage', () => {
     repos.conversation.setAssignment(PHONE, { assignedLineId: 'line1_bridge', assignedAgentChat: '111' });
     repos.conversation.setMode(PHONE, 'bridge_active');
     repos.bridgeSession.open('111', PHONE);
+    mockDownloadMedia.mockResolvedValueOnce({ buffer: Buffer.from('voice'), mimeType: 'audio/ogg' });
     mockSendTelegram.mockRejectedValueOnce(new Error('telegram down'));
 
     const forwarded = await forwardBridgeMessage(repos, msg('Hola agente', 'wamid-bridge-fail'));
@@ -136,5 +164,147 @@ describe('forwardBridgeMessage', () => {
     expect(repos.bridgeSession.getByAgentChat('111')).toBeNull();
     const inbound = repos.message.getLastInboundBodies(PHONE, 10).filter(m => m.body === 'Hola agente');
     expect(inbound).toHaveLength(1);
+  });
+
+  it('forwards a customer image to the agent as a Telegram photo during an active bridge', async () => {
+    repos.conversation.upsert(PHONE, { language: 'es' });
+    repos.conversation.setAssignment(PHONE, { assignedLineId: 'line1_bridge', assignedAgentChat: '111' });
+    repos.conversation.setMode(PHONE, 'bridge_active');
+    repos.bridgeSession.open('111', PHONE);
+
+    const forwarded = await forwardBridgeMessage(repos, imgMsg('comprobante de pago'));
+
+    expect(forwarded).toBe(true);
+    expect(mockDownloadMedia).toHaveBeenCalledWith('media-1');
+    expect(mockSendTelegramPhoto).toHaveBeenCalledTimes(1);
+    const [chatId, buffer, mime, caption] = mockSendTelegramPhoto.mock.calls[0];
+    expect(chatId).toBe('111');
+    expect(buffer).toBeInstanceOf(Buffer);
+    expect(mime).toBe('image/jpeg');
+    expect(caption).toContain('comprobante de pago');
+    expect(mockSendTelegram).not.toHaveBeenCalled();
+  });
+
+  it('stores the inbound image as message_type image', async () => {
+    repos.conversation.setAssignment(PHONE, { assignedLineId: 'line1_bridge', assignedAgentChat: '111' });
+    repos.conversation.setMode(PHONE, 'bridge_active');
+    repos.bridgeSession.open('111', PHONE);
+
+    await forwardBridgeMessage(repos, imgMsg(''));
+
+    const inbound = repos.message.getLastInboundBodies(PHONE, 10);
+    expect(inbound).toHaveLength(1);
+  });
+
+  it('keeps the bridge open and notifies the agent when image download fails', async () => {
+    repos.conversation.setAssignment(PHONE, { assignedLineId: 'line1_bridge', assignedAgentChat: '111' });
+    repos.conversation.setMode(PHONE, 'bridge_active');
+    repos.bridgeSession.open('111', PHONE);
+    mockDownloadMedia.mockRejectedValueOnce(new Error('graph 404'));
+
+    const forwarded = await forwardBridgeMessage(repos, imgMsg('x', 'wamid-img-fail'));
+
+    // Transient relay error: do not silently drop or hand back to the bot.
+    expect(forwarded).toBe(true);
+    expect(repos.conversation.getMode(PHONE)).toBe('bridge_active');
+    expect(repos.bridgeSession.getByAgentChat('111')).not.toBeNull();
+    expect(mockSendTelegramPhoto).not.toHaveBeenCalled();
+    expect(mockSendTelegram).toHaveBeenCalledTimes(1);
+    expect(mockSendTelegram.mock.calls[0][1]).toContain('no se pudo descargar');
+  });
+
+  it('forwards a customer voice note to the agent as a Telegram voice during an active bridge', async () => {
+    repos.conversation.upsert(PHONE, { language: 'es' });
+    repos.conversation.setAssignment(PHONE, { assignedLineId: 'line1_bridge', assignedAgentChat: '111' });
+    repos.conversation.setMode(PHONE, 'bridge_active');
+    repos.bridgeSession.open('111', PHONE);
+    mockDownloadMedia.mockResolvedValueOnce({ buffer: Buffer.from('voice'), mimeType: 'audio/ogg' });
+
+    const forwarded = await forwardBridgeMessage(repos, audioMsg());
+
+    expect(forwarded).toBe(true);
+    expect(mockDownloadMedia).toHaveBeenCalledWith('media-audio');
+    expect(mockSendTelegramVoice).toHaveBeenCalledTimes(1);
+    const [chatId, buf, mime] = mockSendTelegramVoice.mock.calls[0];
+    expect(chatId).toBe('111');
+    expect(buf).toBeInstanceOf(Buffer);
+    expect(mime).toBe('audio/ogg');
+    expect(mockSendTelegram).toHaveBeenCalled(); // "Audio de X" text notification
+  });
+
+  it('keeps the bridge open and notifies the agent when customer audio download fails', async () => {
+    repos.conversation.setAssignment(PHONE, { assignedLineId: 'line1_bridge', assignedAgentChat: '111' });
+    repos.conversation.setMode(PHONE, 'bridge_active');
+    repos.bridgeSession.open('111', PHONE);
+    mockDownloadMedia.mockRejectedValueOnce(new Error('graph 404'));
+
+    const forwarded = await forwardBridgeMessage(repos, audioMsg('wamid-audio-fail'));
+
+    expect(forwarded).toBe(true);
+    expect(repos.conversation.getMode(PHONE)).toBe('bridge_active');
+    expect(mockSendTelegramVoice).not.toHaveBeenCalled();
+    expect(mockSendTelegram).toHaveBeenCalledTimes(1);
+    expect(mockSendTelegram.mock.calls[0][1]).toContain('audio');
+    expect(mockSendTelegram.mock.calls[0][1]).toContain('no se pudo descargar');
+  });
+});
+
+describe('notifyAssignedLineIfDormant', () => {
+  it('notifies the assigned bridge agent when mode is bot and assignment exists', async () => {
+    repos.conversation.upsert(PHONE, { language: 'es' });
+    repos.conversation.setAssignment(PHONE, { assignedLineId: 'line1_bridge', assignedAgentChat: '111' });
+    // mode is already 'bot' by default — simulating after /end
+
+    const result = await notifyAssignedLineIfDormant(repos, msg('Hola de nuevo'));
+
+    expect(result).toBe(true);
+    expect(mockSendTelegram).toHaveBeenCalledTimes(1);
+    expect(mockSendTelegram.mock.calls[0][0]).toBe('111');
+    expect(mockSendTelegram.mock.calls[0][1]).toContain('/chat 573001112233');
+    expect(repos.message.getLastInboundBodies(PHONE, 1)[0]?.body).toBe('Hola de nuevo');
+  });
+
+  it('does not notify when mode is bridge_active', async () => {
+    repos.conversation.setAssignment(PHONE, { assignedLineId: 'line1_bridge', assignedAgentChat: '111' });
+    repos.conversation.setMode(PHONE, 'bridge_active');
+
+    await notifyAssignedLineIfDormant(repos, msg('Hola'));
+
+    expect(mockSendTelegram).not.toHaveBeenCalled();
+  });
+
+  it('does not notify when opt-out', async () => {
+    repos.conversation.setAssignment(PHONE, { assignedLineId: 'line1_bridge', assignedAgentChat: '111' });
+    repos.optOut.setOptOut(PHONE);
+
+    await notifyAssignedLineIfDormant(repos, msg('Hola'));
+
+    expect(mockSendTelegram).not.toHaveBeenCalled();
+  });
+
+  it('does not notify for referral lines', async () => {
+    repos.conversation.setAssignment(PHONE, { assignedLineId: 'line2_referral', assignedAgentChat: '222' });
+
+    await notifyAssignedLineIfDormant(repos, msg('Hola'));
+
+    expect(mockSendTelegram).not.toHaveBeenCalled();
+  });
+
+  it('does not notify when already handed off', async () => {
+    repos.conversation.setAssignment(PHONE, { assignedLineId: 'line1_bridge', assignedAgentChat: '111' });
+    repos.conversation.setHandedOff(PHONE);
+
+    await notifyAssignedLineIfDormant(repos, msg('Hola'));
+
+    expect(mockSendTelegram).not.toHaveBeenCalled();
+  });
+
+  it('does not notify when bot is paused', async () => {
+    repos.conversation.setAssignment(PHONE, { assignedLineId: 'line1_bridge', assignedAgentChat: '111' });
+    repos.setPaused(true);
+
+    await notifyAssignedLineIfDormant(repos, msg('Hola'));
+
+    expect(mockSendTelegram).not.toHaveBeenCalled();
   });
 });

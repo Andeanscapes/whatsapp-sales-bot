@@ -24,9 +24,9 @@ export function formatLeadHistory(conv: ConversationRow, recentMessages: RecentM
   lines.push('', '*Recent messages*');
   if (recentMessages.length === 0) lines.push('No messages yet.');
   for (const message of recentMessages.slice(-12)) {
-    const prefix = message.role === 'user' ? 'Customer' : 'Bot/Agent';
+    const prefix = message.role === 'user' ? '👤 Cliente' : '🤖 Bot';
     const content = message.content.length > 600 ? `${message.content.slice(0, 600)}...` : message.content;
-    lines.push(`${prefix}: ${md(content)}`);
+    lines.push('', `${prefix}: ${md(content)}`);
   }
 
   return lines.join('\n');

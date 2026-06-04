@@ -18,13 +18,40 @@ import { resumeHandler } from '../commands/resume.command.js';
 import { statusHandler } from '../commands/status.command.js';
 import { statsHandler } from '../commands/stats.command.js';
 import { isAllowedTelegramChat } from './lead-routing.js';
-import { sendBridgeReply } from './bridge-service.js';
+import { sendBridgeReply, sendBridgeMedia } from './bridge-service.js';
+import { bridgeMessages } from './bridge-messages.js';
+ import { MAX_MEDIA_BYTES, MAX_VIDEO_BYTES, MAX_AUDIO_BYTES } from './whatsapp-client.js';
 
 const ALERT_FETCH_TIMEOUT_MS = 10_000;
+/** Binary media transfers (photo download/upload) need more headroom than quick API calls. */
+const MEDIA_FETCH_TIMEOUT_MS = 30_000;
 const POLL_INTERVAL_MS = 5_000;
 
 function telegramApiUrl(path: string): string {
   return `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}${path}`;
+}
+
+export interface TelegramPhotoSize {
+  file_id: string;
+  file_unique_id: string;
+  width: number;
+  height: number;
+  file_size?: number;
+}
+
+export interface TelegramVideo {
+  file_id: string;
+  file_unique_id: string;
+  mime_type?: string;
+  file_size?: number;
+}
+
+export interface TelegramVoice {
+  file_id: string;
+  file_unique_id: string;
+  mime_type?: string;
+  duration?: number;
+  file_size?: number;
 }
 
 export interface TelegramUpdate {
@@ -34,6 +61,10 @@ export interface TelegramUpdate {
     chat: { id: number; type: string };
     from?: { id: number; username?: string; first_name?: string };
     text?: string;
+    caption?: string;
+    photo?: TelegramPhotoSize[];
+    video?: TelegramVideo;
+    voice?: TelegramVoice;
   };
 }
 
@@ -58,6 +89,90 @@ export async function sendTelegramMessage(
   }
 }
 
+export async function sendTelegramPhoto(
+  chatId: number | string,
+  photo: Buffer,
+  mimeType: string,
+  caption?: string,
+): Promise<void> {
+  if (!env.TELEGRAM_BOT_TOKEN) return;
+
+  const form = new FormData();
+  form.append('chat_id', String(chatId));
+  if (caption) form.append('caption', caption);
+  form.append('photo', new Blob([new Uint8Array(photo)], { type: mimeType }), 'photo');
+
+  const response = await fetch(telegramApiUrl('/sendPhoto'), {
+    method: 'POST',
+    signal: AbortSignal.timeout(MEDIA_FETCH_TIMEOUT_MS),
+    body: form,
+  });
+  if (!response.ok) {
+    const errBody = await response.text().catch(() => '');
+    throw new Error(`Telegram sendPhoto failed: ${response.status} ${errBody}`);
+  }
+}
+
+export interface DownloadedTelegramFile {
+  buffer: Buffer;
+  mimeType: string;
+}
+
+/**
+ * Downloads a Telegram file by file_id. Telegram requires two steps: getFile to
+ * resolve the storage path, then fetch the binary from the file API. The bot
+ * token is only used server-side here; the resolved URL is never forwarded.
+ */
+export async function downloadTelegramFile(fileId: string, maxBytes: number = MAX_MEDIA_BYTES): Promise<DownloadedTelegramFile> {
+  const metaRes = await fetch(telegramApiUrl(`/getFile?file_id=${encodeURIComponent(fileId)}`), {
+    signal: AbortSignal.timeout(ALERT_FETCH_TIMEOUT_MS),
+  });
+  if (!metaRes.ok) {
+    throw new Error(`Telegram getFile failed: ${metaRes.status}`);
+  }
+  const meta = (await metaRes.json()) as { ok: boolean; result?: { file_path?: string; file_size?: number } };
+  const filePath = meta.result?.file_path;
+  if (!meta.ok || !filePath) throw new Error('Telegram getFile missing file_path');
+  if (meta.result?.file_size && meta.result.file_size > maxBytes) {
+    throw new Error(`Telegram file exceeds ${maxBytes} bytes (declared ${meta.result.file_size})`);
+  }
+
+  const binRes = await fetch(`https://api.telegram.org/file/bot${env.TELEGRAM_BOT_TOKEN}/${filePath}`, {
+    signal: AbortSignal.timeout(MEDIA_FETCH_TIMEOUT_MS),
+  });
+  if (!binRes.ok) {
+    throw new Error(`Telegram file download failed: ${binRes.status}`);
+  }
+  const buffer = Buffer.from(await binRes.arrayBuffer());
+  if (buffer.byteLength > maxBytes) {
+    throw new Error(`Telegram file exceeds ${maxBytes} bytes (actual ${buffer.byteLength})`);
+  }
+  const mimeType = binRes.headers.get('content-type') ?? 'image/jpeg';
+  return { buffer, mimeType };
+}
+
+export async function sendTelegramVoice(
+  chatId: number | string,
+  voice: Buffer,
+  mimeType: string,
+): Promise<void> {
+  if (!env.TELEGRAM_BOT_TOKEN) return;
+
+  const form = new FormData();
+  form.append('chat_id', String(chatId));
+  form.append('voice', new Blob([new Uint8Array(voice)], { type: mimeType }), 'voice');
+
+  const response = await fetch(telegramApiUrl('/sendVoice'), {
+    method: 'POST',
+    signal: AbortSignal.timeout(MEDIA_FETCH_TIMEOUT_MS),
+    body: form,
+  });
+  if (!response.ok) {
+    const errBody = await response.text().catch(() => '');
+    throw new Error(`Telegram sendVoice failed: ${response.status} ${errBody}`);
+  }
+}
+
 function parseCommand(text: string): { command: string; args: string[] } | null {
   const trimmed = text.trim();
   const match = trimmed.match(/^\/([a-zA-Z0-9_]+)(@[a-zA-Z0-9_]+)?(?:\s+(.*))?$/s);
@@ -72,7 +187,11 @@ function parseCommand(text: string): { command: string; args: string[] } | null 
 
 export async function processUpdate(update: TelegramUpdate, repos: Repositories): Promise<void> {
   const msg = update.message;
-  if (!msg || !msg.text || !msg.from) return;
+  if (!msg || !msg.from) return;
+  const hasPhoto = !!msg.photo && msg.photo.length > 0;
+  const hasVideo = !!msg.video;
+  const hasVoice = !!msg.voice;
+  if (!msg.text && !hasPhoto && !hasVideo && !hasVoice) return;
 
   const chatIdStr = String(msg.chat.id);
   if (!isAllowedTelegramChat(chatIdStr)) {
@@ -80,12 +199,50 @@ export async function processUpdate(update: TelegramUpdate, repos: Repositories)
     return;
   }
 
-  const parsed = parseCommand(msg.text);
+  // A photo, video, or voice note (no command) relays the agent's media to the bridged customer.
+  if (hasPhoto || hasVideo || hasVoice) {
+    const session = repos.bridgeSession.getByAgentChat(chatIdStr);
+    if (!session) {
+      await sendTelegramMessage(msg.chat.id, bridgeMessages.imageNoActiveChat);
+      return;
+    }
+
+    let fileId: string;
+    let maxBytes: number;
+    let mimeType: string;
+    if (hasVoice) {
+      fileId = msg.voice!.file_id;
+      maxBytes = MAX_AUDIO_BYTES;
+      mimeType = msg.voice!.mime_type ?? 'audio/ogg';
+    } else if (hasVideo) {
+      fileId = msg.video!.file_id;
+      maxBytes = MAX_VIDEO_BYTES;
+      mimeType = msg.video!.mime_type ?? 'video/mp4';
+    } else {
+      fileId = msg.photo![msg.photo!.length - 1].file_id;
+      maxBytes = MAX_MEDIA_BYTES;
+      mimeType = ''; // defer to download content-type
+    }
+    try {
+      const file = await downloadTelegramFile(fileId, maxBytes);
+      const resolvedMime = mimeType || file.mimeType;
+      const result = await sendBridgeMedia(repos, session.customerPhone, file.buffer, resolvedMime, msg.caption);
+      if (result.ok) repos.bridgeSession.touch(chatIdStr);
+      await sendTelegramMessage(msg.chat.id, result.message);
+    } catch (err) {
+      logger.error({ err, chatId: chatIdStr }, '[TELEGRAM_BOT] bridge media relay failed');
+      await sendTelegramMessage(msg.chat.id, bridgeMessages.sendFailed(err instanceof Error ? err.message : String(err)));
+    }
+    return;
+  }
+
+  const text = msg.text ?? '';
+  const parsed = parseCommand(text);
   if (!parsed) {
     const session = repos.bridgeSession.getByAgentChat(chatIdStr);
     if (!session) return;
 
-    const result = await sendBridgeReply(repos, session.customerPhone, msg.text);
+    const result = await sendBridgeReply(repos, session.customerPhone, text);
     if (result.ok) repos.bridgeSession.touch(chatIdStr);
     await sendTelegramMessage(msg.chat.id, result.message);
     return;
@@ -259,7 +416,14 @@ export async function startTelegramBot(repos: Repositories): Promise<void> {
 
   logger.info({ chatId: env.TELEGRAM_CHAT_ID }, '[TELEGRAM_BOT] polling started');
 
+  // A batch (e.g. a phone album → many photo updates) can take longer to process
+  // than POLL_INTERVAL_MS. Without this guard, the next tick re-fetches the same
+  // updates (offset only advances after each finishes) → duplicate sends + 400s.
+  let isPolling = false;
+
   const interval = setInterval(async () => {
+    if (isPolling) return;
+    isPolling = true;
     try {
       const url = telegramApiUrl(`/getUpdates?offset=${lastUpdateId + 1}&timeout=5`);
       const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
@@ -269,11 +433,19 @@ export async function startTelegramBot(repos: Repositories): Promise<void> {
       if (!data.ok || !Array.isArray(data.result)) return;
 
       for (const update of data.result) {
+        // Acknowledge (advance offset) BEFORE processing so a slow batch is never
+        // re-fetched, even if processing throws mid-way.
         lastUpdateId = update.update_id;
-        await processUpdate(update, repos);
+        try {
+          await processUpdate(update, repos);
+        } catch (err) {
+          logger.error({ err, updateId: update.update_id }, '[TELEGRAM_BOT] update processing failed');
+        }
       }
     } catch (err) {
       logger.error({ err }, '[TELEGRAM_BOT] poll error');
+    } finally {
+      isPolling = false;
     }
   }, POLL_INTERVAL_MS);
 

@@ -3,6 +3,8 @@
  * These are NOT customer-facing business copy, so they live here rather than in
  * the skill JSON. Centralized to avoid scattering literals across services.
  */
+const customerMessageBody = (phone: string, text: string): string => `Nuevo mensaje de ${phone}\n\n${text}`;
+
 export const bridgeMessages = {
   bridgeOnlyForApiLine: 'Esta linea esta configurada como referral. Responde desde WhatsApp Business app, no desde Telegram bridge.',
   leadNotFound: (phone: string): string => `No se encontro conversacion para ${phone}`,
@@ -30,8 +32,19 @@ export const bridgeMessages = {
     `🎉 Nueva reserva de *${params.name ?? params.phone}* — ${params.phone}\nConfirmada por ${params.who}.\nUn lead mas convertido para el equipo 👏`,
   chatActiveHeader: (phone: string): string =>
     `Chat activo con ${phone}. Escribe mensajes normales aqui para responder por WhatsApp.\nUsa /end para cerrar.`,
-  newCustomerMessage: (phone: string, text: string): string =>
-    `Nuevo mensaje de ${phone}\n\n${text}\n\nUsa /chat ${phone} para responder desde el bridge si esta asignado a tu linea API.`,
+  newCustomerMessage: (phone: string, text: string): string => customerMessageBody(phone, text),
+  newCustomerImage: (phone: string, caption: string): string =>
+    caption.trim().length > 0
+      ? `Imagen de ${phone}\n\n${caption}`
+      : `Imagen de ${phone}`,
+  newCustomerAudio: (phone: string): string => `Audio de ${phone}`,
+  dormantBridgeNotice: (phone: string, text: string): string =>
+    `${customerMessageBody(phone, text)}\n\nUsa /chat ${phone} para responder.`,
+  customerImageFailed: (phone: string): string =>
+    `${phone} envio una imagen pero no se pudo descargar. Pidele al cliente que la reenvie.`,
+  customerAudioFailed: (phone: string): string =>
+    `${phone} envio un audio pero no se pudo descargar. Pidele al cliente que lo reenvie.`,
+  imageNoActiveChat: 'No hay chat activo. Abre uno con /chat <telefono> antes de enviar una imagen.',
   postHandoffCustomerMessage: (params: { phone: string; text: string; bridge: boolean; displayNumber?: string }): string => {
     const action = params.bridge
       ? `Usa /chat ${params.phone} para responder desde el bridge.`
