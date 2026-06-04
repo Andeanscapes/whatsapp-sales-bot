@@ -36,7 +36,8 @@
     "priceUnavailable": "Estamos ajustando precios y fechas en este momento. Dejame confirmarlo con el equipo y te paso la info exacta enseguida. ¿Para cuantas personas y que fecha tienes en mente?",
     "dateSelectedLimited": "Perfecto, tomo {{date}} como fecha tentativa. Te confirmo disponibilidad exacta con el equipo. ¿Quieres que lo dejemos para revisión de reserva?",
     "dateSelectedLimitedNoDate": "Perfecto, tomo nota de tu fecha tentativa. Te confirmo disponibilidad exacta con el equipo. ¿Quieres que lo dejemos para revision de reserva?",
-    "itineraryReply": "Claro {{name}}, te lo explico bien. {{itinerarySummary}}"
+    "itineraryReply": "Claro {{name}}, te lo explico bien. {{itinerarySummary}}",
+    "systemErrorRetry": "Perdon, se me fue la senal. Me repites lo ultimo?"
   },
   "en": {
     "optOutConfirmation": "Understood. We won't send more automated messages. If you need help later, you can message us again.",
@@ -75,6 +76,7 @@
     "priceUnavailable": "We're updating prices and dates right now. Let me confirm with the team and send you the exact info shortly. For how many people and what date are you thinking?",
     "dateSelectedLimited": "Perfect, I'll take {{date}} as the tentative date. I'll confirm exact availability with the team. Would you like us to review it for reservation?",
     "dateSelectedLimitedNoDate": "Perfect, I'll note your tentative date. I'll confirm exact availability with the team. Would you like us to review it for reservation?",
-    "itineraryReply": "Sure {{name}}, here is the clear version. {{itinerarySummary}}"
+    "itineraryReply": "Sure {{name}}, here is the clear version. {{itinerarySummary}}",
+    "systemErrorRetry": "Sorry, bad connection. Can you say that again?"
   }
 }

@@ -257,6 +257,7 @@ const langFallbackSchema = z.object({
   dateSelectedLimitedNoDate: z.string(),
   answerQuestionBeforeQualification: z.string(),
   itineraryReply: z.string(),
+  systemErrorRetry: z.string(),
 });
 
 const fallbackRepliesSchema = z.object({

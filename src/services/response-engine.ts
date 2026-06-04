@@ -53,6 +53,10 @@ export type { ProcessMessageInput, ProcessMessageOutput };
 
 const MAX_INBOUND_CHARS = 1500;
 
+function getSystemErrorRetry(lang: 'es' | 'en' | null): string {
+  return getSkills().fallbackReplies[lang ?? 'es'].systemErrorRetry;
+}
+
 const OPT_OUT_KEYWORDS_ES = ['detener', 'cancelar mensajes', 'no me escriban', 'basta', 'suficiente', 'dejen de escribirme', 'no me contacten', 'no me contacte', 'sacame de la lista', 'no quiero recibir mensajes', 'no quiero mas mensajes', 'borra mis datos', 'eliminame', 'eliminame de la lista', 'no me vuelvan a escribir', 'no me manden mas mensajes', 'dejen de molestar', 'paren', 'bloqueo', 'reporto'];
 const OPT_OUT_KEYWORDS_EN = ['stop', 'unsubscribe', 'no more messages', 'remove me', 'do not contact me', 'take me off', 'take me off the list', 'please stop', 'enough', "i'm done", 'i am done', 'unsubscribe me', 'do not text', 'do not message', 'stop messaging', 'leave me alone', 'do not disturb', 'block', 'report spam'];
 const ALL_OPT_OUT_KEYWORDS = [...OPT_OUT_KEYWORDS_ES, ...OPT_OUT_KEYWORDS_EN];
@@ -457,15 +461,11 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   } catch (err) {
     logSystemError('process_message', 'error', err, {
       phone: customerPhone,
-      messagePreview: message.slice(0, 80),
     });
     const lang = repos.conversation.getLanguage(customerPhone);
     const currentScore = repos.conversation.getLeadScore(customerPhone);
-    const humanFallback = lang === 'en'
-      ? 'Sorry, bad connection. Can you say that again?'
-      : 'Perdon, se me fue la senal. Me repites lo ultimo?';
     return {
-      reply: humanFallback,
+      reply: getSystemErrorRetry(lang),
       shouldSendReply: true,
       leadScore: currentScore,
       usedAi: false,

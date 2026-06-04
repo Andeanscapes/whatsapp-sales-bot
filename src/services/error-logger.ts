@@ -3,8 +3,22 @@ import type { Repositories } from '../db/repositories/index.js';
 
 let reposRef: Repositories | null = null;
 
-export function setErrorRepos(repos: Repositories): void {
+export function setErrorRepos(repos: Repositories | null): void {
   reposRef = repos;
+}
+
+function maskSensitiveContext(context: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(context).map(([key, value]) => {
+    const lowerKey = key.toLowerCase();
+    if (lowerKey.includes('message') || lowerKey.includes('body') || lowerKey.includes('text') || lowerKey.includes('reply')) {
+      return [key, '[REDACTED]'];
+    }
+    if (lowerKey.includes('phone') || lowerKey.includes('chatid') || lowerKey.includes('agentchat')) {
+      const str = String(value ?? '');
+      return [key, str.length <= 6 ? str : `${str.slice(0, 3)}***${str.slice(-3)}`];
+    }
+    return [key, value];
+  }));
 }
 
 export function logSystemError(
@@ -15,12 +29,13 @@ export function logSystemError(
 ): void {
   const message = err instanceof Error ? err.message : String(err);
   const stack = err instanceof Error ? err.stack : undefined;
+  const safeContext = context ? maskSensitiveContext(context) : undefined;
 
-  logger.error({ err, type, severity, context: context ? JSON.stringify(context).slice(0, 500) : undefined }, `[ERROR_LOG] ${type}`);
+  logger.error({ err, type, severity, context: safeContext }, `[ERROR_LOG] ${type}`);
 
   if (reposRef) {
     try {
-      reposRef.systemErrors.insert(type, severity, message, stack, context);
+      reposRef.systemErrors.insert(type, severity, message, stack, safeContext);
     } catch {
       // DB write itself failed — nothing more we can do
     }
