@@ -20,6 +20,7 @@ import type {
   LineLeadCount,
   StoredMessage,
   RecentMessage,
+  SystemErrorRepository,
 } from './types.js';
 
 const ALLOWED_CONVERSATION_COLUMNS = new Set([
@@ -607,5 +608,30 @@ export class SqliteStatsRepo implements StatsRepository {
     `).all() as { phase: string; count: number }[];
 
     return rows.map(r => ({ phase: r.phase, count: r.count }));
+  }
+}
+
+export class SqliteSystemErrorRepo implements SystemErrorRepository {
+  private insertStmt: Database.Statement;
+  private pruneStmt: Database.Statement;
+
+  constructor(private db: Database.Database) {
+    this.insertStmt = db.prepare(
+      'INSERT INTO system_errors (error_type, severity, message, stack, context_json, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+    );
+    this.pruneStmt = db.prepare(
+      'DELETE FROM system_errors WHERE created_at < ?'
+    );
+  }
+
+  insert(type: string, severity: string, message: string, stack?: string, context?: Record<string, unknown>): void {
+    const contextJson = context ? JSON.stringify(context) : null;
+    this.insertStmt.run(type, severity, message, stack ?? null, contextJson, new Date().toISOString());
+  }
+
+  pruneOlderThan(days: number): number {
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const result = this.pruneStmt.run(cutoff);
+    return result.changes;
   }
 }

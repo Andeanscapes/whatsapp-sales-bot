@@ -1,5 +1,6 @@
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
+import { logSystemError } from './error-logger.js';
 import type { Repositories } from '../db/repositories/index.js';
 import { getAllCommands, getCommand, registerCommand, type CommandContext } from '../commands/index.js';
 import { reportHandler } from '../commands/report.command.js';
@@ -230,6 +231,7 @@ export async function processUpdate(update: TelegramUpdate, repos: Repositories)
       if (result.ok) repos.bridgeSession.touch(chatIdStr);
       await sendTelegramMessage(msg.chat.id, result.message);
     } catch (err) {
+      logSystemError('bridge_relay', 'error', err, { chatId: chatIdStr, agentChatId: msg.from?.id });
       logger.error({ err, chatId: chatIdStr }, '[TELEGRAM_BOT] bridge media relay failed');
       await sendTelegramMessage(msg.chat.id, bridgeMessages.sendFailed(err instanceof Error ? err.message : String(err)));
     }
@@ -264,6 +266,7 @@ export async function processUpdate(update: TelegramUpdate, repos: Repositories)
     const reply = await cmd.handler(ctx);
     await sendTelegramMessage(msg.chat.id, reply, 'Markdown');
   } catch (err) {
+    logSystemError('telegram_command', 'error', err, { command: parsed.command, chatId: String(msg.chat.id) });
     logger.error({ err, command: parsed.command }, '[TELEGRAM_BOT] command handler failed');
     await sendTelegramMessage(msg.chat.id, 'Error procesando el comando.');
   }
@@ -391,10 +394,10 @@ export function registerCommands(): void {
   });
 }
 
-export async function startTelegramBot(repos: Repositories): Promise<void> {
+export async function startTelegramBot(repos: Repositories): Promise<ReturnType<typeof setInterval> | undefined> {
   if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) {
     logger.info('[TELEGRAM_BOT] skipping — TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set');
-    return;
+    return undefined;
   }
 
   registerCommands();
@@ -439,16 +442,17 @@ export async function startTelegramBot(repos: Repositories): Promise<void> {
         try {
           await processUpdate(update, repos);
         } catch (err) {
+          logSystemError('telegram_update', 'error', err, { updateId: update.update_id });
           logger.error({ err, updateId: update.update_id }, '[TELEGRAM_BOT] update processing failed');
         }
       }
     } catch (err) {
+      logSystemError('telegram_poll', 'warning', err, { lastUpdateId });
       logger.error({ err }, '[TELEGRAM_BOT] poll error');
     } finally {
       isPolling = false;
     }
   }, POLL_INTERVAL_MS);
 
-  process.on('SIGTERM', () => clearInterval(interval));
-  process.on('SIGINT', () => clearInterval(interval));
+  return interval;
 }

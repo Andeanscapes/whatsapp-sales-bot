@@ -1,5 +1,6 @@
 import { getSkills, refreshSkills, type Skills } from './skill-loader.js';
 import { logger } from '../config/logger.js';
+import { logSystemError } from './error-logger.js';
 import { env } from '../config/env.js';
 import { scoreMessage, computeHybridScore, type LlmLeadInput } from './lead-scoring.js';
 import { checkTimeWindow } from './time-window-policy.js';
@@ -205,6 +206,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     return { reply: '', shouldSendReply: false, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendImage: false, priceJustGiven: false };
   }
 
+  try {
   await refreshSkills();
   const skills = getSkills();
 
@@ -452,4 +454,24 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     shouldAlertOwner, ownerAlertType, shouldSendImage,
     priceJustGiven: outputPriceJustGiven, priceFollowUpText: outputPriceFollowUpText,
   };
+  } catch (err) {
+    logSystemError('process_message', 'error', err, {
+      phone: customerPhone,
+      messagePreview: message.slice(0, 80),
+    });
+    const lang = repos.conversation.getLanguage(customerPhone);
+    const currentScore = repos.conversation.getLeadScore(customerPhone);
+    const humanFallback = lang === 'en'
+      ? 'Sorry, bad connection. Can you say that again?'
+      : 'Perdon, se me fue la senal. Me repites lo ultimo?';
+    return {
+      reply: humanFallback,
+      shouldSendReply: true,
+      leadScore: currentScore,
+      usedAi: false,
+      shouldAlertOwner: false,
+      shouldSendImage: false,
+      priceJustGiven: false,
+    };
+  }
 }

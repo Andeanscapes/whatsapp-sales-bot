@@ -185,6 +185,21 @@ export interface StatsRepository {
   getLeadCountsByLineForPeriod(sinceIso: string, untilIso: string | null, hotLeadThreshold: number): LineLeadCount[];
 }
 
+export interface SystemErrorRow {
+  id: number;
+  error_type: string;
+  severity: string;
+  message: string;
+  stack: string | null;
+  context_json: string | null;
+  created_at: string;
+}
+
+export interface SystemErrorRepository {
+  insert(type: string, severity: string, message: string, stack?: string, context?: Record<string, unknown>): void;
+  pruneOlderThan(days: number): number;
+}
+
 export interface Repositories {
   conversation: ConversationRepository;
   message: MessageRepository;
@@ -196,6 +211,7 @@ export interface Repositories {
   mediaSend: MediaSendRepository;
   bridgeSession: BridgeSessionRepository;
   stats: StatsRepository;
+  systemErrors: SystemErrorRepository;
   isPaused(): boolean;
   setPaused(paused: boolean): void;
   ping(): boolean;
