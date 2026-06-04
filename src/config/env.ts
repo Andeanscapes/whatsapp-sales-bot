@@ -36,6 +36,8 @@ const envSchema = z.object({
 
   TELEGRAM_BOT_TOKEN: z.string().default(''),
   TELEGRAM_CHAT_ID: z.string().default(''),
+  LEAD_ROUTING_JSON: z.string().default(''),
+  BRIDGE_FLOW: z.coerce.number().refine(n => n >= 0 && n <= 100, 'must be 0-100').catch(-1),
 
   AI_ENABLED: boolSchema.default(true),
   DEEPSEEK_API_KEY: z.string().min(1),
@@ -57,8 +59,6 @@ const envSchema = z.object({
   ALLOW_CUSTOMER_REENGAGEMENT_TEMPLATES: boolSchema.default(false),
 
   SQLITE_PATH: z.string().default('./data/bot.sqlite'),
-
-  ADMIN_SECRET: z.string().min(1),
 
   DYNAMIC_SKILL_URL: z.union([z.literal(''), z.string().url()]).default(''),
   DYNAMIC_SKILL_REFRESH_MS: z.coerce.number().catch(5000),

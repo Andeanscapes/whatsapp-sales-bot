@@ -17,7 +17,6 @@ jobs:
       WHATSAPP_PHONE_NUMBER_ID: test
       WHATSAPP_BUSINESS_ACCOUNT_ID: test
       DEEPSEEK_API_KEY: test
-      ADMIN_SECRET: test
       OWNER_PERSONAL_WHATSAPP_NUMBER: "573001112233"
       AI_ENABLED: "false"
     steps:

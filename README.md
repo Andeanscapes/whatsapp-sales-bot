@@ -49,7 +49,7 @@ npm start
 
 ## Environment
 
-All required vars are listed in [.env.example](.env.example). Values like `WHATSAPP_ACCESS_TOKEN`, `DEEPSEEK_API_KEY`, `OWNER_NAME`, `PARTNER_NAME`, and `ADMIN_SECRET` are **required** — startup will fail loudly if any are missing.
+All required vars are listed in [.env.example](.env.example). Values like `WHATSAPP_ACCESS_TOKEN`, `DEEPSEEK_API_KEY`, `OWNER_NAME`, and `PARTNER_NAME` are **required** — startup will fail loudly if any are missing.
 
 `OWNER_NAME` and `PARTNER_NAME` are interpolated into the skill files and the DeepSeek system prompt at load time (`{{OWNER_NAME}}` / `{{PARTNER_NAME}}` tokens). This keeps real founder names out of the public repo.
 

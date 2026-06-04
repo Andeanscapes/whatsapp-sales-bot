@@ -158,6 +158,7 @@ export function isReservationIntentOrConfirmation(
     /(?:qu[eé] te parece|te encaja|es lo que buscabas|te suena|te interesa)/,
     /(?:what do you think|does that work|interested|sound good)/,
     /(?:quieres que revisemos|validamos disponibilidad|confirmamos)/,
+    /(?:revision de reserva|dejarlo para revision|lo dejemos para revision|pasarlo al equipo|paso (?:esto |todo )?al equipo)/,
     /(?:want (?:me|us) to check|shall (?:I|we) check availability)/,
     /(?:listo para|preparado para|ready to)/,
   ];

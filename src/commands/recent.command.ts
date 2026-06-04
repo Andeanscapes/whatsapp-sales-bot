@@ -1,4 +1,5 @@
 import type { ConversationSummary } from '../db/repositories/types.js';
+import { resolveCallerLineId } from '../services/access-control.js';
 import type { CommandContext } from './index.js';
 
 function formatRecent(conversations: ConversationSummary[]): string {
@@ -17,6 +18,7 @@ function formatRecent(conversations: ConversationSummary[]): string {
 
 export async function recentHandler(ctx: CommandContext): Promise<string> {
   const limit = parseInt(ctx.args[0], 10) || 5;
-  const conversations = ctx.repos.stats.getRecentConversations(limit);
+  const lineId = resolveCallerLineId(ctx.chatId);
+  const conversations = ctx.repos.stats.getRecentConversations(limit, lineId);
   return formatRecent(conversations);
 }
