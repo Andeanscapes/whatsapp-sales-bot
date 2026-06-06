@@ -7,6 +7,7 @@
     "build": "rm -rf dist && tsc && cp -r src/data dist/data && mkdir -p dist/db dist/prompts && cp src/db/schema.sql dist/db/schema.sql && cp src/prompts/deepseek-system.prompt.md dist/prompts/deepseek-system.prompt.md",
     "start": "node dist/server.js",
     "dev": "tsx watch src/server.ts",
+    "dev:env": "ENV_FILE=.env.dev tsx watch src/server.ts",
     "native:rebuild": "npm rebuild better-sqlite3",
     "db:clean": "rm -f data/bot.sqlite data/bot.sqlite-wal data/bot.sqlite-shm",
     "start:clean": "npm run native:rebuild && npm run db:clean && npm run build && npm start",
@@ -19,7 +20,13 @@
     "validate:skills": "tsx src/scripts/validate-skill.ts",
     "validate:prompt": "tsx src/scripts/validate-prompt.ts",
     "validate:dynamic": "tsx src/scripts/validate-dynamic.ts",
-    "scan:secrets": "secretlint \"**/*\" --secretlintignore .gitignore"
+    "export:transcripts": "bash scripts/export-prod-transcripts.sh",
+    "export:debug-bundle": "bash scripts/export-prod-debug-bundle.sh",
+    "scan:secrets": "secretlint \"**/*\" --secretlintignore .gitignore",
+    "docker:dev": "ENV_FILE=.env.dev docker compose --env-file .env.dev up --build --force-recreate",
+    "docker:prod": "ENV_FILE=.env.prod docker compose --env-file .env.prod --profile tunnel up --build -d --force-recreate",
+    "docker:test": "bash scripts/docker-up-test.sh",
+    "db:clean:prod": "docker compose --env-file .env.prod down -v"
   },
   "dependencies": {
     "better-sqlite3": "^11.0.0",

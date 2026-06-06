@@ -283,6 +283,7 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
     const signature = req.headers['x-hub-signature-256'];
     const rawBody = (req as RequestWithRawBody).rawBody;
     if (!rawBody || typeof signature !== 'string' || !verifySignature(rawBody, signature, env.WHATSAPP_APP_SECRET)) {
+      logger.warn({ hasBody: !!rawBody, hasSig: typeof signature === 'string' }, '[WEBHOOK] POST signature verification failed');
       return reply.code(403).send({ error: 'Invalid signature' });
     }
 
@@ -292,6 +293,7 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
     if (!messages) return;
 
     for (const msg of messages) {
+      logger.info({ from: msg.from, type: msg.type, msgId: msg.id, preview: msg.type === 'text' ? msg.text.slice(0, 80) : '(non-text)' }, '[WEBHOOK] incoming WhatsApp message');
       if (repos.dedupe.isProcessed(msg.id)) continue;
 
       if (processingPhones.has(msg.from)) {
@@ -361,6 +363,7 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
         }
 
         if (result.shouldSendReply) {
+          logger.info({ phone: msg.from, replyLen: result.reply.length, usedAi: result.usedAi, score: result.leadScore, alert: result.shouldAlertOwner, image: result.shouldSendImage }, '[WEBHOOK] bot reply triggered');
           let sent = false;
           try {
             await sendText(msg.from, result.reply);
