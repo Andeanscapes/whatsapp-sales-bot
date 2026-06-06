@@ -1,5 +1,5 @@
 import { bridgeMessages } from '../services/bridge-messages.js';
-import { hasRoutingConfig } from '../services/lead-routing.js';
+import { hasRoutingConfig, isOwnerChat } from '../services/lead-routing.js';
 import type { CommandContext } from './index.js';
 
 function normalizePhone(value: string | undefined): string | null {
@@ -13,8 +13,10 @@ export async function deleteHandler(ctx: CommandContext): Promise<string> {
   if (!phone) return bridgeMessages.deleteUsage;
 
   // Mirror block.command authorization: in multi-line mode only the owning
-  // agent may wipe a lead's data. Single-line mode has no per-lead owner.
-  if (hasRoutingConfig()) {
+  // agent may wipe a lead's data. The owner fallback chat (TELEGRAM_CHAT_ID)
+  // bypasses the assignment check — full admin over every lead, including
+  // unassigned ones (needed for testing). Single-line mode has no per-lead owner.
+  if (hasRoutingConfig() && !isOwnerChat(String(ctx.chatId))) {
     const conv = ctx.repos.conversation.getByPhone(phone);
     if (!conv) return bridgeMessages.leadNotFound(phone);
     const assignment = ctx.repos.conversation.getAssignment(phone);
