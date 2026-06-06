@@ -200,6 +200,51 @@ export interface SystemErrorRepository {
   pruneOlderThan(days: number): number;
 }
 
+export interface CustomerDataRepository {
+  deleteCustomer(phone: string): {
+    conversations: number;
+    messages: number;
+    processedMessages: number;
+    aiUsage: number;
+    ownerAlerts: number;
+    mediaSends: number;
+    bridgeSessions: number;
+  };
+}
+
+export interface TranscriptTurn {
+  at: string;
+  role: 'customer' | 'bot';
+  type: string;
+  text: string;
+}
+
+export interface TranscriptRecord {
+  customerPhone: string;
+  language: 'es' | 'en' | null;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  leadScore: number;
+  mode: ConversationMode | null;
+  handedOff: boolean;
+  converted: boolean;
+  collected: {
+    name: string | null;
+    date: string | null;
+    people: number | null;
+    transportNeed: string | null;
+    lodgingNeed: string | null;
+    pet: string | null;
+    plan: string | null;
+  };
+  aiUsage: { promptTokens: number; completionTokens: number; estimatedCostUsd: number } | null;
+  turns: TranscriptTurn[];
+}
+
+export interface TranscriptRepository {
+  getAllTranscripts(): TranscriptRecord[];
+}
+
 export interface Repositories {
   conversation: ConversationRepository;
   message: MessageRepository;
@@ -212,6 +257,8 @@ export interface Repositories {
   bridgeSession: BridgeSessionRepository;
   stats: StatsRepository;
   systemErrors: SystemErrorRepository;
+  customerData: CustomerDataRepository;
+  transcripts: TranscriptRepository;
   isPaused(): boolean;
   setPaused(paused: boolean): void;
   ping(): boolean;

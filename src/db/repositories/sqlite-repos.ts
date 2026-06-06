@@ -21,6 +21,10 @@ import type {
   StoredMessage,
   RecentMessage,
   SystemErrorRepository,
+  CustomerDataRepository,
+  TranscriptRepository,
+  TranscriptRecord,
+  TranscriptTurn,
 } from './types.js';
 
 const ALLOWED_CONVERSATION_COLUMNS = new Set([
@@ -633,5 +637,129 @@ export class SqliteSystemErrorRepo implements SystemErrorRepository {
     const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
     const result = this.pruneStmt.run(cutoff);
     return result.changes;
+  }
+}
+
+export class SqliteCustomerDataRepo implements CustomerDataRepository {
+  constructor(private db: Database.Database) {}
+
+  deleteCustomer(phone: string): ReturnType<CustomerDataRepository['deleteCustomer']> {
+    return this.db.transaction((customerPhone: string) => {
+      const messageIds = this.db.prepare(
+        'SELECT whatsapp_message_id FROM messages WHERE customer_phone = ? AND whatsapp_message_id IS NOT NULL'
+      ).all(customerPhone) as Array<{ whatsapp_message_id: string }>;
+
+      let processedMessages = 0;
+      for (const row of messageIds) {
+        processedMessages += this.db.prepare('DELETE FROM processed_webhook_messages WHERE whatsapp_message_id = ?').run(row.whatsapp_message_id).changes;
+      }
+
+      const bridgeSessions = this.db.prepare('DELETE FROM bridge_sessions WHERE customer_phone = ?').run(customerPhone).changes;
+      const mediaSends = this.db.prepare('DELETE FROM media_sends WHERE customer_phone = ?').run(customerPhone).changes;
+      const ownerAlerts = this.db.prepare('DELETE FROM owner_alerts WHERE customer_phone = ?').run(customerPhone).changes;
+      const aiUsage = this.db.prepare('DELETE FROM ai_usage WHERE customer_phone = ?').run(customerPhone).changes;
+      const messages = this.db.prepare('DELETE FROM messages WHERE customer_phone = ?').run(customerPhone).changes;
+      const conversations = this.db.prepare('DELETE FROM conversations WHERE customer_phone = ?').run(customerPhone).changes;
+
+      return { conversations, messages, processedMessages, aiUsage, ownerAlerts, mediaSends, bridgeSessions };
+    })(phone);
+  }
+}
+
+interface TranscriptConversationRow {
+  customer_phone: string;
+  language: 'es' | 'en' | null;
+  first_seen_at: string;
+  last_seen_at: string;
+  lead_score: number | null;
+  collected_name: string | null;
+  collected_date: string | null;
+  collected_people: number | null;
+  collected_transport_need: string | null;
+  collected_lodging_need: string | null;
+  collected_pet: string | null;
+  collected_plan: string | null;
+  handed_off_at: string | null;
+  converted_at: string | null;
+  conversation_mode: ConversationMode | null;
+}
+
+interface TranscriptMessageRow {
+  direction: string;
+  message_type: string;
+  body: string | null;
+  created_at: string;
+}
+
+interface TranscriptUsageRow {
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
+  estimated_cost_usd: number | null;
+}
+
+export class SqliteTranscriptRepo implements TranscriptRepository {
+  constructor(private db: Database.Database) {}
+
+  getAllTranscripts(): TranscriptRecord[] {
+    const conversations = this.db.prepare(`
+      SELECT customer_phone, language, first_seen_at, last_seen_at, lead_score,
+        collected_name, collected_date, collected_people, collected_transport_need,
+        collected_lodging_need, collected_pet, collected_plan, handed_off_at,
+        converted_at, conversation_mode
+      FROM conversations
+      ORDER BY last_seen_at DESC
+    `).all() as TranscriptConversationRow[];
+
+    const messagesStmt = this.db.prepare(`
+      SELECT direction, message_type, body, created_at
+      FROM messages
+      WHERE customer_phone = ?
+      ORDER BY created_at ASC, id ASC
+    `);
+
+    const usageStmt = this.db.prepare(`
+      SELECT COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens,
+        COALESCE(SUM(completion_tokens), 0) AS completion_tokens,
+        COALESCE(SUM(estimated_cost_usd), 0) AS estimated_cost_usd
+      FROM ai_usage
+      WHERE customer_phone = ?
+    `);
+
+    return conversations.map(conv => {
+      const messages = messagesStmt.all(conv.customer_phone) as TranscriptMessageRow[];
+      const usage = usageStmt.get(conv.customer_phone) as TranscriptUsageRow | undefined;
+      const turns: TranscriptTurn[] = messages.map(m => ({
+        at: m.created_at,
+        role: m.direction === 'inbound' ? 'customer' : 'bot',
+        type: m.message_type,
+        text: m.body ?? '',
+      }));
+      const hasUsage = usage && (usage.prompt_tokens || usage.completion_tokens || usage.estimated_cost_usd);
+      return {
+        customerPhone: conv.customer_phone,
+        language: conv.language,
+        firstSeenAt: conv.first_seen_at,
+        lastSeenAt: conv.last_seen_at,
+        leadScore: conv.lead_score ?? 0,
+        mode: conv.conversation_mode,
+        handedOff: Boolean(conv.handed_off_at),
+        converted: Boolean(conv.converted_at),
+        collected: {
+          name: conv.collected_name,
+          date: conv.collected_date,
+          people: conv.collected_people,
+          transportNeed: conv.collected_transport_need,
+          lodgingNeed: conv.collected_lodging_need,
+          pet: conv.collected_pet,
+          plan: conv.collected_plan,
+        },
+        aiUsage: hasUsage ? {
+          promptTokens: usage.prompt_tokens ?? 0,
+          completionTokens: usage.completion_tokens ?? 0,
+          estimatedCostUsd: usage.estimated_cost_usd ?? 0,
+        } : null,
+        turns,
+      };
+    });
   }
 }

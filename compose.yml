@@ -2,25 +2,41 @@ services:
   app:
     build: .
     container_name: andean-whatsapp-bot
-    env_file:
-      - .env
-    environment:
-      NODE_ENV: production
-      HOST: 0.0.0.0
-      PORT: 3000
-      SQLITE_PATH: /data/bot.sqlite
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:${PORT:-3000}:3000"
+    # Select env file at run time via --env-file (.env.dev | .env.prod).
+    # The npm docker:* scripts export ENV_FILE so it also feeds env_file below.
+    env_file:
+      - ${ENV_FILE:-.env.dev}
+    # Only container-specific overrides live here (single source of truth stays
+    # the .env file validated by src/config/env.ts).
+    environment:
+      # HOST=0.0.0.0 binds inside the container only; the published port maps to
+      # 127.0.0.1 above, so the bot is not reachable beyond localhost.
+      HOST: "0.0.0.0"
+      PORT: "3000"
+      # Force DB onto the persistent bot-data volume regardless of env file value.
+      SQLITE_PATH: /data/bot.sqlite
     volumes:
       - bot-data:/data
+    logging:
+      driver: local
+      options:
+        max-size: 20m
+        max-file: "10"
     restart: unless-stopped
 
   cloudflared:
     image: cloudflare/cloudflared:2026.5.2
     container_name: andean-whatsapp-tunnel
-    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:-}
     depends_on:
       - app
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "5"
     restart: unless-stopped
     profiles:
       - tunnel

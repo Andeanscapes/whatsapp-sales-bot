@@ -20,6 +20,27 @@ export const bridgeMessages = {
   bridgeUsage: 'Uso: /chat <telefono>',
   leadUsage: 'Uso: /lead <telefono>',
   bookingUsage: 'Uso: /booking <telefono>',
+  deleteUsage: 'Uso: /delete <telefono>',
+  deleteDone: (params: {
+    phone: string;
+    conversations: number;
+    messages: number;
+    processedMessages: number;
+    aiUsage: number;
+    ownerAlerts: number;
+    mediaSends: number;
+    bridgeSessions: number;
+  }): string =>
+    [
+      `🧹 Datos eliminados para ${params.phone}`,
+      `conversations: ${params.conversations}`,
+      `messages: ${params.messages}`,
+      `processed webhooks: ${params.processedMessages}`,
+      `ai usage: ${params.aiUsage}`,
+      `owner alerts: ${params.ownerAlerts}`,
+      `media sends: ${params.mediaSends}`,
+      `bridge sessions: ${params.bridgeSessions}`,
+    ].join('\n'),
   alreadyBooked: (sinceDay: string): string => `Ya estaba confirmado desde ${sinceDay}.`,
   bookingConfirmed: (who: string): string => `Reserva confirmada para ${who}. Se notifico a todas las lineas.`,
   botPausedConfirmed: 'Bot pausado. Se notifico a todas las lineas.',

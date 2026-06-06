@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import dotenv from 'dotenv';
 
-dotenv.config();
+dotenv.config({ path: process.env.ENV_FILE ?? '.env.dev' });
 
 function boolFromEnv(v: unknown): boolean {
   if (typeof v === 'boolean') return v;

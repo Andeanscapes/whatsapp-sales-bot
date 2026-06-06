@@ -44,6 +44,7 @@ async function readCappedBuffer(res: Response, maxBytes: number): Promise<Buffer
 
 export async function sendText(to: string, text: string): Promise<void> {
   const url = `https://graph.facebook.com/${env.WHATSAPP_GRAPH_API_VERSION}/${env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
+  logger.info({ to, textLen: text.length, preview: text.slice(0, 80) }, '[WHATSAPP] sending text');
   const response = await fetch(url, {
     method: 'POST',
     signal: AbortSignal.timeout(WHATSAPP_FETCH_TIMEOUT_MS),
@@ -59,9 +60,11 @@ export async function sendText(to: string, text: string): Promise<void> {
     }),
   });
   if (!response.ok) {
-    logger.warn({ status: response.status }, '[WHATSAPP] text send failed');
-    throw new Error(`WhatsApp API error: HTTP ${response.status}`);
+    const body = await response.text().catch(() => '<unreadable>');
+    logger.warn({ status: response.status, body: body.slice(0, 500), to, phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID }, '[WHATSAPP] text send failed');
+    throw new Error(`WhatsApp API error: HTTP ${response.status} – ${body.slice(0, 120)}`);
   }
+  logger.info({ to }, '[WHATSAPP] text sent ok');
 }
 
 export interface DownloadedMedia {
@@ -80,8 +83,9 @@ export async function downloadMedia(mediaId: string): Promise<DownloadedMedia> {
     headers: { 'Authorization': `Bearer ${env.WHATSAPP_ACCESS_TOKEN}` },
   });
   if (!metaRes.ok) {
-    logger.warn({ status: metaRes.status }, '[WHATSAPP] media metadata fetch failed');
-    throw new Error(`WhatsApp media metadata error: HTTP ${metaRes.status}`);
+    const body = await metaRes.text().catch(() => '<unreadable>');
+    logger.warn({ status: metaRes.status, body: body.slice(0, 500) }, '[WHATSAPP] media metadata fetch failed');
+    throw new Error(`WhatsApp media metadata error: HTTP ${metaRes.status} – ${body.slice(0, 120)}`);
   }
   const meta = (await metaRes.json()) as { url?: string; mime_type?: string };
   if (!meta.url) throw new Error('WhatsApp media metadata missing url');
@@ -107,6 +111,7 @@ export async function downloadMedia(mediaId: string): Promise<DownloadedMedia> {
 
 export async function sendImageUrl(to: string, imageUrl: string, caption: string): Promise<void> {
   const url = `https://graph.facebook.com/${env.WHATSAPP_GRAPH_API_VERSION}/${env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
+  logger.info({ to, captionLen: caption.length, imageUrl: imageUrl.slice(0, 80) }, '[WHATSAPP] sending image');
   const response = await fetch(url, {
     method: 'POST',
     signal: AbortSignal.timeout(WHATSAPP_FETCH_TIMEOUT_MS),
@@ -122,9 +127,11 @@ export async function sendImageUrl(to: string, imageUrl: string, caption: string
     }),
   });
   if (!response.ok) {
-    logger.warn({ status: response.status }, '[WHATSAPP] image send failed');
-    throw new Error(`WhatsApp API error: HTTP ${response.status}`);
+    const body = await response.text().catch(() => '<unreadable>');
+    logger.warn({ status: response.status, body: body.slice(0, 500) }, '[WHATSAPP] image send failed');
+    throw new Error(`WhatsApp API error: HTTP ${response.status} – ${body.slice(0, 120)}`);
   }
+  logger.info({ to }, '[WHATSAPP] image sent ok');
 }
 
 export type MediaKind = 'image' | 'video' | 'audio';
@@ -205,6 +212,7 @@ async function sendMediaById(to: string, kind: MediaKind, mediaId: string, capti
   const media: { id: string; caption?: string } = { id: mediaId };
   if (caption && caption.length > 0) media.caption = caption;
 
+  logger.info({ to, kind, mediaId }, '[WHATSAPP] sending media by id');
   const response = await fetch(url, {
     method: 'POST',
     signal: AbortSignal.timeout(WHATSAPP_FETCH_TIMEOUT_MS),
@@ -219,6 +227,7 @@ async function sendMediaById(to: string, kind: MediaKind, mediaId: string, capti
     logger.warn({ status: response.status, kind, errBody: errBody.slice(0, 500) }, '[WHATSAPP] media (id) send failed');
     throw new Error(`WhatsApp API error: HTTP ${response.status}`);
   }
+  logger.info({ to, kind }, '[WHATSAPP] media sent ok');
 }
 
 export async function sendImageId(to: string, mediaId: string, caption?: string): Promise<void> {

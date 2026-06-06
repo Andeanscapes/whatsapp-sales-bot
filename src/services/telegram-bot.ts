@@ -18,6 +18,7 @@ import { pauseHandler } from '../commands/pause.command.js';
 import { resumeHandler } from '../commands/resume.command.js';
 import { statusHandler } from '../commands/status.command.js';
 import { statsHandler } from '../commands/stats.command.js';
+import { deleteHandler } from '../commands/delete.command.js';
 import { isAllowedTelegramChat } from './lead-routing.js';
 import { sendBridgeReply, sendBridgeMedia } from './bridge-service.js';
 import { bridgeMessages } from './bridge-messages.js';
@@ -78,6 +79,7 @@ export async function sendTelegramMessage(
   const body: Record<string, unknown> = { chat_id: String(chatId), text };
   if (parseMode) body.parse_mode = parseMode;
 
+  logger.info({ chatId, textLen: text.length, preview: text.slice(0, 80) }, '[TELEGRAM] sending message');
   const response = await fetch(telegramApiUrl('/sendMessage'), {
     method: 'POST',
     signal: AbortSignal.timeout(ALERT_FETCH_TIMEOUT_MS),
@@ -86,8 +88,10 @@ export async function sendTelegramMessage(
   });
   if (!response.ok) {
     const errBody = await response.text().catch(() => '');
+    logger.error({ chatId, status: response.status, body: errBody.slice(0, 300) }, '[TELEGRAM] sendMessage failed');
     throw new Error(`Telegram sendMessage failed: ${response.status} ${errBody}`);
   }
+  logger.info({ chatId }, '[TELEGRAM] message sent ok');
 }
 
 export async function sendTelegramPhoto(
@@ -103,6 +107,7 @@ export async function sendTelegramPhoto(
   if (caption) form.append('caption', caption);
   form.append('photo', new Blob([new Uint8Array(photo)], { type: mimeType }), 'photo');
 
+  logger.info({ chatId, mimeType, size: photo.byteLength, hasCaption: !!caption }, '[TELEGRAM] sending photo');
   const response = await fetch(telegramApiUrl('/sendPhoto'), {
     method: 'POST',
     signal: AbortSignal.timeout(MEDIA_FETCH_TIMEOUT_MS),
@@ -110,8 +115,10 @@ export async function sendTelegramPhoto(
   });
   if (!response.ok) {
     const errBody = await response.text().catch(() => '');
+    logger.error({ chatId, status: response.status, body: errBody.slice(0, 300) }, '[TELEGRAM] sendPhoto failed');
     throw new Error(`Telegram sendPhoto failed: ${response.status} ${errBody}`);
   }
+  logger.info({ chatId }, '[TELEGRAM] photo sent ok');
 }
 
 export interface DownloadedTelegramFile {
@@ -125,16 +132,23 @@ export interface DownloadedTelegramFile {
  * token is only used server-side here; the resolved URL is never forwarded.
  */
 export async function downloadTelegramFile(fileId: string, maxBytes: number = MAX_MEDIA_BYTES): Promise<DownloadedTelegramFile> {
+  logger.info({ fileId: fileId.slice(0, 40), maxBytes }, '[TELEGRAM] downloading file');
   const metaRes = await fetch(telegramApiUrl(`/getFile?file_id=${encodeURIComponent(fileId)}`), {
     signal: AbortSignal.timeout(ALERT_FETCH_TIMEOUT_MS),
   });
   if (!metaRes.ok) {
+    const errBody = await metaRes.text().catch(() => '');
+    logger.error({ status: metaRes.status, body: errBody.slice(0, 200) }, '[TELEGRAM] getFile failed');
     throw new Error(`Telegram getFile failed: ${metaRes.status}`);
   }
   const meta = (await metaRes.json()) as { ok: boolean; result?: { file_path?: string; file_size?: number } };
   const filePath = meta.result?.file_path;
-  if (!meta.ok || !filePath) throw new Error('Telegram getFile missing file_path');
+  if (!meta.ok || !filePath) {
+    logger.error({ fileId: fileId.slice(0, 40), ok: meta.ok }, '[TELEGRAM] getFile missing file_path');
+    throw new Error('Telegram getFile missing file_path');
+  }
   if (meta.result?.file_size && meta.result.file_size > maxBytes) {
+    logger.warn({ declared: meta.result.file_size, maxBytes }, '[TELEGRAM] file size exceeds limit');
     throw new Error(`Telegram file exceeds ${maxBytes} bytes (declared ${meta.result.file_size})`);
   }
 
@@ -142,13 +156,16 @@ export async function downloadTelegramFile(fileId: string, maxBytes: number = MA
     signal: AbortSignal.timeout(MEDIA_FETCH_TIMEOUT_MS),
   });
   if (!binRes.ok) {
+    logger.error({ status: binRes.status, filePath: filePath.slice(0, 40) }, '[TELEGRAM] file download failed');
     throw new Error(`Telegram file download failed: ${binRes.status}`);
   }
   const buffer = Buffer.from(await binRes.arrayBuffer());
   if (buffer.byteLength > maxBytes) {
+    logger.warn({ actual: buffer.byteLength, maxBytes }, '[TELEGRAM] file size exceeds limit');
     throw new Error(`Telegram file exceeds ${maxBytes} bytes (actual ${buffer.byteLength})`);
   }
   const mimeType = binRes.headers.get('content-type') ?? 'image/jpeg';
+  logger.info({ mimeType, size: buffer.byteLength }, '[TELEGRAM] file downloaded ok');
   return { buffer, mimeType };
 }
 
@@ -163,6 +180,7 @@ export async function sendTelegramVoice(
   form.append('chat_id', String(chatId));
   form.append('voice', new Blob([new Uint8Array(voice)], { type: mimeType }), 'voice');
 
+  logger.info({ chatId, mimeType, size: voice.byteLength }, '[TELEGRAM] sending voice');
   const response = await fetch(telegramApiUrl('/sendVoice'), {
     method: 'POST',
     signal: AbortSignal.timeout(MEDIA_FETCH_TIMEOUT_MS),
@@ -170,8 +188,10 @@ export async function sendTelegramVoice(
   });
   if (!response.ok) {
     const errBody = await response.text().catch(() => '');
+    logger.error({ chatId, status: response.status, body: errBody.slice(0, 300) }, '[TELEGRAM] sendVoice failed');
     throw new Error(`Telegram sendVoice failed: ${response.status} ${errBody}`);
   }
+  logger.info({ chatId }, '[TELEGRAM] voice sent ok');
 }
 
 function parseCommand(text: string): { command: string; args: string[] } | null {
@@ -341,6 +361,13 @@ export function registerCommands(): void {
     description: 'Bloquear numero (opt-out)',
     usage: '<telefono>',
     handler: blockHandler,
+  });
+
+  registerCommand({
+    name: 'delete',
+    description: 'Eliminar datos de un cliente para pruebas',
+    usage: '<telefono>',
+    handler: deleteHandler,
   });
 
   registerCommand({

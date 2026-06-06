@@ -1,0 +1,20 @@
+services:
+  app:
+    # json-file driver = no disk retention (logs lost when container stops)
+    logging:
+      driver: json-file
+    # No auto-restart in test mode
+    restart: "no"
+    environment:
+      # Isolated test DB — never touchs prod bot-data volume
+      SQLITE_PATH: /data/bot-test.sqlite
+    volumes:
+      - bot-data-test:/data
+
+  cloudflared:
+    # Disable tunnel in test mode (use npm run start:tunnel locally if needed)
+    profiles:
+      - disabled
+
+volumes:
+  bot-data-test:

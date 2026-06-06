@@ -150,6 +150,11 @@ export function isAllowedTelegramChat(chatId: string): boolean {
   return config.salesLines.some(line => line.telegramChatId === chatId);
 }
 
+/** The owner fallback chat (TELEGRAM_CHAT_ID) — full admin over every lead. */
+export function isOwnerChat(chatId: string): boolean {
+  return env.TELEGRAM_CHAT_ID.length > 0 && chatId === env.TELEGRAM_CHAT_ID;
+}
+
 export function getLineById(lineId: string): SalesLine | null {
   const config = getRoutingConfig();
   return config?.salesLines.find(line => line.id === lineId) ?? null;
