@@ -47,7 +47,7 @@ async function runStartupDiagnostics(): Promise<void> {
   }
 
   // Webhook config reminder
-  logger.info({ publicBaseUrl: env.PUBLIC_BASE_URL, verifyToken: env.WHATSAPP_VERIFY_TOKEN, webhookPath: '/webhooks/whatsapp' }, '[DIAG] webhook should be configured in Meta: Callback URL = {publicBaseUrl}/webhooks/whatsapp, Verify token = {verifyToken}');
+  logger.info({ publicBaseUrl: env.PUBLIC_BASE_URL, webhookPath: '/webhooks/whatsapp', verifyTokenConfigured: env.WHATSAPP_VERIFY_TOKEN.length > 0 }, '[DIAG] webhook should be configured in Meta');
 }
 
 async function start() {
