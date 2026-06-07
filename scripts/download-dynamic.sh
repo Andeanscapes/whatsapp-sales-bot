@@ -12,14 +12,14 @@ set -euo pipefail
 OUTPUT="${2:-src/data/bot-dynamic.json}"
 BUCKET="${1:?Usage: ./scripts/download-dynamic.sh <R2_BUCKET_NAME> [output-file]}"
 
-echo "Downloading bot/bot-dynamic.json from R2 bucket $BUCKET..."
+echo "Downloading whatsapp_bot/bot-dynamic.json from R2 bucket $BUCKET..."
 
 aws s3api get-object \
   --bucket "$BUCKET" \
-  --key "bot/bot-dynamic.json" \
+  --key "whatsapp_bot/bot-dynamic.json" \
   "$OUTPUT" \
   --endpoint-url "https://$(aws configure get r2_account_id).r2.cloudflarestorage.com" 2>/dev/null || {
-    aws s3 cp "s3://$BUCKET/bot/bot-dynamic.json" "$OUTPUT"
+    aws s3 cp "s3://$BUCKET/whatsapp_bot/bot-dynamic.json" "$OUTPUT"
   }
 
 echo "Downloaded to $OUTPUT"

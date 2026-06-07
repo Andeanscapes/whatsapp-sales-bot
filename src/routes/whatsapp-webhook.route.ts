@@ -454,7 +454,7 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
             if (result.priceJustGiven) {
               const skills = getSkills();
               const collectedPlan = repos.conversation.getCollectedPlan(msg.from);
-              const image = selectPlanImage(getDynamicPlanImages(skills), skills.media.images, collectedPlan);
+              const image = selectPlanImage(getDynamicPlanImages(skills), collectedPlan);
               if (image && canSendImage(repos, msg.from) && canSendPlanImage(repos, msg.from, image.id)) {
                 const caption = result.priceFollowUpText ?? image.caption;
                 let sent = false;
@@ -480,7 +480,7 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
             if (result.shouldSendImage && !result.priceJustGiven) {
               const skills = getSkills();
               const collectedPlan = repos.conversation.getCollectedPlan(msg.from);
-              const image = selectPlanImage(getDynamicPlanImages(skills), skills.media.images, collectedPlan);
+              const image = selectPlanImage(getDynamicPlanImages(skills), collectedPlan);
               if (image && canSendImage(repos, msg.from) && canSendPlanImage(repos, msg.from, image.id)) {
                 try {
                   await sendImageUrl(msg.from, image.url, image.caption);

@@ -1,6 +1,5 @@
 import type { Repositories } from '../db/repositories/index.js';
 import { env } from '../config/env.js';
-import type { MediaSkill } from './skill-loader.js';
 import type { InternalGalleryImage, InternalPlanImage } from './dynamic-data-service.js';
 import { MS_72H } from './constants.js';
 
@@ -59,30 +58,10 @@ function pickBest<T extends { planId?: string; url: string; caption: string }>(i
 
 export function selectPlanImage(
   dynamicImages: InternalPlanImage[],
-  staticImages: MediaSkill['images'],
   planId: string | null | undefined,
 ): ResolvedPlanImage | undefined {
-  if (dynamicImages.length > 0) {
-    const picked = pickBest(dynamicImages, planId);
-    if (picked) return { id: picked.id, url: picked.url, caption: picked.caption };
-  }
-  const valid = staticImages.filter(i => i.value !== 'REPLACE_WITH_PUBLIC_IMAGE_URL');
-  if (!valid.length) return undefined;
-  if (planId) {
-    const match = valid.find(i => i.planId === planId);
-    if (match) return { id: match.id, url: match.value, caption: match.caption };
-  }
-  const first = valid[0];
-  return { id: first.id, url: first.value, caption: first.caption };
-}
-
-export function selectImageForPlan(images: MediaSkill['images'], planId: string | null | undefined): ResolvedPlanImage | undefined {
-  const valid = images.filter(i => i.value !== 'REPLACE_WITH_PUBLIC_IMAGE_URL');
-  if (!valid.length) return undefined;
-  if (planId) {
-    const match = valid.find(i => i.planId === planId);
-    if (match) return { id: match.id, url: match.value, caption: match.caption };
-  }
-  const first = valid[0];
-  return { id: first.id, url: first.value, caption: first.caption };
+  if (!dynamicImages.length) return undefined;
+  const picked = pickBest(dynamicImages, planId);
+  if (!picked) return undefined;
+  return { id: picked.id, url: picked.url, caption: picked.caption };
 }
