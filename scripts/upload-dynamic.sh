@@ -29,14 +29,14 @@ npx tsx src/scripts/validate-dynamic.ts "$SOURCE"
 echo "Uploading $SOURCE to R2 bucket $BUCKET bot/bot-dynamic.json..."
 aws s3api put-object \
   --bucket "$BUCKET" \
-  --key "bot/bot-dynamic.json" \
+  --key "whatsapp_bot/bot-dynamic.json" \
   --body "$SOURCE" \
   --content-type "application/json" \
   --endpoint-url "https://$(aws configure get r2_account_id).r2.cloudflarestorage.com" 2>/dev/null || {
     # Fallback: try without endpoint-url (uses default aws config)
-    aws s3 cp "$SOURCE" "s3://$BUCKET/bot/bot-dynamic.json" --content-type "application/json"
+    aws s3 cp "$SOURCE" "s3://$BUCKET/whatsapp_bot/bot-dynamic.json" --content-type "application/json"
   }
 
-echo "Uploaded $SOURCE to R2 bucket $BUCKET bot/bot-dynamic.json"
+echo "Uploaded $SOURCE to R2 bucket $BUCKET whatsapp_bot/bot-dynamic.json"
 echo "Update DYNAMIC_SKILL_URL in /etc/andean-whatsapp-bot.env to point to:"
-echo "  https://cdn.yourdomain.com/bot/bot-dynamic.json"
+echo "  https://cdn.andeanscapes.com/whatsapp_bot/bot-dynamic.json"

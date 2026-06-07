@@ -42,7 +42,7 @@ vi.mock('../services/time-window-policy.js', () => ({
 import { checkBudget } from '../services/budget-guard.js';
 import { checkTimeWindow } from '../services/time-window-policy.js';
 import { safeReservationHandoff, afterHoursReply, colombiaTimeAwareReply } from '../services/reply-guard.js';
-import { selectImageForPlan, canSendPlanImage, canSendImage, hasGalleryNudge, recordGalleryNudge, selectGalleryImages } from '../services/media-service.js';
+import { selectPlanImage, canSendPlanImage, canSendImage, hasGalleryNudge, recordGalleryNudge, selectGalleryImages } from '../services/media-service.js';
 import { getSkills } from '../services/skill-loader.js';
 import type { LlmTurn, LlmResult } from '../services/llm/llm-client.js';
 
@@ -614,7 +614,8 @@ describe('processMessage', () => {
       const result = await processMessage({ repos, customerPhone: phone, message: 'Hola de nuevo' });
       expect(result.reply).toContain('Te leo');
       expect(result.shouldSendReply).toBe(true);
-      expect(result.shouldAlertOwner).toBe(false);
+      // First limit hit alerts owner so a human can take over if needed.
+      expect(result.shouldAlertOwner).toBe(true);
       expect(repos.conversation.getHandedOffAt(phone)).toBeFalsy();
     });
   });
@@ -1174,9 +1175,9 @@ describe('processMessage', () => {
     }));
 
     const result = await processMessage({ repos, customerPhone: phone, message: 'que fecha hay?' });
-    expect(result.reply.toLowerCase()).not.toContain('domingo 8 de junio');
-    expect(result.reply).toContain('Paula');
-    expect(result.shouldAlertOwner).toBe(true);
+    // Listing dates is no longer blocked — the bot should tell customers what dates
+    // are available. The narrowed guard only blocks false reservation confirmations.
+    expect(result.reply.toLowerCase()).toContain('domingo 8 de junio');
   });
 
   it('blocks false cupo/separation claims from AI reply', async () => {
@@ -1922,9 +1923,12 @@ describe('processMessage', () => {
   });
 
   it('uses 3D/2N image after ambiguous mine plus 3 days plan mention', async () => {
-    const skills = getSkills();
-    const image = selectImageForPlan(skills.media.images, '3d2n_rural');
-    expect(image?.url).toBe('https://cdn.andeanscapes.com/whatsapp_bot/3d2n_1.png');
+    const dynamicImages = [
+      { id: 'emerald_mining_preview_1', experienceId: 'emerald_mining_tour', planId: '2d1n_mining', url: 'https://cdn.andeanscapes.com/whatsapp_bot/details/2d1n_1.png', caption: '2D/1N' },
+      { id: 'rural_experience_preview_1', experienceId: 'emerald_mining_tour', planId: '3d2n_rural', url: 'https://cdn.andeanscapes.com/whatsapp_bot/details/3d2n_1.png', caption: '3D/2N' },
+    ];
+    const image = selectPlanImage(dynamicImages, '3d2n_rural');
+    expect(image?.url).toBe('https://cdn.andeanscapes.com/whatsapp_bot/details/3d2n_1.png');
   });
 
   it('blocks handoff until plan is selected', async () => {
@@ -2013,29 +2017,36 @@ describe('processMessage', () => {
     });
   });
 
-  describe('selectImageForPlan', () => {
-    it('selects 2D/1N image for 2d1n_mining plan', () => {
-      const skills = getSkills();
-      const image = selectImageForPlan(skills.media.images, '2d1n_mining');
-      expect(image?.id).toBe('emerald_mining_preview_1');
+  describe('selectPlanImage', () => {
+    it('selects dynamic plan image matching planId', () => {
+      const dynamicImages = [
+        { id: 'dyn_2d1n', experienceId: 'emerald_mining_tour', planId: '2d1n_mining', url: 'https://cdn.andeanscapes.com/whatsapp_bot/details/2d1n_1.png', caption: '2D/1N' },
+        { id: 'dyn_3d2n', experienceId: 'emerald_mining_tour', planId: '3d2n_rural', url: 'https://cdn.andeanscapes.com/whatsapp_bot/details/3d2n_1.png', caption: '3D/2N' },
+      ];
+      const image = selectPlanImage(dynamicImages, '3d2n_rural');
+      expect(image?.id).toBe('dyn_3d2n');
     });
 
-    it('selects 3D/2N image for 3d2n_rural plan', () => {
-      const skills = getSkills();
-      const image = selectImageForPlan(skills.media.images, '3d2n_rural');
-      expect(image?.id).toBe('rural_experience_preview_1');
+    it('falls back to first dynamic image when planId has no match', () => {
+      const dynamicImages = [
+        { id: 'dyn_2d1n', experienceId: 'emerald_mining_tour', planId: '2d1n_mining', url: 'https://cdn.andeanscapes.com/whatsapp_bot/details/2d1n_1.png', caption: '2D/1N' },
+      ];
+      const image = selectPlanImage(dynamicImages, 'nonexistent_plan');
+      expect(image?.id).toBe('dyn_2d1n');
     });
 
-    it('falls back to first valid image when plan is unknown', () => {
-      const skills = getSkills();
-      const image = selectImageForPlan(skills.media.images, 'nonexistent_plan');
-      expect(image?.id).toBe('emerald_mining_preview_1');
+    it('returns undefined when dynamic images array is empty', () => {
+      const image = selectPlanImage([], '2d1n_mining');
+      expect(image).toBeUndefined();
     });
 
-    it('falls back to first valid image when plan is null', () => {
-      const skills = getSkills();
-      const image = selectImageForPlan(skills.media.images, null);
-      expect(image?.id).toBe('emerald_mining_preview_1');
+    it('returns first dynamic image when planId is null', () => {
+      const dynamicImages = [
+        { id: 'dyn_2d1n', experienceId: 'emerald_mining_tour', planId: '2d1n_mining', url: 'https://cdn.andeanscapes.com/whatsapp_bot/details/2d1n_1.png', caption: '2D/1N' },
+        { id: 'dyn_3d2n', experienceId: 'emerald_mining_tour', planId: '3d2n_rural', url: 'https://cdn.andeanscapes.com/whatsapp_bot/details/3d2n_1.png', caption: '3D/2N' },
+      ];
+      const image = selectPlanImage(dynamicImages, null);
+      expect(image?.id).toBe('dyn_2d1n');
     });
   });
 

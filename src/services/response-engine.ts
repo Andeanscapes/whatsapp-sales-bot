@@ -41,6 +41,7 @@ import {
   isGalleryConfirmation,
 } from './reply-guard.js';
 import { assignLine, isReferralLine } from './lead-routing.js';
+import type { RecentMessage } from '../db/repositories/types.js';
 
 export {
   detectsReservationIntent,
@@ -212,6 +213,22 @@ export function buildHandedOffReply(repos: ProcessMessageInput['repos'], custome
   return idx === 0 ? fb.handedOffVariant0 : fb.handedOffVariant1;
 }
 
+/**
+ * Counts how many recent assistant messages start with any of the given texts
+ * (matched by prefix, so renamed/translated variants still work as long as the
+ * prefix is stable). Used to rotate guard replies and to break response loops.
+ */
+function countRecentStartsWith(
+  recentMessages: RecentMessage[],
+  texts: string[],
+  prefixLen: number,
+): number {
+  return recentMessages
+    .filter(m => m.role === 'assistant')
+    .filter(m => texts.some(t => m.content.startsWith(t.slice(0, prefixLen))))
+    .length;
+}
+
 export async function processMessage(input: ProcessMessageInput): Promise<ProcessMessageOutput> {
   const { repos, customerPhone, message, messageId } = input;
 
@@ -220,7 +237,16 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   }
 
   try {
-  await refreshSkills();
+  const isNewConversation = repos.message.getLastInboundAt(customerPhone) === null;
+  if (isNewConversation) {
+    // New conversation: force a fresh fetch of bot-dynamic.json so team edits
+    // (pricing/availability/images) apply without a container restart. Best-effort
+    // and non-blocking so a slow/unreachable R2 never delays the first reply; the
+    // updated cache is then served from the customer's next message onward.
+    void refreshSkills(true);
+  } else {
+    await refreshSkills(false);
+  }
   const skills = getSkills();
 
   const handedOffRow = repos.conversation.getHandedOffAt(customerPhone);
@@ -247,7 +273,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
 
   const softClosedAt = repos.conversation.getSoftClosedAt(customerPhone);
 
-  const isFirstContact = repos.message.getLastInboundAt(customerPhone) === null;
+  const isFirstContact = isNewConversation;
 
   repos.message.addMessage({
     whatsapp_message_id: messageId, customer_phone: customerPhone, direction: 'inbound',
@@ -329,7 +355,15 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
       activateHumanFallback(repos, customerPhone);
       return { reply: skills.fallbackReplies[lang].messageLimitHandoff, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: true, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
     }
-    return { reply: skills.fallbackReplies[lang].messageLimitReached, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
+    const fb = skills.fallbackReplies[lang];
+    const recentLimitReplies = countRecentStartsWith(recentMessages, [fb.messageLimitReached, fb.messageLimitHandoff], 12);
+    if (recentLimitReplies >= 2) {
+      // Already sent two limit-guard replies to this customer in this window.
+      // Sending more would only increase the outbound count and perpetuate the
+      // loop. Stop replying and alert owner so a human can take over.
+      return { reply: '', shouldSendReply: false, leadScore: currentScore, usedAi: false, shouldAlertOwner: true, ownerAlertType: 'limit_loop', shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
+    }
+    return { reply: fb.messageLimitReached, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: true, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
   }
 
   const budget = checkBudget(repos, customerPhone);
@@ -435,7 +469,15 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
       repos.conversation.setHandedOff(customerPhone);
       replyText = routeHumanHandoff(repos, customerPhone, merged, lang, skills, replyText);
     } else {
-      replyText = skills.fallbackReplies[lang].aiFailureQualified;
+      const fb = skills.fallbackReplies[lang];
+      const recentBlockCount = countRecentStartsWith(recentMessages, [fb.aiFailureQualified, fb.aiFailureQualifiedV2, fb.aiFailureQualifiedV3], 15);
+      if (recentBlockCount <= 1) {
+        replyText = fb.aiFailureQualified;
+      } else if (recentBlockCount === 2) {
+        replyText = fb.aiFailureQualifiedV2;
+      } else {
+        replyText = fb.aiFailureQualifiedV3;
+      }
     }
   }
 

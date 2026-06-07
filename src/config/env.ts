@@ -54,8 +54,8 @@ const envSchema = z.object({
 
   SEND_IMAGES_ENABLED: boolSchema.default(true),
   MAX_GALLERY_IMAGES_PER_SEND: z.coerce.number().catch(15),
-  MAX_BOT_MESSAGES_PER_CUSTOMER_PER_HOUR: z.coerce.number().catch(18),
-  MAX_BOT_MESSAGES_PER_CUSTOMER_PER_DAY: z.coerce.number().catch(40),
+  MAX_BOT_MESSAGES_PER_CUSTOMER_PER_HOUR: z.coerce.number().catch(50),
+  MAX_BOT_MESSAGES_PER_CUSTOMER_PER_DAY: z.coerce.number().catch(120),
   ALLOW_CUSTOMER_REENGAGEMENT_TEMPLATES: boolSchema.default(false),
 
   SQLITE_PATH: z.string().default('./data/bot.sqlite'),

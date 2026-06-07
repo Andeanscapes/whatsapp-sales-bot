@@ -71,9 +71,21 @@ export class DynamicDataService {
     lastFetchMs: number;
   } = { data: null, etag: null, lastFetchMs: 0 };
 
+  private lastErrorLogMs = 0;
+  private static readonly ERROR_LOG_INTERVAL_MS = 60_000;
+
   constructor(url: string, refreshMs: number) {
     this.url = url;
     this.refreshMs = refreshMs;
+  }
+
+  // Throttles repeated failure logs so a persistent R2 outage does not spam logs
+  // when forceRefresh runs on every new conversation.
+  private logError(payload: Record<string, unknown> | Error, msg: string): void {
+    const now = Date.now();
+    if (now - this.lastErrorLogMs < DynamicDataService.ERROR_LOG_INTERVAL_MS) return;
+    this.lastErrorLogMs = now;
+    logger.warn(payload, msg);
   }
 
   get isAvailable(): boolean {
@@ -88,6 +100,12 @@ export class DynamicDataService {
     if (this.refreshMs <= 0) return;
     const now = Date.now();
     if (now - this.cache.lastFetchMs < this.refreshMs) return;
+    await this.fetch();
+  }
+
+  // Bypasses the refresh throttle so team edits to bot-dynamic.json take effect
+  // without restarting the container. Cheap: sends If-None-Match (304 on no change).
+  async forceRefresh(): Promise<void> {
     await this.fetch();
   }
 
@@ -128,7 +146,7 @@ export class DynamicDataService {
       }
 
       if (!res.ok) {
-        logger.warn({ status: res.status }, '[DYNAMIC] fetch failed');
+        this.logError({ status: res.status }, '[DYNAMIC] fetch failed');
         return;
       }
 
@@ -144,9 +162,9 @@ export class DynamicDataService {
       );
     } catch (err) {
       if (err instanceof z.ZodError) {
-        logger.error({ issues: err.issues }, '[DYNAMIC] validation failed');
+        this.logError({ issues: err.issues }, '[DYNAMIC] validation failed');
       } else {
-        logger.error(err, '[DYNAMIC] fetch error');
+        this.logError(err instanceof Error ? err : { err: String(err) }, '[DYNAMIC] fetch error');
       }
     }
   }
