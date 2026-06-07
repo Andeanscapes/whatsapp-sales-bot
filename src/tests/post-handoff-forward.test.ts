@@ -5,7 +5,8 @@ import { createRepositories, type Repositories } from '../db/repositories/index.
 import { env } from '../config/env.js';
 import { loadSkills } from '../services/skill-loader.js';
 import { resetRoutingConfigCache, type RoutingConfig } from '../services/lead-routing.js';
-import { forwardBridgeMessage, forwardPostHandoffMessage, notifyAssignedLineIfDormant, type ExtractedMessage } from '../routes/whatsapp-webhook.route.js';
+import { extractMessages, forwardBridgeMessage, forwardPostHandoffMessage, notifyAssignedLineIfDormant, type ExtractedMessage } from '../routes/whatsapp-webhook.route.js';
+import { formatLeadHistory } from '../commands/lead-format.js';
 
 const { mockSendTelegram, mockSendTelegramPhoto, mockSendTelegramVoice, mockDownloadMedia } = vi.hoisted(() => ({
   mockSendTelegram: vi.fn<(_chatId: string, _text: string) => Promise<void>>(() => Promise.resolve()),
@@ -52,6 +53,10 @@ function audioMsg(id = 'wamid-audio', mediaId = 'media-audio'): ExtractedMessage
   return { from: PHONE, id, type: 'audio', text: '', media: { id: mediaId, mimeType: 'audio/ogg' }, timestamp: '' };
 }
 
+function videoMsg(caption = '', id = 'wamid-video', mediaId = 'media-video'): ExtractedMessage {
+  return { from: PHONE, id, type: 'video', text: caption, media: { id: mediaId, mimeType: 'video/mp4' }, timestamp: '' };
+}
+
 function seedHandedOff(lineId: 'line1_bridge' | 'line2_referral', chatId: '111' | '222'): void {
   repos.conversation.upsert(PHONE, { language: 'es' });
   repos.conversation.setAssignment(PHONE, { assignedLineId: lineId, assignedAgentChat: chatId });
@@ -82,13 +87,67 @@ afterEach(() => {
   db.close();
 });
 
+describe('extractMessages', () => {
+  it('extracts WhatsApp video messages', () => {
+    const messages = extractMessages({
+      object: 'whatsapp_business_account',
+      entry: [{
+        id: 'entry-1',
+        changes: [{
+          field: 'messages',
+          value: {
+            messages: [{
+              from: PHONE,
+              id: 'wamid-video',
+              type: 'video',
+              video: { id: 'media-video', mime_type: 'video/mp4', caption: 'clip' },
+            }],
+          },
+        }],
+      }],
+    });
+
+    expect(messages).toEqual([{
+      from: PHONE,
+      id: 'wamid-video',
+      type: 'video',
+      text: 'clip',
+      media: { id: 'media-video', mimeType: 'video/mp4' },
+      timestamp: '',
+    }]);
+  });
+});
+
+describe('formatLeadHistory', () => {
+  it('caps long chat history to a Telegram-safe response', () => {
+    repos.conversation.upsert(PHONE, { language: 'es' });
+    for (let i = 0; i < 80; i++) {
+      repos.message.addMessage({
+        customer_phone: PHONE,
+        direction: i % 2 === 0 ? 'inbound' : 'outbound',
+        message_type: 'text',
+        body: `mensaje largo ${i} ${'x'.repeat(200)}`,
+        created_at: new Date(Date.now() + i).toISOString(),
+      });
+    }
+    const conv = repos.conversation.getByPhone(PHONE);
+    if (!conv) throw new Error('missing conversation');
+
+    const history = formatLeadHistory(conv, repos.message.getRecentMessages(PHONE, 500));
+
+    expect(history.length).toBeLessThan(4096);
+    expect(history).toContain('older omitted');
+    expect(history).toContain('mensaje largo 79');
+  });
+});
+
 describe('forwardPostHandoffMessage', () => {
   it('notifies referral agent and returns deterministic customer reply after handoff', async () => {
     seedHandedOff('line2_referral', '222');
 
     const result = await forwardPostHandoffMessage(repos, msg('Me das mas info?'));
 
-    expect(result).toContain('equipo ya tiene tus datos');
+    expect(result).toContain('Ya tengo');
     expect(mockSendTelegram).toHaveBeenCalledTimes(1);
     expect(mockSendTelegram.mock.calls[0][0]).toBe('222');
     expect(mockSendTelegram.mock.calls[0][1]).toContain('Responder desde WhatsApp Business app: +573124815443');
@@ -145,6 +204,42 @@ describe('forwardPostHandoffMessage', () => {
 
     const inbound = repos.message.getLastInboundBodies(PHONE, 10).filter(m => m.body === 'Una pregunta');
     expect(inbound).toHaveLength(1);
+  });
+  it('returns IG soft-close without Telegram notification on post-handoff decline', async () => {
+    seedHandedOff('line1_bridge', '111');
+    repos.conversation.setMode(PHONE, 'bridge_active');
+    mockSendTelegram.mockClear();
+
+    const result = await forwardPostHandoffMessage(repos, msg('Esta costoso gracias'));
+
+    expect(result).toContain('https://www.instagram.com/andean_scapes/');
+    expect(result).toContain('te interesa');
+    expect(mockSendTelegram).not.toHaveBeenCalled();
+    expect(repos.conversation.getSoftClosedAt(PHONE)).toBeTruthy();
+    expect(repos.conversation.getHandedOffAt(PHONE)).toBeNull();
+    expect(repos.conversation.getAssignment(PHONE)).toBeNull();
+    expect(repos.conversation.getMode(PHONE)).toBe('bot');
+    expect(repos.message.getLastInboundBodies(PHONE, 1)[0]?.body).toBe('Esta costoso gracias');
+  });
+
+  it('does not keep routing post-handoff re-engagement to Telegram after decline', async () => {
+    seedHandedOff('line1_bridge', '111');
+    await forwardPostHandoffMessage(repos, msg('Esta costoso gracias', 'wamid-decline'));
+    mockSendTelegram.mockClear();
+
+    const result = await forwardPostHandoffMessage(repos, msg('Hola', 'wamid-reengage'));
+
+    expect(result).toBeNull();
+    expect(mockSendTelegram).not.toHaveBeenCalled();
+  });
+
+  it('still notifies referral agent for non-decline post-handoff messages', async () => {
+    seedHandedOff('line2_referral', '222');
+    mockSendTelegram.mockClear();
+
+    await forwardPostHandoffMessage(repos, msg('Hola necesito ayuda urgente'));
+
+    expect(mockSendTelegram).toHaveBeenCalled();
   });
 });
 
@@ -232,6 +327,20 @@ describe('forwardBridgeMessage', () => {
     expect(mockSendTelegram).toHaveBeenCalled(); // "Audio de X" text notification
   });
 
+  it('notifies customer video while bridge is active', async () => {
+    repos.conversation.upsert(PHONE, { language: 'es' });
+    repos.conversation.setAssignment(PHONE, { assignedLineId: 'line1_bridge', assignedAgentChat: '111' });
+    repos.conversation.setMode(PHONE, 'bridge_active');
+    repos.bridgeSession.open('111', PHONE);
+
+    const forwarded = await forwardBridgeMessage(repos, videoMsg());
+
+    expect(forwarded).toBe(true);
+    expect(mockSendTelegram).toHaveBeenCalledTimes(1);
+    expect(mockSendTelegram.mock.calls[0][1]).toContain('Video de 573001112233');
+    expect(repos.message.getRecentMessages(PHONE, 1)[0]?.messageType).toBe('video');
+  });
+
   it('keeps the bridge open and notifies the agent when customer audio download fails', async () => {
     repos.conversation.setAssignment(PHONE, { assignedLineId: 'line1_bridge', assignedAgentChat: '111' });
     repos.conversation.setMode(PHONE, 'bridge_active');
@@ -306,5 +415,47 @@ describe('notifyAssignedLineIfDormant', () => {
     await notifyAssignedLineIfDormant(repos, msg('Hola'));
 
     expect(mockSendTelegram).not.toHaveBeenCalled();
+  });
+
+  it('notifies dormant bridge agent for image and keeps media in chat history', async () => {
+    repos.conversation.upsert(PHONE, { language: 'es' });
+    repos.conversation.setAssignment(PHONE, { assignedLineId: 'line1_bridge', assignedAgentChat: '111' });
+
+    const result = await notifyAssignedLineIfDormant(repos, imgMsg(''));
+    const conv = repos.conversation.getByPhone(PHONE);
+    if (!conv) throw new Error('missing conversation');
+    const history = formatLeadHistory(conv, repos.message.getRecentMessages(PHONE, 500));
+
+    expect(result).toBe(true);
+    expect(mockSendTelegram.mock.calls[0][1]).toContain('envio una imagen');
+    expect(history).toContain('📷 imagen');
+  });
+
+  it('notifies dormant bridge agent for audio and keeps media in chat history', async () => {
+    repos.conversation.upsert(PHONE, { language: 'es' });
+    repos.conversation.setAssignment(PHONE, { assignedLineId: 'line1_bridge', assignedAgentChat: '111' });
+
+    const result = await notifyAssignedLineIfDormant(repos, audioMsg());
+    const conv = repos.conversation.getByPhone(PHONE);
+    if (!conv) throw new Error('missing conversation');
+    const history = formatLeadHistory(conv, repos.message.getRecentMessages(PHONE, 500));
+
+    expect(result).toBe(true);
+    expect(mockSendTelegram.mock.calls[0][1]).toContain('envio un audio');
+    expect(history).toContain('🎤 audio');
+  });
+
+  it('notifies dormant bridge agent for video and keeps media in chat history', async () => {
+    repos.conversation.upsert(PHONE, { language: 'es' });
+    repos.conversation.setAssignment(PHONE, { assignedLineId: 'line1_bridge', assignedAgentChat: '111' });
+
+    const result = await notifyAssignedLineIfDormant(repos, videoMsg());
+    const conv = repos.conversation.getByPhone(PHONE);
+    if (!conv) throw new Error('missing conversation');
+    const history = formatLeadHistory(conv, repos.message.getRecentMessages(PHONE, 500));
+
+    expect(result).toBe(true);
+    expect(mockSendTelegram.mock.calls[0][1]).toContain('envio un video');
+    expect(history).toContain('🎥 video');
   });
 });

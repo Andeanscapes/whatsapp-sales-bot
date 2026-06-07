@@ -159,7 +159,7 @@ Rules:
 [x] SQLite stores conversations and messages
 [x] Bot answers via DeepSeek with skill facts as context
 [x] Bot never invents unavailable data
-[x] Max 1 image per customer per 72h
+[x] Max 1 same plan/owner image per customer per 72h; gallery sends capped by MAX_GALLERY_IMAGES_PER_SEND
 [x] Lead scoring works
 [x] Opt-out works
 [x] All tests pass (125/125)

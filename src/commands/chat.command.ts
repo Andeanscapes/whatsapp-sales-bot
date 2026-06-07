@@ -21,6 +21,6 @@ export async function chatHandler(ctx: CommandContext): Promise<string> {
   ctx.repos.bridgeSession.open(chatId, phone);
   ctx.repos.conversation.setMode(phone, 'bridge_active');
 
-  const history = formatLeadHistory(conv, ctx.repos.message.getRecentMessages(phone, 12));
+  const history = formatLeadHistory(conv, ctx.repos.message.getRecentMessages(phone, 500));
   return `${bridgeMessages.chatActiveHeader(phone)}\n\n${history}`;
 }

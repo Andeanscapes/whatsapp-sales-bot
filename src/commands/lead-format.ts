@@ -1,7 +1,22 @@
 import type { ConversationRow, RecentMessage } from '../db/repositories/types.js';
 
+const MAX_HISTORY_CHARS = 3500;
+
 function md(text: string): string {
   return text.replace(/([*_`[])/g, '\\$1');
+}
+
+function formatRecentMessage(message: RecentMessage): string {
+  const prefix = message.role === 'user' ? '👤 Cliente' : '🤖 Bot';
+
+  if (message.messageType === 'image') {
+    return `${prefix}: 📷 ${message.content.trim() ? md(message.content) : 'imagen'}`;
+  }
+  if (message.messageType === 'audio') return `${prefix}: 🎤 audio`;
+  if (message.messageType === 'video') return `${prefix}: 🎥 video`;
+
+  const content = message.content.length > 600 ? `${message.content.slice(0, 600)}...` : message.content;
+  return `${prefix}: ${md(content)}`;
 }
 
 export function formatLeadHistory(conv: ConversationRow, recentMessages: RecentMessage[]): string {
@@ -23,11 +38,23 @@ export function formatLeadHistory(conv: ConversationRow, recentMessages: RecentM
 
   lines.push('', '*Recent messages*');
   if (recentMessages.length === 0) lines.push('No messages yet.');
-  for (const message of recentMessages.slice(-12)) {
-    const prefix = message.role === 'user' ? '👤 Cliente' : '🤖 Bot';
-    const content = message.content.length > 600 ? `${message.content.slice(0, 600)}...` : message.content;
-    lines.push('', `${prefix}: ${md(content)}`);
+
+  const selected: string[] = [];
+  let remainingChars = MAX_HISTORY_CHARS - lines.join('\n').length;
+  let skipped = 0;
+  for (const message of [...recentMessages].reverse()) {
+    const formatted = formatRecentMessage(message);
+    const needed = formatted.length + 2;
+    if (selected.length > 0 && needed > remainingChars) {
+      skipped += 1;
+      continue;
+    }
+    selected.unshift(formatted);
+    remainingChars -= needed;
   }
+
+  if (skipped > 0) lines.push(`Showing latest messages only (${skipped} older omitted).`);
+  for (const message of selected) lines.push('', message);
 
   return lines.join('\n');
 }
