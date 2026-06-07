@@ -227,6 +227,8 @@ const langFallbackSchema = z.object({
   askDate: z.string(),
   askTransport: z.string(),
   aiFailureQualified: z.string(),
+  aiFailureQualifiedV2: z.string(),
+  aiFailureQualifiedV3: z.string(),
   aiBudgetExhausted: z.string(),
   llmFailureWarm: z.string().optional(),
   messageLimitReached: z.string(),
@@ -348,10 +350,14 @@ export function setDynamicService(service: DynamicDataService): void {
   cachedService = service;
 }
 
-export async function refreshSkills(): Promise<void> {
+export async function refreshSkills(force = false): Promise<void> {
   if (!cachedService) return;
   const before = cachedService.getData();
-  await cachedService.refreshIfStale();
+  if (force) {
+    await cachedService.forceRefresh();
+  } else {
+    await cachedService.refreshIfStale();
+  }
   const after = cachedService.getData();
   if (after !== before && cached) {
     mergeDynamicIntoStatic(after);

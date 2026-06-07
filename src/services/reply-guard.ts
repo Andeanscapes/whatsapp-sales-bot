@@ -210,9 +210,9 @@ export function containsUnsafeReservationClaim(reply: string): boolean {
   return /\[[^\]]*(inserte|insert|numero|número|payment|pago)[^\]]*\]/i.test(reply)
     || /\b(nequi|mercado pago)\b[\s\S]{0,80}\b\d{7,}\b/i.test(reply)
     || /\b(dep[oó]sito|deposit|pago|payment)\b[\s\S]{0,80}\b(nequi|mercado pago)\b/i.test(reply)
-    || /\b(fecha disponible|available date|cupo disponible|tenemos cupo|tenemos listado|puedo separarte|queda reservado|te separo|separamos el cupo)\b[\s\S]{0,100}\b(?:\d{1,2}\s+de\s+\w+|\d{4}-\d{2}-\d{2}|lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo|cupo|fecha)\b/i.test(reply)
+    || /\b(puedo separarte|queda reservado|te separo|separamos el cupo)\b[\s\S]{0,100}\b(?:\d{1,2}\s+de\s+\w+|\d{4}-\d{2}-\d{2}|lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo|cupo|fecha)\b/i.test(reply)
     || /\b(ya esta confirmado|ya tienes cupo|te confirmo el cupo|tienes cupo|separado|reservado para ti|tu reserva esta|tu reserva qued[oó])\b/i.test(reply)
-    || /\b(fecha confirmada|confirmo la fecha|disponible|disponibilidad confirmada)\b[\s\S]{0,60}\b\d{1,2}\s+de\s+\w+/i.test(reply)
+    || /\b(fecha confirmada|confirmo la fecha|disponibilidad confirmada)\b[\s\S]{0,60}\b\d{1,2}\s+de\s+\w+/i.test(reply)
     || /\b(ya quedo|quedaste|estas|ya estas)\s+(reservado|apartado|separado|confirmado|agendado)\b/i.test(reply)
     || /\b(listo,? ya|ya,? listo)\s*(?:esta|qued[oó]|confirmado|reservado|agendado|separado)\b/i.test(reply);
 }
