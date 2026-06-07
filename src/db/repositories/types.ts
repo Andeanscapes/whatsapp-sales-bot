@@ -12,6 +12,7 @@ export interface StoredMessage {
 export interface RecentMessage {
   role: 'user' | 'assistant';
   content: string;
+  messageType?: string;
 }
 
 export interface ConversationRepository {
@@ -19,6 +20,7 @@ export interface ConversationRepository {
   upsert(phone: string, data: Record<string, unknown>): void;
   getHandedOffAt(phone: string): string | null;
   setHandedOff(phone: string): void;
+  clearHandoff(phone: string): void;
   getSoftClosedAt(phone: string): string | null;
   setSoftClosed(phone: string): void;
   clearSoftClosed(phone: string): void;
@@ -128,6 +130,7 @@ export interface ConversationRow {
   price_given_at: string | null;
   handed_off_at: string | null;
   soft_closed_at: string | null;
+  gallery_nudged_at: string | null;
   converted_at: string | null;
   sales_phase: string | null;
   lead_intent: string | null;

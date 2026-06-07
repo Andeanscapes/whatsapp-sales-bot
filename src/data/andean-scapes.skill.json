@@ -530,8 +530,8 @@
           "phase3": "CHEQUEO DE INTERES: Despues del precio total, pregunta suave para entender si es lo que busca. NUNCA cierres tu. Espera a que el cliente diga explicitamente 'quiero reservar' / 'como pago' / 'agendamos'."
         },
         "handoffExactReply": {
-          "es": "Perfecto! Te confirmamos el cupo y los datos de pago en un toque.",
-          "en": "Perfect! We'll confirm availability and payment details shortly."
+          "es": "Perfecto! Te confirmo el cupo y los datos de pago en un toque.",
+          "en": "Perfect! I'll confirm availability and payment details shortly."
         },
         "negativeExamples": "EJEMPLOS NEGATIVOS (que NO hacer): Cliente 'Somos 2 personas' → segui al siguiente dato (fecha o transporte). NO cierres. Cliente 'En junio' → pregunta transporte. NO cierres. Cliente 'Cuanto cuesta' + ya sabes nombre + personas → da TOTAL y pregunta interes. NO cierres. Cliente 'Si me interesa' → confirma entusiasmo y pregunta '¿Te gustaria reservar?'. NO cierres unilateralmente. Cliente 'Soy Brian' → pregunta personas. NO cierres."
       }

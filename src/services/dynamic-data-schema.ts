@@ -1,5 +1,14 @@
 import { z } from 'zod';
 
+const cdnMediaUrlSchema = z.string().url().refine(value => {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.hostname === 'cdn.andeanscapes.com';
+  } catch {
+    return false;
+  }
+}, 'Media URL must use https://cdn.andeanscapes.com');
+
 export const dynamicDateSchema = z.object({
   d: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   s: z.enum(['available', 'limited', 'unavailable', 'soldout']),
@@ -33,11 +42,38 @@ export const dynamicExperienceSchema = z.object({
   }).strict(),
 }).strict();
 
+export const dynamicOwnerImageSchema = z.object({
+  url: cdnMediaUrlSchema,
+  caption: z.string().default(''),
+}).strict();
+
+export const dynamicPlanImageSchema = z.object({
+  id: z.string().min(1),
+  experienceId: z.string().min(1),
+  planId: z.string().optional(),
+  url: cdnMediaUrlSchema,
+  caption: z.string().default(''),
+}).strict();
+
+export const dynamicGalleryImageSchema = z.object({
+  url: cdnMediaUrlSchema,
+  caption: z.string().default(''),
+}).strict();
+
+export const dynamicMediaSchema = z.object({
+  ownerImage: dynamicOwnerImageSchema.optional(),
+  planImages: z.array(dynamicPlanImageSchema).default([]),
+  galleryImages: z.array(dynamicGalleryImageSchema).default([]),
+}).strict();
+
 export const dynamicDataSchema = z.object({
   v: z.number().int(),
   updated: z.string(),
+  media: dynamicMediaSchema.optional(),
   experiences: z.record(dynamicExperienceSchema),
 }).strict();
 
 export type DynamicData = z.infer<typeof dynamicDataSchema>;
 export type DynamicExperience = z.infer<typeof dynamicExperienceSchema>;
+export type DynamicMedia = z.infer<typeof dynamicMediaSchema>;
+export type DynamicPlanImage = z.infer<typeof dynamicPlanImageSchema>;

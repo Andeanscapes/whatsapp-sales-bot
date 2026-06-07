@@ -1,5 +1,6 @@
 import type { Skills, AndeanScapesSkill } from './skill-loader.js';
 import { PRICING_NOT_AVAILABLE, AVAILABILITY_NOT_AVAILABLE } from './dynamic-data-service.js';
+import type { InternalPlanImage, InternalGalleryImage } from './dynamic-data-service.js';
 
 type Experience = AndeanScapesSkill['experiences'][number];
 
@@ -32,4 +33,16 @@ export function isPricingAvailable(exp: ActiveExperience): boolean {
 
 export function isAvailabilityAvailable(exp: ActiveExperience): boolean {
   return exp.availability.availableDates.length > 0 && exp.availability.botRule !== AVAILABILITY_NOT_AVAILABLE;
+}
+
+export function getOwnerImage(skills: Skills): { url: string; caption: string } | null {
+  return skills.dynamicMedia?.ownerImage ?? null;
+}
+
+export function getDynamicPlanImages(skills: Skills): InternalPlanImage[] {
+  return skills.dynamicMedia?.planImages ?? [];
+}
+
+export function getGalleryImages(skills: Skills): InternalGalleryImage[] {
+  return skills.dynamicMedia?.galleryImages ?? [];
 }

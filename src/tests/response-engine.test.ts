@@ -17,6 +17,8 @@ import { PRICING_NOT_AVAILABLE, AVAILABILITY_NOT_AVAILABLE } from '../services/d
 import { sendAlert } from '../services/alert-service.js';
 import { insertMediaSendAt, getLatestOwnerAlertBody } from './helpers/db-test-helpers.js';
 import { containsPromptLeakOrPolicyViolation } from '../services/reply-guard.js';
+import { env } from '../config/env.js';
+import { resetRoutingConfigCache, type RoutingConfig } from '../services/lead-routing.js';
 
 const { mockLlmComplete } = vi.hoisted(() => ({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -40,7 +42,7 @@ vi.mock('../services/time-window-policy.js', () => ({
 import { checkBudget } from '../services/budget-guard.js';
 import { checkTimeWindow } from '../services/time-window-policy.js';
 import { safeReservationHandoff, afterHoursReply, colombiaTimeAwareReply } from '../services/reply-guard.js';
-import { selectImageForPlan, canSendPlanImage } from '../services/media-service.js';
+import { selectImageForPlan, canSendPlanImage, canSendImage, hasGalleryNudge, recordGalleryNudge, selectGalleryImages } from '../services/media-service.js';
 import { getSkills } from '../services/skill-loader.js';
 import type { LlmTurn, LlmResult } from '../services/llm/llm-client.js';
 
@@ -87,6 +89,21 @@ function fromOld(old: OldResponse): LlmResult {
 
 let repos: Repositories;
 let db: Database.Database;
+
+async function withBridgeRouting<T>(fn: () => Promise<T>): Promise<T> {
+  const previousRoutingJson = env.LEAD_ROUTING_JSON;
+  const routing: RoutingConfig = {
+    salesLines: [{ id: 'line1_bridge', type: 'bridge', label: 'Bridge', weight: 1, telegramChatId: '111', agentName: 'Agent' }],
+  };
+  env.LEAD_ROUTING_JSON = JSON.stringify(routing);
+  resetRoutingConfigCache();
+  try {
+    return await fn();
+  } finally {
+    env.LEAD_ROUTING_JSON = previousRoutingJson;
+    resetRoutingConfigCache();
+  }
+}
 
 beforeAll(() => {
   loadSkills();
@@ -296,11 +313,17 @@ describe('processMessage', () => {
   it('alerts owner when budget is blocked', async () => {
     mockLlmComplete.mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: false, reason: 'daily_budget_exceeded' });
-    const result = await processMessage({ repos, customerPhone: '573001112239', message: 'Hola' });
-    expect(result.reply).toContain('validar esto');
-    expect(result.reply.toLowerCase()).not.toContain('dame unos minuticos');
-    expect(result.shouldSendReply).toBe(true);
-    expect(result.shouldAlertOwner).toBe(true);
+    await withBridgeRouting(async () => {
+      const phone = '573001112239';
+      const result = await processMessage({ repos, customerPhone: phone, message: 'Hola' });
+      expect(result.reply).toContain('Me encargo personalmente');
+      expect(result.reply.toLowerCase()).not.toContain('creditos');
+      expect(result.reply.toLowerCase()).not.toContain('ia');
+      expect(result.shouldSendReply).toBe(true);
+      expect(result.shouldAlertOwner).toBe(true);
+      expect(repos.conversation.getHandedOffAt(phone)).toBeTruthy();
+      expect(repos.conversation.getMode(phone)).toBe('bridge_active');
+    });
   });
 
   it('soft closes, stores inbound message, and lowers score on decline', async () => {
@@ -347,6 +370,20 @@ describe('processMessage', () => {
     expect(conv.soft_closed_at).toBeTruthy();
   });
 
+  it('soft closes with IG link on algo caro otra oportunidad', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001112286';
+    repos.conversation.upsert(phone, { price_given_at: new Date().toISOString() });
+
+    const result = await processMessage({ repos, customerPhone: phone, message: 'Me parece algo Caro gracais en otra oportunidad' });
+
+    expect(result.reply).toContain('https://www.instagram.com/andean_scapes/');
+    expect(result.usedAi).toBe(false);
+    expect(result.shouldSendGalleryImages).toBe(true);
+  });
+
   it('filters price rejection from budget-related messages', async () => {
     mockLlmComplete.mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
@@ -366,6 +403,176 @@ describe('processMessage', () => {
 
     const conv = repos.conversation.getByPhone(phone) as { soft_closed_at: string | null };
     expect(conv.soft_closed_at).toBeTruthy();
+  });
+
+  it('re-engages after soft close when user says hola', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: {
+        reply: 'Hola de nuevo! En que te puedo ayudar?',
+        intent: 'general',
+        lead_score_delta: 5,
+        should_send_image: false,
+        needs_human: false,
+        missing_fields: [],
+        collected_fields: {},
+      },
+    }));
+    const phone = '573001112278';
+    repos.conversation.upsert(phone, { soft_closed_at: new Date().toISOString(), lead_score: 10 });
+
+    const result = await processMessage({ repos, customerPhone: phone, message: 'Hola' });
+
+    expect(result.shouldSendReply).toBe(true);
+    expect(result.reply.length).toBeGreaterThan(0);
+    expect(result.usedAi).toBe(true);
+
+    const conv = repos.conversation.getByPhone(phone) as { soft_closed_at: string | null };
+    expect(conv.soft_closed_at).toBeNull();
+  });
+
+  it('alerts owner on high-score soft close decline', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001112279';
+    const skills = getSkills();
+    repos.conversation.upsert(phone, {
+      collected_name: 'Carlos',
+      collected_people: 2,
+      collected_date: 'agosto',
+      price_given_at: new Date().toISOString(),
+      lead_score: skills.salesStrategy.hotLeadThreshold,
+    });
+
+    const result = await processMessage({ repos, customerPhone: phone, message: 'esta muy caro gracias' });
+
+    expect(result.reply).toContain('https://www.instagram.com/andean_scapes/');
+    expect(result.shouldAlertOwner).toBe(true);
+    expect(result.ownerAlertType).toBe('decline_review');
+  });
+
+  it('does not re-send gallery on decline if gallery was already shown earlier', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001112290';
+    const skills = getSkills();
+    repos.conversation.upsert(phone, {
+      collected_name: 'Maria',
+      collected_plan: '2d1n_mining',
+      collected_people: 2,
+      price_given_at: new Date().toISOString(),
+      lead_score: skills.salesStrategy.hotLeadThreshold,
+      gallery_nudged_at: new Date().toISOString(),
+    });
+
+    const result = await processMessage({ repos, customerPhone: phone, message: 'esta muy caro gracias' });
+
+    expect(result.reply).toContain('https://www.instagram.com/andean_scapes/');
+    expect(result.shouldAlertOwner).toBe(true);
+    expect(result.shouldSendGalleryImages).toBe(false);
+  });
+
+  it('does not re-send gallery on partner-consult pause after prior nudge', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001112291';
+    repos.conversation.upsert(phone, {
+      collected_name: 'Sofia',
+      collected_plan: '2d1n_mining',
+      collected_people: 2,
+      price_given_at: new Date().toISOString(),
+      gallery_nudged_at: new Date().toISOString(),
+    });
+
+    const result = await processMessage({ repos, customerPhone: phone, message: 'lo consulto con mi pareja' });
+
+    expect(result.usedAi).toBe(false);
+    expect(result.shouldSendGalleryImages).toBe(false);
+  });
+
+  it('does not re-send gallery on time-limit reservation handoff after prior nudge', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: true, reason: 'hourly_limit' });
+    const phone = '573001112295';
+    repos.conversation.upsert(phone, {
+      collected_name: 'Lucia',
+      collected_plan: '2d1n_mining',
+      collected_people: 2,
+      collected_date: 'agosto',
+      collected_transport_need: 'own',
+      price_given_at: new Date().toISOString(),
+      gallery_nudged_at: new Date().toISOString(),
+    });
+    repos.message.addMessage({
+      customer_phone: phone,
+      direction: 'outbound',
+      message_type: 'text',
+      body: '¿Te gustaría reservar para esa fecha?',
+      created_at: new Date(Date.now() - 5_000).toISOString(),
+    });
+
+    const result = await processMessage({ repos, customerPhone: phone, message: 'si quiero reservar' });
+
+    expect(result.ownerAlertType).toBe('reservation_handoff');
+    expect(result.shouldSendGalleryImages).toBe(false);
+  });
+
+  it('does not re-send gallery on LLM reservation handoff after prior nudge', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001112296';
+    repos.conversation.upsert(phone, {
+      collected_name: 'Andrea',
+      collected_plan: '2d1n_mining',
+      collected_people: 2,
+      collected_date: 'agosto',
+      collected_transport_need: 'own',
+      price_given_at: new Date().toISOString(),
+      gallery_nudged_at: new Date().toISOString(),
+    });
+    repos.message.addMessage({
+      customer_phone: phone,
+      direction: 'outbound',
+      message_type: 'text',
+      body: '¿Te gustaría reservar para esa fecha?',
+      created_at: new Date(Date.now() - 5_000).toISOString(),
+    });
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: {
+        reply: 'Perfecto! Confirmado.',
+        intent: 'general',
+        lead_score_delta: 0,
+        should_send_image: false,
+        needs_human: false,
+        missing_fields: [],
+        collected_fields: {},
+      },
+    }));
+
+    const result = await processMessage({ repos, customerPhone: phone, message: 'si por favor' });
+
+    expect(result.ownerAlertType).toBe('reservation_handoff');
+    expect(result.shouldSendGalleryImages).toBe(false);
+  });
+
+  it('still sends gallery on explicit photo request even after prior nudge', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001112294';
+    repos.conversation.upsert(phone, { gallery_nudged_at: new Date().toISOString() });
+
+    const result = await processMessage({ repos, customerPhone: phone, message: 'Tienes fotos de la experiencia ?' });
+
+    expect(result.usedAi).toBe(false);
+    expect(result.shouldSendGalleryImages).toBe(true);
   });
 
   it('clears soft close and scores re-engagement', async () => {
@@ -398,15 +605,58 @@ describe('processMessage', () => {
     expect(conv.soft_closed_at).toBeNull();
   });
 
-  it('alerts owner when time limit is reached', async () => {
+  it('sends gentle limit reply without handoff for low-score users on time limit', async () => {
     mockLlmComplete.mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: true, reason: 'hourly_limit' });
-    const result = await processMessage({ repos, customerPhone: '573001112240', message: 'Hola de nuevo' });
-    expect(result.reply).toContain('Te leo');
-    expect(result.reply.toLowerCase()).not.toContain('automaticos');
-    expect(result.shouldSendReply).toBe(true);
+    await withBridgeRouting(async () => {
+      const phone = '573001112240';
+      const result = await processMessage({ repos, customerPhone: phone, message: 'Hola de nuevo' });
+      expect(result.reply).toContain('Te leo');
+      expect(result.shouldSendReply).toBe(true);
+      expect(result.shouldAlertOwner).toBe(false);
+      expect(repos.conversation.getHandedOffAt(phone)).toBeFalsy();
+    });
+  });
+
+  it('pauses with partner summary when user says "validar con mi esposa" after price', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001119101';
+    repos.conversation.upsert(phone, {
+      collected_name: 'Claudio',
+      collected_people: 2,
+      collected_plan: '2d1n_mining',
+      price_given_at: new Date().toISOString(),
+    });
+
+    const result = await processMessage({ repos, customerPhone: phone, message: 'Listo voy a validar con mi esposa y te escribo' });
+
+    expect(result.reply).toContain('Dale Claudio');
     expect(result.shouldAlertOwner).toBe(false);
+    expect(result.usedAi).toBe(false);
+    expect(mockLlmComplete).not.toHaveBeenCalled();
+  });
+
+  it('alerts owner on message limit for hot leads with price progress', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: true, reason: 'hourly_limit' });
+    const phone = '573001119102';
+    repos.conversation.upsert(phone, {
+      collected_name: 'Andrea',
+      collected_plan: '2d1n_mining',
+      collected_people: 2,
+      price_given_at: new Date().toISOString(),
+      lead_score: 80,
+    });
+    await withBridgeRouting(async () => {
+      const result = await processMessage({ repos, customerPhone: phone, message: 'Hola me puedes ayudar?' });
+      expect(result.shouldAlertOwner).toBe(true);
+      expect(result.reply.toLowerCase()).not.toContain('dame un momento');
+      expect(repos.conversation.getHandedOffAt(phone)).toBeTruthy();
+    });
   });
 
   it('accepts null values in collected_fields', async () => {
@@ -1158,7 +1408,7 @@ describe('processMessage', () => {
       price_given_at: new Date().toISOString(),
     });
     const result = await processMessage({ repos, customerPhone: phone, message: 'Si como se reserva ? Pero aclárame el itinerario a qué hora debo llegar ?' });
-    expect(result.reply).toContain('Necesito validar');
+    expect(result.reply).toContain('Dejame validar');
     expect(result.reply).not.toContain('como te llamas');
   });
 
@@ -1251,11 +1501,13 @@ describe('processMessage', () => {
       body: 'Sábado 1 de agosto\nSábado 15 de agosto',
       created_at: new Date(Date.now() - 5_000).toISOString(),
     });
-    const result = await processMessage({ repos, customerPhone: phone, message: 'la del primero esta bien' });
-    expect(result.reply).toContain('fecha tentativa');
-    expect(result.leadScore).toBeGreaterThanOrEqual(50);
-    expect(result.shouldAlertOwner).toBe(true);
-    expect(result.reply.toLowerCase()).not.toContain('confundirte con el valor');
+    await withBridgeRouting(async () => {
+      const result = await processMessage({ repos, customerPhone: phone, message: 'la del primero esta bien' });
+      expect(result.reply).toContain('sigo yo personalmente');
+      expect(result.shouldAlertOwner).toBe(true);
+      expect(repos.conversation.getHandedOffAt(phone)).toBeTruthy();
+      expect(repos.conversation.getMode(phone)).toBe('bridge_active');
+    });
   });
 
   it('summarizes public bus as customer-paid transport in handoff', async () => {
@@ -1672,7 +1924,7 @@ describe('processMessage', () => {
   it('uses 3D/2N image after ambiguous mine plus 3 days plan mention', async () => {
     const skills = getSkills();
     const image = selectImageForPlan(skills.media.images, '3d2n_rural');
-    expect(image?.value).toBe('https://cdn.andeanscapes.com/whatsapp_bot/3d2n_1.png');
+    expect(image?.url).toBe('https://cdn.andeanscapes.com/whatsapp_bot/3d2n_1.png');
   });
 
   it('blocks handoff until plan is selected', async () => {
@@ -1854,6 +2106,103 @@ describe('processMessage', () => {
       insertMediaSendAt(db, phone, 'rural_experience_preview_1', new Date(Date.now() - 1000).toISOString());
       expect(canSendPlanImage(repos, phone, 'emerald_mining_preview_1')).toBe(false);
     });
+
+    it('does not count gallery nudge marker as an image send', () => {
+      const phone = '573001119006';
+      repos.conversation.upsert(phone, {});
+      recordGalleryNudge(repos, phone);
+
+      expect(hasGalleryNudge(repos, phone)).toBe(true);
+      expect(repos.mediaSend.countRecentImages(phone, new Date(0).toISOString())).toBe(0);
+      expect(canSendImage(repos, phone)).toBe(true);
+    });
+
+    it('caps gallery images per send', () => {
+      const previous = env.MAX_GALLERY_IMAGES_PER_SEND;
+      env.MAX_GALLERY_IMAGES_PER_SEND = 15;
+      try {
+        const selected = selectGalleryImages(Array.from({ length: 30 }, (_, idx) => ({
+          url: `https://cdn.andeanscapes.com/${idx}.jpg`,
+          caption: String(idx),
+        })));
+
+        expect(selected).toHaveLength(15);
+      } finally {
+        env.MAX_GALLERY_IMAGES_PER_SEND = previous;
+      }
+    });
+
+    it('returns all gallery images when fewer than cap', () => {
+      const previous = env.MAX_GALLERY_IMAGES_PER_SEND;
+      env.MAX_GALLERY_IMAGES_PER_SEND = 15;
+      try {
+        const selected = selectGalleryImages([
+          { url: 'https://cdn.andeanscapes.com/1.jpg', caption: '1' },
+          { url: 'https://cdn.andeanscapes.com/2.jpg', caption: '2' },
+        ]);
+
+        expect(selected).toHaveLength(2);
+      } finally {
+        env.MAX_GALLERY_IMAGES_PER_SEND = previous;
+      }
+    });
+  });
+
+  it('does not trigger mid-funnel gallery after previous gallery nudge', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001119007';
+    repos.conversation.upsert(phone, {
+      collected_name: 'Daniel',
+      collected_plan: '2d1n_mining',
+      collected_people: 1,
+      price_given_at: new Date().toISOString(),
+      gallery_nudged_at: new Date().toISOString(),
+    });
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: {
+        reply: 'Perfecto, seguimos con la experiencia minera.',
+        collected_fields: { name: 'Daniel', plan: '2d1n_mining', people: 1 },
+      },
+    }));
+
+    const result = await processMessage({ repos, customerPhone: phone, message: 'me interesa' });
+
+    expect(result.shouldSendGalleryImages).toBe(false);
+  });
+
+  it('sends gallery for direct photo request without LLM', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001119008';
+
+    const result = await processMessage({ repos, customerPhone: phone, message: 'Tienes fotos de la experiencia ?' });
+
+    expect(result.usedAi).toBe(false);
+    expect(result.reply).toBe(getSkills().fallbackReplies.es.galleryIntro);
+    expect(result.shouldSendGalleryImages).toBe(true);
+  });
+
+  it('sends gallery for confirmation after assistant offers photos', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001119009';
+    repos.conversation.upsert(phone, {});
+    repos.message.addMessage({
+      customer_phone: phone,
+      direction: 'outbound',
+      message_type: 'text',
+      body: 'Te puedo compartir algunas fotos. ¿Te parece si te las envío por aquí?',
+      created_at: new Date().toISOString(),
+    });
+
+    const result = await processMessage({ repos, customerPhone: phone, message: 'Si Aqui' });
+
+    expect(result.usedAi).toBe(false);
+    expect(result.shouldSendGalleryImages).toBe(true);
   });
 
   it('keeps shouldSendImage true when plan image changed inside 72h', async () => {

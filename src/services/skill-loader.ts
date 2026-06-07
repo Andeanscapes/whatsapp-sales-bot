@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import type { DynamicDataService, InternalDynamicData, InternalPricingItem } from './dynamic-data-service.js';
+import type { DynamicDataService, InternalDynamicData, InternalDynamicMedia, InternalPricingItem } from './dynamic-data-service.js';
 import { PRICING_NOT_AVAILABLE, AVAILABILITY_NOT_AVAILABLE } from './dynamic-data-service.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -227,8 +227,10 @@ const langFallbackSchema = z.object({
   askDate: z.string(),
   askTransport: z.string(),
   aiFailureQualified: z.string(),
+  aiBudgetExhausted: z.string(),
   llmFailureWarm: z.string().optional(),
   messageLimitReached: z.string(),
+  messageLimitHandoff: z.string(),
   messageLimitAfterPrice: z.string(),
   messageLimitAfterPriceAfterHours: z.string(),
   messageLimitAfterPriceMorningHours: z.string(),
@@ -258,6 +260,7 @@ const langFallbackSchema = z.object({
   answerQuestionBeforeQualification: z.string(),
   itineraryReply: z.string(),
   systemErrorRetry: z.string(),
+  galleryIntro: z.string(),
 });
 
 const fallbackRepliesSchema = z.object({
@@ -275,6 +278,7 @@ export interface Skills {
   salesStrategy: SalesStrategySkill;
   media: MediaSkill;
   fallbackReplies: FallbackReplies;
+  dynamicMedia: InternalDynamicMedia | null;
 }
 
 let cached: Skills | null = null;
@@ -336,6 +340,7 @@ function mergeDynamicIntoStatic(dynData: InternalDynamicData | null): void {
   cached = {
     ...cached,
     andeanScapes: { ...cached.andeanScapes, experiences: mergedExperiences },
+    dynamicMedia: dynData?.media ?? null,
   };
 }
 
@@ -348,7 +353,7 @@ export async function refreshSkills(): Promise<void> {
   const before = cachedService.getData();
   await cachedService.refreshIfStale();
   const after = cachedService.getData();
-  if (after !== before) {
+  if (after !== before && cached) {
     mergeDynamicIntoStatic(after);
   }
 }
@@ -364,12 +369,14 @@ export function loadSkills(): Skills {
     salesStrategy: salesStrategySchema.parse(rawSales),
     media: mediaSchema.parse(rawMedia),
     fallbackReplies: fallbackRepliesSchema.parse(rawFallback),
+    dynamicMedia: null,
   };
 
   if (cachedService) {
     const dynData = cachedService.getData();
     if (dynData) {
       skills.andeanScapes.experiences = applyDynamicToExperiences(skills.andeanScapes.experiences, dynData);
+      skills.dynamicMedia = dynData.media;
     }
   }
 

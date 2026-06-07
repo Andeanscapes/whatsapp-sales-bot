@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { logger } from '../config/logger.js';
-import { dynamicDataSchema, type DynamicData } from './dynamic-data-schema.js';
+import { dynamicDataSchema, type DynamicData, type DynamicMedia } from './dynamic-data-schema.js';
 
 export const PRICING_NOT_AVAILABLE = 'PRICING_NOT_AVAILABLE';
 export const AVAILABILITY_NOT_AVAILABLE = 'AVAILABILITY_NOT_AVAILABLE';
@@ -38,8 +38,28 @@ export interface InternalExperienceData {
   };
 }
 
+export interface InternalPlanImage {
+  id: string;
+  experienceId: string;
+  planId?: string;
+  url: string;
+  caption: string;
+}
+
+export interface InternalGalleryImage {
+  url: string;
+  caption: string;
+}
+
+export interface InternalDynamicMedia {
+  ownerImage: { url: string; caption: string } | null;
+  planImages: InternalPlanImage[];
+  galleryImages: InternalGalleryImage[];
+}
+
 export interface InternalDynamicData {
   experiences: Record<string, InternalExperienceData>;
+  media: InternalDynamicMedia | null;
 }
 
 export class DynamicDataService {
@@ -69,6 +89,25 @@ export class DynamicDataService {
     const now = Date.now();
     if (now - this.cache.lastFetchMs < this.refreshMs) return;
     await this.fetch();
+  }
+
+  private transformMedia(raw: DynamicMedia | null): InternalDynamicMedia | null {
+    if (!raw) return null;
+    const planImages: InternalPlanImage[] = raw.planImages.map(pi => ({
+      id: pi.id,
+      experienceId: pi.experienceId,
+      planId: pi.planId,
+      url: pi.url,
+      caption: pi.caption,
+    }));
+    const galleryImages: InternalGalleryImage[] = raw.galleryImages.map(gi => ({
+      url: gi.url,
+      caption: gi.caption,
+    }));
+    const ownerImage = raw.ownerImage
+      ? { url: raw.ownerImage.url, caption: raw.ownerImage.caption }
+      : null;
+    return { ownerImage, planImages, galleryImages };
   }
 
   private async fetch(): Promise<void> {
@@ -180,6 +219,6 @@ export class DynamicDataService {
       };
     }
 
-    return { experiences };
+    return { experiences, media: this.transformMedia(data.media ?? null) };
   }
 }

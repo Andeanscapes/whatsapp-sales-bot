@@ -6,12 +6,14 @@ import { env } from '../config/env.js';
 import { getSkills } from '../services/skill-loader.js';
 import { buildHandedOffReply, processMessage } from '../services/response-engine.js';
 import { sendText, sendImageUrl, downloadMedia } from '../services/whatsapp-client.js';
-import { recordImageSend, selectImageForPlan, canSendPlanImage } from '../services/media-service.js';
+import { canSendImage, recordGalleryNudge, recordImageSend, selectGalleryImages, selectPlanImage, canSendPlanImage } from '../services/media-service.js';
 import { sendAlert } from '../services/alert-service.js';
 import { sendTelegramMessage, sendTelegramPhoto, sendTelegramVoice } from '../services/telegram-bot.js';
 import { getLineById, hasRoutingConfig, isReferralLine } from '../services/lead-routing.js';
+import { getOwnerImage, getDynamicPlanImages, getGalleryImages } from '../services/product-registry.js';
 import { isBridgeActive } from '../services/bridge-service.js';
 import { bridgeMessages } from '../services/bridge-messages.js';
+import { isSoftCloseMessage } from '../services/reply-guard.js';
 import { logger } from '../config/logger.js';
 import { logSystemError } from '../services/error-logger.js';
 
@@ -40,6 +42,7 @@ const messageSchema = z.object({
   text: z.object({ body: z.string() }).optional(),
   image: z.object({ id: z.string(), mime_type: z.string().optional(), caption: z.string().optional() }).optional(),
   audio: z.object({ id: z.string(), mime_type: z.string().optional() }).optional(),
+  video: z.object({ id: z.string(), mime_type: z.string().optional(), caption: z.string().optional() }).optional(),
 });
 
 const webhookPayloadSchema = z.object({
@@ -64,13 +67,13 @@ export interface ExtractedMedia {
 export interface ExtractedMessage {
   from: string;
   id: string;
-  type: 'text' | 'image' | 'audio';
+  type: 'text' | 'image' | 'audio' | 'video';
   text: string;
   media: ExtractedMedia | null;
   timestamp: string;
 }
 
-function extractMessages(body: unknown): ExtractedMessage[] | null {
+export function extractMessages(body: unknown): ExtractedMessage[] | null {
   const parsed = webhookPayloadSchema.safeParse(body);
   if (!parsed.success) return null;
 
@@ -98,6 +101,15 @@ function extractMessages(body: unknown): ExtractedMessage[] | null {
             type: 'audio',
             text: '',
             media: { id: m.audio.id, mimeType: m.audio.mime_type ?? null },
+            timestamp: '',
+          });
+        } else if (m.type === 'video' && m.video) {
+          result.push({
+            from: m.from,
+            id: m.id,
+            type: 'video',
+            text: m.video.caption ?? '',
+            media: { id: m.video.id, mimeType: m.video.mime_type ?? null },
             timestamp: '',
           });
         }
@@ -169,6 +181,15 @@ export async function forwardBridgeMessage(repos: Repositories, msg: ExtractedMe
     return true;
   }
 
+  if (msg.type === 'video') {
+    try {
+      await sendTelegramMessage(session.agentChatId, bridgeMessages.newCustomerVideo(msg.from));
+    } catch (err) {
+      logger.warn({ err, phone: msg.from, chatId: session.agentChatId }, '[BRIDGE] customer video notify failed; keeping bridge active');
+    }
+    return true;
+  }
+
   try {
     await sendTelegramMessage(session.agentChatId, bridgeMessages.newCustomerMessage(msg.from, msg.text));
     return true;
@@ -185,6 +206,24 @@ export async function forwardPostHandoffMessage(repos: Repositories, msg: Extrac
   if (repos.isPaused()) return null;
   if (repos.optOut.isOptedOut(msg.from)) return null;
   if (!repos.conversation.getHandedOffAt(msg.from)) return null;
+
+  if (isSoftCloseMessage(msg.text)) {
+    repos.message.addMessage({
+      whatsapp_message_id: msg.id,
+      customer_phone: msg.from,
+      direction: 'inbound',
+      message_type: 'text',
+      body: msg.text,
+      created_at: new Date().toISOString(),
+      raw_json: null,
+    });
+    repos.conversation.setSoftClosed(msg.from);
+    repos.conversation.clearHandoff(msg.from);
+    const skills = getSkills();
+    const lang = repos.conversation.getLanguage(msg.from) ?? 'es';
+    const igUrl = skills.andeanScapes.business.socialLinks?.instagram ?? '';
+    return skills.fallbackReplies[lang].softCloseReply.replace('{{instagramUrl}}', igUrl);
+  }
 
   const assignment = repos.conversation.getAssignment(msg.from);
   if (!assignment) return null;
@@ -226,7 +265,6 @@ export async function notifyAssignedLineIfDormant(repos: Repositories, msg: Extr
   if (!hasRoutingConfig()) return false;
   if (repos.isPaused()) return false;
   if (repos.optOut.isOptedOut(msg.from)) return false;
-  if (msg.type !== 'text') return false;
   if (repos.conversation.getMode(msg.from) !== 'bot') return false;
   if (repos.conversation.getHandedOffAt(msg.from)) return false;
 
@@ -240,14 +278,22 @@ export async function notifyAssignedLineIfDormant(repos: Repositories, msg: Extr
     whatsapp_message_id: msg.id,
     customer_phone: msg.from,
     direction: 'inbound',
-    message_type: 'text',
-    body: msg.text,
+    message_type: msg.type,
+    body: msg.type === 'text' ? msg.text : (msg.text || ''),
     created_at: new Date().toISOString(),
     raw_json: null,
   });
 
   try {
-    await sendTelegramMessage(assignment.assignedAgentChat, bridgeMessages.dormantBridgeNotice(msg.from, msg.text));
+    if (msg.type === 'image') {
+      await sendTelegramMessage(assignment.assignedAgentChat, bridgeMessages.dormantBridgeImageNotice(msg.from));
+    } else if (msg.type === 'audio') {
+      await sendTelegramMessage(assignment.assignedAgentChat, bridgeMessages.dormantBridgeAudioNotice(msg.from));
+    } else if (msg.type === 'video') {
+      await sendTelegramMessage(assignment.assignedAgentChat, bridgeMessages.dormantBridgeVideoNotice(msg.from));
+    } else {
+      await sendTelegramMessage(assignment.assignedAgentChat, bridgeMessages.dormantBridgeNotice(msg.from, msg.text));
+    }
   } catch {
     // best-effort; don't block the bot path on failure
     return false;
@@ -380,45 +426,116 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
               body: result.reply,
               created_at: new Date().toISOString(),
             });
-          }
-        }
 
-        if (result.priceJustGiven) {
-          const skills = getSkills();
-          const collectedPlan = repos.conversation.getCollectedPlan(msg.from);
-          const image = selectImageForPlan(skills.media.images, collectedPlan);
-          if (image && image.value !== 'REPLACE_WITH_PUBLIC_IMAGE_URL' && canSendPlanImage(repos, msg.from, image.id)) {
-            const caption = result.priceFollowUpText ?? image.caption;
-            let sent = false;
-            try {
-              await sendImageUrl(msg.from, image.value, caption);
-              recordImageSend(repos, msg.from, image.id);
-              sent = true;
-            } catch (err) {
-              logSystemError('whatsapp_send', 'error', err, { phone: msg.from, flow: 'price_image' });
+            if (result.shouldSendOwnerImage) {
+              const skills = getSkills();
+              const ownerImg = getOwnerImage(skills);
+              if (ownerImg && canSendImage(repos, msg.from) && canSendPlanImage(repos, msg.from, 'owner_intro')) {
+                let imageSent = false;
+                try {
+                  await sendImageUrl(msg.from, ownerImg.url, ownerImg.caption);
+                  recordImageSend(repos, msg.from, 'owner_intro');
+                  imageSent = true;
+                } catch (err) {
+                  logSystemError('whatsapp_send', 'error', err, { phone: msg.from, flow: 'owner_image' });
+                }
+                if (imageSent) {
+                  repos.message.addMessage({
+                    customer_phone: msg.from,
+                    direction: 'outbound',
+                    message_type: 'image',
+                    body: ownerImg.caption,
+                    created_at: new Date().toISOString(),
+                  });
+                }
+              }
             }
-            if (sent) {
-              repos.message.addMessage({
-                customer_phone: msg.from,
-                direction: 'outbound',
-                message_type: 'image',
-                body: caption,
-                created_at: new Date().toISOString(),
-              });
-            }
-          }
-        }
 
-        if (result.shouldSendImage && !result.priceJustGiven) {
-          const skills = getSkills();
-          const collectedPlan = repos.conversation.getCollectedPlan(msg.from);
-          const image = selectImageForPlan(skills.media.images, collectedPlan);
-          if (image && image.value !== 'REPLACE_WITH_PUBLIC_IMAGE_URL' && canSendPlanImage(repos, msg.from, image.id)) {
-            try {
-              await sendImageUrl(msg.from, image.value, image.caption);
-              recordImageSend(repos, msg.from, image.id);
-            } catch (err) {
-              logSystemError('whatsapp_send', 'error', err, { phone: msg.from, flow: 'ai_image' });
+            if (result.priceJustGiven) {
+              const skills = getSkills();
+              const collectedPlan = repos.conversation.getCollectedPlan(msg.from);
+              const image = selectPlanImage(getDynamicPlanImages(skills), skills.media.images, collectedPlan);
+              if (image && canSendImage(repos, msg.from) && canSendPlanImage(repos, msg.from, image.id)) {
+                const caption = result.priceFollowUpText ?? image.caption;
+                let sent = false;
+                try {
+                  await sendImageUrl(msg.from, image.url, caption);
+                  recordImageSend(repos, msg.from, image.id);
+                  sent = true;
+                } catch (err) {
+                  logSystemError('whatsapp_send', 'error', err, { phone: msg.from, flow: 'price_image' });
+                }
+                if (sent) {
+                  repos.message.addMessage({
+                    customer_phone: msg.from,
+                    direction: 'outbound',
+                    message_type: 'image',
+                    body: caption,
+                    created_at: new Date().toISOString(),
+                  });
+                }
+              }
+            }
+
+            if (result.shouldSendImage && !result.priceJustGiven) {
+              const skills = getSkills();
+              const collectedPlan = repos.conversation.getCollectedPlan(msg.from);
+              const image = selectPlanImage(getDynamicPlanImages(skills), skills.media.images, collectedPlan);
+              if (image && canSendImage(repos, msg.from) && canSendPlanImage(repos, msg.from, image.id)) {
+                try {
+                  await sendImageUrl(msg.from, image.url, image.caption);
+                  recordImageSend(repos, msg.from, image.id);
+                } catch (err) {
+                  logSystemError('whatsapp_send', 'error', err, { phone: msg.from, flow: 'ai_image' });
+                }
+              }
+            }
+
+            if (result.shouldSendGalleryImages) {
+              const skills = getSkills();
+              const gallery = selectGalleryImages(getGalleryImages(skills));
+              if (gallery.length > 0) {
+                const lang = repos.conversation.getLanguage(msg.from) ?? 'es';
+                const intro = skills.fallbackReplies[lang].galleryIntro;
+                let introSent = false;
+                if (result.reply.trim() !== intro.trim()) {
+                  try {
+                    await sendText(msg.from, intro);
+                    introSent = true;
+                  } catch (err) {
+                    logSystemError('whatsapp_send', 'error', err, { phone: msg.from, flow: 'gallery_intro' });
+                  }
+                }
+                if (introSent) {
+                  repos.message.addMessage({
+                    customer_phone: msg.from,
+                    direction: 'outbound',
+                    message_type: 'text',
+                    body: intro,
+                    created_at: new Date().toISOString(),
+                  });
+                }
+                let galleryImageSent = false;
+                for (const img of gallery) {
+                  if (!canSendImage(repos, msg.from)) break;
+                  const mediaId = `gallery_${new URL(img.url).pathname}`;
+                  try {
+                    await sendImageUrl(msg.from, img.url, '');
+                    recordImageSend(repos, msg.from, mediaId);
+                    galleryImageSent = true;
+                    repos.message.addMessage({
+                      customer_phone: msg.from,
+                      direction: 'outbound',
+                      message_type: 'image',
+                      body: '',
+                      created_at: new Date().toISOString(),
+                    });
+                  } catch (err) {
+                    logSystemError('whatsapp_send', 'error', err, { phone: msg.from, flow: 'gallery_image' });
+                  }
+                }
+                if (galleryImageSent) recordGalleryNudge(repos, msg.from);
+              }
             }
           }
         }

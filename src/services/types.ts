@@ -24,6 +24,8 @@ export interface ProcessMessageOutput {
   shouldAlertOwner: boolean;
   ownerAlertType?: string;
   shouldSendImage: boolean;
+  shouldSendOwnerImage: boolean;
+  shouldSendGalleryImages: boolean;
   priceJustGiven: boolean;
   priceFollowUpText?: string;
 }
