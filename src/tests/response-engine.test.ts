@@ -17,6 +17,8 @@ import { PRICING_NOT_AVAILABLE, AVAILABILITY_NOT_AVAILABLE } from '../services/d
 import { sendAlert } from '../services/alert-service.js';
 import { insertMediaSendAt, getLatestOwnerAlertBody } from './helpers/db-test-helpers.js';
 import { containsPromptLeakOrPolicyViolation } from '../services/reply-guard.js';
+import { env } from '../config/env.js';
+import { resetRoutingConfigCache, type RoutingConfig } from '../services/lead-routing.js';
 
 const { mockLlmComplete } = vi.hoisted(() => ({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -87,6 +89,21 @@ function fromOld(old: OldResponse): LlmResult {
 
 let repos: Repositories;
 let db: Database.Database;
+
+async function withBridgeRouting<T>(fn: () => Promise<T>): Promise<T> {
+  const previousRoutingJson = env.LEAD_ROUTING_JSON;
+  const routing: RoutingConfig = {
+    salesLines: [{ id: 'line1_bridge', type: 'bridge', label: 'Bridge', weight: 1, telegramChatId: '111', agentName: 'Agent' }],
+  };
+  env.LEAD_ROUTING_JSON = JSON.stringify(routing);
+  resetRoutingConfigCache();
+  try {
+    return await fn();
+  } finally {
+    env.LEAD_ROUTING_JSON = previousRoutingJson;
+    resetRoutingConfigCache();
+  }
+}
 
 beforeAll(() => {
   loadSkills();
@@ -296,11 +313,17 @@ describe('processMessage', () => {
   it('alerts owner when budget is blocked', async () => {
     mockLlmComplete.mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: false, reason: 'daily_budget_exceeded' });
-    const result = await processMessage({ repos, customerPhone: '573001112239', message: 'Hola' });
-    expect(result.reply).toContain('validar esto');
-    expect(result.reply.toLowerCase()).not.toContain('dame unos minuticos');
-    expect(result.shouldSendReply).toBe(true);
-    expect(result.shouldAlertOwner).toBe(true);
+    await withBridgeRouting(async () => {
+      const phone = '573001112239';
+      const result = await processMessage({ repos, customerPhone: phone, message: 'Hola' });
+      expect(result.reply).toContain('equipo toman el control');
+      expect(result.reply.toLowerCase()).not.toContain('creditos');
+      expect(result.reply.toLowerCase()).not.toContain('ia');
+      expect(result.shouldSendReply).toBe(true);
+      expect(result.shouldAlertOwner).toBe(true);
+      expect(repos.conversation.getHandedOffAt(phone)).toBeTruthy();
+      expect(repos.conversation.getMode(phone)).toBe('bridge_active');
+    });
   });
 
   it('soft closes, stores inbound message, and lowers score on decline', async () => {
@@ -402,11 +425,15 @@ describe('processMessage', () => {
     mockLlmComplete.mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: true, reason: 'hourly_limit' });
-    const result = await processMessage({ repos, customerPhone: '573001112240', message: 'Hola de nuevo' });
-    expect(result.reply).toContain('Te leo');
-    expect(result.reply.toLowerCase()).not.toContain('automaticos');
-    expect(result.shouldSendReply).toBe(true);
-    expect(result.shouldAlertOwner).toBe(false);
+    await withBridgeRouting(async () => {
+      const phone = '573001112240';
+      const result = await processMessage({ repos, customerPhone: phone, message: 'Hola de nuevo' });
+      expect(result.reply).toContain('Te leo');
+      expect(result.shouldSendReply).toBe(true);
+      expect(result.shouldAlertOwner).toBe(true);
+      expect(repos.conversation.getHandedOffAt(phone)).toBeTruthy();
+      expect(repos.conversation.getMode(phone)).toBe('bridge_active');
+    });
   });
 
   it('accepts null values in collected_fields', async () => {
@@ -1251,11 +1278,13 @@ describe('processMessage', () => {
       body: 'Sábado 1 de agosto\nSábado 15 de agosto',
       created_at: new Date(Date.now() - 5_000).toISOString(),
     });
-    const result = await processMessage({ repos, customerPhone: phone, message: 'la del primero esta bien' });
-    expect(result.reply).toContain('fecha tentativa');
-    expect(result.leadScore).toBeGreaterThanOrEqual(50);
-    expect(result.shouldAlertOwner).toBe(true);
-    expect(result.reply.toLowerCase()).not.toContain('confundirte con el valor');
+    await withBridgeRouting(async () => {
+      const result = await processMessage({ repos, customerPhone: phone, message: 'la del primero esta bien' });
+      expect(result.reply).toContain('equipo toma el control');
+      expect(result.shouldAlertOwner).toBe(true);
+      expect(repos.conversation.getHandedOffAt(phone)).toBeTruthy();
+      expect(repos.conversation.getMode(phone)).toBe('bridge_active');
+    });
   });
 
   it('summarizes public bus as customer-paid transport in handoff', async () => {

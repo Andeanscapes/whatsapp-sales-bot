@@ -35,7 +35,6 @@ import {
   qualificationSummary,
   containsUnsafeReservationClaim,
   containsPromptLeakOrPolicyViolation,
-  colombiaTimeAwareReply,
   isTruncatedReply,
 } from './reply-guard.js';
 import { assignLine, isReferralLine } from './lead-routing.js';
@@ -190,6 +189,13 @@ function routeHumanHandoff(repos: ProcessMessageInput['repos'], customerPhone: s
   return defaultReply;
 }
 
+function activateHumanFallback(repos: ProcessMessageInput['repos'], customerPhone: string): void {
+  repos.conversation.setHandedOff(customerPhone);
+  const line = assignLine(repos, customerPhone);
+  if (!line) return;
+  repos.conversation.setMode(customerPhone, isReferralLine(line) ? 'referred' : 'bridge_active');
+}
+
 export function buildHandedOffReply(repos: ProcessMessageInput['repos'], customerPhone: string, message: string, skills: Skills = getSkills()): string {
   const fb = skills.fallbackReplies[resolveLanguage(repos, customerPhone, message)];
   const norm = message.toLowerCase().trim();
@@ -287,8 +293,6 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
 
   const preLimitReservationIntent = !!preLimitPriceRow && isReservationIntentOrConfirmation(message, lastAssistantQuestion);
 
-  const preLimitDateSelected = !!preLimitPriceRow && !!dbQualification.fecha;
-
   if (preLimitPriceRow && isPartnerConsultPause(message)) {
     return { reply: buildPartnerConsultSummary(dbQualification, lang, skills), shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: false, shouldSendImage: false, priceJustGiven: false };
   }
@@ -303,30 +307,15 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
       const handoffReply = safeReservationHandoff(dbQualification, skills.fallbackReplies[lang], lang);
       return { reply: routeHumanHandoff(repos, customerPhone, dbQualification, lang, skills, handoffReply), shouldSendReply: true, leadScore: overrideScore, usedAi: false, shouldAlertOwner: true, ownerAlertType: 'reservation_handoff', shouldSendImage: false, priceJustGiven: false };
     }
-    if (preLimitPriceRow) {
-      const fb = skills.fallbackReplies[lang];
-      if (preLimitDateSelected) {
-        const newDate = String(dbQualification.fecha ?? '');
-        const dateReply = newDate
-          ? fb.dateSelectedLimited.replace('{{date}}', newDate)
-          : fb.dateSelectedLimitedNoDate;
-        const boostScore = Math.max(currentScore, skills.salesStrategy.hotLeadThreshold - 5);
-        repos.conversation.upsert(customerPhone, { lead_score: boostScore });
-        return { reply: dateReply, shouldSendReply: true, leadScore: boostScore, usedAi: false, shouldAlertOwner: true, shouldSendImage: false, priceJustGiven: false };
-      }
-      return { reply: colombiaTimeAwareReply(fb.messageLimitAfterPrice, fb.messageLimitAfterPriceAfterHours, fb.messageLimitAfterPriceMorningHours), shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: true, shouldSendImage: false, priceJustGiven: false };
-    }
-    return { reply: skills.fallbackReplies[lang].messageLimitReached, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: false, shouldSendImage: false, priceJustGiven: false };
+    activateHumanFallback(repos, customerPhone);
+    return { reply: skills.fallbackReplies[lang].messageLimitHandoff, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: true, shouldSendImage: false, priceJustGiven: false };
   }
 
   const budget = checkBudget(repos, customerPhone);
   if (!budget.aiAllowed) {
     logger.warn({ reason: budget.reason }, '[AI] budget blocked');
-    const fb2 = skills.fallbackReplies[lang];
-    const gracefulReply = preLimitPriceRow
-      ? colombiaTimeAwareReply(fb2.messageLimitAfterPrice, fb2.messageLimitAfterPriceAfterHours, fb2.messageLimitAfterPriceMorningHours)
-      : skills.fallbackReplies[lang].aiFailureQualified;
-    return { reply: gracefulReply, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: true, shouldSendImage: false, priceJustGiven: false };
+    activateHumanFallback(repos, customerPhone);
+    return { reply: skills.fallbackReplies[lang].aiBudgetExhausted, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: true, shouldSendImage: false, priceJustGiven: false };
   }
 
   const salesPhase = repos.conversation.getSalesPhase(customerPhone);
