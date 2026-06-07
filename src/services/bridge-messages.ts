@@ -59,8 +59,15 @@ export const bridgeMessages = {
       ? `Imagen de ${phone}\n\n${caption}`
       : `Imagen de ${phone}`,
   newCustomerAudio: (phone: string): string => `Audio de ${phone}`,
+  newCustomerVideo: (phone: string): string => `Video de ${phone}`,
   dormantBridgeNotice: (phone: string, text: string): string =>
     `${customerMessageBody(phone, text)}\n\nUsa /chat ${phone} para responder.`,
+  dormantBridgeImageNotice: (phone: string): string =>
+    `${phone} envio una imagen.\n\nUsa /chat ${phone} para responder.`,
+  dormantBridgeAudioNotice: (phone: string): string =>
+    `${phone} envio un audio.\n\nUsa /chat ${phone} para responder.`,
+  dormantBridgeVideoNotice: (phone: string): string =>
+    `${phone} envio un video.\n\nUsa /chat ${phone} para responder.`,
   customerImageFailed: (phone: string): string =>
     `${phone} envio una imagen pero no se pudo descargar. Pidele al cliente que la reenvie.`,
   customerAudioFailed: (phone: string): string =>

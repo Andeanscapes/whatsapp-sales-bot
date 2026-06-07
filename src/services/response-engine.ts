@@ -1,6 +1,7 @@
 import { getSkills, refreshSkills, type Skills } from './skill-loader.js';
 import { logger } from '../config/logger.js';
 import { logSystemError } from './error-logger.js';
+import { hasGalleryNudge } from './media-service.js';
 import { env } from '../config/env.js';
 import { scoreMessage, computeHybridScore, type LlmLeadInput } from './lead-scoring.js';
 import { checkTimeWindow } from './time-window-policy.js';
@@ -36,6 +37,8 @@ import {
   containsUnsafeReservationClaim,
   containsPromptLeakOrPolicyViolation,
   isTruncatedReply,
+  isGalleryRequest,
+  isGalleryConfirmation,
 } from './reply-guard.js';
 import { assignLine, isReferralLine } from './lead-routing.js';
 
@@ -213,7 +216,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   const { repos, customerPhone, message, messageId } = input;
 
   if (repos.isPaused()) {
-    return { reply: '', shouldSendReply: false, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendImage: false, priceJustGiven: false };
+    return { reply: '', shouldSendReply: false, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
   }
 
   try {
@@ -222,27 +225,29 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
 
   const handedOffRow = repos.conversation.getHandedOffAt(customerPhone);
   if (handedOffRow) {
-    return { reply: buildHandedOffReply(repos, customerPhone, message, skills), shouldSendReply: true, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendImage: false, priceJustGiven: false };
+    return { reply: buildHandedOffReply(repos, customerPhone, message, skills), shouldSendReply: true, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
   }
 
   const lang = resolveLanguage(repos, customerPhone, message);
 
   if (isAdcodeNoise(message)) {
-    return { reply: '', shouldSendReply: false, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendImage: false, priceJustGiven: false };
+    return { reply: '', shouldSendReply: false, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
   }
 
   if (repos.optOut.isOptedOut(customerPhone)) {
-    return { reply: '', shouldSendReply: false, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendImage: false, priceJustGiven: false };
+    return { reply: '', shouldSendReply: false, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
   }
 
   const normalized = message.toLowerCase().trim();
   const optOutKeywords = lang === 'es' ? OPT_OUT_KEYWORDS_ES : OPT_OUT_KEYWORDS_EN;
   if (optOutKeywords.some(k => normalized.includes(k)) || ALL_OPT_OUT_KEYWORDS.some(k => normalized.includes(k))) {
     if (!repos.optOut.isOptedOut(customerPhone)) repos.optOut.setOptOut(customerPhone);
-    return { reply: skills.fallbackReplies[lang].optOutConfirmation, shouldSendReply: true, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendImage: false, priceJustGiven: false };
+    return { reply: skills.fallbackReplies[lang].optOutConfirmation, shouldSendReply: true, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
   }
 
   const softClosedAt = repos.conversation.getSoftClosedAt(customerPhone);
+
+  const isFirstContact = repos.message.getLastInboundAt(customerPhone) === null;
 
   repos.message.addMessage({
     whatsapp_message_id: messageId, customer_phone: customerPhone, direction: 'inbound',
@@ -270,31 +275,44 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
 
   const regexScore = scoreMessage(normalized, skills);
   const currentScore = repos.conversation.getLeadScore(customerPhone);
+  // Single source of truth for gallery dedup: the gallery is offered at most once
+  // per customer. Every automatic send path below reuses this flag so we never
+  // spam the same gallery across decline/handoff/consult turns.
+  const galleryAlreadyNudged = hasGalleryNudge(repos, customerPhone);
 
   if (isSoftCloseMessage(message)) {
     if (!softClosedAt) repos.conversation.upsert(customerPhone, { soft_closed_at: new Date().toISOString() });
-    return { reply: skills.fallbackReplies[lang].softCloseReply.replace('{{instagramUrl}}', instagramUrl(skills)), shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: false, shouldSendImage: false, priceJustGiven: false };
+    const declineScoreAlert = currentScore >= skills.salesStrategy.hotLeadThreshold;
+    return { reply: skills.fallbackReplies[lang].softCloseReply.replace('{{instagramUrl}}', instagramUrl(skills)), shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: declineScoreAlert, ownerAlertType: declineScoreAlert ? 'decline_review' : undefined, shouldSendOwnerImage: false, shouldSendGalleryImages: !galleryAlreadyNudged, shouldSendImage: false, priceJustGiven: false };
   }
+
+  const lastAssistantQuestion = getLastAssistantQuestion(repos, customerPhone);
+  const galleryRequested = isGalleryRequest(message) || isGalleryConfirmation(message, lastAssistantQuestion);
 
   let isReEngagement = false;
   if (softClosedAt) {
-    if (isReEngagementMessage(message)) {
+    if (isReEngagementMessage(message) || galleryRequested) {
       isReEngagement = true;
       repos.conversation.clearSoftClosed(customerPhone);
     } else {
-      return { reply: '', shouldSendReply: false, leadScore: currentScore, usedAi: false, shouldAlertOwner: false, shouldSendImage: false, priceJustGiven: false };
+      return { reply: '', shouldSendReply: false, leadScore: currentScore, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
     }
   }
 
+  // Explicit customer request for photos bypasses the once-per-customer dedup:
+  // if they ask again, we honor it. Only automatic nudges are deduped.
+  if (galleryRequested) {
+    return { reply: skills.fallbackReplies[lang].galleryIntro, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: true, shouldSendImage: false, priceJustGiven: false };
+  }
+
   const preLimitPriceRow = repos.conversation.getPriceGivenAt(customerPhone);
-  const lastAssistantQuestion = getLastAssistantQuestion(repos, customerPhone);
   const preLimitHandoffAllowed = isQualificationComplete(dbQualification) && !!preLimitPriceRow
     && isReservationIntentOrConfirmation(message, lastAssistantQuestion);
 
   const preLimitReservationIntent = !!preLimitPriceRow && isReservationIntentOrConfirmation(message, lastAssistantQuestion);
 
   if (preLimitPriceRow && isPartnerConsultPause(message)) {
-    return { reply: buildPartnerConsultSummary(dbQualification, lang, skills), shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: false, shouldSendImage: false, priceJustGiven: false };
+    return { reply: buildPartnerConsultSummary(dbQualification, lang, skills), shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: !galleryAlreadyNudged, shouldSendImage: false, priceJustGiven: false };
   }
 
   const limits = checkTimeWindow(repos, customerPhone);
@@ -305,17 +323,20 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
       const overrideScore = Math.max(currentScore, skills.salesStrategy.urgentLeadThreshold);
       repos.conversation.upsert(customerPhone, { lead_score: overrideScore });
       const handoffReply = safeReservationHandoff(dbQualification, skills.fallbackReplies[lang], lang);
-      return { reply: routeHumanHandoff(repos, customerPhone, dbQualification, lang, skills, handoffReply), shouldSendReply: true, leadScore: overrideScore, usedAi: false, shouldAlertOwner: true, ownerAlertType: 'reservation_handoff', shouldSendImage: false, priceJustGiven: false };
+      return { reply: routeHumanHandoff(repos, customerPhone, dbQualification, lang, skills, handoffReply), shouldSendReply: true, leadScore: overrideScore, usedAi: false, shouldAlertOwner: true, ownerAlertType: 'reservation_handoff', shouldSendOwnerImage: false, shouldSendGalleryImages: !galleryAlreadyNudged, shouldSendImage: false, priceJustGiven: false };
     }
-    activateHumanFallback(repos, customerPhone);
-    return { reply: skills.fallbackReplies[lang].messageLimitHandoff, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: true, shouldSendImage: false, priceJustGiven: false };
+    if (currentScore >= skills.salesStrategy.hotLeadThreshold || (!!preLimitPriceRow && currentScore >= 20)) {
+      activateHumanFallback(repos, customerPhone);
+      return { reply: skills.fallbackReplies[lang].messageLimitHandoff, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: true, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
+    }
+    return { reply: skills.fallbackReplies[lang].messageLimitReached, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
   }
 
   const budget = checkBudget(repos, customerPhone);
   if (!budget.aiAllowed) {
     logger.warn({ reason: budget.reason }, '[AI] budget blocked');
     activateHumanFallback(repos, customerPhone);
-    return { reply: skills.fallbackReplies[lang].aiBudgetExhausted, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: true, shouldSendImage: false, priceJustGiven: false };
+    return { reply: skills.fallbackReplies[lang].aiBudgetExhausted, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: true, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
   }
 
   const salesPhase = repos.conversation.getSalesPhase(customerPhone);
@@ -333,7 +354,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     return {
       reply: fallbackText, shouldSendReply: true,
       leadScore: currentScore, usedAi: true, shouldAlertOwner: isQualificationComplete(dbQualification),
-      shouldSendImage: false, priceJustGiven: false,
+      shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false,
     };
   }
 
@@ -372,7 +393,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     return {
       reply: fallbackText, shouldSendReply: true,
       leadScore: hybrid.score, usedAi: true, shouldAlertOwner: isQualificationComplete(dbQualification),
-      shouldSendImage: false, priceJustGiven: false,
+      shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false,
     };
   }
 
@@ -383,6 +404,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
 
   let needsHumanEffective = false;
   let finalScore = hybrid.score;
+  let shouldSendGallery = false;
 
   const qComplete = isQualificationComplete(merged);
   const reservationIntent = isReservationIntentOrConfirmation(message, lastAssistantQuestion);
@@ -397,6 +419,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
 
   if (qComplete && pricePresented && (reservationIntent || recentReservation || llmReadyToBook)) {
     needsHumanEffective = true;
+    shouldSendGallery = !galleryAlreadyNudged;
     repos.conversation.setHandedOff(customerPhone);
     finalScore = Math.max(hybrid.score, skills.salesStrategy.urgentLeadThreshold);
     repos.conversation.upsert(customerPhone, { lead_score: finalScore });
@@ -408,6 +431,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     if (qComplete && pricePresented) {
       replyText = safeReservationHandoff(merged, skills.fallbackReplies[lang], lang);
       needsHumanEffective = true;
+      shouldSendGallery = !galleryAlreadyNudged;
       repos.conversation.setHandedOff(customerPhone);
       replyText = routeHumanHandoff(repos, customerPhone, merged, lang, skills, replyText);
     } else {
@@ -437,6 +461,14 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   const shouldAlertOwner = needsHumanEffective || (hybrid.isHot && pricePresented);
   const ownerAlertType = needsHumanEffective ? 'reservation_handoff' : 'hot_lead';
 
+  if (!needsHumanEffective && pricePresented && !galleryAlreadyNudged) {
+    const fieldCount = [merged.nombre, merged.plan, merged.personas, merged.fecha, merged.transporte]
+      .filter(v => v != null).length;
+    if (fieldCount >= 3) {
+      shouldSendGallery = true;
+    }
+  }
+
   if (isTruncatedReply(replyText)) {
     logger.warn({ phone: customerPhone, replySnippet: replyText.slice(0, 40) }, '[LLM] reply may be truncated');
   }
@@ -445,6 +477,8 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     reply: replyText, shouldSendReply: true,
     leadScore: finalScore, usedAi: true,
     shouldAlertOwner, ownerAlertType, shouldSendImage,
+    shouldSendOwnerImage: isFirstContact,
+    shouldSendGalleryImages: shouldSendGallery,
     priceJustGiven: outputPriceJustGiven, priceFollowUpText: outputPriceFollowUpText,
   };
   } catch (err) {
@@ -459,6 +493,8 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
       leadScore: currentScore,
       usedAi: false,
       shouldAlertOwner: false,
+      shouldSendOwnerImage: false,
+      shouldSendGalleryImages: false,
       shouldSendImage: false,
       priceJustGiven: false,
     };

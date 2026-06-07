@@ -79,7 +79,22 @@ export function isTruncatedReply(reply: string): boolean {
 
 export function isSoftCloseMessage(text: string): boolean {
   const norm = normalizeText(text);
-  return /\b(no gracias|por ahora no|no me interesa|dejemoslo|dejemoslo ahi|en otro momento|muy caro|esta caro|se sale del presupuesto|no me alcanza|fuera de presupuesto|costoso|gracias por la info|por el momento no|lo dejamos ahi|no por ahora|lo voy a pensar|mejor no|paso por ahora|lo dejo ahi|no es para mi|no es lo que busco|no me convence|no es lo que esperaba|muy costoso|carisimo|cuesta mucho|es mucho|se me va de presupuesto|no tengo esa plata|no tengo presupuesto|no llego|no me da|not now|not interested|too expensive|out of budget|not in my budget|thank you for the info|for now no|not for me|not what i expected|i'?ll pass|i'?ll think about it|too much|over budget|can'?t afford|i'?ll skip|i have to decline|no thanks anyway|thanks anyway|gracias de todos modos|gracias igual|gracias de todas formas)\b/i.test(norm);
+  return /\b(no gracias|por ahora no|no me interesa|dejemoslo|dejemoslo ahi|en otro momento|otra oportunidad|muy caro|esta caro|algo caro|se sale del presupuesto|no me alcanza|fuera de presupuesto|costoso|gracias por la info|por el momento no|lo dejamos ahi|no por ahora|lo voy a pensar|mejor no|paso por ahora|lo dejo ahi|no es para mi|no es lo que busco|no me convence|no es lo que esperaba|muy costoso|carisimo|cuesta mucho|es mucho|se me va de presupuesto|no tengo esa plata|no tengo presupuesto|no llego|no me da|not now|not interested|too expensive|out of budget|not in my budget|thank you for the info|for now no|not for me|not what i expected|i'?ll pass|i'?ll think about it|too much|over budget|can'?t afford|i'?ll skip|i have to decline|no thanks anyway|thanks anyway|gracias de todos modos|gracias igual|gracias de todas formas)\b/i.test(norm);
+}
+
+export function isGalleryRequest(text: string): boolean {
+  const norm = normalizeText(text);
+  return /\b(foto|fotos|imagen|imagenes|im[aá]genes|photo|photos|picture|pictures)\b/i.test(norm)
+    && /\b(experiencia|mina|minera|minero|hacienda|recorrido|chivor|experience|mine|farm)\b/i.test(norm);
+}
+
+export function isGalleryConfirmation(text: string, lastAssistantQuestion: string | null): boolean {
+  if (!lastAssistantQuestion) return false;
+  const norm = normalizeText(text);
+  if (!/^\s*(s[ií]|si|yes|yeah|yep|claro|dale|ok|listo|aqui|aqu[ií]|por aqui|por aqu[ií])\b/i.test(norm)) return false;
+  const questionNorm = normalizeText(lastAssistantQuestion);
+  return /\b(foto|fotos|imagen|imagenes|im[aá]genes|photo|photos|picture|pictures)\b/i.test(questionNorm)
+    && /\b(env[ií]o|enviar|mando|mandar|paso|pasar|compartir|por aqui|por aqu[ií]|send|share)\b/i.test(questionNorm);
 }
 
 export function isAdcodeNoise(text: string): boolean {
@@ -89,13 +104,16 @@ export function isAdcodeNoise(text: string): boolean {
 
 export function isReEngagementMessage(text: string): boolean {
   const norm = normalizeText(text);
-  return /\b(despu[eé]s de pensar|lo pens[eé]|volv[ií]|bueno|me interesa|own|cu[aá]l es|cont[aá]me|de nuevo|cambiaste|reconsider|lo habl[eé]|lo consult[eé]|ya decid[ií]|estoy listo|listo|aqu[ií] estoy|estoy de vuelta|retomo|retomamos|seguimos|continuamos|dale|vamos|hag[aá]moslo|s[ií] quiero|me convenc[ií]|mejor dicho|i'?m back|i'?m ready|let'?s go|i decided|i talked about it|i consulted|i'?m in|i want to|let'?s continue|following up|touching base|checking in|after thinking|changed my mind|reconsidered|actually yes|actually i do|you know what|on second thought)\b/i.test(norm);
+  const raw = text.trim();
+  if (/^\s*[?¿]+\s*$/.test(raw)) return true;
+  return /\b(despu[eé]s de pensar|lo pens[eé]|volv[ií]|bueno|me interesa|own|cu[aá]l es|cont[aá]me|de nuevo|cambiaste|reconsider|lo habl[eé]|lo consult[eé]|ya decid[ií]|estoy listo|listo|aqu[ií] estoy|estoy de vuelta|retomo|retomamos|seguimos|continuamos|dale|vamos|hag[aá]moslo|s[ií] quiero|me convenc[ií]|mejor dicho|i'?m back|i'?m ready|let'?s go|i decided|i talked about it|i consulted|i'?m in|i want to|let'?s continue|following up|touching base|checking in|after thinking|changed my mind|reconsidered|actually yes|actually i do|you know what|on second thought)\b/i.test(norm)
+    || /\b(hola|hello|hi|buenas|hey|saludos|buen dia|buenos dias|buenas tardes|buenas noches|good morning|good afternoon|good evening|cuanto es|cuanto vale|cuanto cuesta|precio|how much|price|cual es el precio|cual es el valor|cual es el costo)\b/i.test(norm);
 }
 
 export function isPartnerConsultPause(text: string): boolean {
   const norm = normalizeText(text);
-  return /\b(?:consulto|consultarlo|consultare|valido|validarlo|reviso|revisarlo|miro|mirarlo|hablo|hablarlo|lo pienso|pensarlo|pensare|dejame|dame tiempo|sin afan|lo chequeo|lo comento|lo consulto|se lo digo|le cuento|le pregunto|le muestro|le enseno|le enseno|le paso)\b[\s\S]{0,80}\b(?:pareja|esposa|esposo|novia|novio|familia|acompanante|acompañante|partner|wife|husband|girlfriend|boyfriend|family|ella|el|con ella|con el|mi gente|mis papas|mis viejos|mis padres|ellos|ellos|with her|with him|my folks|my partner|my parents|my family)\b/i.test(norm)
-    || /\b(?:pareja|esposa|esposo|novia|novio|familia|acompanante|acompañante|partner|wife|husband|girlfriend|boyfriend|family|ella|el|con ella|con el|mi gente|mis papas|mis viejos|mis padres|ellos|they|with her|with him|my folks|my partner|my parents|my family)\b[\s\S]{0,80}\b(?:consulto|consultarlo|consultare|valido|validarlo|reviso|revisarlo|miro|mirarlo|hablo|hablarlo|lo pienso|pensarlo|pensare|lo chequeo|lo comento|lo consulto|se lo digo|le cuento|le pregunto|le muestro|le enseno)\b/i.test(norm);
+  return /\b(?:consulto|consultarlo|consultar[eé]|validar|valido|validarlo|revisar|reviso|revisarlo|mirar|miro|mirarlo|hablar|hablo|hablarlo|lo pienso|pensar|pensarlo|pensar[eé]|dejame|dame tiempo|sin afan|chequear|chequeo|lo chequeo|comentar|comento|lo comento|consultar|lo consulto|se lo digo|preguntar|pregunto|le pregunto|mostrar|muestro|le muestro|ense[ñn]ar|le ense[ñn]o|le paso)\b[\s\S]{0,80}\b(?:pareja|esposa|esposo|novia|novio|familia|acompanante|acompa[ñn]ante|partner|wife|husband|girlfriend|boyfriend|family|ella|el|con ella|con el|mi gente|mis papas|mis viejos|mis padres|ellos|ellos|with her|with him|my folks|my partner|my parents|my family)\b/i.test(norm)
+    || /\b(?:pareja|esposa|esposo|novia|novio|familia|acompanante|acompa[ñn]ante|partner|wife|husband|girlfriend|boyfriend|family|ella|el|con ella|con el|mi gente|mis papas|mis viejos|mis padres|ellos|they|with her|with him|my folks|my partner|my parents|my family)\b[\s\S]{0,80}\b(?:consulto|consultarlo|consultar[eé]|validar|valido|validarlo|revisar|reviso|revisarlo|mirar|miro|mirarlo|hablar|hablo|hablarlo|lo pienso|pensar|pensarlo|pensar[eé]|chequear|chequeo|lo chequeo|comentar|comento|lo comento|consultar|lo consulto|se lo digo|preguntar|pregunto|le pregunto|mostrar|muestro|le muestro|ense[ñn]ar|le ense[ñn]o)\b/i.test(norm);
 }
 
 export function detectsReservationIntent(text: string): boolean {

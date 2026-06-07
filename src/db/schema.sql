@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS conversations (
   price_given_at TEXT,
   handed_off_at TEXT,
   soft_closed_at TEXT,
+  gallery_nudged_at TEXT,
   converted_at TEXT,
   assigned_line_id TEXT,
   assigned_agent_chat TEXT,

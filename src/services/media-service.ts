@@ -1,15 +1,20 @@
 import type { Repositories } from '../db/repositories/index.js';
 import { env } from '../config/env.js';
 import type { MediaSkill } from './skill-loader.js';
+import type { InternalGalleryImage, InternalPlanImage } from './dynamic-data-service.js';
 import { MS_72H } from './constants.js';
 
+export interface ResolvedPlanImage {
+  id: string;
+  url: string;
+  caption: string;
+}
+
 export function canSendImage(repos: Repositories, phone: string): boolean {
+  void repos;
+  void phone;
   if (!env.SEND_IMAGES_ENABLED) return false;
-
-  const cutoff = new Date(Date.now() - MS_72H).toISOString();
-  const recent = repos.mediaSend.countRecentImages(phone, cutoff);
-
-  return recent < env.MAX_IMAGES_PER_CUSTOMER_PER_72H;
+  return true;
 }
 
 export function canSendPlanImage(repos: Repositories, phone: string, imageId: string): boolean {
@@ -23,13 +28,61 @@ export function recordImageSend(repos: Repositories, phone: string, mediaId: str
   repos.mediaSend.recordSend(phone, mediaId);
 }
 
-export function selectImageForPlan(images: MediaSkill['images'], planId: string | null | undefined): MediaSkill['images'][number] | undefined {
+export function hasGalleryNudge(repos: Repositories, phone: string): boolean {
+  return repos.conversation.getByPhone(phone)?.gallery_nudged_at != null;
+}
+
+export function recordGalleryNudge(repos: Repositories, phone: string): void {
+  repos.conversation.upsert(phone, { gallery_nudged_at: new Date().toISOString() });
+}
+
+export function selectGalleryImages(images: InternalGalleryImage[]): InternalGalleryImage[] {
+  const limit = Math.max(0, Math.floor(env.MAX_GALLERY_IMAGES_PER_SEND));
+  if (images.length <= limit) return images;
+
+  const shuffled = [...images];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled.slice(0, limit);
+}
+
+function pickBest<T extends { planId?: string; url: string; caption: string }>(images: T[], planId: string | null | undefined): T | undefined {
   if (!images.length) return undefined;
+  if (planId) {
+    const match = images.find(i => i.planId === planId);
+    if (match) return match;
+  }
+  return images[0];
+}
+
+export function selectPlanImage(
+  dynamicImages: InternalPlanImage[],
+  staticImages: MediaSkill['images'],
+  planId: string | null | undefined,
+): ResolvedPlanImage | undefined {
+  if (dynamicImages.length > 0) {
+    const picked = pickBest(dynamicImages, planId);
+    if (picked) return { id: picked.id, url: picked.url, caption: picked.caption };
+  }
+  const valid = staticImages.filter(i => i.value !== 'REPLACE_WITH_PUBLIC_IMAGE_URL');
+  if (!valid.length) return undefined;
+  if (planId) {
+    const match = valid.find(i => i.planId === planId);
+    if (match) return { id: match.id, url: match.value, caption: match.caption };
+  }
+  const first = valid[0];
+  return { id: first.id, url: first.value, caption: first.caption };
+}
+
+export function selectImageForPlan(images: MediaSkill['images'], planId: string | null | undefined): ResolvedPlanImage | undefined {
   const valid = images.filter(i => i.value !== 'REPLACE_WITH_PUBLIC_IMAGE_URL');
   if (!valid.length) return undefined;
   if (planId) {
-    const planImage = valid.find(i => i.planId === planId);
-    if (planImage) return planImage;
+    const match = valid.find(i => i.planId === planId);
+    if (match) return { id: match.id, url: match.value, caption: match.caption };
   }
-  return valid[0];
+  const first = valid[0];
+  return { id: first.id, url: first.value, caption: first.caption };
 }

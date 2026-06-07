@@ -37,7 +37,7 @@ const ALLOWED_CONVERSATION_COLUMNS = new Set([
   'price_given_at', 'soft_closed_at',
   'sales_phase', 'lead_intent',
   'assigned_line_id', 'assigned_agent_chat', 'conversation_mode',
-  'converted_at'
+  'converted_at', 'gallery_nudged_at'
 ]);
 
 export class SqliteConversationRepo implements ConversationRepository {
@@ -89,6 +89,12 @@ export class SqliteConversationRepo implements ConversationRepository {
     this.db.prepare(
       'UPDATE conversations SET handed_off_at = ? WHERE customer_phone = ?'
     ).run(new Date().toISOString(), phone);
+  }
+
+  clearHandoff(phone: string): void {
+    this.db.prepare(
+      "UPDATE conversations SET handed_off_at = NULL, assigned_line_id = NULL, assigned_agent_chat = NULL, conversation_mode = 'bot' WHERE customer_phone = ?"
+    ).run(phone);
   }
 
   getSoftClosedAt(phone: string): string | null {
@@ -281,11 +287,12 @@ export class SqliteMessageRepo implements MessageRepository {
 
   getRecentMessages(phone: string, limit: number = 12): RecentMessage[] {
     const rows = this.db.prepare(
-      "SELECT direction, body FROM messages WHERE customer_phone = ? ORDER BY created_at DESC, id DESC LIMIT ?"
-    ).all(phone, limit) as { direction: string; body: string | null }[];
+      "SELECT direction, body, message_type FROM messages WHERE customer_phone = ? ORDER BY created_at DESC, id DESC LIMIT ?"
+    ).all(phone, limit) as { direction: string; body: string | null; message_type: string | null }[];
     return rows.reverse().map(r => ({
       role: r.direction === 'inbound' ? 'user' as const : 'assistant' as const,
       content: r.body ?? '',
+      messageType: r.message_type ?? undefined,
     }));
   }
 
