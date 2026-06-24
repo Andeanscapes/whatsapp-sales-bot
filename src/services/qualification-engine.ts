@@ -69,7 +69,7 @@ export function detectPlan(message: string): string | null {
 
 export function isCorrectionMessage(text: string): boolean {
   const norm = normalizeText(text);
-  return /ya (te |lo )?(dije|mencione|habia dicho|habia digo|habia mencionado|lo he dicho)/i.test(norm)
+  return /ya (te |lo )?(dije|dine|dige|mencione|habia dicho|habia digo|habia mencionado|lo he dicho)/i.test(norm)
     || /ya (lo |te )?dije/i.test(norm)
     || /(i already|already) (told|said|mentioned)/i.test(norm);
 }
@@ -165,7 +165,7 @@ export function extractBookingFields(text: string): Record<string, unknown> {
     fields.collected_people = parseInt(simpleNumberMatch[1], 10);
   }
 
-  const couplePattern = /\b(?:couple|pareja|dos personas|2 personas|mi esposo y yo|mi esposa y yo|mi novio y yo|mi novia y yo|mi pareja y yo|mi hija y yo|mi hijo y yo|vamos dos|somos dos|somos 2|vamos 2)\b/i;
+  const couplePattern = /\b(?:couple|pareja|dos personas|2 personas|mi esposo y yo|mi esposa y yo|mi novio y yo|mi novia y yo|mi pareja y yo|mi hija y yo|mi hijo y yo|mi (?:mam[aá]|madre|made) y yo|vamos dos|somos dos|somos 2|vamos 2)\b/i;
   if (couplePattern.test(text) && !fields.collected_people) {
     fields.collected_people = 2;
   }
@@ -174,7 +174,7 @@ export function extractBookingFields(text: string): Record<string, unknown> {
     fields.collected_people = 1;
   }
 
-  const tresPeople = /\b(?:tres personas|3 personas|mis dos hijos|mi esposa y mi hijo|mi esposo y mi hija|somos tres|somos 3)\b/i;
+  const tresPeople = /\b(?:tres personas|3 personas|tree\s+personas?|somos\s+(?:tres|tree|3)|mis dos hijos|mi esposa y mi hijo|mi esposo y mi hija|somos tres|somos 3)\b/i;
   if (tresPeople.test(text) && !fields.collected_people) {
     fields.collected_people = 3;
   }

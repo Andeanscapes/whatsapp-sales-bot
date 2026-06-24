@@ -45,7 +45,7 @@ function wasOwnerAlertedToday(repos: Repositories, customerPhone: string, alertT
 }
 
 export async function sendAlert(request: AlertRequest, repos: Repositories): Promise<void> {
-  const alertType = request.intent === 'reservation_handoff' || request.intent === 'reservation_intent'
+  const alertType = request.intent === 'reservation_handoff' || request.intent === 'reservation_intent' || request.intent === 'unsafe_reservation_blocked' || request.intent === 'policy_violation_blocked' || request.intent === 'system_error'
     ? request.intent
     : request.score >= env.URGENT_LEAD_THRESHOLD ? 'urgent' : 'hot';
   if (wasOwnerAlertedToday(repos, request.customerPhone, alertType)) {

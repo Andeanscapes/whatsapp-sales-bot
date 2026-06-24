@@ -19,6 +19,7 @@ import {
   getCollectedFields,
   resolveLanguage,
   isQualificationComplete,
+  nextQualificationQuestion,
   PET_KEYWORDS,
 } from './qualification-engine.js';
 import {
@@ -174,6 +175,10 @@ function buildMergedQualification(dbFields: Record<string, unknown>, llmTurn: Ll
     transporte: dbFields.transporte ?? llmTurn?.collected_fields.transport_need,
     mascota: dbFields.mascota ?? llmTurn?.collected_fields.pet,
   };
+}
+
+function hasAnyQualificationData(q: MergedQualification): boolean {
+  return q.nombre != null || q.plan != null || q.personas != null || q.fecha != null || q.transporte != null;
 }
 
 function routeHumanHandoff(repos: ProcessMessageInput['repos'], customerPhone: string, q: MergedQualification, lang: 'es' | 'en', skills: Skills, defaultReply: string): string {
@@ -387,7 +392,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
       : skills.fallbackReplies[lang].aiFailureQualified;
     return {
       reply: fallbackText, shouldSendReply: true,
-      leadScore: currentScore, usedAi: true, shouldAlertOwner: isQualificationComplete(dbQualification),
+      leadScore: currentScore, usedAi: true, shouldAlertOwner: hasAnyQualificationData(dbQualification),
       shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false,
     };
   }
@@ -426,7 +431,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
       : skills.fallbackReplies[lang].aiFailureQualified;
     return {
       reply: fallbackText, shouldSendReply: true,
-      leadScore: hybrid.score, usedAi: true, shouldAlertOwner: isQualificationComplete(dbQualification),
+      leadScore: hybrid.score, usedAi: true, shouldAlertOwner: hasAnyQualificationData(dbQualification),
       shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false,
     };
   }
@@ -439,6 +444,8 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   let needsHumanEffective = false;
   let finalScore = hybrid.score;
   let shouldSendGallery = false;
+  let unsafeReservationBlocked = false;
+  let deflectionDueToPolicyLeak = false;
 
   const qComplete = isQualificationComplete(merged);
   const reservationIntent = isReservationIntentOrConfirmation(message, lastAssistantQuestion);
@@ -469,21 +476,15 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
       repos.conversation.setHandedOff(customerPhone);
       replyText = routeHumanHandoff(repos, customerPhone, merged, lang, skills, replyText);
     } else {
-      const fb = skills.fallbackReplies[lang];
-      const recentBlockCount = countRecentStartsWith(recentMessages, [fb.aiFailureQualified, fb.aiFailureQualifiedV2, fb.aiFailureQualifiedV3], 15);
-      if (recentBlockCount <= 1) {
-        replyText = fb.aiFailureQualified;
-      } else if (recentBlockCount === 2) {
-        replyText = fb.aiFailureQualifiedV2;
-      } else {
-        replyText = fb.aiFailureQualifiedV3;
-      }
+      unsafeReservationBlocked = true;
+      replyText = nextQualificationQuestion(merged, skills.fallbackReplies[lang]);
     }
   }
 
   if (!needsHumanEffective && containsPromptLeakOrPolicyViolation(replyText)) {
     logger.warn({ phone: customerPhone }, '[BOT] blocked prompt leak or policy violation');
     replyText = skills.fallbackReplies[lang].aiFailureQualified;
+    deflectionDueToPolicyLeak = true;
   }
 
   const finalPriceJustGiven = replyMentionsPrice(replyText);
@@ -500,8 +501,11 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   }
 
   const shouldSendImage = llmTurn.img;
-  const shouldAlertOwner = needsHumanEffective || (hybrid.isHot && pricePresented);
-  const ownerAlertType = needsHumanEffective ? 'reservation_handoff' : 'hot_lead';
+  const shouldAlertOwner = needsHumanEffective || (hybrid.isHot && pricePresented) || unsafeReservationBlocked || deflectionDueToPolicyLeak;
+  const ownerAlertType = needsHumanEffective ? 'reservation_handoff'
+    : unsafeReservationBlocked ? 'unsafe_reservation_blocked'
+    : deflectionDueToPolicyLeak ? 'policy_violation_blocked'
+    : 'hot_lead';
 
   if (!needsHumanEffective && pricePresented && !galleryAlreadyNudged) {
     const fieldCount = [merged.nombre, merged.plan, merged.personas, merged.fecha, merged.transporte]

@@ -111,6 +111,22 @@ describe('sendAlert — per-line delivery', () => {
     expect(repos.ownerAlert.wasAlertedToday(PHONE, 'reservation_handoff')).toBe(true);
   });
 
+  it('does not dedupe unsafe_reservation_blocked against a prior hot alert', async () => {
+    pinBridgeLine();
+    mockSendTelegram.mockResolvedValue(undefined);
+
+    // Prior low-score hot alert already recorded today.
+    await sendAlert({ customerPhone: PHONE, score: 16, intent: 'hot_lead', message: 'me interesa' }, repos);
+    expect(repos.ownerAlert.wasAlertedToday(PHONE, 'hot')).toBe(true);
+    mockSendTelegram.mockClear();
+
+    // Unsafe reservation block at the same low score must still deliver.
+    await sendAlert({ customerPhone: PHONE, score: 16, intent: 'unsafe_reservation_blocked', message: 'si quiero reservar' }, repos);
+
+    expect(mockSendTelegram).toHaveBeenCalledTimes(1);
+    expect(repos.ownerAlert.wasAlertedToday(PHONE, 'unsafe_reservation_blocked')).toBe(true);
+  });
+
   it('does not fall back when the failing chat IS the owner chat', async () => {
     pinBridgeLine();
     env.TELEGRAM_CHAT_ID = '111';
