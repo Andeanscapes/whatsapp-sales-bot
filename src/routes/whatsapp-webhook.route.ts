@@ -255,6 +255,55 @@ export async function forwardPostHandoffMessage(repos: Repositories, msg: Extrac
   return buildHandedOffReply(repos, msg.from, msg.text);
 }
 
+export async function forwardPostHandoffMedia(repos: Repositories, msg: ExtractedMessage): Promise<boolean> {
+  if (msg.type === 'text') return false;
+  if (!hasRoutingConfig()) return false;
+  if (repos.isPaused()) return false;
+  if (repos.optOut.isOptedOut(msg.from)) return false;
+  if (!repos.conversation.getHandedOffAt(msg.from)) return false;
+
+  const assignment = repos.conversation.getAssignment(msg.from);
+  if (!assignment) return false;
+
+  repos.message.addMessage({
+    whatsapp_message_id: msg.id,
+    customer_phone: msg.from,
+    direction: 'inbound',
+    message_type: msg.type,
+    body: msg.text || '',
+    created_at: new Date().toISOString(),
+    raw_json: null,
+  });
+
+  try {
+    if (msg.type === 'image' && msg.media) {
+      try {
+        const media = await downloadMedia(msg.media.id);
+        await sendTelegramPhoto(assignment.assignedAgentChat, media.buffer, media.mimeType, bridgeMessages.dormantBridgeImageNotice(msg.from));
+      } catch (err) {
+        logger.warn({ err, phone: msg.from, chatId: assignment.assignedAgentChat }, '[HANDOFF] image download failed; sending text notice');
+        await sendTelegramMessage(assignment.assignedAgentChat, bridgeMessages.dormantBridgeImageNotice(msg.from));
+      }
+    } else if (msg.type === 'audio' && msg.media) {
+      try {
+        const media = await downloadMedia(msg.media.id);
+        await sendTelegramVoice(assignment.assignedAgentChat, media.buffer, media.mimeType);
+        await sendTelegramMessage(assignment.assignedAgentChat, bridgeMessages.dormantBridgeAudioNotice(msg.from));
+      } catch (err) {
+        logger.warn({ err, phone: msg.from, chatId: assignment.assignedAgentChat }, '[HANDOFF] audio download failed; sending text notice');
+        await sendTelegramMessage(assignment.assignedAgentChat, bridgeMessages.dormantBridgeAudioNotice(msg.from));
+      }
+    } else if (msg.type === 'video') {
+      await sendTelegramMessage(assignment.assignedAgentChat, bridgeMessages.dormantBridgeVideoNotice(msg.from));
+    } else {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+  return true;
+}
+
 /**
  * After a /end command, a customer's next message no longer flows through an
  * active bridge, but the agent who previously owned the bridge should still be
@@ -285,10 +334,23 @@ export async function notifyAssignedLineIfDormant(repos: Repositories, msg: Extr
   });
 
   try {
-    if (msg.type === 'image') {
-      await sendTelegramMessage(assignment.assignedAgentChat, bridgeMessages.dormantBridgeImageNotice(msg.from));
-    } else if (msg.type === 'audio') {
-      await sendTelegramMessage(assignment.assignedAgentChat, bridgeMessages.dormantBridgeAudioNotice(msg.from));
+    if (msg.type === 'image' && msg.media) {
+      try {
+        const media = await downloadMedia(msg.media.id);
+        await sendTelegramPhoto(assignment.assignedAgentChat, media.buffer, media.mimeType, bridgeMessages.dormantBridgeImageNotice(msg.from));
+      } catch (err) {
+        logger.warn({ err, phone: msg.from, chatId: assignment.assignedAgentChat }, '[BRIDGE] dormant image download failed; sending text notice');
+        await sendTelegramMessage(assignment.assignedAgentChat, bridgeMessages.dormantBridgeImageNotice(msg.from));
+      }
+    } else if (msg.type === 'audio' && msg.media) {
+      try {
+        const media = await downloadMedia(msg.media.id);
+        await sendTelegramVoice(assignment.assignedAgentChat, media.buffer, media.mimeType);
+        await sendTelegramMessage(assignment.assignedAgentChat, bridgeMessages.dormantBridgeAudioNotice(msg.from));
+      } catch (err) {
+        logger.warn({ err, phone: msg.from, chatId: assignment.assignedAgentChat }, '[BRIDGE] dormant audio download failed; sending text notice');
+        await sendTelegramMessage(assignment.assignedAgentChat, bridgeMessages.dormantBridgeAudioNotice(msg.from));
+      }
     } else if (msg.type === 'video') {
       await sendTelegramMessage(assignment.assignedAgentChat, bridgeMessages.dormantBridgeVideoNotice(msg.from));
     } else {
@@ -358,8 +420,10 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
         // sticky assignment. Ping them so they can /chat again. Bot stays silent.
         if (await notifyAssignedLineIfDormant(repos, msg)) continue;
 
-        // Non-text (e.g. image) only flows through the live bridge above. The
-        // bot and post-handoff text paths cannot consume media, so skip it.
+        if (await forwardPostHandoffMedia(repos, msg)) continue;
+
+        // Non-text (e.g. image) only flows through bridge/handoff media paths.
+        // The bot text path cannot consume media, so skip it.
         if (msg.type !== 'text') continue;
 
         const handoffReply = await forwardPostHandoffMessage(repos, msg);
@@ -404,6 +468,21 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
               body: humanFallback,
               created_at: new Date().toISOString(),
             });
+            const conv = repos.conversation.getByPhone(msg.from);
+            try {
+              await sendAlert({
+                customerPhone: msg.from,
+                score: repos.conversation.getLeadScore(msg.from),
+                intent: 'system_error',
+                message: msg.text,
+                name: String(conv?.collected_name ?? 'unknown'),
+                date: String(conv?.collected_date ?? 'unknown'),
+                people: String(conv?.collected_people ?? 'unknown'),
+                transport: String(conv?.collected_transport_need ?? 'unknown'),
+              }, repos);
+            } catch (alertErr) {
+              logSystemError('alert_send', 'error', alertErr, { phone: msg.from, alertType: 'system_error' });
+            }
           }
           continue;
         }
