@@ -244,8 +244,50 @@ export interface TranscriptRecord {
   turns: TranscriptTurn[];
 }
 
+export interface DayMessage {
+  at: string;
+  direction: 'inbound' | 'outbound';
+  type: string;
+  text: string;
+}
+
+export interface DayConversationSummary {
+  customerPhone: string;
+  name: string | null;
+  score: number;
+  phase: string | null;
+  plan: string | null;
+  intent: string | null;
+  language: 'es' | 'en' | null;
+  people: number | null;
+  date: string | null;
+  firstSeenAt: string;
+  lastActivityAt: string;
+  messageCount: number;
+  inboundCount: number;
+  outboundCount: number;
+  aiCostUsd: number;
+  messages: DayMessage[];
+}
+
+export interface PeriodActivityTotals {
+  label: string;
+  generatedAt: string;
+  totalConversations: number;
+  totalMessages: number;
+  totalInbound: number;
+  totalOutbound: number;
+  totalAiCostUsd: number;
+}
+
+export interface DayActivityResult {
+  totals: PeriodActivityTotals;
+  conversations: DayConversationSummary[];
+}
+
 export interface TranscriptRepository {
   getAllTranscripts(): TranscriptRecord[];
+  getDayActivity(sinceIso: string, untilIso: string | null): DayActivityResult;
 }
 
 export interface Repositories {
