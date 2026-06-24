@@ -19,6 +19,7 @@ import { resumeHandler } from '../commands/resume.command.js';
 import { statusHandler } from '../commands/status.command.js';
 import { statsHandler } from '../commands/stats.command.js';
 import { deleteHandler } from '../commands/delete.command.js';
+import { daysummaryHandler } from '../commands/daysummary.command.js';
 import { isAllowedTelegramChat } from './lead-routing.js';
 import { sendBridgeReply, sendBridgeMedia } from './bridge-service.js';
 import { bridgeMessages } from './bridge-messages.js';
@@ -403,6 +404,13 @@ export function registerCommands(): void {
     description: 'Estadisticas comparativas por periodo (hoy, ayer, semana, todo)',
     usage: '<hoy|ayer|semana|todo>',
     handler: statsHandler,
+  });
+
+  registerCommand({
+    name: 'daysummary',
+    description: 'Resumen diario de conversaciones (texto + JSON)',
+    usage: '<hoy|ayer>',
+    handler: daysummaryHandler,
   });
 
   registerCommand({

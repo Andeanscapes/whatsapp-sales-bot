@@ -25,6 +25,9 @@ import type {
   TranscriptRepository,
   TranscriptRecord,
   TranscriptTurn,
+  DayActivityResult,
+  DayConversationSummary,
+  DayMessage,
 } from './types.js';
 
 const ALLOWED_CONVERSATION_COLUMNS = new Set([
@@ -768,5 +771,119 @@ export class SqliteTranscriptRepo implements TranscriptRepository {
         turns,
       };
     });
+  }
+
+  getDayActivity(sinceIso: string, untilIso: string | null): DayActivityResult {
+    interface ActiveConvRow {
+      customer_phone: string;
+      language: 'es' | 'en' | null;
+      first_seen_at: string;
+      last_activity_at: string;
+      lead_score: number;
+      collected_name: string | null;
+      collected_date: string | null;
+      collected_people: number | null;
+      collected_plan: string | null;
+      lead_intent: string | null;
+      sales_phase: string | null;
+      message_count: number;
+      inbound_count: number;
+      outbound_count: number;
+      ai_cost_usd: number;
+    }
+
+    const activeConvs = this.db.prepare(`
+      SELECT
+        c.customer_phone,
+        c.language,
+        c.first_seen_at,
+        c.last_seen_at AS last_activity_at,
+        c.lead_score,
+        c.collected_name,
+        c.collected_date,
+        c.collected_people,
+        c.collected_plan,
+        c.lead_intent,
+        c.sales_phase,
+        COUNT(m.id) AS message_count,
+        SUM(CASE WHEN m.direction = 'inbound' THEN 1 ELSE 0 END) AS inbound_count,
+        SUM(CASE WHEN m.direction = 'outbound' THEN 1 ELSE 0 END) AS outbound_count,
+        COALESCE((
+          SELECT SUM(estimated_cost_usd) FROM ai_usage
+          WHERE customer_phone = c.customer_phone
+            AND created_at >= @since
+            AND (@until IS NULL OR created_at < @until)
+        ), 0) AS ai_cost_usd
+      FROM conversations c
+      JOIN messages m ON m.customer_phone = c.customer_phone
+      WHERE m.created_at >= @since
+        AND (@until IS NULL OR m.created_at < @until)
+      GROUP BY c.customer_phone
+      ORDER BY c.last_seen_at DESC
+    `).all({ since: sinceIso, until: untilIso }) as ActiveConvRow[];
+
+    const messagesStmt = this.db.prepare(`
+      SELECT direction, message_type, body, created_at
+      FROM messages
+      WHERE customer_phone = ?
+        AND created_at >= ?
+        AND (? IS NULL OR created_at < ?)
+      ORDER BY created_at ASC, id ASC
+    `);
+
+    let totalMessages = 0;
+    let totalInbound = 0;
+    let totalOutbound = 0;
+    let totalAiCost = 0;
+
+    const conversations: DayConversationSummary[] = activeConvs.map(conv => {
+      const msgRows = messagesStmt.all(
+        conv.customer_phone, sinceIso, untilIso, untilIso,
+      ) as TranscriptMessageRow[];
+
+      const messages: DayMessage[] = msgRows.map(m => ({
+        at: m.created_at,
+        direction: m.direction as 'inbound' | 'outbound',
+        type: m.message_type,
+        text: m.body ?? '',
+      }));
+
+      totalMessages += conv.message_count;
+      totalInbound += conv.inbound_count;
+      totalOutbound += conv.outbound_count;
+      totalAiCost += conv.ai_cost_usd;
+
+      return {
+        customerPhone: conv.customer_phone,
+        name: conv.collected_name,
+        score: conv.lead_score,
+        phase: conv.sales_phase,
+        plan: conv.collected_plan,
+        intent: conv.lead_intent,
+        language: conv.language,
+        people: conv.collected_people,
+        date: conv.collected_date,
+        firstSeenAt: conv.first_seen_at,
+        lastActivityAt: conv.last_activity_at,
+        messageCount: conv.message_count,
+        inboundCount: conv.inbound_count,
+        outboundCount: conv.outbound_count,
+        aiCostUsd: Math.round(conv.ai_cost_usd * 10000) / 10000,
+        messages,
+      };
+    });
+
+    return {
+      totals: {
+        label: '',
+        generatedAt: new Date().toISOString(),
+        totalConversations: conversations.length,
+        totalMessages,
+        totalInbound,
+        totalOutbound,
+        totalAiCostUsd: Math.round(totalAiCost * 10000) / 10000,
+      },
+      conversations,
+    };
   }
 }
