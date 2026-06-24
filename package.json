@@ -25,6 +25,7 @@
     "scan:secrets": "secretlint \"**/*\" --secretlintignore .gitignore",
     "docker:dev": "ENV_FILE=.env.dev docker compose --env-file .env.dev up --build --force-recreate",
     "docker:prod": "ENV_FILE=.env.prod docker compose --env-file .env.prod --profile tunnel up --build -d --force-recreate",
+    "docker:prod:log": "bash scripts/docker-up.sh",
     "docker:test": "bash scripts/docker-up-test.sh",
     "db:clean:prod": "docker compose --env-file .env.prod down -v"
   },

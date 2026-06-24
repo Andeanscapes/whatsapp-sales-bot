@@ -24,6 +24,7 @@ for arg in "$@"; do
 done
 
 echo "=== Stopping existing containers ==="
+docker rm -f andean-whatsapp-bot andean-whatsapp-tunnel 2>/dev/null || true
 docker compose --env-file "$ENV_FILE" down --remove-orphans 2>/dev/null || true
 
 echo "=== Building Docker image ==="
