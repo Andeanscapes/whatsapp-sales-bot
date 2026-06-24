@@ -19,16 +19,38 @@ function truncateReply(value: unknown): string {
   return str.slice(0, 120) + '\u2026';
 }
 
+function sanitizeUrl(value: unknown): string {
+  return String(value ?? '').replace(/\/bot[^/]+\//g, '/bot[REDACTED]/');
+}
+
 const redactPaths = [
   'authorization',
   '*.authorization',
   'headers.authorization',
   'access_token',
   '*.access_token',
+  'accessToken',
+  '*.accessToken',
   'token',
   '*.token',
+  'botToken',
+  '*.botToken',
   'apiKey',
   '*.apiKey',
+  'deepseekApiKey',
+  '*.deepseekApiKey',
+  'appSecret',
+  '*.appSecret',
+  'WHATSAPP_ACCESS_TOKEN',
+  '*.WHATSAPP_ACCESS_TOKEN',
+  'WHATSAPP_APP_SECRET',
+  '*.WHATSAPP_APP_SECRET',
+  'DEEPSEEK_API_KEY',
+  '*.DEEPSEEK_API_KEY',
+  'TELEGRAM_BOT_TOKEN',
+  '*.TELEGRAM_BOT_TOKEN',
+  'ADMIN_SECRET',
+  '*.ADMIN_SECRET',
 ];
 
 export const logger = pino({
@@ -45,5 +67,6 @@ export const logger = pino({
     message: truncateBody,
     reply: truncateReply,
     text: truncateBody,
+    url: sanitizeUrl,
   },
 });

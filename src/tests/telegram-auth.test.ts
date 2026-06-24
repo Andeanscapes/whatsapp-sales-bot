@@ -20,6 +20,7 @@ const config: RoutingConfig = {
 let repos: Repositories;
 let db: Database.Database;
 let previousRoutingJson: string;
+let previousTelegramChatId: string;
 
 registerCommands();
 
@@ -81,7 +82,9 @@ beforeEach(() => {
   migrate(db);
   repos = createRepositories(db);
   previousRoutingJson = env.LEAD_ROUTING_JSON;
+  previousTelegramChatId = env.TELEGRAM_CHAT_ID;
   env.LEAD_ROUTING_JSON = JSON.stringify(config);
+  env.TELEGRAM_CHAT_ID = '333';
   resetRoutingConfigCache();
   vi.restoreAllMocks();
   // Telegram replies go out via global fetch; stub so dispatcher reply sends are no-ops.
@@ -90,6 +93,7 @@ beforeEach(() => {
 
 afterEach(() => {
   env.LEAD_ROUTING_JSON = previousRoutingJson;
+  env.TELEGRAM_CHAT_ID = previousTelegramChatId;
   resetRoutingConfigCache();
   db.close();
 });
@@ -109,17 +113,41 @@ describe('telegram dispatcher authorization', () => {
     expect(sendSpy).not.toHaveBeenCalled();
   });
 
-  it('runs /pause without a secret from an allowlisted chat', async () => {
+  it('blocks /pause from an allowlisted non-owner chat', async () => {
     await processUpdate(update(111, '/pause'), repos);
-    expect(repos.isPaused()).toBe(true);
+    expect(repos.isPaused()).toBe(false);
   });
 
-  it('runs /resume without a secret from an allowlisted chat', async () => {
+  it('blocks /resume from an allowlisted non-owner chat', async () => {
     repos.setPaused(true);
 
     await processUpdate(update(111, '/resume'), repos);
 
+    expect(repos.isPaused()).toBe(true);
+  });
+
+  it('allows owner chat to run owner-only commands', async () => {
+    await processUpdate(update(333, '/pause'), repos);
+    expect(repos.isPaused()).toBe(true);
+
+    await processUpdate(update(333, '/resume'), repos);
     expect(repos.isPaused()).toBe(false);
+  });
+
+  it('blocks /block from an allowlisted non-owner chat without mutating opt-out', async () => {
+    repos.conversation.upsert(CUSTOMER, { first_seen_at: new Date().toISOString() });
+
+    await processUpdate(update(111, `/block ${CUSTOMER}`), repos);
+
+    expect(repos.conversation.getByPhone(CUSTOMER)?.opt_out_at).toBeFalsy();
+  });
+
+  it('blocks /delete from an allowlisted non-owner chat without deleting data', async () => {
+    repos.conversation.upsert(CUSTOMER, { first_seen_at: new Date().toISOString() });
+
+    await processUpdate(update(111, `/delete ${CUSTOMER}`), repos);
+
+    expect(repos.conversation.getByPhone(CUSTOMER)).toBeTruthy();
   });
 
   it('runs /send without a secret for the owning bridge line', async () => {
