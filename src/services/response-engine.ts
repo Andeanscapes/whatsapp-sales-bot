@@ -107,7 +107,7 @@ function computePriceFollowUp(personas: unknown, planId: string | undefined | nu
   else if (n === 2) { amount = couplePrice; label = lang === 'es' ? 'pareja' : 'couple'; }
   else if (n === 3) { amount = couplePrice + individualPrice; label = lang === 'es' ? '3 personas' : '3 people'; }
   else if (n === 4) { amount = couplePrice * 2; label = lang === 'es' ? '4 personas (2 parejas)' : '4 people (2 couples)'; }
-  else return undefined;
+  else { amount = (couplePrice / 2) * n; label = lang === 'es' ? `${n} personas` : `${n} people`; }
   return lang === 'es'
     ? `En tu caso, ${label}: $${formatPeso(amount)} COP todo incluido.`
     : `In your case, ${label}: $${formatPeso(amount)} COP all-inclusive.`;
@@ -127,9 +127,7 @@ function computePartnerPriceLine(personas: unknown, planId: string | undefined |
   else if (n === 2) amount = couplePrice;
   else if (n === 3) amount = couplePrice + individualPrice;
   else if (n === 4) amount = couplePrice * 2;
-  else return lang === 'es'
-    ? 'Para grupos de 5+ personas validamos el total con vehiculos adicionales si aplica.'
-    : 'For groups of 5+ people, we validate the final total with extra vehicles if needed.';
+  else amount = (couplePrice / 2) * n;
   return lang === 'es'
     ? `Para ${n} ${n === 1 ? 'persona' : 'personas'} queda en $${formatPeso(amount)} COP total.`
     : `For ${n} ${n === 1 ? 'person' : 'people'}, it is $${formatPeso(amount)} COP total.`;

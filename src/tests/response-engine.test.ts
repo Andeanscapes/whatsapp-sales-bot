@@ -43,6 +43,7 @@ import { checkBudget } from '../services/budget-guard.js';
 import { checkTimeWindow } from '../services/time-window-policy.js';
 import { safeReservationHandoff, afterHoursReply, colombiaTimeAwareReply } from '../services/reply-guard.js';
 import { selectPlanImage, canSendPlanImage, canSendImage, hasGalleryNudge, recordGalleryNudge, selectGalleryImages } from '../services/media-service.js';
+import { getActiveExperience } from '../services/product-registry.js';
 import { getSkills } from '../services/skill-loader.js';
 import type { LlmTurn, LlmResult } from '../services/llm/llm-client.js';
 
@@ -638,6 +639,55 @@ describe('processMessage', () => {
     expect(result.shouldAlertOwner).toBe(false);
     expect(result.usedAi).toBe(false);
     expect(mockLlmComplete).not.toHaveBeenCalled();
+  });
+
+  it('computes correct total for 10 people using couplePrice/2 formula', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001119103';
+    repos.conversation.upsert(phone, {
+      collected_name: 'Juan',
+      collected_people: 10,
+      collected_plan: '2d1n_mining',
+      price_given_at: new Date().toISOString(),
+    });
+
+    const result = await processMessage({ repos, customerPhone: phone, message: 'dejame consultarlo con mi esposa y te escribo' });
+
+    expect(result.reply).toContain('Dale Juan');
+    expect(result.reply).toContain('Para 10 personas queda en $5,200,000 COP total');
+    expect(result.shouldAlertOwner).toBe(false);
+    expect(result.usedAi).toBe(false);
+    expect(mockLlmComplete).not.toHaveBeenCalled();
+  });
+
+  it('computes correct total for 10 people 3D/2N using couplePrice/2 formula', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001119104';
+    repos.conversation.upsert(phone, {
+      collected_name: 'Maria',
+      collected_people: 10,
+      collected_plan: '3d2n_rural',
+      price_given_at: new Date().toISOString(),
+    });
+
+    const result = await processMessage({ repos, customerPhone: phone, message: 'dejame revisarlo con mi novio y te confirmo' });
+
+    expect(result.reply).toContain('Dale Maria');
+    expect(result.reply).toContain('Para 10 personas queda en $7,000,000 COP total');
+    expect(result.shouldAlertOwner).toBe(false);
+    expect(result.usedAi).toBe(false);
+  });
+
+  it('keeps 5+ transport cost unquoted in pricing rules', () => {
+    const rules = getActiveExperience(getSkills()).pricing.botRules.join(' ');
+
+    expect(rules).toContain('Si son 5+ personas, NO sumes transporte');
+    expect(rules).toContain('da solo total del plan');
+    expect(rules).toContain('1-4 personas');
   });
 
   it('alerts owner on message limit for hot leads with price progress', async () => {
