@@ -1,22 +1,42 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
-# SQLite backup for the running prod container.
-# Uses sqlite3 .backup inside the container (online-safe, WAL-aware),
-# copies the snapshot out, then prunes backups older than 30 days.
-#
-# Requires sqlite3 in the runtime image (installed via Dockerfile).
-
-CONTAINER=andean-whatsapp-bot
-BACKUP_DIR=/var/backups/andean-whatsapp-bot
+CONTAINER_NAME="andean-whatsapp-bot"
+DB_PATH="/data/bot.sqlite"
+BACKUP_DIR="/opt/andean-whatsapp-bot/backups"
 DATE="$(date +'%Y-%m-%d_%H-%M-%S')"
+
+BACKUP_FILE="${BACKUP_DIR}/bot-${DATE}.sqlite"
+COMPRESSED_FILE="${BACKUP_FILE}.gz"
 
 mkdir -p "$BACKUP_DIR"
 
-docker exec "$CONTAINER" sh -c 'sqlite3 /data/bot.sqlite ".backup /data/backup.sqlite"'
-docker cp "$CONTAINER:/data/backup.sqlite" "$BACKUP_DIR/bot-$DATE.sqlite"
-docker exec "$CONTAINER" rm -f /data/backup.sqlite
+if ! docker ps --format '{{.Names}}' | grep -qx "$CONTAINER_NAME"; then
+  echo "Container $CONTAINER_NAME is not running"
+  exit 1
+fi
 
-find "$BACKUP_DIR" -type f -name "bot-*.sqlite" -mtime +30 -delete
+docker exec "$CONTAINER_NAME" test -f "$DB_PATH"
 
-echo "Backup created: $BACKUP_DIR/bot-$DATE.sqlite"
+docker run --rm \
+  --volumes-from "$CONTAINER_NAME" \
+  -v "$BACKUP_DIR:/backup" \
+  nouchka/sqlite3 \
+  "$DB_PATH" ".backup '/backup/bot-${DATE}.sqlite'"
+
+if [ ! -s "$BACKUP_FILE" ]; then
+  echo "Backup failed or file is empty: $BACKUP_FILE"
+  exit 1
+fi
+
+gzip "$BACKUP_FILE"
+
+if [ ! -s "$COMPRESSED_FILE" ]; then
+  echo "Compressed backup failed or file is empty: $COMPRESSED_FILE"
+  exit 1
+fi
+
+find "$BACKUP_DIR" -name "bot-*.sqlite.gz" -type f ! -name "$(basename "$COMPRESSED_FILE")" -delete
+
+echo "Backup created successfully: $COMPRESSED_FILE"
+echo "Old backups deleted. Only latest backup kept."
