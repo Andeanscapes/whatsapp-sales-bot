@@ -9,7 +9,7 @@ services:
     # Select env file at run time via --env-file (.env.dev | .env.prod).
     # The npm docker:* scripts export ENV_FILE so it also feeds env_file below.
     env_file:
-      - ${ENV_FILE:-.env.dev}
+      - ${ENV_FILE:-.env.prod}
     # Only container-specific overrides live here (single source of truth stays
     # the .env file validated by src/config/env.ts).
     environment:
