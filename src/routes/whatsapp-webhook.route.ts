@@ -35,6 +35,12 @@ function verifySignature(rawBody: Buffer, signatureHeader: string, secret: strin
   }
 }
 
+function safeStringEqual(a: string, b: string): boolean {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
 const messageSchema = z.object({
   from: z.string(),
   id: z.string(),
@@ -381,7 +387,7 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
     const token = query['hub.verify_token'];
     const challenge = query['hub.challenge'];
 
-    if (mode === 'subscribe' && token === env.WHATSAPP_VERIFY_TOKEN) {
+    if (mode === 'subscribe' && safeStringEqual(token ?? '', env.WHATSAPP_VERIFY_TOKEN)) {
       return reply.type('text/plain').send(challenge);
     }
     return reply.code(403).send('Forbidden');

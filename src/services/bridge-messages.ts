@@ -10,6 +10,7 @@ export const bridgeMessages = {
   leadNotFound: (phone: string): string => `No se encontro conversacion para ${phone}`,
   leadNotAssigned: 'Lead sin asignacion. Espera alerta de asignacion o revisa routing.',
   leadAssignedToOther: 'Lead asignado a otro agente. No puedes responder desde este chat.',
+  ownerOnlyCommand: 'Comando restringido al owner.',
   customerOptedOut: 'El cliente hizo opt-out. No se puede enviar mensaje.',
   botPaused: 'El bot esta en pausa. Reactiva con /resume antes de responder.',
   serviceWindowClosed: 'Fuera de la ventana de 24h de WhatsApp. El cliente debe escribir primero o usa una plantilla aprobada.',
