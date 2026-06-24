@@ -5,7 +5,7 @@ import { createRepositories, type Repositories } from '../db/repositories/index.
 import { env } from '../config/env.js';
 import { loadSkills } from '../services/skill-loader.js';
 import { resetRoutingConfigCache, type RoutingConfig } from '../services/lead-routing.js';
-import { extractMessages, forwardBridgeMessage, forwardPostHandoffMessage, notifyAssignedLineIfDormant, type ExtractedMessage } from '../routes/whatsapp-webhook.route.js';
+import { extractMessages, forwardBridgeMessage, forwardPostHandoffMessage, forwardPostHandoffMedia, notifyAssignedLineIfDormant, type ExtractedMessage } from '../routes/whatsapp-webhook.route.js';
 import { formatLeadHistory } from '../commands/lead-format.js';
 
 const { mockSendTelegram, mockSendTelegramPhoto, mockSendTelegramVoice, mockDownloadMedia } = vi.hoisted(() => ({
@@ -358,6 +358,51 @@ describe('forwardBridgeMessage', () => {
   });
 });
 
+describe('forwardPostHandoffMedia', () => {
+  it('downloads and forwards post-handoff customer image to assigned agent', async () => {
+    seedHandedOff('line1_bridge', '111');
+    mockDownloadMedia.mockResolvedValueOnce({ buffer: Buffer.from('imgdata'), mimeType: 'image/jpeg' });
+
+    const forwarded = await forwardPostHandoffMedia(repos, imgMsg('cedula'));
+
+    expect(forwarded).toBe(true);
+    expect(mockDownloadMedia).toHaveBeenCalledWith('media-1');
+    expect(mockSendTelegramPhoto).toHaveBeenCalledTimes(1);
+    const [chatId, buf, mime, caption] = mockSendTelegramPhoto.mock.calls[0];
+    expect(chatId).toBe('111');
+    expect(buf).toBeInstanceOf(Buffer);
+    expect(mime).toBe('image/jpeg');
+    expect(caption).toContain('envio una imagen');
+    expect(repos.message.getRecentMessages(PHONE, 1)[0]?.messageType).toBe('image');
+  });
+
+  it('downloads and forwards post-handoff customer audio to assigned agent', async () => {
+    seedHandedOff('line1_bridge', '111');
+    mockDownloadMedia.mockResolvedValueOnce({ buffer: Buffer.from('voice'), mimeType: 'audio/ogg' });
+
+    const forwarded = await forwardPostHandoffMedia(repos, audioMsg());
+
+    expect(forwarded).toBe(true);
+    expect(mockDownloadMedia).toHaveBeenCalledWith('media-audio');
+    expect(mockSendTelegramVoice).toHaveBeenCalledTimes(1);
+    expect(mockSendTelegram).toHaveBeenCalledTimes(1);
+    expect(mockSendTelegram.mock.calls[0][1]).toContain('envio un audio');
+    expect(repos.message.getRecentMessages(PHONE, 1)[0]?.messageType).toBe('audio');
+  });
+
+  it('falls back to text notice when post-handoff image download fails', async () => {
+    seedHandedOff('line1_bridge', '111');
+    mockDownloadMedia.mockRejectedValueOnce(new Error('graph 404'));
+
+    const forwarded = await forwardPostHandoffMedia(repos, imgMsg('', 'wamid-img-fail'));
+
+    expect(forwarded).toBe(true);
+    expect(mockSendTelegramPhoto).not.toHaveBeenCalled();
+    expect(mockSendTelegram).toHaveBeenCalledTimes(1);
+    expect(mockSendTelegram.mock.calls[0][1]).toContain('envio una imagen');
+  });
+});
+
 describe('notifyAssignedLineIfDormant', () => {
   it('notifies the assigned bridge agent when mode is bot and assignment exists', async () => {
     repos.conversation.upsert(PHONE, { language: 'es' });
@@ -417,23 +462,42 @@ describe('notifyAssignedLineIfDormant', () => {
     expect(mockSendTelegram).not.toHaveBeenCalled();
   });
 
-  it('notifies dormant bridge agent for image and keeps media in chat history', async () => {
+  it('downloads and sends dormant customer image as Telegram photo', async () => {
     repos.conversation.upsert(PHONE, { language: 'es' });
     repos.conversation.setAssignment(PHONE, { assignedLineId: 'line1_bridge', assignedAgentChat: '111' });
+    mockDownloadMedia.mockResolvedValueOnce({ buffer: Buffer.from('imgdata'), mimeType: 'image/jpeg' });
 
-    const result = await notifyAssignedLineIfDormant(repos, imgMsg(''));
+    const result = await notifyAssignedLineIfDormant(repos, imgMsg('comprobante'));
     const conv = repos.conversation.getByPhone(PHONE);
     if (!conv) throw new Error('missing conversation');
     const history = formatLeadHistory(conv, repos.message.getRecentMessages(PHONE, 500));
 
     expect(result).toBe(true);
-    expect(mockSendTelegram.mock.calls[0][1]).toContain('envio una imagen');
-    expect(history).toContain('📷 imagen');
+    expect(mockSendTelegramPhoto).toHaveBeenCalledTimes(1);
+    const [, , , caption] = mockSendTelegramPhoto.mock.calls[0];
+    expect(caption).toContain('envio una imagen');
+    expect(caption).toContain('/chat');
+    expect(history).toContain('📷 comprobante');
   });
 
-  it('notifies dormant bridge agent for audio and keeps media in chat history', async () => {
+  it('falls back to text notice when dormant media download fails', async () => {
     repos.conversation.upsert(PHONE, { language: 'es' });
     repos.conversation.setAssignment(PHONE, { assignedLineId: 'line1_bridge', assignedAgentChat: '111' });
+    mockDownloadMedia.mockRejectedValueOnce(new Error('graph 404'));
+
+    const result = await notifyAssignedLineIfDormant(repos, imgMsg('', 'wamid-img-fail'));
+
+    expect(result).toBe(true);
+    expect(mockSendTelegramPhoto).not.toHaveBeenCalled();
+    expect(mockSendTelegram).toHaveBeenCalledTimes(1);
+    expect(mockSendTelegram.mock.calls[0][1]).toContain('envio una imagen');
+    expect(mockSendTelegram.mock.calls[0][1]).toContain('/chat');
+  });
+
+  it('downloads and sends dormant customer audio as Telegram voice + text notice', async () => {
+    repos.conversation.upsert(PHONE, { language: 'es' });
+    repos.conversation.setAssignment(PHONE, { assignedLineId: 'line1_bridge', assignedAgentChat: '111' });
+    mockDownloadMedia.mockResolvedValueOnce({ buffer: Buffer.from('voicedata'), mimeType: 'audio/ogg' });
 
     const result = await notifyAssignedLineIfDormant(repos, audioMsg());
     const conv = repos.conversation.getByPhone(PHONE);
@@ -441,6 +505,10 @@ describe('notifyAssignedLineIfDormant', () => {
     const history = formatLeadHistory(conv, repos.message.getRecentMessages(PHONE, 500));
 
     expect(result).toBe(true);
+    expect(mockSendTelegramVoice).toHaveBeenCalledTimes(1);
+    const [, buf,] = mockSendTelegramVoice.mock.calls[0];
+    expect(buf).toBeInstanceOf(Buffer);
+    expect(mockSendTelegram).toHaveBeenCalledTimes(1);
     expect(mockSendTelegram.mock.calls[0][1]).toContain('envio un audio');
     expect(history).toContain('🎤 audio');
   });

@@ -1275,6 +1275,89 @@ describe('processMessage', () => {
     expect(result2.shouldAlertOwner).toBe(false);
   });
 
+  it('alerts owner when LLM fails and customer has given name', async () => {
+    mockLlmComplete.mockReset();
+    mockLlmComplete.mockResolvedValueOnce(null);
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001113009';
+    repos.conversation.upsert(phone, { collected_name: 'Daniela' });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'cuanto cuesta?' });
+    expect(result.shouldAlertOwner).toBe(true);
+    expect(result.usedAi).toBe(true);
+  });
+
+  it('alerts owner when LLM returns empty reply and customer has given name', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001113010';
+    repos.conversation.upsert(phone, { collected_name: 'Daniela' });
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: {
+        reply: '',
+        intent: 'general',
+        lead_score_delta: 0,
+        should_send_image: false,
+        needs_human: false,
+        missing_fields: [],
+        collected_fields: {},
+      },
+      promptTokens: 400,
+      completionTokens: 30,
+    }));
+    const result = await processMessage({ repos, customerPhone: phone, message: 'cuanto cuesta?' });
+    expect(result.shouldAlertOwner).toBe(true);
+    expect(result.usedAi).toBe(true);
+  });
+
+  it('alerts owner on policy violation deflection', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001113011';
+    repos.conversation.upsert(phone, { collected_name: 'Daniela' });
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: {
+        reply: 'Claro! Te doy un descuento del 20% por ser cliente nuevo.',
+        intent: 'general',
+        lead_score_delta: 5,
+        should_send_image: false,
+        needs_human: false,
+        missing_fields: [],
+        collected_fields: {},
+      },
+      promptTokens: 400,
+      completionTokens: 30,
+    }));
+    const result = await processMessage({ repos, customerPhone: phone, message: 'cuanto cuesta?' });
+    expect(result.shouldAlertOwner).toBe(true);
+    expect(result.ownerAlertType).toBe('policy_violation_blocked');
+  });
+
+  it('does not alert owner when LLM fails and customer has no data', async () => {
+    mockLlmComplete.mockReset();
+    mockLlmComplete.mockResolvedValueOnce(null);
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    const result = await processMessage({ repos, customerPhone: '573001113012', message: 'Hola' });
+    expect(result.shouldAlertOwner).toBe(false);
+    expect(result.usedAi).toBe(true);
+  });
+
+  it('alerts owner when LLM fails and customer has qualification data without name', async () => {
+    mockLlmComplete.mockReset();
+    mockLlmComplete.mockResolvedValueOnce(null);
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001113013';
+    repos.conversation.upsert(phone, { collected_plan: '2d1n_mining', collected_people: 3 });
+
+    const result = await processMessage({ repos, customerPhone: phone, message: 'como se reserva?' });
+
+    expect(result.shouldAlertOwner).toBe(true);
+    expect(result.usedAi).toBe(true);
+  });
+
   it('does not handoff on pet mention, stays in qualification', async () => {
     mockLlmComplete.mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
@@ -1963,6 +2046,48 @@ describe('processMessage', () => {
     expect(result.reply).toContain('Perfecto Ana');
     const conv = repos.conversation.getByPhone(phone) as { handed_off_at: string | null };
     expect(conv.handed_off_at).toBeNull();
+  });
+
+  it('alerts owner and continues qualification on unsafe reservation claim with incomplete profile', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001113008';
+    repos.conversation.upsert(phone, {
+      collected_name: 'Daniela',
+      collected_plan: '2d1n_mining',
+      collected_date: 'agosto',
+      collected_transport_need: 'own',
+      price_given_at: new Date().toISOString(),
+    });
+    repos.message.addMessage({
+      customer_phone: phone,
+      direction: 'outbound',
+      message_type: 'text',
+      body: '¿Cuantas personas serian Daniela?',
+      created_at: new Date(Date.now() - 5_000).toISOString(),
+    });
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: {
+        reply: 'Perfecto Daniela, ya quedo reservado para el 7 de agosto.',
+        intent: 'reservation',
+        lead_score_delta: 20,
+        should_send_image: false,
+        needs_human: false,
+        missing_fields: [],
+        collected_fields: {},
+      },
+      promptTokens: 500,
+      completionTokens: 30,
+    }));
+
+    const result = await processMessage({ repos, customerPhone: phone, message: 'si quiero reservar' });
+
+    expect(result.shouldAlertOwner).toBe(true);
+    expect(result.ownerAlertType).toBe('unsafe_reservation_blocked');
+    expect(result.reply).toContain('personas');
+    expect(result.reply).not.toContain('reservado');
+    expect(result.reply).not.toContain('Te leo');
   });
 
   describe('safeReservationHandoff after-hours', () => {
