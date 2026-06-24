@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import rateLimit from '@fastify/rate-limit';
 import type { FastifyError } from 'fastify';
 import type { Repositories } from './db/repositories/index.js';
 import { logger } from './config/logger.js';
@@ -8,7 +9,13 @@ import { logSystemError } from './services/error-logger.js';
 
 export async function buildApp(repos: Repositories) {
   const app = Fastify({
+    bodyLimit: 512 * 1024,
     loggerInstance: logger,
+  });
+
+  await app.register(rateLimit, {
+    max: 300,
+    timeWindow: '1 minute',
   });
 
   app.setErrorHandler(async (error, request, reply) => {
@@ -27,7 +34,7 @@ export async function buildApp(repos: Repositories) {
   await app.register(healthRoutes, { repos });
   await app.register(whatsappWebhookRoutes, { repos });
 
-  app.get('/', async () => ({ ok: true }));
+  app.get('/', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async () => ({ ok: true }));
 
   return app;
 }

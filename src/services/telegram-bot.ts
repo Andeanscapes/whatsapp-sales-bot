@@ -20,10 +20,10 @@ import { statusHandler } from '../commands/status.command.js';
 import { statsHandler } from '../commands/stats.command.js';
 import { deleteHandler } from '../commands/delete.command.js';
 import { daysummaryHandler } from '../commands/daysummary.command.js';
-import { isAllowedTelegramChat } from './lead-routing.js';
+import { isAllowedTelegramChat, isOwnerChat } from './lead-routing.js';
 import { sendBridgeReply, sendBridgeMedia } from './bridge-service.js';
 import { bridgeMessages } from './bridge-messages.js';
- import { MAX_MEDIA_BYTES, MAX_VIDEO_BYTES, MAX_AUDIO_BYTES } from './whatsapp-client.js';
+import { MAX_MEDIA_BYTES, MAX_VIDEO_BYTES, MAX_AUDIO_BYTES } from './whatsapp-client.js';
 
 const ALERT_FETCH_TIMEOUT_MS = 10_000;
 /** Binary media transfers (photo download/upload) need more headroom than quick API calls. */
@@ -277,6 +277,11 @@ export async function processUpdate(update: TelegramUpdate, repos: Repositories)
     return;
   }
 
+  if (cmd.ownerOnly && !isOwnerChat(chatIdStr)) {
+    await sendTelegramMessage(msg.chat.id, bridgeMessages.ownerOnlyCommand);
+    return;
+  }
+
   const ctx: CommandContext = {
     repos,
     args: parsed.args,
@@ -361,6 +366,7 @@ export function registerCommands(): void {
     name: 'block',
     description: 'Bloquear numero (opt-out)',
     usage: '<telefono>',
+    ownerOnly: true,
     handler: blockHandler,
   });
 
@@ -368,6 +374,7 @@ export function registerCommands(): void {
     name: 'delete',
     description: 'Eliminar datos de un cliente para pruebas',
     usage: '<telefono>',
+    ownerOnly: true,
     handler: deleteHandler,
   });
 
@@ -382,6 +389,7 @@ export function registerCommands(): void {
     name: 'pause',
     description: 'Pausar respuestas del bot a clientes',
     usage: '',
+    ownerOnly: true,
     handler: pauseHandler,
   });
 
@@ -389,6 +397,7 @@ export function registerCommands(): void {
     name: 'resume',
     description: 'Reactivar respuestas del bot',
     usage: '',
+    ownerOnly: true,
     handler: resumeHandler,
   });
 

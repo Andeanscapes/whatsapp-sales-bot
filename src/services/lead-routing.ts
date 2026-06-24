@@ -145,6 +145,7 @@ export function resetRoutingConfigCache(): void {
 }
 
 export function isAllowedTelegramChat(chatId: string): boolean {
+  if (isOwnerChat(chatId)) return true;
   const config = getRoutingConfig();
   if (!config) return chatId === env.TELEGRAM_CHAT_ID;
   return config.salesLines.some(line => line.telegramChatId === chatId);
