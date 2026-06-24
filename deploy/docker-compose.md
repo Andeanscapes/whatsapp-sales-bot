@@ -99,17 +99,31 @@ docker compose --env-file .env.prod up -d --build
 
 ## Backups
 
-Create backup from Docker volume:
+Use the repo-managed script. It runs an online-safe `sqlite3 .backup` inside the
+running container (WAL-aware), copies the snapshot to `/var/backups/andean-whatsapp-bot`,
+and prunes backups older than 30 days. Requires `sqlite3` in the runtime image (installed via Dockerfile).
 
 ```bash
-docker run --rm -v whatsapp-sales-bot_bot-data:/data -v "$PWD":/backup busybox cp /data/bot.sqlite /backup/bot.sqlite.backup
+deploy/backup-db.sh
+ls -lh /var/backups/andean-whatsapp-bot
 ```
 
-If project directory name differs, check volume name with:
+Schedule it with cron (daily at 03:00):
 
 ```bash
-docker volume ls
+crontab -e
+# 0 3 * * * /opt/andean-whatsapp-bot/app/deploy/backup-db.sh >> /var/log/andean-whatsapp-bot/backup.log 2>&1
 ```
+
+### Offline fallback (container stopped)
+
+If the container is not running, copy the DB file straight from the volume:
+
+```bash
+docker run --rm -v andean-whatsapp-bot-data:/data -v "$PWD":/backup busybox cp /data/bot.sqlite /backup/bot.sqlite.backup
+```
+
+If the volume name differs, check it with `docker volume ls`.
 
 ## Logs And Transcripts
 
