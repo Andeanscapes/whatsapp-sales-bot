@@ -79,10 +79,10 @@ export async function daysummaryHandler(ctx: CommandContext): Promise<string> {
   const buffer = Buffer.from(jsonStr, 'utf-8');
   const dateSlug = new Date().toISOString().slice(0, 10);
   const filename = `andean-summary-${period.label.toLowerCase()}-${dateSlug}.json`;
-  let documentSent = true;
+  let documentSent = false;
 
   try {
-    await sendTelegramDocument(
+    documentSent = await sendTelegramDocument(
       ctx.chatId,
       buffer,
       filename,

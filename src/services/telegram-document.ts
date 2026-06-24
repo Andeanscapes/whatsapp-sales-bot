@@ -13,8 +13,8 @@ export async function sendTelegramDocument(
   filename: string,
   mimeType: string,
   caption?: string,
-): Promise<void> {
-  if (!env.TELEGRAM_BOT_TOKEN) return;
+): Promise<boolean> {
+  if (!env.TELEGRAM_BOT_TOKEN) return false;
 
   const form = new FormData();
   form.append('chat_id', String(chatId));
@@ -33,4 +33,5 @@ export async function sendTelegramDocument(
     throw new Error(`Telegram sendDocument failed: ${response.status} ${errBody}`);
   }
   logger.info({ chatId }, '[TELEGRAM] document sent ok');
+  return true;
 }

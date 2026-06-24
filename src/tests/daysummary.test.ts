@@ -3,18 +3,23 @@ import Database from 'better-sqlite3';
 import { migrate } from '../db/migrate.js';
 import { createRepositories, type Repositories } from '../db/repositories/index.js';
 import { daysummaryHandler } from '../commands/daysummary.command.js';
+import { env } from '../config/env.js';
 
 let repos: Repositories;
 let db: Database.Database;
+let previousTelegramToken: string;
 
 beforeEach(() => {
   db = new Database(':memory:');
   migrate(db);
   repos = createRepositories(db);
+  previousTelegramToken = env.TELEGRAM_BOT_TOKEN;
+  env.TELEGRAM_BOT_TOKEN = 'test-token';
   vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{"ok":true}', { status: 200 }));
 });
 
 afterEach(() => {
+  env.TELEGRAM_BOT_TOKEN = previousTelegramToken;
   vi.restoreAllMocks();
   db.close();
 });
