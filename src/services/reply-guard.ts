@@ -214,7 +214,10 @@ export function containsUnsafeReservationClaim(reply: string): boolean {
     || /\b(ya esta confirmado|ya tienes cupo|te confirmo el cupo|tienes cupo|separado|reservado para ti|tu reserva esta|tu reserva qued[oó])\b/i.test(reply)
     || /\b(fecha confirmada|confirmo la fecha|disponibilidad confirmada)\b[\s\S]{0,60}\b\d{1,2}\s+de\s+\w+/i.test(reply)
     || /\b(ya quedo|quedaste|estas|ya estas)\s+(reservado|apartado|separado|confirmado|agendado)\b/i.test(reply)
-    || /\b(listo,? ya|ya,? listo)\s*(?:esta|qued[oó]|confirmado|reservado|agendado|separado)\b/i.test(reply);
+    || /\b(listo,? ya|ya,? listo)\s*(?:esta|qued[oó]|confirmado|reservado|agendado|separado)\b/i.test(reply)
+    || /\bconfirmo\s+(?:la\s+)?(?:fecha|disponibilidad|cupo)\b/i.test(reply)
+    || /\bte\s+(?:env[ií]o|mando|paso|doy)\s+(?:los\s+)?(?:datos|n[uú]meros?|link|info|informaci[oó]n)\b/i.test(reply)
+    || /(?:listo|perfecto|dale|bueno),?\s*\w+[.,]\s*me\s+(?:encanta|gusta)\s+el\s+plan\b[^.!?]{0,200}\bconfirmo\b/i.test(reply);
 }
 
 export function containsPromptLeakOrPolicyViolation(reply: string): boolean {

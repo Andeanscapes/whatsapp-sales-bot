@@ -465,6 +465,20 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     finalScore = Math.max(hybrid.score, skills.salesStrategy.urgentLeadThreshold);
     repos.conversation.upsert(customerPhone, { lead_score: finalScore });
     replyText = routeHumanHandoff(repos, customerPhone, merged, lang, skills, safeReservationHandoff(merged, skills.fallbackReplies[lang], lang));
+  } else if (reservationIntent || recentReservation || llmReadyToBook) {
+    logger.warn({
+      phone: customerPhone,
+      qComplete,
+      pricePresented,
+      hasPriceRow: !!priceRow,
+      name: merged.nombre,
+      plan: merged.plan,
+      personas: merged.personas,
+      fecha: merged.fecha,
+      transporte: merged.transporte,
+      action: llmTurn.action,
+      intent: llmTurn.lead.intent,
+    }, '[BOT] reservation intent detected but handoff blocked — qComplete or pricePresented false');
   }
 
   if (!needsHumanEffective && containsUnsafeReservationClaim(replyText)) {
@@ -485,6 +499,22 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     logger.warn({ phone: customerPhone }, '[BOT] blocked prompt leak or policy violation');
     replyText = skills.fallbackReplies[lang].aiFailureQualified;
     deflectionDueToPolicyLeak = true;
+  }
+
+  if (!needsHumanEffective && !deflectionDueToPolicyLeak
+    && (reservationIntent || recentReservation || llmReadyToBook)) {
+    if (qComplete && pricePresented) {
+      logger.warn({ phone: customerPhone }, '[BOT] forced handoff — reservation intent with complete qualification');
+      needsHumanEffective = true;
+      shouldSendGallery = !galleryAlreadyNudged;
+      repos.conversation.setHandedOff(customerPhone);
+      finalScore = Math.max(hybrid.score, skills.salesStrategy.urgentLeadThreshold);
+      repos.conversation.upsert(customerPhone, { lead_score: finalScore });
+      replyText = routeHumanHandoff(repos, customerPhone, merged, lang, skills, safeReservationHandoff(merged, skills.fallbackReplies[lang], lang));
+    } else {
+      logger.warn({ phone: customerPhone, qComplete, pricePresented }, '[BOT] forced next-qualification — reservation intent with incomplete profile');
+      replyText = nextQualificationQuestion(merged, skills.fallbackReplies[lang]);
+    }
   }
 
   const finalPriceJustGiven = replyMentionsPrice(replyText);
