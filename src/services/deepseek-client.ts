@@ -125,10 +125,24 @@ export function buildSystemPrompt(skills: Skills, lang?: string, collectedFields
       `Meta: ${tactics.metaRule || ''}`,
       `First contact: ${tactics.firstContact || ''}`,
       `Typo handling: ${tactics.typoHandling || ''}`,
-      `Human sell formula: ${tactics.humanSellFormula || ''}`
+      `Human sell formula: ${tactics.humanSellFormula || ''}`,
+      `Customer-first selling: ${tactics.customerFirstSelling || ''}`,
+      `Micro-question flow: ${tactics.microQuestionFlow || ''}`,
+      `Recommend not describe: ${tactics.recommendNotDescribe || ''}`,
+      `Short storytelling: ${tactics.shortStorytelling || ''}`,
+      `Soft closing: ${tactics.softClosing || ''}`,
+      `Media restraint: ${tactics.mediaRestraint || ''}`,
+      `Message style: ${tactics.messageStyle || ''}`,
+      `Hot lead behavior: ${tactics.hotLeadBehavior || ''}`,
+      `Rarity positioning: ${tactics.rarityPositioning || ''}`,
+      `Safety & logistics value: ${tactics.safetyLogisticsValue || ''}`,
+      `Against mass tourism: ${tactics.againstMassTourism || ''}`,
+      `Authenticity & community: ${tactics.authenticityCommunity || ''}`,
+      `Invisible qualification: ${tactics.invisibleQualification || ''}`
     );
     if (pricingAvailable) {
       facts.push(`Closing: ${tactics.closing?.assumptive || ''} | ${tactics.closing?.softTakeaway || ''}`);
+      facts.push(`Price with context: ${tactics.priceWithContext || ''}`);
     }
   }
 
