@@ -186,6 +186,20 @@ const salesTacticsSchema = z.object({
   firstContact: z.string(),
   typoHandling: z.string(),
   humanSellFormula: z.string(),
+  customerFirstSelling: z.string(),
+  microQuestionFlow: z.string(),
+  recommendNotDescribe: z.string(),
+  shortStorytelling: z.string(),
+  priceWithContext: z.string(),
+  softClosing: z.string(),
+  mediaRestraint: z.string(),
+  messageStyle: z.string(),
+  hotLeadBehavior: z.string(),
+  rarityPositioning: z.string(),
+  safetyLogisticsValue: z.string(),
+  againstMassTourism: z.string(),
+  authenticityCommunity: z.string(),
+  invisibleQualification: z.string(),
 });
 
 const salesStrategySchema = z.object({
