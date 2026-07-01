@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Test docker compose launcher. Always uses .env.test with compose.test.yml override.
+# Test docker compose launcher. Always uses .env.dev with compose.test.yml override.
 # - No log disk retention (json-file driver, logs gone when container stops)
-# - Isolated SQLite DB (completely separate from prod)
+# - Isolated SQLite DB (completely separate from prod, preserved by default)
 # - No auto-restart
 # - No Cloudflare tunnel
 #
@@ -11,6 +11,7 @@ set -euo pipefail
 #   $(basename "$0")                   # app only (test mode)
 #   $(basename "$0") --build-only       # build image, don't start
 #   $(basename "$0") --no-logs          # start only, don't follow logs
+#   $(basename "$0") --clean            # delete test DB volume before starting
 
 ENV_FILE=.env.dev
 export ENV_FILE
@@ -19,17 +20,23 @@ COMPOSE_FILES="-f compose.yml -f compose.test.yml"
 
 BUILD_ONLY=false
 FOLLOW_LOGS=true
+CLEAN=false
 
 for arg in "$@"; do
   case "$arg" in
     --build-only) BUILD_ONLY=true ;;
     --no-logs) FOLLOW_LOGS=false ;;
+    --clean) CLEAN=true ;;
     *) echo "Unknown flag: $arg" && exit 1 ;;
   esac
 done
 
 echo "=== Stopping existing test containers ==="
-docker compose --env-file "$ENV_FILE" $COMPOSE_FILES down --remove-orphans --volumes 2>/dev/null || true
+if $CLEAN; then
+  docker compose --env-file "$ENV_FILE" $COMPOSE_FILES down --remove-orphans --volumes 2>/dev/null || true
+else
+  docker compose --env-file "$ENV_FILE" $COMPOSE_FILES down --remove-orphans 2>/dev/null || true
+fi
 
 echo "=== Building Docker image ==="
 docker compose --env-file "$ENV_FILE" $COMPOSE_FILES build

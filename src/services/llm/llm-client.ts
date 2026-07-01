@@ -53,6 +53,8 @@ export interface LlmResult {
 
 export interface LlmClientInput {
   systemPrompt: string;
+  /** Optional task-specific instructions appended to the system prompt (e.g. follow-up tone). */
+  systemPromptSuffix?: string;
   message: string;
   history: Array<{ role: 'user' | 'assistant'; content: string }>;
   lang?: 'es' | 'en';

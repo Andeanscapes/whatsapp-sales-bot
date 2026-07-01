@@ -6,8 +6,9 @@ services:
     # No auto-restart in test mode
     restart: "no"
     environment:
-      # Isolated test DB — never touchs prod bot-data volume
+      # Isolated test DB — never touches prod bot-data volume
       SQLITE_PATH: /data/bot-test.sqlite
+      STARTUP_DIAGNOSTICS_ENABLED: "false"
     volumes:
       - bot-data-test:/data
 

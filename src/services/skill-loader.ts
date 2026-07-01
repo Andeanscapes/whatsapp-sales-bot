@@ -277,6 +277,7 @@ const langFallbackSchema = z.object({
   itineraryReply: z.string(),
   systemErrorRetry: z.string(),
   galleryIntro: z.string(),
+  galleryFollowUp: z.string(),
 });
 
 const fallbackRepliesSchema = z.object({

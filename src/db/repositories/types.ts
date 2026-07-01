@@ -41,6 +41,8 @@ export interface ConversationRepository {
   setMode(phone: string, mode: ConversationMode): void;
   getBookedAt(phone: string): string | null;
   setBooked(phone: string): void;
+  getFollowUpCandidates(cutoffIso: string, serviceWindowStartIso: string, limit: number): FollowUpCandidate[];
+  markFollowUpSent(phone: string): void;
 }
 
 export interface MessageRepository {
@@ -48,7 +50,9 @@ export interface MessageRepository {
   getLastOutboundBody(phone: string): string | null;
   getRecentMessages(phone: string, limit?: number): RecentMessage[];
   getLastInboundBodies(phone: string, limit?: number): { body: string | null }[];
+  getLastInboundBody(phone: string): string | null;
   getLastInboundAt(phone: string): string | null;
+  getLastMessageDirection(phone: string): 'inbound' | 'outbound' | null;
   countOutboundSince(phone: string, sinceIso: string): number;
 }
 
@@ -131,12 +135,18 @@ export interface ConversationRow {
   handed_off_at: string | null;
   soft_closed_at: string | null;
   gallery_nudged_at: string | null;
+  follow_up_sent_at: string | null;
   converted_at: string | null;
   sales_phase: string | null;
   lead_intent: string | null;
   assigned_line_id: string | null;
   assigned_agent_chat: string | null;
   conversation_mode: ConversationMode | null;
+}
+
+export interface FollowUpCandidate {
+  customerPhone: string;
+  language: 'es' | 'en' | null;
 }
 
 export interface DailyStats {
@@ -179,13 +189,14 @@ export interface LineLeadCount {
 }
 
 export interface StatsRepository {
-  getDailyStats(todayStart: string, hotLeadThreshold: number): DailyStats;
-  getPeriodStats(label: string, sinceIso: string, untilIso: string | null, hotLeadThreshold: number): DailyStats;
+  getDailyStats(todayStart: string, hotLeadThreshold: number, excludedPhones?: string[]): DailyStats;
+  getPeriodStats(label: string, sinceIso: string, untilIso: string | null, hotLeadThreshold: number, excludedPhones?: string[]): DailyStats;
   getRecentConversations(limit: number, lineId?: string | null): ConversationSummary[];
+  getRecentInboundAfterFirstReply(limit: number, lineId?: string | null, excludedPhones?: string[]): ConversationSummary[];
   getTopLeads(limit: number, threshold: number, lineId?: string | null): ConversationSummary[];
   getPhaseBreakdown(): PhaseBreakdown[];
   getLeadCountsByLine(hotLeadThreshold: number): LineLeadCount[];
-  getLeadCountsByLineForPeriod(sinceIso: string, untilIso: string | null, hotLeadThreshold: number): LineLeadCount[];
+  getLeadCountsByLineForPeriod(sinceIso: string, untilIso: string | null, hotLeadThreshold: number, excludedPhones?: string[]): LineLeadCount[];
 }
 
 export interface SystemErrorRow {
@@ -287,7 +298,7 @@ export interface DayActivityResult {
 
 export interface TranscriptRepository {
   getAllTranscripts(): TranscriptRecord[];
-  getDayActivity(sinceIso: string, untilIso: string | null): DayActivityResult;
+  getDayActivity(sinceIso: string, untilIso: string | null, excludedPhones?: string[]): DayActivityResult;
 }
 
 export interface Repositories {

@@ -74,8 +74,11 @@ export class DeepSeekLlmClient implements LlmClient {
   }
 
   private async callApi(input: LlmClientInput): Promise<{ turn: LlmTurn; tokens: { prompt: number; completion: number } } | null> {
+    const systemContent = input.systemPromptSuffix
+      ? `${input.systemPrompt}\n\n${input.systemPromptSuffix}`
+      : input.systemPrompt;
     const messages: Array<{ role: string; content: string }> = [
-      { role: 'system', content: input.systemPrompt },
+      { role: 'system', content: systemContent },
     ];
 
     for (const h of input.history) {

@@ -12,9 +12,11 @@ function boolFromEnv(v: unknown): boolean {
 const boolSchema = z.preprocess(boolFromEnv, z.boolean());
 
 const envSchema = z.object({
+  APP_VERSION: z.string().default('1.0'),
   NODE_ENV: z.enum(['production', 'development', 'test']).default('production'),
   PORT: z.coerce.number().catch(3000),
   HOST: z.string().default('127.0.0.1'),
+  STARTUP_DIAGNOSTICS_ENABLED: boolSchema.default(true),
   PUBLIC_BASE_URL: z.string().default('https://bot.yourdomain.com'),
   PUBLIC_TOUR_URL: z.string().default('https://your-public-site.com/experiences/emerald-mining-tour'),
 
@@ -36,7 +38,9 @@ const envSchema = z.object({
 
   TELEGRAM_BOT_TOKEN: z.string().default(''),
   TELEGRAM_CHAT_ID: z.string().default(''),
+  TELEGRAM_POLLING_ENABLED: boolSchema.default(true),
   LEAD_ROUTING_JSON: z.string().default(''),
+  REPORT_EXCLUDED_PHONES: z.string().default(''),
   BRIDGE_FLOW: z.coerce.number().refine(n => n >= 0 && n <= 100, 'must be 0-100').catch(-1),
 
   AI_ENABLED: boolSchema.default(true),
@@ -57,6 +61,7 @@ const envSchema = z.object({
   MAX_BOT_MESSAGES_PER_CUSTOMER_PER_HOUR: z.coerce.number().catch(50),
   MAX_BOT_MESSAGES_PER_CUSTOMER_PER_DAY: z.coerce.number().catch(120),
   ALLOW_CUSTOMER_REENGAGEMENT_TEMPLATES: boolSchema.default(false),
+  TIME_FOLLOW_HOURS: z.coerce.number().catch(3),
 
   SQLITE_PATH: z.string().default('./data/bot.sqlite'),
 

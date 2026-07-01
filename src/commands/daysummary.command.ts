@@ -1,5 +1,6 @@
 import type { DayActivityResult } from '../db/repositories/types.js';
 import { sendTelegramDocument } from '../services/telegram-document.js';
+import { getReportExcludedPhones } from '../services/report-exclusions.js';
 import type { CommandContext } from './index.js';
 
 function md(text: string): string {
@@ -12,6 +13,11 @@ function utcMidnight(daysOffset: number): string {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())).toISOString();
 }
 
+function utcMonthStart(monthOffset: number): string {
+  const d = new Date();
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + monthOffset, 1)).toISOString();
+}
+
 function resolvePeriod(arg: string | undefined): { label: string; sinceIso: string; untilIso: string | null } | null {
   const period = (arg ?? 'hoy').toLowerCase();
   switch (period) {
@@ -21,6 +27,16 @@ function resolvePeriod(arg: string | undefined): { label: string; sinceIso: stri
     case 'ayer':
     case 'yesterday':
       return { label: 'Ayer', sinceIso: utcMidnight(-1), untilIso: utcMidnight(0) };
+    case 'semana':
+    case 'week':
+      return { label: 'Ultimos 7 dias', sinceIso: utcMidnight(-7), untilIso: null };
+    case 'mes':
+    case 'month':
+      return { label: 'Mes actual', sinceIso: utcMonthStart(0), untilIso: null };
+    case 'todo':
+    case 'historia':
+    case 'all':
+      return { label: 'Toda la historia', sinceIso: '1970-01-01T00:00:00.000Z', untilIso: null };
     default:
       return null;
   }
@@ -28,7 +44,7 @@ function resolvePeriod(arg: string | undefined): { label: string; sinceIso: stri
 
 function formatSummary(result: DayActivityResult, label: string, documentSent: boolean): string {
   const { totals, conversations } = result;
-  const warning = documentSent ? null : '⚠️ JSON no enviado. Reintenta /daysummary para descargar el archivo.';
+  const warning = documentSent ? null : '⚠️ JSON no enviado. Reintenta /summary para descargar el archivo.';
   if (conversations.length === 0) {
     return [
       `📋 *Resumen ${label}*: sin conversaciones activas en este periodo.`,
@@ -67,13 +83,13 @@ function buildJson(result: DayActivityResult, label: string): string {
   return JSON.stringify(payload, null, 2);
 }
 
-const usage = 'Uso: /daysummary <hoy|ayer>';
+const usage = 'Uso: /summary <hoy|ayer|week|month|todo>';
 
 export async function daysummaryHandler(ctx: CommandContext): Promise<string> {
   const period = resolvePeriod(ctx.args[0]);
   if (!period) return usage;
 
-  const result = ctx.repos.transcripts.getDayActivity(period.sinceIso, period.untilIso);
+  const result = ctx.repos.transcripts.getDayActivity(period.sinceIso, period.untilIso, getReportExcludedPhones());
 
   const jsonStr = buildJson(result, period.label);
   const buffer = Buffer.from(jsonStr, 'utf-8');

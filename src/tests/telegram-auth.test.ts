@@ -65,6 +65,19 @@ function videoUpdate(chatId: number, fileId: string, caption?: string): Telegram
   };
 }
 
+function videoDocumentUpdate(chatId: number, fileId: string, caption?: string): TelegramUpdate {
+  return {
+    update_id: Math.floor(Math.random() * 1e9),
+    message: {
+      message_id: 1,
+      chat: { id: chatId, type: 'private' },
+      from: { id: chatId, username: 'tester' },
+      caption,
+      document: { file_id: fileId, file_unique_id: 'd', mime_type: 'video/mp4', file_size: 1024 },
+    },
+  };
+}
+
 function voiceUpdate(chatId: number, fileId: string): TelegramUpdate {
   return {
     update_id: Math.floor(Math.random() * 1e9),
@@ -197,6 +210,16 @@ describe('telegram bridge image relay', () => {
     });
   }
 
+  function mockOversizeTelegramFileFetch(): void {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes('/getFile')) {
+        return Promise.resolve(new Response(JSON.stringify({ ok: true, result: { file_path: 'videos/file_1.mp4', file_size: whatsappClient.MAX_VIDEO_BYTES + 1 } }), { status: 200 }));
+      }
+      return Promise.resolve(new Response('{"ok":true}', { status: 200 }));
+    });
+  }
+
   it('relays an agent photo to the bridged customer via WhatsApp', async () => {
     openBridge();
     mockTelegramFileFetch();
@@ -221,6 +244,29 @@ describe('telegram bridge image relay', () => {
     expect(uploadSpy).toHaveBeenCalledTimes(1);
     expect(uploadSpy.mock.calls[0][1]).toBe('video/mp4');
     expect(sendVideoSpy).toHaveBeenCalledWith(CUSTOMER, 'wamedia-video', 'video prueba');
+  });
+
+  it('relays an agent video sent as Telegram document', async () => {
+    openBridge();
+    mockTelegramFileFetch();
+    const uploadSpy = vi.spyOn(whatsappClient, 'uploadMedia').mockResolvedValue({ id: 'wamedia-video', kind: 'video' });
+    const sendVideoSpy = vi.spyOn(whatsappClient, 'sendVideoId').mockResolvedValue();
+
+    await processUpdate(videoDocumentUpdate(111, 'video-doc-id', 'video doc'), repos);
+
+    expect(uploadSpy).toHaveBeenCalledTimes(1);
+    expect(uploadSpy.mock.calls[0][1]).toBe('video/mp4');
+    expect(sendVideoSpy).toHaveBeenCalledWith(CUSTOMER, 'wamedia-video', 'video doc');
+  });
+
+  it('rejects bridge videos over the WhatsApp video limit', async () => {
+    openBridge();
+    mockOversizeTelegramFileFetch();
+    const uploadSpy = vi.spyOn(whatsappClient, 'uploadMedia').mockResolvedValue({ id: 'wamedia-video', kind: 'video' });
+
+    await processUpdate(videoUpdate(111, 'video-file-id', 'too big'), repos);
+
+    expect(uploadSpy).not.toHaveBeenCalled();
   });
 
   it('relays an agent voice note to the bridged customer via WhatsApp audio', async () => {
