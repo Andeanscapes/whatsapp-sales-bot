@@ -42,6 +42,7 @@ import {
   isGalleryConfirmation,
 } from './reply-guard.js';
 import { assignLine, isReferralLine } from './lead-routing.js';
+import { INPUT_COST_PER_TOKEN, MS_72H, OUTPUT_COST_PER_TOKEN } from './constants.js';
 import type { RecentMessage } from '../db/repositories/types.js';
 
 export {
@@ -66,9 +67,6 @@ const OPT_OUT_KEYWORDS_EN = ['stop', 'unsubscribe', 'no more messages', 'remove 
 const ALL_OPT_OUT_KEYWORDS = [...OPT_OUT_KEYWORDS_ES, ...OPT_OUT_KEYWORDS_EN];
 
 export const llmClient = new DeepSeekLlmClient(true);
-
-const INPUT_COST_PER_TOKEN = 0.15 / 1_000_000;
-const OUTPUT_COST_PER_TOKEN = 0.60 / 1_000_000;
 
 function formatPeso(n: number): string {
   return n.toLocaleString('en-US');
@@ -233,7 +231,7 @@ function countRecentStartsWith(
 }
 
 export async function processMessage(input: ProcessMessageInput): Promise<ProcessMessageOutput> {
-  const { repos, customerPhone, message, messageId } = input;
+  const { repos, customerPhone, message, messageId, storeInbound = true } = input;
 
   if (repos.isPaused()) {
     return { reply: '', shouldSendReply: false, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
@@ -278,10 +276,12 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
 
   const isFirstContact = isNewConversation;
 
-  repos.message.addMessage({
-    whatsapp_message_id: messageId, customer_phone: customerPhone, direction: 'inbound',
-    message_type: 'text', body: message, created_at: new Date().toISOString(), raw_json: null,
-  });
+  if (storeInbound) {
+    repos.message.addMessage({
+      whatsapp_message_id: messageId, customer_phone: customerPhone, direction: 'inbound',
+      message_type: 'text', body: message, created_at: new Date().toISOString(), raw_json: null,
+    });
+  }
 
   const bookingFields = extractBookingFields(message);
   const contextFields = contextAwareExtract(message, repos, customerPhone, bookingFields);
@@ -551,7 +551,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     reply: replyText, shouldSendReply: true,
     leadScore: finalScore, usedAi: true,
     shouldAlertOwner, ownerAlertType, shouldSendImage,
-    shouldSendOwnerImage: isFirstContact,
+    shouldSendOwnerImage: isFirstContact && !repos.mediaSend.hasRecentSameImage(customerPhone, 'owner_intro', new Date(Date.now() - MS_72H).toISOString()),
     shouldSendGalleryImages: shouldSendGallery,
     priceJustGiven: outputPriceJustGiven, priceFollowUpText: outputPriceFollowUpText,
   };

@@ -20,6 +20,8 @@ import { statusHandler } from '../commands/status.command.js';
 import { statsHandler } from '../commands/stats.command.js';
 import { deleteHandler } from '../commands/delete.command.js';
 import { daysummaryHandler } from '../commands/daysummary.command.js';
+import { versionHandler } from '../commands/version.command.js';
+import { retryflowHandler } from '../commands/retryflow.command.js';
 import { isAllowedTelegramChat, isOwnerChat } from './lead-routing.js';
 import { sendBridgeReply, sendBridgeMedia } from './bridge-service.js';
 import { bridgeMessages } from './bridge-messages.js';
@@ -57,6 +59,14 @@ export interface TelegramVoice {
   file_size?: number;
 }
 
+export interface TelegramDocument {
+  file_id: string;
+  file_unique_id: string;
+  file_name?: string;
+  mime_type?: string;
+  file_size?: number;
+}
+
 export interface TelegramUpdate {
   update_id: number;
   message?: {
@@ -68,6 +78,7 @@ export interface TelegramUpdate {
     photo?: TelegramPhotoSize[];
     video?: TelegramVideo;
     voice?: TelegramVoice;
+    document?: TelegramDocument;
   };
 }
 
@@ -150,7 +161,7 @@ export async function downloadTelegramFile(fileId: string, maxBytes: number = MA
   }
   if (meta.result?.file_size && meta.result.file_size > maxBytes) {
     logger.warn({ declared: meta.result.file_size, maxBytes }, '[TELEGRAM] file size exceeds limit');
-    throw new Error(`Telegram file exceeds ${maxBytes} bytes (declared ${meta.result.file_size})`);
+    throw new Error(`Telegram file exceeds WhatsApp media limit ${maxBytes} bytes (declared ${meta.result.file_size})`);
   }
 
   const binRes = await fetch(`https://api.telegram.org/file/bot${env.TELEGRAM_BOT_TOKEN}/${filePath}`, {
@@ -163,7 +174,7 @@ export async function downloadTelegramFile(fileId: string, maxBytes: number = MA
   const buffer = Buffer.from(await binRes.arrayBuffer());
   if (buffer.byteLength > maxBytes) {
     logger.warn({ actual: buffer.byteLength, maxBytes }, '[TELEGRAM] file size exceeds limit');
-    throw new Error(`Telegram file exceeds ${maxBytes} bytes (actual ${buffer.byteLength})`);
+    throw new Error(`Telegram file exceeds WhatsApp media limit ${maxBytes} bytes (actual ${buffer.byteLength})`);
   }
   const mimeType = binRes.headers.get('content-type') ?? 'image/jpeg';
   logger.info({ mimeType, size: buffer.byteLength }, '[TELEGRAM] file downloaded ok');
@@ -213,7 +224,8 @@ export async function processUpdate(update: TelegramUpdate, repos: Repositories)
   const hasPhoto = !!msg.photo && msg.photo.length > 0;
   const hasVideo = !!msg.video;
   const hasVoice = !!msg.voice;
-  if (!msg.text && !hasPhoto && !hasVideo && !hasVoice) return;
+  const hasVideoDocument = !!msg.document?.mime_type?.startsWith('video/');
+  if (!msg.text && !hasPhoto && !hasVideo && !hasVoice && !hasVideoDocument) return;
 
   const chatIdStr = String(msg.chat.id);
   if (!isAllowedTelegramChat(chatIdStr)) {
@@ -221,8 +233,8 @@ export async function processUpdate(update: TelegramUpdate, repos: Repositories)
     return;
   }
 
-  // A photo, video, or voice note (no command) relays the agent's media to the bridged customer.
-  if (hasPhoto || hasVideo || hasVoice) {
+  // A photo, video, video document, or voice note (no command) relays the agent's media to the bridged customer.
+  if (hasPhoto || hasVideo || hasVoice || hasVideoDocument) {
     const session = repos.bridgeSession.getByAgentChat(chatIdStr);
     if (!session) {
       await sendTelegramMessage(msg.chat.id, bridgeMessages.imageNoActiveChat);
@@ -240,6 +252,10 @@ export async function processUpdate(update: TelegramUpdate, repos: Repositories)
       fileId = msg.video!.file_id;
       maxBytes = MAX_VIDEO_BYTES;
       mimeType = msg.video!.mime_type ?? 'video/mp4';
+    } else if (hasVideoDocument) {
+      fileId = msg.document!.file_id;
+      maxBytes = MAX_VIDEO_BYTES;
+      mimeType = msg.document!.mime_type ?? 'video/mp4';
     } else {
       fileId = msg.photo![msg.photo!.length - 1].file_id;
       maxBytes = MAX_MEDIA_BYTES;
@@ -416,9 +432,31 @@ export function registerCommands(): void {
   });
 
   registerCommand({
+    name: 'version',
+    description: 'Version desplegada de la app',
+    usage: '',
+    handler: versionHandler,
+  });
+
+  registerCommand({
+    name: 'retryflow',
+    description: 'Reenviar ultimo mensaje del lead al flujo bot',
+    usage: '<telefono>',
+    ownerOnly: true,
+    handler: retryflowHandler,
+  });
+
+  registerCommand({
+    name: 'summary',
+    description: 'Resumen de conversaciones (texto + JSON)',
+    usage: '<hoy|ayer|week|month|todo>',
+    handler: daysummaryHandler,
+  });
+
+  registerCommand({
     name: 'daysummary',
-    description: 'Resumen diario de conversaciones (texto + JSON)',
-    usage: '<hoy|ayer>',
+    description: 'Alias de /summary',
+    usage: '<hoy|ayer|week|month|todo>',
     handler: daysummaryHandler,
   });
 
@@ -439,6 +477,11 @@ export function registerCommands(): void {
 }
 
 export async function startTelegramBot(repos: Repositories): Promise<ReturnType<typeof setInterval> | undefined> {
+  if (!env.TELEGRAM_POLLING_ENABLED) {
+    logger.info('[TELEGRAM_BOT] polling disabled');
+    return undefined;
+  }
+
   if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) {
     logger.info('[TELEGRAM_BOT] skipping — TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set');
     return undefined;

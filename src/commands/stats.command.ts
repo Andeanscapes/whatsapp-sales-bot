@@ -1,6 +1,7 @@
 import { env } from '../config/env.js';
 import type { DailyStats, LineLeadCount } from '../db/repositories/types.js';
 import { getLineById } from '../services/lead-routing.js';
+import { getReportExcludedPhones } from '../services/report-exclusions.js';
 import type { CommandContext } from './index.js';
 
 function lineLabel(lineId: string): string {
@@ -72,7 +73,8 @@ export async function statsHandler(ctx: CommandContext): Promise<string> {
   const period = resolvePeriod(ctx.args[0]);
   if (!period) return usage;
 
-  const stats = ctx.repos.stats.getPeriodStats(period.label, period.sinceIso, period.untilIso, env.HOT_LEAD_THRESHOLD);
-  const byLine = ctx.repos.stats.getLeadCountsByLineForPeriod(period.sinceIso, period.untilIso, env.HOT_LEAD_THRESHOLD);
+  const excluded = getReportExcludedPhones();
+  const stats = ctx.repos.stats.getPeriodStats(period.label, period.sinceIso, period.untilIso, env.HOT_LEAD_THRESHOLD, excluded);
+  const byLine = ctx.repos.stats.getLeadCountsByLineForPeriod(period.sinceIso, period.untilIso, env.HOT_LEAD_THRESHOLD, excluded);
   return formatStats(stats, byLine, period.label);
 }

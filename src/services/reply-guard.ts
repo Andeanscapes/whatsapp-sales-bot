@@ -79,7 +79,7 @@ export function isTruncatedReply(reply: string): boolean {
 
 export function isSoftCloseMessage(text: string): boolean {
   const norm = normalizeText(text);
-  return /\b(no gracias|por ahora no|no me interesa|dejemoslo|dejemoslo ahi|en otro momento|otra oportunidad|muy caro|esta caro|algo caro|se sale del presupuesto|no me alcanza|fuera de presupuesto|costoso|gracias por la info|por el momento no|lo dejamos ahi|no por ahora|lo voy a pensar|mejor no|paso por ahora|lo dejo ahi|no es para mi|no es lo que busco|no me convence|no es lo que esperaba|muy costoso|carisimo|cuesta mucho|es mucho|se me va de presupuesto|no tengo esa plata|no tengo presupuesto|no llego|no me da|not now|not interested|too expensive|out of budget|not in my budget|thank you for the info|for now no|not for me|not what i expected|i'?ll pass|i'?ll think about it|too much|over budget|can'?t afford|i'?ll skip|i have to decline|no thanks anyway|thanks anyway|gracias de todos modos|gracias igual|gracias de todas formas)\b/i.test(norm);
+  return /\b(no gracias|por ahora no|no me interesa|dejemoslo|dejemoslo ahi|en otro momento|otra oportunidad|muy caro|esta caro|algo caro|me parece caro|se sale del presupuesto|no me alcanza|fuera de presupuesto|costoso|caro|gracias por la info|por el momento no|lo dejamos ahi|no por ahora|lo voy a pensar|mejor no|paso por ahora|lo dejo ahi|no es para mi|no es lo que busco|no me convence|no es lo que esperaba|muy costoso|carisimo|cuesta mucho|es mucho|se me va de presupuesto|no tengo esa plata|no tengo presupuesto|no llego|no me da|luego te contacto|luego te escribo|not now|not interested|too expensive|out of budget|not in my budget|thank you for the info|for now no|not for me|not what i expected|i'?ll pass|i'?ll think about it|too much|over budget|can'?t afford|i'?ll skip|i have to decline|no thanks anyway|thanks anyway|gracias de todos modos|gracias igual|gracias de todas formas)\b/i.test(norm);
 }
 
 export function isGalleryRequest(text: string): boolean {
@@ -207,6 +207,7 @@ export function stripHandoffPhrases(reply: string): string {
 }
 
 export function containsUnsafeReservationClaim(reply: string): boolean {
+  const norm = normalizeText(reply);
   return /\[[^\]]*(inserte|insert|numero|número|payment|pago)[^\]]*\]/i.test(reply)
     || /\b(nequi|mercado pago)\b[\s\S]{0,80}\b\d{7,}\b/i.test(reply)
     || /\b(dep[oó]sito|deposit|pago|payment)\b[\s\S]{0,80}\b(nequi|mercado pago)\b/i.test(reply)
@@ -217,7 +218,8 @@ export function containsUnsafeReservationClaim(reply: string): boolean {
     || /\b(listo,? ya|ya,? listo)\s*(?:esta|qued[oó]|confirmado|reservado|agendado|separado)\b/i.test(reply)
     || /\bconfirmo\s+(?:la\s+)?(?:fecha|disponibilidad|cupo)\b/i.test(reply)
     || /\bte\s+(?:env[ií]o|mando|paso|doy)\s+(?:los\s+)?(?:datos|n[uú]meros?|link|info|informaci[oó]n)\b/i.test(reply)
-    || /(?:listo|perfecto|dale|bueno),?\s*\w+[.,]\s*me\s+(?:encanta|gusta)\s+el\s+plan\b[^.!?]{0,200}\bconfirmo\b/i.test(reply);
+    || /(?:listo|perfecto|dale|bueno),?\s*\w+[.,]\s*me\s+(?:encanta|gusta)\s+el\s+plan\b[^.!?]{0,200}\bconfirmo\b/i.test(reply)
+    || /\btu reserva quedo confirmad[ao]\b/i.test(norm);
 }
 
 export function containsPromptLeakOrPolicyViolation(reply: string): boolean {

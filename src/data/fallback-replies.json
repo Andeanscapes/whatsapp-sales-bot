@@ -17,7 +17,7 @@
     "messageLimitAfterPrice": "Te leo. Para no confundirte con el valor, dejame revisarlo bien y te confirmo enseguida.",
     "messageLimitAfterPriceAfterHours": "Te leo. Para no confundirte con el valor, dejame revisarlo bien; por la hora en Colombia, te confirmo mañana en la mañana.",
     "messageLimitAfterPriceMorningHours": "Te leo. Para no confundirte con el valor, dejame revisarlo bien; por la hora en Colombia, te confirmo después de las 9:00 a.m.",
-    "softCloseReply": "Entendido. Si mas adelante te interesa, aca estoy para contarte mas. Si quieres mas info, seguinos en IG: {{instagramUrl}}",
+    "softCloseReply": "Entendido. Si mas adelante te interesa, aca estoy para contarte mas. Mira tambien nuestro IG {{instagramUrl}} — ahi encuentras testimonios reales, videos de las experiencias y mas contenido de Andean Scapes.",
     "handoffMessage": "Perfecto {{name}}! Confirmo el cupo y te paso los datos de pago. Te escribo en un toque.",
     "repairPriceNotPresented": "Genial {{name}}! El plan en pareja queda en ${{couplePrice}} COP, todo incluido (alojamiento, comidas, mina). ¿Qué te parece? ¿Es lo que buscabas?",
     "repairPricePresented": "¿Qué te parece {{name}}? ¿Es lo que buscabas? ¿Te gustaría reservar?",
@@ -42,7 +42,8 @@
     "dateSelectedLimitedNoDate": "Perfecto, tomo nota de tu fecha tentativa. Te confirmo disponibilidad exacta. ¿Quieres que lo dejemos para revision de reserva?",
     "itineraryReply": "Claro {{name}}, te lo explico bien. {{itinerarySummary}}",
     "systemErrorRetry": "Perdon, se me fue la senal. Me repites lo ultimo?",
-    "galleryIntro": "Aqui un ejemplo de nuestra experiencia por si te animas."
+    "galleryIntro": "Aqui un ejemplo de nuestra experiencia por si te animas.",
+    "galleryFollowUp": "¿Te ves viviendo algo asi en Chivor?"
   },
   "en": {
     "optOutConfirmation": "Understood. We won't send more automated messages. If you need help later, you can message us again.",
@@ -62,7 +63,7 @@
     "messageLimitAfterPrice": "I'm here. To avoid confusing you about the price, let me review it properly and I'll confirm right away.",
     "messageLimitAfterPriceAfterHours": "I'm here. To avoid confusing you about the price, let me review it properly; because of the time in Colombia, I'll confirm tomorrow morning.",
     "messageLimitAfterPriceMorningHours": "I'm here. To avoid confusing you about the price, let me review it properly; because of the time in Colombia, I'll confirm after 9:00 a.m.",
-    "softCloseReply": "Understood. If you're interested later, I'm here to tell you more. For more info, follow us on IG: {{instagramUrl}}",
+    "softCloseReply": "Understood. If you're interested later, I'm here to tell you more. Also check out our IG {{instagramUrl}} — you'll find real testimonials, experience videos, and more Andean Scapes content there.",
     "handoffMessage": "Perfect {{name}}! I'll confirm your spot and send you the payment details. I'll be in touch shortly.",
     "repairPriceNotPresented": "Great {{name}}! Couple price is ${{couplePrice}} COP all-inclusive (lodging, meals, mine). What do you think? Is this what you were looking for?",
     "repairPricePresented": "What do you think, {{name}}? Is this what you were looking for? Would you like to book it?",
@@ -87,6 +88,7 @@
     "dateSelectedLimitedNoDate": "Perfect, I'll note your tentative date. I'll confirm exact availability. Would you like us to review it for reservation?",
     "itineraryReply": "Sure {{name}}, here is the clear version. {{itinerarySummary}}",
     "systemErrorRetry": "Sorry, bad connection. Can you say that again?",
-    "galleryIntro": "Here's a sample of our experience in case you're interested."
+    "galleryIntro": "Here's a sample of our experience in case you're interested.",
+    "galleryFollowUp": "Can you picture yourself doing this in Chivor?"
   }
 }

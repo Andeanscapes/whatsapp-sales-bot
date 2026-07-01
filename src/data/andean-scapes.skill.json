@@ -267,7 +267,7 @@
           "name": "2 Dias / 1 Noche — Mina Esmeralda",
           "duration": "2D/1N",
           "shortDescription": "Aventura minera en Chivor (Boyaca). 1 noche en Hacienda El Recuerdo, experiencia minera real en Mina La Union (~6h), taller esmeraldero. Todo incluido: alojamiento, 3 comidas, mina, charla. Pet-friendly.",
-          "benefits": "Plan ideal para quienes buscan una experiencia de aventura real en la mina. Dormis en la Hacienda, vivis la mina el dia central, y salis al dia siguiente. Intenso, autentico, bien aprovechado.",
+          "benefits": "Plan ideal para quienes buscan una experiencia de aventura real en la mina. Puede hacerse llegando temprano en la manana para completar la mina ese mismo dia, o llegando con calma para tomar la charla minera al llegar y hacer la mina el segundo dia en la manana, regresando a Chivor al final del dia. Intenso, autentico, bien aprovechado.",
           "keywords": ["mina", "esmeralda", "emerald", "mining", "chivor", "mineria", "2d", "2 dias", "2 días", "1 noche", "un dia", "una noche", "minera"],
           "imageId": "emerald_mining_preview_1"
         },
@@ -394,7 +394,7 @@
           "lang": "es",
           "intent": "arrival",
           "question": "¿A qué hora debo llegar?",
-          "answer": "El tour empieza y termina en Chivor. Recomendamos salir de Bogota minimo 5 horas antes del tour, o maximo a las 2:00 pm para evitar manejar de noche en zona rural. Si llegas el dia anterior al tour, aplica el mismo horario: llega antes de las 2pm. Si tenes vehiculo propio, podes llegar directamente a la Hacienda El Recuerdo. Recorda validar el estado de las vias antes de viajar."
+          "answer": "El tour empieza y termina en Chivor. En el plan 2D/1N hay dos formas de organizarlo: si llegas temprano en la manana, puedes hacer la experiencia minera ese mismo dia; si prefieres llegar con calma, haces la charla minera al llegar y al segundo dia en la manana haces la mina, regresando a Chivor al final del dia. Recomendamos salir de Bogota minimo 5 horas antes o maximo a las 2:00 pm para evitar manejar de noche en zona rural. Recorda validar el estado de las vias antes de viajar."
         },
         {
           "lang": "en",

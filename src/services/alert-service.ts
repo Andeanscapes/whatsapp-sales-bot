@@ -44,6 +44,12 @@ function wasOwnerAlertedToday(repos: Repositories, customerPhone: string, alertT
   return repos.ownerAlert.wasAlertedToday(customerPhone, alertType);
 }
 
+function leadTemperatureEmoji(score: number): string {
+  if (score >= 60) return '🔥';
+  if (score >= 30) return '🌡️';
+  return '🧊';
+}
+
 export async function sendAlert(request: AlertRequest, repos: Repositories): Promise<void> {
   const alertType = request.intent === 'reservation_handoff' || request.intent === 'reservation_intent' || request.intent === 'unsafe_reservation_blocked' || request.intent === 'policy_violation_blocked' || request.intent === 'system_error'
     ? request.intent
@@ -61,6 +67,7 @@ export async function sendAlert(request: AlertRequest, repos: Repositories): Pro
   const assignedLine = assignLine(repos, request.customerPhone);
 
   let body = template
+    .replace('{{leadEmoji}}', leadTemperatureEmoji(request.score))
     .replace('{{score}}', String(request.score))
     .replaceAll('{{customerPhone}}', request.customerPhone)
     .replace('{{name}}', request.name ?? 'unknown')

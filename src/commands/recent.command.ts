@@ -1,5 +1,6 @@
 import type { ConversationSummary } from '../db/repositories/types.js';
 import { resolveCallerLineId } from '../services/access-control.js';
+import { getReportExcludedPhones } from '../services/report-exclusions.js';
 import type { CommandContext } from './index.js';
 
 function formatRecent(conversations: ConversationSummary[]): string {
@@ -19,6 +20,6 @@ function formatRecent(conversations: ConversationSummary[]): string {
 export async function recentHandler(ctx: CommandContext): Promise<string> {
   const limit = parseInt(ctx.args[0], 10) || 5;
   const lineId = resolveCallerLineId(ctx.chatId);
-  const conversations = ctx.repos.stats.getRecentConversations(limit, lineId);
+  const conversations = ctx.repos.stats.getRecentInboundAfterFirstReply(limit, lineId, getReportExcludedPhones());
   return formatRecent(conversations);
 }
