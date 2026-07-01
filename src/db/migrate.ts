@@ -66,6 +66,11 @@ export function migrate(db: Database.Database): void {
   } catch {
     // column already exists — safe to ignore
   }
+  try {
+    db.exec('ALTER TABLE conversations ADD COLUMN follow_up_sent_at TEXT');
+  } catch {
+    // column already exists — safe to ignore
+  }
   db.exec(`CREATE TABLE IF NOT EXISTS bridge_sessions (
     agent_chat_id TEXT PRIMARY KEY,
     customer_phone TEXT NOT NULL,

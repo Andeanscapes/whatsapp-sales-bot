@@ -8,6 +8,7 @@ import { logger } from './config/logger.js';
 import { startTelegramBot } from './services/telegram-bot.js';
 import { getRoutingConfig } from './services/lead-routing.js';
 import { setupGlobalErrorHandlers, setErrorRepos, pruneOldErrors } from './services/error-logger.js';
+import { startFollowUpScheduler } from './services/follow-up-service.js';
 
 async function runStartupDiagnostics(): Promise<void> {
   // WhatsApp phone number info — validates token + phone number ID
@@ -82,24 +83,29 @@ async function start() {
   await app.listen({ host: env.HOST, port: env.PORT });
   logger.info({ host: env.HOST, port: env.PORT }, 'server started');
 
-  // Non-blocking: diagnostics make external Graph API calls; never delay startup.
-  void runStartupDiagnostics();
+  if (env.STARTUP_DIAGNOSTICS_ENABLED) {
+    // Non-blocking: diagnostics make external Graph API calls; never delay startup.
+    void runStartupDiagnostics();
+  }
 
   let telegramInterval: ReturnType<typeof setInterval> | undefined;
+  let followUpInterval: ReturnType<typeof setInterval> | undefined;
   try {
     telegramInterval = await startTelegramBot(repos);
+    followUpInterval = startFollowUpScheduler(repos);
   } catch (err) {
     logger.error(err, '[INIT] failed to start Telegram bot');
   }
 
-  process.on('SIGTERM', gracefulShutdown('SIGTERM', db, app, telegramInterval));
-  process.on('SIGINT', gracefulShutdown('SIGINT', db, app, telegramInterval));
+  process.on('SIGTERM', gracefulShutdown('SIGTERM', db, app, telegramInterval, followUpInterval));
+  process.on('SIGINT', gracefulShutdown('SIGINT', db, app, telegramInterval, followUpInterval));
 }
 
-function gracefulShutdown(signal: string, db: { close: () => void }, app: { close: () => Promise<void> }, telegramInterval?: ReturnType<typeof setInterval>) {
+function gracefulShutdown(signal: string, db: { close: () => void }, app: { close: () => Promise<void> }, telegramInterval?: ReturnType<typeof setInterval>, followUpInterval?: ReturnType<typeof setInterval>) {
   return async () => {
     logger.info({ signal }, 'shutting down gracefully');
     if (telegramInterval) clearInterval(telegramInterval);
+    if (followUpInterval) clearInterval(followUpInterval);
     try {
       await app.close();
     } catch (err) {

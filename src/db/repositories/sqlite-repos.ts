@@ -16,6 +16,7 @@ import type {
   StatsRepository,
   DailyStats,
   ConversationSummary,
+  FollowUpCandidate,
   PhaseBreakdown,
   LineLeadCount,
   StoredMessage,
@@ -40,7 +41,7 @@ const ALLOWED_CONVERSATION_COLUMNS = new Set([
   'price_given_at', 'soft_closed_at',
   'sales_phase', 'lead_intent',
   'assigned_line_id', 'assigned_agent_chat', 'conversation_mode',
-  'converted_at', 'gallery_nudged_at'
+  'converted_at', 'gallery_nudged_at', 'follow_up_sent_at'
 ]);
 
 export class SqliteConversationRepo implements ConversationRepository {
@@ -230,6 +231,38 @@ export class SqliteConversationRepo implements ConversationRepository {
   setBooked(phone: string): void {
     this.upsert(phone, { converted_at: new Date().toISOString() });
   }
+
+  getFollowUpCandidates(cutoffIso: string, serviceWindowStartIso: string, limit: number): FollowUpCandidate[] {
+    const rows = this.db.prepare(`
+      SELECT c.customer_phone, c.language
+      FROM conversations c
+      WHERE c.opt_out_at IS NULL
+        AND c.handed_off_at IS NULL
+        AND c.soft_closed_at IS NULL
+        AND c.follow_up_sent_at IS NULL
+        AND COALESCE(c.conversation_mode, 'bot') = 'bot'
+        AND (
+          SELECT m.direction FROM messages m
+          WHERE m.customer_phone = c.customer_phone
+          ORDER BY m.created_at DESC, m.id DESC LIMIT 1
+        ) = 'outbound'
+        AND (
+          SELECT MAX(m.created_at) FROM messages m
+          WHERE m.customer_phone = c.customer_phone AND m.direction = 'outbound'
+        ) <= ?
+        AND (
+          SELECT MAX(m.created_at) FROM messages m
+          WHERE m.customer_phone = c.customer_phone AND m.direction = 'inbound'
+        ) >= ?
+      ORDER BY c.last_seen_at ASC
+      LIMIT ?
+    `).all(cutoffIso, serviceWindowStartIso, limit) as Array<{ customer_phone: string; language: 'es' | 'en' | null }>;
+    return rows.map(r => ({ customerPhone: r.customer_phone, language: r.language }));
+  }
+
+  markFollowUpSent(phone: string): void {
+    this.upsert(phone, { follow_up_sent_at: new Date().toISOString() });
+  }
 }
 
 export class SqliteBridgeSessionRepo implements BridgeSessionRepository {
@@ -305,11 +338,25 @@ export class SqliteMessageRepo implements MessageRepository {
     ).all(phone, limit) as { body: string | null }[];
   }
 
+  getLastInboundBody(phone: string): string | null {
+    const row = this.db.prepare(
+      "SELECT body FROM messages WHERE customer_phone = ? AND direction = 'inbound' ORDER BY created_at DESC, id DESC LIMIT 1"
+    ).get(phone) as { body: string | null } | undefined;
+    return row?.body ?? null;
+  }
+
   getLastInboundAt(phone: string): string | null {
     const row = this.db.prepare(
       "SELECT created_at FROM messages WHERE customer_phone = ? AND direction = 'inbound' ORDER BY created_at DESC, id DESC LIMIT 1"
     ).get(phone) as { created_at: string } | undefined;
     return row?.created_at ?? null;
+  }
+
+  getLastMessageDirection(phone: string): 'inbound' | 'outbound' | null {
+    const row = this.db.prepare(
+      "SELECT direction FROM messages WHERE customer_phone = ? ORDER BY created_at DESC, id DESC LIMIT 1"
+    ).get(phone) as { direction: 'inbound' | 'outbound' } | undefined;
+    return row?.direction ?? null;
   }
 
   countOutboundSince(phone: string, sinceIso: string): number {
@@ -483,21 +530,22 @@ export class SqliteStatsRepo implements StatsRepository {
     };
   }
 
-  getDailyStats(todayStart: string, hotLeadThreshold: number): DailyStats {
+  getDailyStats(todayStart: string, hotLeadThreshold: number, excludedPhones: string[] = []): DailyStats {
     const today = new Date().toISOString().slice(0, 10);
-    return this.getPeriodStats(today, todayStart, null, hotLeadThreshold);
+    return this.getPeriodStats(today, todayStart, null, hotLeadThreshold, excludedPhones);
   }
 
-  getPeriodStats(label: string, sinceIso: string, untilIso: string | null, hotLeadThreshold: number): DailyStats {
+  getPeriodStats(label: string, sinceIso: string, untilIso: string | null, hotLeadThreshold: number, excludedPhones: string[] = []): DailyStats {
+    const params = { threshold: hotLeadThreshold, since: sinceIso, until: untilIso, excludedJson: JSON.stringify(excludedPhones) };
     // Cumulative-state snapshot (all-time): represents where the funnel stands
     // now, not flow within the period. /report and /status rely on these totals.
     // The `period` ('hoy'|'todo'|...) does not bound these.
     const cumulative = this.db.prepare(`
       SELECT
-        (SELECT COUNT(*) FROM conversations) as total_conversations,
-        (SELECT COUNT(*) FROM conversations WHERE opt_out_at IS NULL) as active_conversations,
-        (SELECT COUNT(*) FROM conversations WHERE lead_score >= @threshold AND opt_out_at IS NULL) as hot_leads
-    `).get({ threshold: hotLeadThreshold }) as {
+        (SELECT COUNT(*) FROM conversations WHERE customer_phone NOT IN (SELECT value FROM json_each(@excludedJson))) as total_conversations,
+        (SELECT COUNT(*) FROM conversations WHERE opt_out_at IS NULL AND customer_phone NOT IN (SELECT value FROM json_each(@excludedJson))) as active_conversations,
+        (SELECT COUNT(*) FROM conversations WHERE lead_score >= @threshold AND opt_out_at IS NULL AND customer_phone NOT IN (SELECT value FROM json_each(@excludedJson))) as hot_leads
+    `).get(params) as {
       total_conversations: number;
       active_conversations: number;
       hot_leads: number;
@@ -506,15 +554,15 @@ export class SqliteStatsRepo implements StatsRepository {
     // Flow metrics bounded to [since, until): what happened during the period.
     const flow = this.db.prepare(`
       SELECT
-        (SELECT COUNT(*) FROM conversations WHERE first_seen_at >= @since AND (@until IS NULL OR first_seen_at < @until)) as new_conversations,
-        (SELECT COUNT(*) FROM messages WHERE direction = 'inbound' AND created_at >= @since AND (@until IS NULL OR created_at < @until)) as messages_inbound,
-        (SELECT COUNT(*) FROM messages WHERE direction = 'outbound' AND created_at >= @since AND (@until IS NULL OR created_at < @until)) as messages_outbound,
-        (SELECT COUNT(*) FROM conversations WHERE opt_out_at >= @since AND (@until IS NULL OR opt_out_at < @until)) as opted_out,
-        (SELECT COUNT(*) FROM conversations WHERE handed_off_at >= @since AND (@until IS NULL OR handed_off_at < @until)) as handed_off,
-        (SELECT COUNT(*) FROM conversations WHERE soft_closed_at >= @since AND (@until IS NULL OR soft_closed_at < @until)) as soft_closed,
-        (SELECT COUNT(*) FROM conversations WHERE converted_at >= @since AND (@until IS NULL OR converted_at < @until)) as booked_today,
-        (SELECT COALESCE(SUM(estimated_cost_usd), 0) FROM ai_usage WHERE created_at >= @since AND (@until IS NULL OR created_at < @until)) as ai_spent_usd
-    `).get({ since: sinceIso, until: untilIso }) as {
+        (SELECT COUNT(*) FROM conversations WHERE customer_phone NOT IN (SELECT value FROM json_each(@excludedJson)) AND first_seen_at >= @since AND (@until IS NULL OR first_seen_at < @until)) as new_conversations,
+        (SELECT COUNT(*) FROM messages WHERE customer_phone NOT IN (SELECT value FROM json_each(@excludedJson)) AND direction = 'inbound' AND created_at >= @since AND (@until IS NULL OR created_at < @until)) as messages_inbound,
+        (SELECT COUNT(*) FROM messages WHERE customer_phone NOT IN (SELECT value FROM json_each(@excludedJson)) AND direction = 'outbound' AND created_at >= @since AND (@until IS NULL OR created_at < @until)) as messages_outbound,
+        (SELECT COUNT(*) FROM conversations WHERE customer_phone NOT IN (SELECT value FROM json_each(@excludedJson)) AND opt_out_at >= @since AND (@until IS NULL OR opt_out_at < @until)) as opted_out,
+        (SELECT COUNT(*) FROM conversations WHERE customer_phone NOT IN (SELECT value FROM json_each(@excludedJson)) AND handed_off_at >= @since AND (@until IS NULL OR handed_off_at < @until)) as handed_off,
+        (SELECT COUNT(*) FROM conversations WHERE customer_phone NOT IN (SELECT value FROM json_each(@excludedJson)) AND soft_closed_at >= @since AND (@until IS NULL OR soft_closed_at < @until)) as soft_closed,
+        (SELECT COUNT(*) FROM conversations WHERE customer_phone NOT IN (SELECT value FROM json_each(@excludedJson)) AND converted_at >= @since AND (@until IS NULL OR converted_at < @until)) as booked_today,
+        (SELECT COALESCE(SUM(estimated_cost_usd), 0) FROM ai_usage WHERE customer_phone NOT IN (SELECT value FROM json_each(@excludedJson)) AND created_at >= @since AND (@until IS NULL OR created_at < @until)) as ai_spent_usd
+    `).get(params) as {
       new_conversations: number;
       messages_inbound: number;
       messages_outbound: number;
@@ -560,6 +608,28 @@ export class SqliteStatsRepo implements StatsRepository {
     return rows.map(SqliteStatsRepo.mapRowToSummary);
   }
 
+  getRecentInboundAfterFirstReply(limit: number, lineId?: string | null, excludedPhones: string[] = []): ConversationSummary[] {
+    const lineFilter = lineId ? 'AND (c.assigned_line_id = @lineId OR c.assigned_line_id IS NULL)' : '';
+    const rows = this.db.prepare(`
+      SELECT c.customer_phone, c.collected_name, c.lead_score, c.sales_phase,
+             c.collected_plan, c.collected_people, c.collected_date, MAX(m.created_at) AS last_seen_at
+      FROM conversations c
+      JOIN messages m ON m.customer_phone = c.customer_phone
+      WHERE c.opt_out_at IS NULL
+        ${lineFilter}
+        AND c.customer_phone NOT IN (SELECT value FROM json_each(@excludedJson))
+        AND m.direction = 'inbound'
+        AND m.created_at > COALESCE((
+          SELECT MIN(created_at) FROM messages
+          WHERE customer_phone = c.customer_phone AND direction = 'outbound'
+        ), '9999-12-31T00:00:00.000Z')
+      GROUP BY c.customer_phone
+      ORDER BY last_seen_at DESC
+      LIMIT @limit
+    `).all({ lineId: lineId ?? null, excludedJson: JSON.stringify(excludedPhones), limit }) as SummaryDbRow[];
+    return rows.map(SqliteStatsRepo.mapRowToSummary);
+  }
+
   getTopLeads(limit: number, threshold: number, lineId?: string | null): ConversationSummary[] {
     const lineFilter = lineId ? 'AND (assigned_line_id = ? OR assigned_line_id IS NULL)' : '';
     const stmt = this.db.prepare(`
@@ -588,7 +658,7 @@ export class SqliteStatsRepo implements StatsRepository {
     return rows.map(r => ({ lineId: r.line_id, total: r.total, hot: r.hot, booked: r.booked }));
   }
 
-  getLeadCountsByLineForPeriod(sinceIso: string, untilIso: string | null, hotLeadThreshold: number): LineLeadCount[] {
+  getLeadCountsByLineForPeriod(sinceIso: string, untilIso: string | null, hotLeadThreshold: number, excludedPhones: string[] = []): LineLeadCount[] {
     const rows = this.db.prepare(`
       SELECT COALESCE(assigned_line_id, 'unassigned') as line_id,
              SUM(CASE WHEN first_seen_at >= ? AND (? IS NULL OR first_seen_at < ?) THEN 1 ELSE 0 END) as total,
@@ -596,6 +666,7 @@ export class SqliteStatsRepo implements StatsRepository {
              SUM(CASE WHEN converted_at >= ? AND (? IS NULL OR converted_at < ?) THEN 1 ELSE 0 END) as booked
       FROM conversations
       WHERE opt_out_at IS NULL
+        AND customer_phone NOT IN (SELECT value FROM json_each(?))
         AND (
           (first_seen_at >= ? AND (? IS NULL OR first_seen_at < ?))
           OR (converted_at >= ? AND (? IS NULL OR converted_at < ?))
@@ -606,6 +677,7 @@ export class SqliteStatsRepo implements StatsRepository {
       sinceIso, untilIso, untilIso,
       hotLeadThreshold, sinceIso, untilIso, untilIso,
       sinceIso, untilIso, untilIso,
+      JSON.stringify(excludedPhones),
       sinceIso, untilIso, untilIso,
       sinceIso, untilIso, untilIso,
     ) as { line_id: string; total: number; hot: number; booked: number }[];
@@ -773,7 +845,7 @@ export class SqliteTranscriptRepo implements TranscriptRepository {
     });
   }
 
-  getDayActivity(sinceIso: string, untilIso: string | null): DayActivityResult {
+  getDayActivity(sinceIso: string, untilIso: string | null, excludedPhones: string[] = []): DayActivityResult {
     interface ActiveConvRow {
       customer_phone: string;
       language: 'es' | 'en' | null;
@@ -818,9 +890,10 @@ export class SqliteTranscriptRepo implements TranscriptRepository {
       JOIN messages m ON m.customer_phone = c.customer_phone
       WHERE m.created_at >= @since
         AND (@until IS NULL OR m.created_at < @until)
+        AND c.customer_phone NOT IN (SELECT value FROM json_each(@excludedJson))
       GROUP BY c.customer_phone
       ORDER BY c.last_seen_at DESC
-    `).all({ since: sinceIso, until: untilIso }) as ActiveConvRow[];
+    `).all({ since: sinceIso, until: untilIso, excludedJson: JSON.stringify(excludedPhones) }) as ActiveConvRow[];
 
     const messagesStmt = this.db.prepare(`
       SELECT direction, message_type, body, created_at

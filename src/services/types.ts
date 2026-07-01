@@ -14,6 +14,7 @@ export interface ProcessMessageInput {
   customerPhone: string;
   message: string;
   messageId?: string;
+  storeInbound?: boolean;
 }
 
 export interface ProcessMessageOutput {

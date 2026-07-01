@@ -619,7 +619,22 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
                     logSystemError('whatsapp_send', 'error', err, { phone: msg.from, flow: 'gallery_image' });
                   }
                 }
-                if (galleryImageSent) recordGalleryNudge(repos, msg.from);
+                if (galleryImageSent) {
+                  recordGalleryNudge(repos, msg.from);
+                  const followUp = skills.fallbackReplies[lang].galleryFollowUp;
+                  try {
+                    await sendText(msg.from, followUp);
+                    repos.message.addMessage({
+                      customer_phone: msg.from,
+                      direction: 'outbound',
+                      message_type: 'text',
+                      body: followUp,
+                      created_at: new Date().toISOString(),
+                    });
+                  } catch (err) {
+                    logSystemError('whatsapp_send', 'error', err, { phone: msg.from, flow: 'gallery_followup' });
+                  }
+                }
               }
             }
           }
