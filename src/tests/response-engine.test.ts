@@ -382,7 +382,7 @@ describe('processMessage', () => {
 
     expect(result.reply).toContain('https://www.instagram.com/andean_scapes/');
     expect(result.usedAi).toBe(false);
-    expect(result.shouldSendGalleryImages).toBe(true);
+    expect(result.shouldSendGalleryImages).toBe(false);
   });
 
   it('filters price rejection from budget-related messages', async () => {
@@ -1951,7 +1951,66 @@ describe('processMessage', () => {
 
     expect(result.reply).toContain('Boyaca');
     expect(result.reply).not.toMatch(/\b(?:mina|esmeralda|chivor|hacienda|apicultura|ganader[ií]a|artesan[ií]a|R[aá]quira)\b/i);
-    expect(result.reply).toMatch(/como te llamas/i);
+    expect(result.reply).not.toMatch(/como te llamas/i);
+    expect(result.reply).toMatch(/pareja|grupo|solo/i);
+  });
+
+  it('keeps first-contact micro-question in English', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: {
+        reply: 'Hello! I am Heinner from Andean Scapes. What is your name?',
+        intent: 'general',
+        lead_score_delta: 5,
+        should_send_image: false,
+        needs_human: false,
+        missing_fields: [],
+        collected_fields: {},
+      },
+      promptTokens: 500,
+      completionTokens: 40,
+    }));
+
+    const result = await processMessage({ repos, customerPhone: '573001113021', message: 'Hello' });
+
+    expect(result.reply).not.toMatch(/what is your name/i);
+    expect(result.reply).not.toMatch(/experiencia ser[ií]a/i);
+    expect(result.reply).toMatch(/alone, as a couple, or for a group/i);
+  });
+
+  it('strips repeated qualification questions for already collected fields', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001113022';
+    repos.conversation.upsert(phone, {
+      collected_name: 'Ana',
+      collected_people: 2,
+      collected_date: 'agosto',
+      collected_transport_need: 'own',
+    });
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: {
+        reply: 'Perfecto Ana. ¿Cuántas personas serían? ¿Qué fecha tienes en mente? ¿Vienen en carro propio o necesitan transporte?',
+        intent: 'general',
+        lead_score_delta: 5,
+        should_send_image: false,
+        needs_human: false,
+        missing_fields: [],
+        collected_fields: {},
+      },
+      promptTokens: 500,
+      completionTokens: 40,
+    }));
+
+    const result = await processMessage({ repos, customerPhone: phone, message: 'me interesa' });
+
+    expect(result.reply).toContain('Perfecto Ana');
+    expect(result.reply).not.toMatch(/cu[aá]ntas personas/i);
+    expect(result.reply).not.toMatch(/fecha tienes/i);
+    expect(result.reply).not.toMatch(/carro propio o necesitan transporte/i);
   });
 
   it('asks plan after name and replaces name token', async () => {
@@ -2305,14 +2364,14 @@ describe('processMessage', () => {
 
     it('caps gallery images per send', () => {
       const previous = env.MAX_GALLERY_IMAGES_PER_SEND;
-      env.MAX_GALLERY_IMAGES_PER_SEND = 15;
+      env.MAX_GALLERY_IMAGES_PER_SEND = 10;
       try {
         const selected = selectGalleryImages(Array.from({ length: 30 }, (_, idx) => ({
           url: `https://cdn.andeanscapes.com/${idx}.jpg`,
           caption: String(idx),
         })));
 
-        expect(selected).toHaveLength(15);
+        expect(selected).toHaveLength(10);
       } finally {
         env.MAX_GALLERY_IMAGES_PER_SEND = previous;
       }
@@ -2320,7 +2379,7 @@ describe('processMessage', () => {
 
     it('returns all gallery images when fewer than cap', () => {
       const previous = env.MAX_GALLERY_IMAGES_PER_SEND;
-      env.MAX_GALLERY_IMAGES_PER_SEND = 15;
+      env.MAX_GALLERY_IMAGES_PER_SEND = 10;
       try {
         const selected = selectGalleryImages([
           { url: 'https://cdn.andeanscapes.com/1.jpg', caption: '1' },

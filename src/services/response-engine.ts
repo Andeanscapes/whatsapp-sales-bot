@@ -42,7 +42,7 @@ import {
   isGalleryConfirmation,
 } from './reply-guard.js';
 import { assignLine, isReferralLine } from './lead-routing.js';
-import { INPUT_COST_PER_TOKEN, MS_72H, OUTPUT_COST_PER_TOKEN } from './constants.js';
+import { INPUT_COST_PER_TOKEN, MS_72H, OUTPUT_COST_PER_TOKEN, SCORE_GALLERY_TRIGGER_THRESHOLD } from './constants.js';
 import type { RecentMessage } from '../db/repositories/types.js';
 
 export {
@@ -57,6 +57,55 @@ export {
 export type { ProcessMessageInput, ProcessMessageOutput };
 
 const MAX_INBOUND_CHARS = 1500;
+
+function shouldAutoSendGallery(currentScore: number, isExplicitRequest: boolean): boolean {
+  if (isExplicitRequest) return true;
+  return currentScore >= SCORE_GALLERY_TRIGGER_THRESHOLD;
+}
+
+function stripReaskedQuestions(reply: string, merged: MergedQualification): string {
+  let result = reply;
+
+  if (merged.nombre) {
+    const nameAskPattern = new RegExp(
+      String.raw`(?:¿?(?:y\s+)?(?:c[oó]mo\s+te\s+llamas|c[uú]al\s+es\s+tu\s+nombre|con\s+qui[eé]n\s+tengo\s+el\s+gusto|me\s+(?:dices|recuerdas|confirmas)\s+tu\s+nombre|y\s+tu\s+nombre|tu\s+nombre\s+es|como\s+te\s+llamo|what'?s\s+your\s+name|what\s+is\s+your\s+name|may\s+i\s+ask\s+your\s+name|before\s+we\s+continue,?\s*(?:what'?s\s+your\s+name|what\s+is\s+your\s+name)|antes\s+de\s+seguir,?\s*¿?(?:c[oó]mo\s+te\s+llamas|c[uú]al\s+es\s+tu\s+nombre))[?¿]?\s*\.?)`,
+      'gi'
+    );
+    result = result.replace(nameAskPattern, '');
+  }
+
+  if (merged.personas != null) {
+    result = result.replace(/(?:¿?(?:para\s+cu[aá]ntas\s+personas\s+ser[ií]a|cu[aá]ntas\s+personas\s+(?:ser[ií]an|son)|vienes?\s+solo\s+o\s+(?:acompa[ñn]ado|con\s+alguien)|la\s+experiencia\s+ser[ií]a\s+para\s+ti\s+solo,?\s+en\s+pareja\s+o\s+para\s+un\s+grupo|how\s+many\s+people|is\s+the\s+experience\s+for\s+you\s+alone,?\s+as\s+a\s+couple,?\s+or\s+for\s+a\s+group)[?¿]?\s*\.?)/gi, '');
+  }
+
+  if (merged.fecha != null) {
+    result = result.replace(/(?:¿?(?:qu[eé]\s+fecha\s+(?:tienes|tienen)\s+en\s+mente|tienes?\s+alguna\s+fecha\s+(?:tentativa|en\s+mente)|para\s+qu[eé]\s+fecha|cu[aá]ndo\s+(?:quieres|quieren|te\s+gustar[ií]a)\s+ir|what\s+date\s+do\s+you\s+have\s+in\s+mind|do\s+you\s+have\s+a\s+date\s+in\s+mind|when\s+would\s+you\s+like\s+to\s+go)[?¿]?\s*\.?)/gi, '');
+  }
+
+  if (merged.transporte != null) {
+    result = result.replace(/(?:¿?(?:vienen?\s+en\s+carro\s+propio\s+o\s+necesitan\s+transporte|tienen?\s+carro\s+propio\s+o\s+necesitan\s+transporte|c[oó]mo\s+(?:llegar[ií]an|van\s+a\s+llegar)|necesitan\s+transporte\s+desde\s+bogot[aá]|are\s+you\s+arriving\s+on\s+your\s+own\s+or\s+do\s+you\s+need\s+transport|do\s+you\s+need\s+transport(?:\s+from\s+bogota)?|how\s+would\s+you\s+get\s+there)[?¿]?\s*\.?)/gi, '');
+  }
+
+  result = result.replace(/\n{3,}/g, '\n\n').trim();
+
+  return result;
+}
+
+function enforceMicroQuestionFirstContact(reply: string, isFirstContact: boolean, lang: 'es' | 'en'): string {
+  if (!isFirstContact) return reply;
+
+  const namePattern = /(?:¿?(?:c[oó]mo\s+te\s+llamas|c[uú]al\s+es\s+tu\s+nombre|con\s+qui[eé]n\s+tengo\s+el\s+gusto|what'?s\s+your\s+name|what\s+is\s+your\s+name|may\s+i\s+ask\s+your\s+name)[?¿]?\s*)/gi;
+
+  if (namePattern.test(reply)) {
+    const cleaned = reply.replace(namePattern, '').replace(/\n{3,}/g, '\n\n').trim();
+    const question = lang === 'en'
+      ? 'Would the experience be for you alone, as a couple, or for a group?'
+      : '¿La experiencia sería para ti solo, en pareja o para un grupo?';
+    return cleaned + '\n\n' + question;
+  }
+
+  return reply;
+}
 
 function getSystemErrorRetry(lang: 'es' | 'en' | null): string {
   return getSkills().fallbackReplies[lang ?? 'es'].systemErrorRetry;
@@ -312,7 +361,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   if (isSoftCloseMessage(message)) {
     if (!softClosedAt) repos.conversation.upsert(customerPhone, { soft_closed_at: new Date().toISOString() });
     const declineScoreAlert = currentScore >= skills.salesStrategy.hotLeadThreshold;
-    return { reply: skills.fallbackReplies[lang].softCloseReply.replace('{{instagramUrl}}', instagramUrl(skills)), shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: declineScoreAlert, ownerAlertType: declineScoreAlert ? 'decline_review' : undefined, shouldSendOwnerImage: false, shouldSendGalleryImages: !galleryAlreadyNudged, shouldSendImage: false, priceJustGiven: false };
+    return { reply: skills.fallbackReplies[lang].softCloseReply.replace('{{instagramUrl}}', instagramUrl(skills)), shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: declineScoreAlert, ownerAlertType: declineScoreAlert ? 'decline_review' : undefined, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
   }
 
   const lastAssistantQuestion = getLastAssistantQuestion(repos, customerPhone);
@@ -341,7 +390,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   const preLimitReservationIntent = !!preLimitPriceRow && isReservationIntentOrConfirmation(message, lastAssistantQuestion);
 
   if (preLimitPriceRow && isPartnerConsultPause(message)) {
-    return { reply: buildPartnerConsultSummary(dbQualification, lang, skills), shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: !galleryAlreadyNudged, shouldSendImage: false, priceJustGiven: false };
+    return { reply: buildPartnerConsultSummary(dbQualification, lang, skills), shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: !galleryAlreadyNudged && shouldAutoSendGallery(currentScore, false), shouldSendImage: false, priceJustGiven: false };
   }
 
   const limits = checkTimeWindow(repos, customerPhone);
@@ -352,7 +401,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
       const overrideScore = Math.max(currentScore, skills.salesStrategy.urgentLeadThreshold);
       repos.conversation.upsert(customerPhone, { lead_score: overrideScore });
       const handoffReply = safeReservationHandoff(dbQualification, skills.fallbackReplies[lang], lang);
-      return { reply: routeHumanHandoff(repos, customerPhone, dbQualification, lang, skills, handoffReply), shouldSendReply: true, leadScore: overrideScore, usedAi: false, shouldAlertOwner: true, ownerAlertType: 'reservation_handoff', shouldSendOwnerImage: false, shouldSendGalleryImages: !galleryAlreadyNudged, shouldSendImage: false, priceJustGiven: false };
+      return { reply: routeHumanHandoff(repos, customerPhone, dbQualification, lang, skills, handoffReply), shouldSendReply: true, leadScore: overrideScore, usedAi: false, shouldAlertOwner: true, ownerAlertType: 'reservation_handoff', shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
     }
     if (currentScore >= skills.salesStrategy.hotLeadThreshold || (!!preLimitPriceRow && currentScore >= 20)) {
       activateHumanFallback(repos, customerPhone);
@@ -415,6 +464,8 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
 
   let replyText = llmTurn.reply || '';
   replyText = stripHandoffPhrases(replyText);
+  replyText = stripReaskedQuestions(replyText, merged);
+  replyText = enforceMicroQuestionFirstContact(replyText, isFirstContact, lang);
 
   const exp = getActiveExperience(skills);
   const pricingAvailable = isPricingAvailable(exp);
@@ -458,7 +509,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
 
   if (qComplete && pricePresented && (reservationIntent || recentReservation || llmReadyToBook)) {
     needsHumanEffective = true;
-    shouldSendGallery = !galleryAlreadyNudged;
+    shouldSendGallery = !galleryAlreadyNudged && shouldAutoSendGallery(hybrid.score, false);
     repos.conversation.setHandedOff(customerPhone);
     finalScore = Math.max(hybrid.score, skills.salesStrategy.urgentLeadThreshold);
     repos.conversation.upsert(customerPhone, { lead_score: finalScore });
@@ -484,7 +535,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     if (qComplete && pricePresented) {
       replyText = safeReservationHandoff(merged, skills.fallbackReplies[lang], lang);
       needsHumanEffective = true;
-      shouldSendGallery = !galleryAlreadyNudged;
+      shouldSendGallery = !galleryAlreadyNudged && shouldAutoSendGallery(hybrid.score, false);
       repos.conversation.setHandedOff(customerPhone);
       replyText = routeHumanHandoff(repos, customerPhone, merged, lang, skills, replyText);
     } else {
@@ -504,7 +555,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     if (qComplete && pricePresented) {
       logger.warn({ phone: customerPhone }, '[BOT] forced handoff — reservation intent with complete qualification');
       needsHumanEffective = true;
-      shouldSendGallery = !galleryAlreadyNudged;
+      shouldSendGallery = !galleryAlreadyNudged && shouldAutoSendGallery(hybrid.score, false);
       repos.conversation.setHandedOff(customerPhone);
       finalScore = Math.max(hybrid.score, skills.salesStrategy.urgentLeadThreshold);
       repos.conversation.upsert(customerPhone, { lead_score: finalScore });
@@ -538,7 +589,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   if (!needsHumanEffective && pricePresented && !galleryAlreadyNudged) {
     const fieldCount = [merged.nombre, merged.plan, merged.personas, merged.fecha, merged.transporte]
       .filter(v => v != null).length;
-    if (fieldCount >= 3) {
+    if (fieldCount >= 3 && shouldAutoSendGallery(finalScore, false)) {
       shouldSendGallery = true;
     }
   }
