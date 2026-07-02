@@ -138,6 +138,8 @@ export function buildSystemPrompt(skills: Skills, lang?: string, collectedFields
       `Safety & logistics value: ${tactics.safetyLogisticsValue || ''}`,
       `Against mass tourism: ${tactics.againstMassTourism || ''}`,
       `Authenticity & community: ${tactics.authenticityCommunity || ''}`,
+      `Follow-up reply strategy: ${tactics.followUpReplyStrategy || ''}`,
+      `Pain response strategy: ${tactics.painResponseStrategy || ''}`,
       `Invisible qualification: ${tactics.invisibleQualification || ''}`
     );
     if (pricingAvailable) {

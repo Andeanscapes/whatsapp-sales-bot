@@ -71,6 +71,38 @@ export function migrate(db: Database.Database): void {
   } catch {
     // column already exists — safe to ignore
   }
+  try {
+    db.exec('ALTER TABLE conversations ADD COLUMN lead_pain TEXT');
+  } catch {
+    // column already exists — safe to ignore
+  }
+  try {
+    db.exec('ALTER TABLE conversations ADD COLUMN lead_pain_detail TEXT');
+  } catch {
+    // column already exists — safe to ignore
+  }
+  try {
+    db.exec('ALTER TABLE conversations ADD COLUMN lead_pain_detected_at TEXT');
+  } catch {
+    // column already exists — safe to ignore
+  }
+  try {
+    db.exec('ALTER TABLE conversations ADD COLUMN follow_up_reply_count INTEGER DEFAULT 0');
+  } catch {
+    // column already exists — safe to ignore
+  }
+  db.exec(`CREATE TABLE IF NOT EXISTS follow_up_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    customer_phone TEXT NOT NULL,
+    sequence_number INTEGER NOT NULL,
+    stage TEXT NOT NULL,
+    sent_at TEXT,
+    replied_at TEXT,
+    score_before INTEGER DEFAULT 0,
+    score_after INTEGER,
+    detected_pain TEXT,
+    status TEXT NOT NULL DEFAULT 'sent'
+  )`);
   db.exec(`CREATE TABLE IF NOT EXISTS bridge_sessions (
     agent_chat_id TEXT PRIMARY KEY,
     customer_phone TEXT NOT NULL,

@@ -14,6 +14,7 @@ import {
   SqliteSystemErrorRepo,
   SqliteCustomerDataRepo,
   SqliteTranscriptRepo,
+  SqliteFollowUpEventRepo,
 } from './sqlite-repos.js';
 
 export function createRepositories(db: Database.Database): Repositories {
@@ -37,6 +38,7 @@ export function createRepositories(db: Database.Database): Repositories {
     systemErrors: new SqliteSystemErrorRepo(db),
     customerData: new SqliteCustomerDataRepo(db),
     transcripts: new SqliteTranscriptRepo(db),
+    followUpEvent: new SqliteFollowUpEventRepo(db),
     isPaused(): boolean {
       const row = db.prepare("SELECT value FROM bot_config WHERE key = 'paused'").get() as { value: string } | undefined;
       return row?.value === 'true';

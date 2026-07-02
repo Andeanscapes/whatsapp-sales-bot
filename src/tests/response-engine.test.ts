@@ -382,7 +382,7 @@ describe('processMessage', () => {
 
     expect(result.reply).toContain('https://www.instagram.com/andean_scapes/');
     expect(result.usedAi).toBe(false);
-    expect(result.shouldSendGalleryImages).toBe(true);
+    expect(result.shouldSendGalleryImages).toBe(false);
   });
 
   it('filters price rejection from budget-related messages', async () => {
@@ -1951,7 +1951,66 @@ describe('processMessage', () => {
 
     expect(result.reply).toContain('Boyaca');
     expect(result.reply).not.toMatch(/\b(?:mina|esmeralda|chivor|hacienda|apicultura|ganader[ií]a|artesan[ií]a|R[aá]quira)\b/i);
-    expect(result.reply).toMatch(/como te llamas/i);
+    expect(result.reply).not.toMatch(/como te llamas/i);
+    expect(result.reply).toMatch(/pareja|grupo|solo/i);
+  });
+
+  it('keeps first-contact micro-question in English', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: {
+        reply: 'Hello! I am Heinner from Andean Scapes. What is your name?',
+        intent: 'general',
+        lead_score_delta: 5,
+        should_send_image: false,
+        needs_human: false,
+        missing_fields: [],
+        collected_fields: {},
+      },
+      promptTokens: 500,
+      completionTokens: 40,
+    }));
+
+    const result = await processMessage({ repos, customerPhone: '573001113021', message: 'Hello' });
+
+    expect(result.reply).not.toMatch(/what is your name/i);
+    expect(result.reply).not.toMatch(/experiencia ser[ií]a/i);
+    expect(result.reply).toMatch(/alone, as a couple, or for a group/i);
+  });
+
+  it('strips repeated qualification questions for already collected fields', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001113022';
+    repos.conversation.upsert(phone, {
+      collected_name: 'Ana',
+      collected_people: 2,
+      collected_date: 'agosto',
+      collected_transport_need: 'own',
+    });
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: {
+        reply: 'Perfecto Ana. ¿Cuántas personas serían? ¿Qué fecha tienes en mente? ¿Vienen en carro propio o necesitan transporte?',
+        intent: 'general',
+        lead_score_delta: 5,
+        should_send_image: false,
+        needs_human: false,
+        missing_fields: [],
+        collected_fields: {},
+      },
+      promptTokens: 500,
+      completionTokens: 40,
+    }));
+
+    const result = await processMessage({ repos, customerPhone: phone, message: 'me interesa' });
+
+    expect(result.reply).toContain('Perfecto Ana');
+    expect(result.reply).not.toMatch(/cu[aá]ntas personas/i);
+    expect(result.reply).not.toMatch(/fecha tienes/i);
+    expect(result.reply).not.toMatch(/carro propio o necesitan transporte/i);
   });
 
   it('asks plan after name and replaces name token', async () => {
@@ -2305,14 +2364,14 @@ describe('processMessage', () => {
 
     it('caps gallery images per send', () => {
       const previous = env.MAX_GALLERY_IMAGES_PER_SEND;
-      env.MAX_GALLERY_IMAGES_PER_SEND = 15;
+      env.MAX_GALLERY_IMAGES_PER_SEND = 10;
       try {
         const selected = selectGalleryImages(Array.from({ length: 30 }, (_, idx) => ({
           url: `https://cdn.andeanscapes.com/${idx}.jpg`,
           caption: String(idx),
         })));
 
-        expect(selected).toHaveLength(15);
+        expect(selected).toHaveLength(10);
       } finally {
         env.MAX_GALLERY_IMAGES_PER_SEND = previous;
       }
@@ -2320,7 +2379,7 @@ describe('processMessage', () => {
 
     it('returns all gallery images when fewer than cap', () => {
       const previous = env.MAX_GALLERY_IMAGES_PER_SEND;
-      env.MAX_GALLERY_IMAGES_PER_SEND = 15;
+      env.MAX_GALLERY_IMAGES_PER_SEND = 10;
       try {
         const selected = selectGalleryImages([
           { url: 'https://cdn.andeanscapes.com/1.jpg', caption: '1' },
@@ -2759,5 +2818,357 @@ describe('containsPromptLeakOrPolicyViolation', () => {
     expect(containsPromptLeakOrPolicyViolation('Claro, Paula. Serian 3 personas entonces.')).toBe(false);
     expect(containsPromptLeakOrPolicyViolation('El plan incluye transporte desde Bogota y todas las comidas.')).toBe(false);
     expect(containsPromptLeakOrPolicyViolation('Cualquier duda aqui estoy.')).toBe(false);
+  });
+});
+
+import { detectLeadPain } from '../services/response-engine.js';
+
+describe('detectLeadPain', () => {
+  it('detects price pain from "1" option', () => {
+    expect(detectLeadPain('1')).toBe('price');
+  });
+  it('detects price pain from keyword es', () => {
+    expect(detectLeadPain('el precio me parece caro')).toBe('price');
+  });
+  it('detects price pain from keyword en', () => {
+    expect(detectLeadPain('it is too expensive for me')).toBe('price');
+  });
+  it('detects date_time pain from "2" option', () => {
+    expect(detectLeadPain('2')).toBe('date_time');
+  });
+  it('detects date_time pain from keyword', () => {
+    expect(detectLeadPain('no tengo fecha definida todavia')).toBe('date_time');
+  });
+  it('detects security pain from "3" option', () => {
+    expect(detectLeadPain('3')).toBe('security');
+  });
+  it('detects security pain from keyword es', () => {
+    expect(detectLeadPain('me preocupa si es seguro')).toBe('security');
+  });
+  it('detects logistics pain from "4" option', () => {
+    expect(detectLeadPain('4')).toBe('logistics_4x4');
+  });
+  it('detects logistics pain from keyword es', () => {
+    expect(detectLeadPain('no tengo carro 4x4')).toBe('logistics_4x4');
+  });
+  it('detects experience_clarity pain from "5" option', () => {
+    expect(detectLeadPain('5')).toBe('experience_clarity');
+  });
+  it('detects experience_clarity from keyword', () => {
+    expect(detectLeadPain('no entiendo bien como es la experiencia')).toBe('experience_clarity');
+  });
+  it('detects partner_group pain from "6" option', () => {
+    expect(detectLeadPain('6')).toBe('partner_group');
+  });
+  it('detects partner_group from keyword es', () => {
+    expect(detectLeadPain('lo tengo que consultar con mi pareja')).toBe('partner_group');
+  });
+  it('detects partner_group from keyword en', () => {
+    expect(detectLeadPain('I need to check with my partner first')).toBe('partner_group');
+  });
+  it('returns null for unrelated text', () => {
+    expect(detectLeadPain('hola buenos dias')).toBeNull();
+  });
+});
+
+describe('pain reply flow', () => {
+  let painRepos: Repositories;
+  let painDb: Database.Database;
+  const PAIN_PHONE = '573009998877';
+
+  beforeAll(() => {
+    loadSkills();
+    painDb = new Database(':memory:');
+    migrate(painDb);
+    painRepos = createRepositories(painDb);
+  });
+
+  it('stores lead_pain when customer replies to pain question', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+
+    painRepos.conversation.upsert(PAIN_PHONE, { language: 'es', lead_score: 10 });
+    // Insert a pain_question follow-up event with status 'sent'
+    painRepos.followUpEvent.insert({
+      customerPhone: PAIN_PHONE,
+      sequenceNumber: 2,
+      stage: 'pain_question',
+      sentAt: new Date().toISOString(),
+      repliedAt: null,
+      scoreBefore: 10,
+      scoreAfter: null,
+      detectedPain: null,
+      status: 'sent',
+    });
+
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: {
+        reply: 'Entiendo que el precio es una consideracion importante. El plan todo incluido...',
+        intent: 'objecting',
+        lead_score_delta: 5,
+        should_send_image: false,
+        needs_human: false,
+        missing_fields: [],
+        collected_fields: {},
+      },
+      promptTokens: 500,
+      completionTokens: 40,
+    }));
+
+    const result = await processMessage({ repos: painRepos, customerPhone: PAIN_PHONE, message: '1' });
+
+    expect(result.shouldSendReply).toBe(true);
+    expect(painRepos.conversation.getLeadPain(PAIN_PHONE)).toBe('price');
+    const event = painRepos.followUpEvent.getLatestByPhone(PAIN_PHONE);
+    expect(event?.status).toBe('replied');
+    expect(event?.detectedPain).toBe('price');
+  });
+
+  it('stores lead_pain for English price reply', async () => {
+    mockLlmComplete.mockReset();
+    const EN_PHONE = '573009998878';
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+
+    painRepos.conversation.upsert(EN_PHONE, { language: 'en', lead_score: 8 });
+    painRepos.followUpEvent.insert({
+      customerPhone: EN_PHONE,
+      sequenceNumber: 2,
+      stage: 'pain_question',
+      sentAt: new Date().toISOString(),
+      repliedAt: null,
+      scoreBefore: 8,
+      scoreAfter: null,
+      detectedPain: null,
+      status: 'sent',
+    });
+
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: {
+        reply: 'The price is really all-inclusive...',
+        intent: 'objecting',
+        lead_score_delta: 5,
+        should_send_image: false,
+        needs_human: false,
+        missing_fields: [],
+        collected_fields: {},
+      },
+      promptTokens: 500,
+      completionTokens: 40,
+    }));
+
+    await processMessage({ repos: painRepos, customerPhone: EN_PHONE, message: 'it is too expensive' });
+
+    expect(painRepos.conversation.getLeadPain(EN_PHONE)).toBe('price');
+  });
+
+  it('marks pain question replied even when the reply matches no pain option', async () => {
+    mockLlmComplete.mockReset();
+    const OFF_PHONE = '573009998880';
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+
+    painRepos.conversation.upsert(OFF_PHONE, { language: 'es', lead_score: 10 });
+    painRepos.followUpEvent.insert({
+      customerPhone: OFF_PHONE,
+      sequenceNumber: 2,
+      stage: 'pain_question',
+      sentAt: new Date().toISOString(),
+      repliedAt: null,
+      scoreBefore: 10,
+      scoreAfter: null,
+      detectedPain: null,
+      status: 'sent',
+    });
+
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: {
+        reply: 'Gracias por escribir, cuéntame más...',
+        intent: 'curious',
+        lead_score_delta: 2,
+        should_send_image: false,
+        needs_human: false,
+        missing_fields: [],
+        collected_fields: {},
+      },
+      promptTokens: 300,
+      completionTokens: 20,
+    }));
+
+    await processMessage({ repos: painRepos, customerPhone: OFF_PHONE, message: 'hmm no sé todavía' });
+
+    const event = painRepos.followUpEvent.getLatestByPhone(OFF_PHONE);
+    expect(event?.status).toBe('replied');
+    expect(event?.detectedPain).toBeNull();
+    expect(painRepos.conversation.getLeadPain(OFF_PHONE)).toBeNull();
+  });
+
+  it('reuses stored lead_pain on a later turn (persists across turns)', async () => {
+    mockLlmComplete.mockReset();
+    const PERSIST_PHONE = '573009998881';
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+
+    painRepos.conversation.upsert(PERSIST_PHONE, { language: 'es', lead_score: 12 });
+    painRepos.conversation.setLeadPain(PERSIST_PHONE, 'security', 'me da miedo');
+    // No pending pain_question event: this is a normal follow-up turn.
+
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: {
+        reply: 'La experiencia es guiada y segura...',
+        intent: 'qualifying',
+        lead_score_delta: 3,
+        should_send_image: false,
+        needs_human: false,
+        missing_fields: [],
+        collected_fields: {},
+      },
+      promptTokens: 400,
+      completionTokens: 30,
+    }));
+
+    await processMessage({ repos: painRepos, customerPhone: PERSIST_PHONE, message: 'y como funciona?' });
+
+    // The LLM call should have received a pain-specific suffix for 'security'.
+    const call = mockLlmComplete.mock.calls[0]?.[0] as { systemPromptSuffix?: string } | undefined;
+    expect(call?.systemPromptSuffix).toMatch(/SEGURIDAD|SAFETY/);
+  });
+
+  it('marks first_nudge event replied when customer responds', async () => {
+    mockLlmComplete.mockReset();
+    const FN_PHONE = '573009998879';
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+
+    painRepos.conversation.upsert(FN_PHONE, { language: 'es', lead_score: 12 });
+    painRepos.followUpEvent.insert({
+      customerPhone: FN_PHONE,
+      sequenceNumber: 1,
+      stage: 'first_nudge',
+      sentAt: new Date().toISOString(),
+      repliedAt: null,
+      scoreBefore: 12,
+      scoreAfter: null,
+      detectedPain: null,
+      status: 'sent',
+    });
+
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: {
+        reply: 'Genial que sigas interesado...',
+        intent: 'qualifying',
+        lead_score_delta: 5,
+        should_send_image: false,
+        needs_human: false,
+        missing_fields: [],
+        collected_fields: {},
+      },
+      promptTokens: 400,
+      completionTokens: 30,
+    }));
+
+    await processMessage({ repos: painRepos, customerPhone: FN_PHONE, message: 'si me interesa' });
+
+    const event = painRepos.followUpEvent.getLatestByPhone(FN_PHONE);
+    expect(event?.status).toBe('replied');
+    expect(event?.repliedAt).not.toBeNull();
+  });
+
+  it('answers a budget-blocked pain reply with the deterministic pain template', async () => {
+    mockLlmComplete.mockReset();
+    const BUDGET_PHONE = '573009998882';
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: false, reason: 'daily_budget_exceeded' });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+
+    painRepos.conversation.upsert(BUDGET_PHONE, { language: 'es', lead_score: 10 });
+    painRepos.followUpEvent.insert({
+      customerPhone: BUDGET_PHONE,
+      sequenceNumber: 2,
+      stage: 'pain_question',
+      sentAt: new Date().toISOString(),
+      repliedAt: null,
+      scoreBefore: 10,
+      scoreAfter: null,
+      detectedPain: null,
+      status: 'sent',
+    });
+
+    const result = await processMessage({ repos: painRepos, customerPhone: BUDGET_PHONE, message: '1' });
+
+    // Deterministic price template, not the generic aiBudgetExhausted holding message.
+    expect(result.reply).toBe(loadSkills().fallbackReplies.es.painReplyPrice);
+    expect(result.usedAi).toBe(false);
+    expect(mockLlmComplete).not.toHaveBeenCalled();
+  });
+
+  it('answers an LLM-failure pain reply with the deterministic pain template', async () => {
+    mockLlmComplete.mockReset();
+    const LLMFAIL_PHONE = '573009998883';
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+
+    painRepos.conversation.upsert(LLMFAIL_PHONE, { language: 'es', lead_score: 10 });
+    painRepos.followUpEvent.insert({
+      customerPhone: LLMFAIL_PHONE,
+      sequenceNumber: 2,
+      stage: 'pain_question',
+      sentAt: new Date().toISOString(),
+      repliedAt: null,
+      scoreBefore: 10,
+      scoreAfter: null,
+      detectedPain: null,
+      status: 'sent',
+    });
+
+    mockLlmComplete.mockResolvedValueOnce(null);
+
+    const result = await processMessage({ repos: painRepos, customerPhone: LLMFAIL_PHONE, message: '3' });
+
+    expect(result.reply).toBe(loadSkills().fallbackReplies.es.painReplySecurity);
+    expect(result.shouldSendGalleryImages).toBe(false);
+  });
+
+  it('does not auto-send the gallery on a security-objection pain reply', async () => {
+    mockLlmComplete.mockReset();
+    const SEC_PHONE = '573009998884';
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+
+    // High score + price presented so the gallery would otherwise be eligible.
+    painRepos.conversation.upsert(SEC_PHONE, {
+      language: 'es', lead_score: 40,
+      nombre: 'Ana', personas: 2, fecha: 'agosto', price_given_at: new Date().toISOString(),
+    });
+    painRepos.followUpEvent.insert({
+      customerPhone: SEC_PHONE,
+      sequenceNumber: 2,
+      stage: 'pain_question',
+      sentAt: new Date().toISOString(),
+      repliedAt: null,
+      scoreBefore: 40,
+      scoreAfter: null,
+      detectedPain: null,
+      status: 'sent',
+    });
+
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: {
+        reply: 'La experiencia es guiada por locales con equipo de seguridad...',
+        intent: 'objecting',
+        lead_score_delta: 3,
+        should_send_image: false,
+        needs_human: false,
+        missing_fields: [],
+        collected_fields: {},
+      },
+      promptTokens: 500,
+      completionTokens: 40,
+    }));
+
+    const result = await processMessage({ repos: painRepos, customerPhone: SEC_PHONE, message: '3' });
+
+    expect(painRepos.conversation.getLeadPain(SEC_PHONE)).toBe('security');
+    expect(result.shouldSendGalleryImages).toBe(false);
   });
 });

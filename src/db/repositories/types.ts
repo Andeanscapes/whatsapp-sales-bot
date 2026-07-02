@@ -42,7 +42,11 @@ export interface ConversationRepository {
   getBookedAt(phone: string): string | null;
   setBooked(phone: string): void;
   getFollowUpCandidates(cutoffIso: string, serviceWindowStartIso: string, limit: number): FollowUpCandidate[];
+  getPainQuestionCandidates(serviceWindowStartIso: string, limit: number): FollowUpCandidate[];
   markFollowUpSent(phone: string): void;
+  setLeadPain(phone: string, pain: LeadPain, detail?: string): void;
+  getLeadPain(phone: string): LeadPain | null;
+  incrementFollowUpReplyCount(phone: string): void;
 }
 
 export interface MessageRepository {
@@ -92,6 +96,31 @@ export interface MediaSendRepository {
 
 export type ConversationMode = 'bot' | 'bridge_active' | 'referred';
 
+export type LeadPain = 'price' | 'date_time' | 'security' | 'logistics_4x4' | 'experience_clarity' | 'partner_group' | 'not_interested' | 'other';
+
+export type FollowUpStage = 'first_nudge' | 'pain_question';
+export type FollowUpStatus = 'sent' | 'replied';
+
+export interface FollowUpEvent {
+  id?: number;
+  customerPhone: string;
+  sequenceNumber: number;
+  stage: FollowUpStage;
+  sentAt: string | null;
+  repliedAt: string | null;
+  scoreBefore: number;
+  scoreAfter: number | null;
+  detectedPain: LeadPain | null;
+  status: FollowUpStatus;
+}
+
+export interface FollowUpEventRepository {
+  insert(event: Omit<FollowUpEvent, 'id'>): void;
+  getLatestByPhone(phone: string): FollowUpEvent | null;
+  markReplied(phone: string, sequenceNumber: number, scoreAfter: number, detectedPain: LeadPain | null): void;
+  countByPhone(phone: string): number;
+}
+
 export interface ConversationAssignment {
   assignedLineId: string;
   assignedAgentChat: string;
@@ -136,6 +165,10 @@ export interface ConversationRow {
   soft_closed_at: string | null;
   gallery_nudged_at: string | null;
   follow_up_sent_at: string | null;
+  lead_pain: LeadPain | null;
+  lead_pain_detail: string | null;
+  lead_pain_detected_at: string | null;
+  follow_up_reply_count: number;
   converted_at: string | null;
   sales_phase: string | null;
   lead_intent: string | null;
@@ -223,6 +256,7 @@ export interface CustomerDataRepository {
     ownerAlerts: number;
     mediaSends: number;
     bridgeSessions: number;
+    followUpEvents: number;
   };
 }
 
@@ -315,6 +349,7 @@ export interface Repositories {
   systemErrors: SystemErrorRepository;
   customerData: CustomerDataRepository;
   transcripts: TranscriptRepository;
+  followUpEvent: FollowUpEventRepository;
   isPaused(): boolean;
   setPaused(paused: boolean): void;
   ping(): boolean;
