@@ -29,6 +29,11 @@ import type {
   DayActivityResult,
   DayConversationSummary,
   DayMessage,
+  FollowUpEvent,
+  FollowUpEventRepository,
+  FollowUpStage,
+  FollowUpStatus,
+  LeadPain,
 } from './types.js';
 
 const ALLOWED_CONVERSATION_COLUMNS = new Set([
@@ -41,7 +46,8 @@ const ALLOWED_CONVERSATION_COLUMNS = new Set([
   'price_given_at', 'soft_closed_at',
   'sales_phase', 'lead_intent',
   'assigned_line_id', 'assigned_agent_chat', 'conversation_mode',
-  'converted_at', 'gallery_nudged_at', 'follow_up_sent_at'
+  'converted_at', 'gallery_nudged_at', 'follow_up_sent_at',
+  'lead_pain', 'lead_pain_detail', 'lead_pain_detected_at', 'follow_up_reply_count'
 ]);
 
 export class SqliteConversationRepo implements ConversationRepository {
@@ -260,8 +266,125 @@ export class SqliteConversationRepo implements ConversationRepository {
     return rows.map(r => ({ customerPhone: r.customer_phone, language: r.language }));
   }
 
+  getPainQuestionCandidates(serviceWindowStartIso: string, limit: number): FollowUpCandidate[] {
+    // Returns leads where:
+    //  - first_nudge was sent AND replied (status='replied')
+    //  - no pain_question event exists yet for them
+    //  - last customer inbound is within 24h service window
+    //  - not opted out, not handed off
+    const rows = this.db.prepare(`
+      SELECT DISTINCT c.customer_phone, c.language
+      FROM conversations c
+      INNER JOIN follow_up_events fe
+        ON fe.customer_phone = c.customer_phone
+        AND fe.stage = 'first_nudge'
+        AND fe.status = 'replied'
+      WHERE c.opt_out_at IS NULL
+        AND c.handed_off_at IS NULL
+        AND c.soft_closed_at IS NULL
+        AND COALESCE(c.conversation_mode, 'bot') = 'bot'
+        AND (
+          SELECT MAX(m.created_at) FROM messages m
+          WHERE m.customer_phone = c.customer_phone AND m.direction = 'inbound'
+        ) >= ?
+        AND NOT EXISTS (
+          SELECT 1 FROM follow_up_events fe2
+          WHERE fe2.customer_phone = c.customer_phone
+          AND fe2.stage = 'pain_question'
+        )
+      LIMIT ?
+    `).all(serviceWindowStartIso, limit) as Array<{ customer_phone: string; language: 'es' | 'en' | null }>;
+    return rows.map(r => ({ customerPhone: r.customer_phone, language: r.language }));
+  }
+
   markFollowUpSent(phone: string): void {
     this.upsert(phone, { follow_up_sent_at: new Date().toISOString() });
+  }
+
+  setLeadPain(phone: string, pain: LeadPain, detail?: string): void {
+    this.upsert(phone, {
+      lead_pain: pain,
+      lead_pain_detail: detail ?? null,
+      lead_pain_detected_at: new Date().toISOString(),
+    });
+  }
+
+  getLeadPain(phone: string): LeadPain | null {
+    const row = this.db.prepare(
+      'SELECT lead_pain FROM conversations WHERE customer_phone = ?'
+    ).get(phone) as { lead_pain: LeadPain | null } | undefined;
+    return row?.lead_pain ?? null;
+  }
+
+  incrementFollowUpReplyCount(phone: string): void {
+    this.db.prepare(
+      `UPDATE conversations
+       SET follow_up_reply_count = COALESCE(follow_up_reply_count, 0) + 1
+       WHERE customer_phone = ?`
+    ).run(phone);
+  }
+}
+
+export class SqliteFollowUpEventRepo implements FollowUpEventRepository {
+  constructor(private db: Database.Database) {}
+
+  insert(event: Omit<FollowUpEvent, 'id'>): void {
+    this.db.prepare(`
+      INSERT INTO follow_up_events
+        (customer_phone, sequence_number, stage, sent_at, replied_at, score_before, score_after, detected_pain, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      event.customerPhone,
+      event.sequenceNumber,
+      event.stage,
+      event.sentAt,
+      event.repliedAt,
+      event.scoreBefore,
+      event.scoreAfter ?? null,
+      event.detectedPain ?? null,
+      event.status,
+    );
+  }
+
+  getLatestByPhone(phone: string): FollowUpEvent | null {
+    const row = this.db.prepare(`
+      SELECT * FROM follow_up_events
+      WHERE customer_phone = ?
+      ORDER BY sequence_number DESC, id DESC
+      LIMIT 1
+    `).get(phone) as {
+      id: number; customer_phone: string; sequence_number: number; stage: FollowUpStage;
+      sent_at: string | null; replied_at: string | null; score_before: number;
+      score_after: number | null; detected_pain: LeadPain | null; status: FollowUpStatus;
+    } | undefined;
+    if (!row) return null;
+    return {
+      id: row.id,
+      customerPhone: row.customer_phone,
+      sequenceNumber: row.sequence_number,
+      stage: row.stage,
+      sentAt: row.sent_at,
+      repliedAt: row.replied_at,
+      scoreBefore: row.score_before,
+      scoreAfter: row.score_after,
+      detectedPain: row.detected_pain,
+      status: row.status,
+    };
+  }
+
+  markReplied(phone: string, sequenceNumber: number, scoreAfter: number, detectedPain: LeadPain | null): void {
+    this.db.prepare(`
+      UPDATE follow_up_events
+      SET replied_at = ?, score_after = ?, detected_pain = ?, status = 'replied'
+      WHERE customer_phone = ? AND sequence_number = ?
+    `).run(new Date().toISOString(), scoreAfter, detectedPain ?? null, phone, sequenceNumber);
+  }
+
+  countByPhone(phone: string): number {
+    const row = this.db.prepare(
+      'SELECT COUNT(*) as cnt FROM follow_up_events WHERE customer_phone = ?'
+    ).get(phone) as { cnt: number };
+    return row.cnt;
   }
 }
 
@@ -740,10 +863,11 @@ export class SqliteCustomerDataRepo implements CustomerDataRepository {
       const mediaSends = this.db.prepare('DELETE FROM media_sends WHERE customer_phone = ?').run(customerPhone).changes;
       const ownerAlerts = this.db.prepare('DELETE FROM owner_alerts WHERE customer_phone = ?').run(customerPhone).changes;
       const aiUsage = this.db.prepare('DELETE FROM ai_usage WHERE customer_phone = ?').run(customerPhone).changes;
+      const followUpEvents = this.db.prepare('DELETE FROM follow_up_events WHERE customer_phone = ?').run(customerPhone).changes;
       const messages = this.db.prepare('DELETE FROM messages WHERE customer_phone = ?').run(customerPhone).changes;
       const conversations = this.db.prepare('DELETE FROM conversations WHERE customer_phone = ?').run(customerPhone).changes;
 
-      return { conversations, messages, processedMessages, aiUsage, ownerAlerts, mediaSends, bridgeSessions };
+      return { conversations, messages, processedMessages, aiUsage, ownerAlerts, mediaSends, bridgeSessions, followUpEvents };
     })(phone);
   }
 }

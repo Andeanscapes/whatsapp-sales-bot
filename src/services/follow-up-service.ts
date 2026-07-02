@@ -57,6 +57,42 @@ function configuredHours(): number {
   return Math.min(env.TIME_FOLLOW_HOURS, MAX_FOLLOW_HOURS);
 }
 
+async function sendAndRecord(
+  phone: string,
+  reply: string,
+  repos: Repositories,
+  sequenceNumber: number,
+  stage: 'first_nudge' | 'pain_question',
+  scoreBefore: number,
+  result: { tokens: { prompt: number; completion: number } } | null,
+): Promise<void> {
+  const sentAt = new Date().toISOString();
+  await sendText(phone, reply);
+  repos.message.addMessage({
+    customer_phone: phone,
+    direction: 'outbound',
+    message_type: 'text',
+    body: reply,
+    created_at: sentAt,
+  });
+  repos.conversation.markFollowUpSent(phone);
+  repos.followUpEvent.insert({
+    customerPhone: phone,
+    sequenceNumber,
+    stage,
+    sentAt,
+    repliedAt: null,
+    scoreBefore,
+    scoreAfter: null,
+    detectedPain: null,
+    status: 'sent',
+  });
+  if (result) {
+    const cost = result.tokens.prompt * INPUT_COST_PER_TOKEN + result.tokens.completion * OUTPUT_COST_PER_TOKEN;
+    repos.aiUsage.recordUsage(phone, env.DEEPSEEK_MODEL, result.tokens.prompt, result.tokens.completion, 0, cost);
+  }
+}
+
 async function runFollowUps(repos: Repositories): Promise<void> {
   const hours = configuredHours();
   if (hours <= 0 || !env.AI_ENABLED) return;
@@ -64,8 +100,33 @@ async function runFollowUps(repos: Repositories): Promise<void> {
   if (repos.isPaused()) return;
 
   const now = Date.now();
-  const cutoff = new Date(now - hours * 60 * 60 * 1000).toISOString();
   const serviceWindowStart = new Date(now - 23 * 60 * 60 * 1000).toISOString();
+
+  // ── Stage 2: pain question — send to leads who replied the first nudge ───
+  const painCandidates = repos.conversation.getPainQuestionCandidates(serviceWindowStart, FOLLOW_UP_BATCH);
+  for (const c of painCandidates) {
+    if (repos.optOut.isOptedOut(c.customerPhone)) continue;
+    if (!isWithinServiceWindow(repos, c.customerPhone)) continue;
+
+    const skills = getSkills();
+    const lang = c.language ?? 'es';
+    const currentScore = repos.conversation.getLeadScore(c.customerPhone);
+    const latest = repos.followUpEvent.getLatestByPhone(c.customerPhone);
+    if (!latest) continue;
+
+    const painQuestion = skills.fallbackReplies[lang].followUpPainQuestion;
+    const seqNumber = latest.sequenceNumber + 1;
+    try {
+      await sendAndRecord(c.customerPhone, painQuestion, repos, seqNumber, 'pain_question', currentScore, null);
+      logger.info({ phone: c.customerPhone }, '[FOLLOW_UP] pain question sent');
+    } catch (err) {
+      logger.warn({ err, phone: c.customerPhone }, '[FOLLOW_UP] pain question send failed');
+    }
+  }
+  // ────────────────────────────────────────────────────────────────────────
+
+  // ── Stage 1: first nudge — send to silent leads ──────────────────────────
+  const cutoff = new Date(now - hours * 60 * 60 * 1000).toISOString();
   const candidates = repos.conversation.getFollowUpCandidates(cutoff, serviceWindowStart, FOLLOW_UP_BATCH);
 
   for (const c of candidates) {
@@ -76,8 +137,10 @@ async function runFollowUps(repos: Repositories): Promise<void> {
 
     const skills = getSkills();
     const lang = c.language ?? 'es';
+    const currentScore = repos.conversation.getLeadScore(c.customerPhone);
     const collected = getCollectedFields(repos, c.customerPhone);
     const salesPhase = repos.conversation.getSalesPhase(c.customerPhone);
+
     // Reuse the production system prompt so follow-ups stay grounded in skill facts.
     const systemPrompt = buildSystemPrompt(skills, lang, collected, salesPhase ?? undefined);
     const history = repos.message.getRecentMessages(c.customerPhone, 16);
@@ -111,20 +174,10 @@ async function runFollowUps(repos: Repositories): Promise<void> {
       continue;
     }
 
+    const seqNumber = repos.followUpEvent.countByPhone(c.customerPhone) + 1;
     try {
-      await sendText(c.customerPhone, reply);
-      repos.message.addMessage({
-        customer_phone: c.customerPhone,
-        direction: 'outbound',
-        message_type: 'text',
-        body: reply,
-        created_at: new Date().toISOString(),
-      });
-      repos.conversation.markFollowUpSent(c.customerPhone);
-      if (result) {
-        const cost = result.tokens.prompt * INPUT_COST_PER_TOKEN + result.tokens.completion * OUTPUT_COST_PER_TOKEN;
-        repos.aiUsage.recordUsage(c.customerPhone, env.DEEPSEEK_MODEL, result.tokens.prompt, result.tokens.completion, 0, cost);
-      }
+      await sendAndRecord(c.customerPhone, reply, repos, seqNumber, 'first_nudge', currentScore, result);
+      logger.info({ phone: c.customerPhone }, '[FOLLOW_UP] first nudge sent');
     } catch (err) {
       logger.warn({ err, phone: c.customerPhone }, '[FOLLOW_UP] send failed');
     }

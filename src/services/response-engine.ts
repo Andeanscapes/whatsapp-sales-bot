@@ -1,4 +1,4 @@
-import { getSkills, refreshSkills, type Skills } from './skill-loader.js';
+import { getSkills, refreshSkills, type Skills, type FallbackReplies } from './skill-loader.js';
 import { logger } from '../config/logger.js';
 import { logSystemError } from './error-logger.js';
 import { hasGalleryNudge } from './media-service.js';
@@ -43,7 +43,7 @@ import {
 } from './reply-guard.js';
 import { assignLine, isReferralLine } from './lead-routing.js';
 import { INPUT_COST_PER_TOKEN, MS_72H, OUTPUT_COST_PER_TOKEN, SCORE_GALLERY_TRIGGER_THRESHOLD } from './constants.js';
-import type { RecentMessage } from '../db/repositories/types.js';
+import type { RecentMessage, LeadPain } from '../db/repositories/types.js';
 
 export {
   detectsReservationIntent,
@@ -110,6 +110,65 @@ function enforceMicroQuestionFirstContact(reply: string, isFirstContact: boolean
 function getSystemErrorRetry(lang: 'es' | 'en' | null): string {
   return getSkills().fallbackReplies[lang ?? 'es'].systemErrorRetry;
 }
+
+const PAIN_OPTION_PATTERNS: Array<{ pain: LeadPain; patterns: RegExp }> = [
+  { pain: 'price', patterns: /\b(precio|caro|costoso|vale mucho|dinero|plata|presupuesto|expensive|money|budget|afford|too much|costly)\b|^\s*1\s*$/i },
+  { pain: 'date_time', patterns: /\b(fecha|fechas|cuando voy|calendario|disponibilidad|disponible|agenda|date|timing|schedule|availability)\b|^\s*2\s*$/i },
+  { pain: 'security', patterns: /\b(seguridad|seguro|peligro|riesgo|miedo|claustro|safety|safe|dangerous|danger|risk|afraid|scared|secure)\b|^\s*3\s*$/i },
+  { pain: 'logistics_4x4', patterns: /\b(transporte|carro|vehiculo|4x4|llegar|llegada|ruta|logistica|transport|vehicle|car|route|driving|drive|4wd)\b|^\s*4\s*$/i },
+  { pain: 'experience_clarity', patterns: /\b(entender|experiencia como|como es la|que incluye|no entiendo|no se como|understand|how it works|what.s included|what does|clarity|not sure what)\b|^\s*5\s*$/i },
+  { pain: 'partner_group', patterns: /\b(consultar|lo hablo|lo pienso|pareja|esposo|esposa|novia|novio|amigo|familia|consult|partner|spouse|friend|family|someone|discuss)\b|^\s*6\s*$/i },
+];
+
+export function detectLeadPain(message: string): LeadPain | null {
+  const norm = message.toLowerCase().trim();
+  for (const entry of PAIN_OPTION_PATTERNS) {
+    if (entry.patterns.test(norm)) return entry.pain;
+  }
+  return null;
+}
+
+function buildPainSystemPromptSuffix(pain: LeadPain, lang: 'es' | 'en'): string {
+  const painLabels: Record<LeadPain, { es: string; en: string }> = {
+    price: { es: 'PRECIO', en: 'PRICE' },
+    date_time: { es: 'FECHA / TIEMPO', en: 'DATE / TIMING' },
+    security: { es: 'SEGURIDAD', en: 'SAFETY' },
+    logistics_4x4: { es: 'TRANSPORTE / 4X4', en: 'TRANSPORT / 4X4' },
+    experience_clarity: { es: 'ENTENDER LA EXPERIENCIA', en: 'UNDERSTANDING THE EXPERIENCE' },
+    partner_group: { es: 'CONSULTARLO CON ALGUIEN', en: 'CHECKING WITH SOMEONE' },
+    not_interested: { es: 'NO INTERESADO', en: 'NOT INTERESTED' },
+    other: { es: 'OTRO', en: 'OTHER' },
+  };
+  const label = painLabels[pain][lang];
+  if (lang === 'en') {
+    return `\nKNOWN LEAD PAIN: ${label}\nThe customer already revealed their main blocker. Respond DIRECTLY to this concern using only facts from the Business Context. Do NOT ask basic qualification questions (people, date, transport) in this reply. Reframe the value specifically for this blocker. End with ONE soft next step related to this concern.`;
+  }
+  return `\nDOLOR CONOCIDO DEL LEAD: ${label}\nEl cliente ya revelo su bloqueante principal. Responde DIRECTAMENTE a esta preocupacion usando solo hechos del Business Context. NO hagas preguntas basicas de cualificacion (personas, fecha, transporte) en este mensaje. Enmarca el valor segun este bloqueante especifico. Termina con UNA pregunta suave de avance relacionada a esta preocupacion.`;
+}
+
+// Maps a detected pain to its deterministic reply template. Used when the LLM
+// path is unavailable (budget blocked or LLM failure) so a pain-question reply
+// still gets a grounded, pain-specific answer instead of a generic fallback.
+const PAIN_TEMPLATE_KEY: Partial<Record<LeadPain, keyof FallbackReplies['es']>> = {
+  price: 'painReplyPrice',
+  date_time: 'painReplyDateTime',
+  security: 'painReplySecurity',
+  logistics_4x4: 'painReplyLogistics',
+  experience_clarity: 'painReplyExperienceClarity',
+  partner_group: 'painReplyPartnerGroup',
+};
+
+function getPainFallbackReply(pain: LeadPain, lang: 'es' | 'en'): string | null {
+  const key = PAIN_TEMPLATE_KEY[pain];
+  return key ? getSkills().fallbackReplies[lang][key] ?? null : null;
+}
+
+// Pains where auto-sending the gallery after a pain reply would feel pushy.
+// A security/price/consult/not-interested answer is an objection, not buying
+// re-engagement, so we keep those turns image-free.
+const NON_REENGAGEMENT_PAINS: ReadonlySet<LeadPain> = new Set<LeadPain>([
+  'price', 'security', 'partner_group', 'not_interested',
+]);
 
 const OPT_OUT_KEYWORDS_ES = ['detener', 'cancelar mensajes', 'no me escriban', 'basta', 'suficiente', 'dejen de escribirme', 'no me contacten', 'no me contacte', 'sacame de la lista', 'no quiero recibir mensajes', 'no quiero mas mensajes', 'borra mis datos', 'eliminame', 'eliminame de la lista', 'no me vuelvan a escribir', 'no me manden mas mensajes', 'dejen de molestar', 'paren', 'bloqueo', 'reporto'];
 const OPT_OUT_KEYWORDS_EN = ['stop', 'unsubscribe', 'no more messages', 'remove me', 'do not contact me', 'take me off', 'take me off the list', 'please stop', 'enough', "i'm done", 'i am done', 'unsubscribe me', 'do not text', 'do not message', 'stop messaging', 'leave me alone', 'do not disturb', 'block', 'report spam'];
@@ -332,6 +391,39 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     });
   }
 
+  // ── Follow-up pain reply detection ──────────────────────────────────────
+  // When the customer replies after receiving the pain-question follow-up,
+  // classify their pain, store it, mark the event replied, bump score,
+  // then let LLM reply with pain-specific context suffix.
+  const latestFollowUpEvent = repos.followUpEvent.getLatestByPhone(customerPhone);
+  const isPainQuestionReply =
+    latestFollowUpEvent?.stage === 'pain_question' &&
+    latestFollowUpEvent.status === 'sent';
+
+  if (isPainQuestionReply) {
+    const detectedPain = detectLeadPain(message);
+    const scoreBeforePain = repos.conversation.getLeadScore(customerPhone);
+    // Always mark the pain question replied so state stays consistent even when
+    // the customer answers off-list; only persist lead_pain when we classify one.
+    if (detectedPain) repos.conversation.setLeadPain(customerPhone, detectedPain, message.slice(0, 200));
+    repos.conversation.incrementFollowUpReplyCount(customerPhone);
+    repos.followUpEvent.markReplied(customerPhone, latestFollowUpEvent.sequenceNumber, scoreBeforePain, detectedPain);
+  }
+  // ────────────────────────────────────────────────────────────────────────
+
+  // ── First-nudge reply detection ─────────────────────────────────────────
+  // When customer replies to a first_nudge follow-up, mark it replied so
+  // the scheduler can send the pain-question on next tick.
+  if (
+    latestFollowUpEvent?.stage === 'first_nudge' &&
+    latestFollowUpEvent.status === 'sent'
+  ) {
+    const scoreNow = repos.conversation.getLeadScore(customerPhone);
+    repos.followUpEvent.markReplied(customerPhone, latestFollowUpEvent.sequenceNumber, scoreNow, null);
+    repos.conversation.incrementFollowUpReplyCount(customerPhone);
+  }
+  // ────────────────────────────────────────────────────────────────────────
+
   const bookingFields = extractBookingFields(message);
   const contextFields = contextAwareExtract(message, repos, customerPhone, bookingFields);
   repos.conversation.upsert(customerPhone, { language: lang, ...contextFields });
@@ -368,6 +460,14 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   const galleryRequested = isGalleryRequest(message) || isGalleryConfirmation(message, lastAssistantQuestion);
 
   let isReEngagement = false;
+  // Replying after a follow-up pain question counts as re-engagement — but only
+  // when the revealed pain is not an objection. A price/security/consult answer
+  // is a blocker, not buying intent, so forcing the re-engage score bump (and the
+  // gallery auto-send it can trigger) would feel pushy.
+  const painQuestionPain = isPainQuestionReply ? detectLeadPain(message) : null;
+  if (isPainQuestionReply && !(painQuestionPain && NON_REENGAGEMENT_PAINS.has(painQuestionPain))) {
+    isReEngagement = true;
+  }
   if (softClosedAt) {
     if (isReEngagementMessage(message) || galleryRequested) {
       isReEngagement = true;
@@ -421,6 +521,13 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   const budget = checkBudget(repos, customerPhone);
   if (!budget.aiAllowed) {
     logger.warn({ reason: budget.reason }, '[AI] budget blocked');
+    // A pain-question reply gets its grounded deterministic answer even when the
+    // AI budget is exhausted, so the lead is not left with a generic holding message.
+    const painFallback = isPainQuestionReply ? detectLeadPain(message) : null;
+    const painReply = painFallback ? getPainFallbackReply(painFallback, lang) : null;
+    if (painReply) {
+      return { reply: painReply, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: true, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
+    }
     activateHumanFallback(repos, customerPhone);
     return { reply: skills.fallbackReplies[lang].aiBudgetExhausted, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: true, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
   }
@@ -430,13 +537,19 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   const llmHistory = recentMessages.map(m => ({ role: m.role, content: m.content }));
   const llmMessage = message.length > MAX_INBOUND_CHARS ? message.slice(0, MAX_INBOUND_CHARS) : message;
 
-  const llmResult = await llmClient.complete({ systemPrompt, message: llmMessage, history: llmHistory, lang });
+  // If this is a pain reply, inject pain-specific suffix so LLM responds precisely.
+  const knownPain = isPainQuestionReply ? detectLeadPain(message) : repos.conversation.getLeadPain(customerPhone);
+  const painSuffix = knownPain ? buildPainSystemPromptSuffix(knownPain, lang) : undefined;
+
+  const llmResult = await llmClient.complete({ systemPrompt, systemPromptSuffix: painSuffix, message: llmMessage, history: llmHistory, lang });
 
   if (!llmResult) {
     logger.warn('[LLM] DeepSeek call failed, sending minimal fallback');
-    const fallbackText = collectedFields?.nombre
-      ? (skills.fallbackReplies[lang].llmFailureWarm?.replace('{{name}}', String(collectedFields.nombre)) ?? skills.fallbackReplies[lang].aiFailureQualified)
-      : skills.fallbackReplies[lang].aiFailureQualified;
+    const painFallback = knownPain ? getPainFallbackReply(knownPain, lang) : null;
+    const fallbackText = painFallback
+      ?? (collectedFields?.nombre
+        ? (skills.fallbackReplies[lang].llmFailureWarm?.replace('{{name}}', String(collectedFields.nombre)) ?? skills.fallbackReplies[lang].aiFailureQualified)
+        : skills.fallbackReplies[lang].aiFailureQualified);
     return {
       reply: fallbackText, shouldSendReply: true,
       leadScore: currentScore, usedAi: true, shouldAlertOwner: hasAnyQualificationData(dbQualification),
@@ -593,6 +706,13 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
       shouldSendGallery = true;
     }
   }
+
+  // Never auto-blast the gallery on the same turn the lead reveals an objection
+  // (price/security/consult/not-interested). Answer the concern first; images
+  // here read as pushy. Handoff-driven gallery sends above are unaffected.
+  const suppressGalleryForObjection =
+    !needsHumanEffective && !!(painQuestionPain && NON_REENGAGEMENT_PAINS.has(painQuestionPain));
+  if (suppressGalleryForObjection) shouldSendGallery = false;
 
   if (isTruncatedReply(replyText)) {
     logger.warn({ phone: customerPhone, replySnippet: replyText.slice(0, 40) }, '[LLM] reply may be truncated');
