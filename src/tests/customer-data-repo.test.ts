@@ -22,6 +22,17 @@ function seedCustomer(phone: string, messageId: string): void {
   repos.ownerAlert.insert(phone, 'telegram', 90, 'hot', 'body');
   repos.mediaSend.recordSend(phone, 'media-1');
   repos.bridgeSession.open(`chat-${phone}`, phone);
+  repos.followUpEvent.insert({
+    customerPhone: phone,
+    sequenceNumber: 1,
+    stage: 'first_nudge',
+    sentAt: new Date().toISOString(),
+    repliedAt: null,
+    scoreBefore: 10,
+    scoreAfter: null,
+    detectedPain: null,
+    status: 'sent',
+  });
 }
 
 beforeEach(() => {
@@ -45,11 +56,13 @@ describe('CustomerDataRepository.deleteCustomer', () => {
       ownerAlerts: 1,
       mediaSends: 1,
       bridgeSessions: 1,
+      followUpEvents: 1,
     });
 
     expect(repos.conversation.getByPhone(phone)).toBeUndefined();
     expect(repos.dedupe.isProcessed('wamid.AAA')).toBe(false);
     expect(repos.bridgeSession.getByCustomer(phone)).toBeNull();
+    expect(repos.followUpEvent.getLatestByPhone(phone)).toBeNull();
   });
 
   it('does not touch an unrelated customer', () => {
@@ -63,6 +76,7 @@ describe('CustomerDataRepository.deleteCustomer', () => {
     expect(repos.conversation.getByPhone(other)).toBeDefined();
     expect(repos.dedupe.isProcessed('wamid.OTHER')).toBe(true);
     expect(repos.bridgeSession.getByCustomer(other)).not.toBeNull();
+    expect(repos.followUpEvent.getLatestByPhone(other)).not.toBeNull();
   });
 
   it('returns zero counts for an unknown phone', () => {
@@ -75,6 +89,7 @@ describe('CustomerDataRepository.deleteCustomer', () => {
       ownerAlerts: 0,
       mediaSends: 0,
       bridgeSessions: 0,
+      followUpEvents: 0,
     });
   });
 });

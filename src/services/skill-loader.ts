@@ -199,6 +199,8 @@ const salesTacticsSchema = z.object({
   safetyLogisticsValue: z.string(),
   againstMassTourism: z.string(),
   authenticityCommunity: z.string(),
+  followUpReplyStrategy: z.string(),
+  painResponseStrategy: z.string(),
   invisibleQualification: z.string(),
 });
 
@@ -278,6 +280,13 @@ const langFallbackSchema = z.object({
   systemErrorRetry: z.string(),
   galleryIntro: z.string(),
   galleryFollowUp: z.string(),
+  followUpPainQuestion: z.string(),
+  painReplyPrice: z.string(),
+  painReplyDateTime: z.string(),
+  painReplySecurity: z.string(),
+  painReplyLogistics: z.string(),
+  painReplyExperienceClarity: z.string(),
+  painReplyPartnerGroup: z.string(),
 });
 
 const fallbackRepliesSchema = z.object({

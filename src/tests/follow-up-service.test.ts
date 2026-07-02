@@ -152,4 +152,59 @@ describe('follow-up service', () => {
 
     expect(sendText).not.toHaveBeenCalled();
   });
+
+  it('records first_nudge event with correct stage and score', async () => {
+    seedSilentLead();
+    repos.conversation.upsert(PHONE, { lead_score: 15 });
+    mockLlmComplete.mockResolvedValueOnce(reply('Me acordé de ti'));
+
+    await runFollowUps(repos);
+
+    const event = repos.followUpEvent.getLatestByPhone(PHONE);
+    expect(event).not.toBeNull();
+    expect(event?.stage).toBe('first_nudge');
+    expect(event?.status).toBe('sent');
+    expect(event?.scoreBefore).toBe(15);
+    expect(event?.repliedAt).toBeNull();
+  });
+
+  it('sends pain question when first_nudge has been replied', async () => {
+    repos.conversation.upsert(PHONE, { language: 'es', lead_score: 15 });
+    // Seed a recent inbound so the service window check passes
+    addMsg('inbound', 'hola cuanto vale?', -2 * 60 * 60 * 1000);
+
+    // Directly insert a first_nudge event that is already replied
+    repos.followUpEvent.insert({
+      customerPhone: PHONE,
+      sequenceNumber: 1,
+      stage: 'first_nudge',
+      sentAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+      repliedAt: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(),
+      scoreBefore: 15,
+      scoreAfter: 15,
+      detectedPain: null,
+      status: 'replied',
+    });
+
+    vi.mocked(sendText).mockClear();
+    await runFollowUps(repos);
+
+    expect(sendText).toHaveBeenCalledTimes(1);
+    const [, painMsg] = vi.mocked(sendText).mock.calls[0] ?? [];
+    expect(String(painMsg)).toMatch(/precio|fecha|seguridad|transporte/i);
+  });
+
+  it('does not send pain question when first_nudge not yet replied', async () => {
+    seedSilentLead();
+    mockLlmComplete.mockResolvedValueOnce(reply('Me acordé de ti'));
+
+    // Send first nudge (status = 'sent', not replied)
+    await runFollowUps(repos);
+    vi.mocked(sendText).mockClear();
+
+    // Scheduler runs again — no second send
+    await runFollowUps(repos);
+
+    expect(sendText).not.toHaveBeenCalled();
+  });
 });

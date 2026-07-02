@@ -25,7 +25,24 @@ CREATE TABLE IF NOT EXISTS conversations (
   converted_at TEXT,
   assigned_line_id TEXT,
   assigned_agent_chat TEXT,
-  conversation_mode TEXT DEFAULT 'bot'
+  conversation_mode TEXT DEFAULT 'bot',
+  lead_pain TEXT,
+  lead_pain_detail TEXT,
+  lead_pain_detected_at TEXT,
+  follow_up_reply_count INTEGER DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS follow_up_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_phone TEXT NOT NULL,
+  sequence_number INTEGER NOT NULL,
+  stage TEXT NOT NULL,
+  sent_at TEXT,
+  replied_at TEXT,
+  score_before INTEGER DEFAULT 0,
+  score_after INTEGER,
+  detected_pain TEXT,
+  status TEXT NOT NULL DEFAULT 'sent'
 );
 
 CREATE TABLE IF NOT EXISTS messages (

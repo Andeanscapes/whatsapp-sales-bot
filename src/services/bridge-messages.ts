@@ -31,6 +31,7 @@ export const bridgeMessages = {
     ownerAlerts: number;
     mediaSends: number;
     bridgeSessions: number;
+    followUpEvents: number;
   }): string =>
     [
       `🧹 Datos eliminados para ${params.phone}`,
@@ -41,6 +42,7 @@ export const bridgeMessages = {
       `owner alerts: ${params.ownerAlerts}`,
       `media sends: ${params.mediaSends}`,
       `bridge sessions: ${params.bridgeSessions}`,
+      `follow-up events: ${params.followUpEvents}`,
     ].join('\n'),
   alreadyBooked: (sinceDay: string): string => `Ya estaba confirmado desde ${sinceDay}.`,
   bookingConfirmed: (who: string): string => `Reserva confirmada para ${who}. Se notifico a todas las lineas.`,
