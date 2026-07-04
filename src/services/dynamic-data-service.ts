@@ -5,6 +5,12 @@ import { dynamicDataSchema, type DynamicData, type DynamicMedia } from './dynami
 export const PRICING_NOT_AVAILABLE = 'PRICING_NOT_AVAILABLE';
 export const AVAILABILITY_NOT_AVAILABLE = 'AVAILABILITY_NOT_AVAILABLE';
 
+// Well-known addon ids. The remote feed owns the numbers, but these keys are the
+// contract between bot-dynamic.json addons and the pricing calculator. Kept here
+// (next to the transform that produces the items) so a rename is a single edit.
+export const ADDON_ID_PRIVATE_TRANSPORT = 'private_transport';
+export const ADDON_ID_APIARY_CATTLE = 'apiary_cattle';
+
 export function shouldStripStaticPricing(dynamicSkillUrl: string, hasDynamicData: boolean): boolean {
   return dynamicSkillUrl.trim().length > 0 && !hasDynamicData;
 }

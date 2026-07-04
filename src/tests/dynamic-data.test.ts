@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { dynamicDataSchema } from '../services/dynamic-data-schema.js';
 import { DynamicDataService, shouldStripStaticPricing } from '../services/dynamic-data-service.js';
-import { loadSkills, isDynamicDataFresh, setDynamicService } from '../services/skill-loader.js';
+import { loadSkills, isDynamicDataFresh, setDynamicService, refreshSkills, getSkills } from '../services/skill-loader.js';
 
 describe('dynamic data validation', () => {
   it('rejects unknown fields', () => {
@@ -212,5 +212,51 @@ describe('isDynamicDataFresh', () => {
     expect(isDynamicDataFresh()).toBe(false);
     await svc.forceRefresh();
     expect(isDynamicDataFresh()).toBe(true);
+  });
+});
+
+describe('business rules merge with dynamic pricing', () => {
+  const URL = 'https://cdn.andeanscapes.com/whatsapp_bot/bot-dynamic.json';
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    setDynamicService(null);
+    loadSkills(); // reset cached skills to static baseline
+  });
+
+  it('applies remote pricing rules ALONGSIDE static business rules and drops the sentinel', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true, status: 200, headers: { get: () => null },
+      json: async () => ({
+        v: 3, updated: '2026-06-06T00:00:00Z',
+        experiences: {
+          emerald_mining_tour: {
+            pricing: {
+              currency: 'COP',
+              plans: { '2d1n_mining': { individual: 550000, couple: 1040000 } },
+              rules: 'REMOTE_RULE: 15% deposito via Nequi',
+            },
+            availability: { tz: 'America/Bogota', dates: [], rule: 'REMOTE_AVAIL_RULE' },
+          },
+        },
+      }),
+    } as unknown as Response);
+
+    loadSkills();
+    const svc = new DynamicDataService(URL, 5000);
+    setDynamicService(svc);
+    await svc.forceRefresh();
+    await refreshSkills(true);
+
+    const pricing = getSkills().andeanScapes.experiences[0].pricing;
+    // Remote numbers present.
+    expect(pricing.items.some(i => i.couplePrice === 1040000)).toBe(true);
+    // Remote rule applied.
+    expect(pricing.botRules).toContain('REMOTE_RULE: 15% deposito via Nequi');
+    // Static business rule applied ALONGSIDE remote.
+    expect(pricing.botRules.some(r => r.includes('5+ personas'))).toBe(true);
+    expect(pricing.botRules.some(r => r.includes('Nunca inventes descuentos'))).toBe(true);
+    // Sentinel never leaks once pricing is available.
+    expect(pricing.botRules).not.toContain('PRICING_NOT_AVAILABLE');
   });
 });

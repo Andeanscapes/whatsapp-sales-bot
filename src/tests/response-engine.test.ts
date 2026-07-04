@@ -176,6 +176,7 @@ describe('processMessage', () => {
         { id: 'couple', planId: '2d1n_mining', label: 'Pareja', couplePrice: 1040000, peopleIncluded: 2, publiclyShow: true },
       ],
       botRules: ['pricing rules'],
+      businessRules: [],
     };
     try {
       const result = await processMessage({ repos, customerPhone: phone, message: 'seria para 2 pero dejame valido con mi pareja gracias' });
@@ -679,6 +680,7 @@ describe('processMessage', () => {
         { id: 'couple', planId: '2d1n_mining', label: 'Pareja', couplePrice: 1040000, peopleIncluded: 2, publiclyShow: true },
       ],
       botRules: ['pricing rules'],
+      businessRules: [],
     };
     try {
       const result = await processMessage({ repos, customerPhone: phone, message: 'dejame consultarlo con mi esposa y te escribo' });
@@ -715,6 +717,7 @@ describe('processMessage', () => {
         { id: 'couple_3d2n', planId: '3d2n_rural', label: 'Pareja 3D/2N', couplePrice: 1400000, peopleIncluded: 2, publiclyShow: true },
       ],
       botRules: ['pricing rules'],
+      businessRules: [],
     };
     try {
       const result = await processMessage({ repos, customerPhone: phone, message: 'dejame revisarlo con mi novio y te confirmo' });
@@ -1327,6 +1330,7 @@ describe('processMessage', () => {
         { id: 'couple', planId: '2d1n_mining', label: 'Pareja', couplePrice: 1040000, peopleIncluded: 2, publiclyShow: true },
       ],
       botRules: ['pricing rules'],
+      businessRules: [],
     };
     try {
       mockLlmComplete.mockResolvedValueOnce(fromOld({
@@ -2164,6 +2168,7 @@ describe('processMessage', () => {
         { id: 'couple_3d2n', planId: '3d2n_rural', label: 'Pareja 3D/2N', couplePrice: 1400000, peopleIncluded: 2, publiclyShow: true },
       ],
       botRules: ['pricing rules'],
+      businessRules: [],
     };
     try {
       mockLlmComplete.mockResolvedValueOnce(fromOld({
@@ -2581,6 +2586,7 @@ describe('processMessage', () => {
         { id: 'couple_3d2n', planId: '3d2n_rural', label: 'Pareja 3D/2N', couplePrice: 1400000, peopleIncluded: 2, publiclyShow: true },
       ],
       botRules: ['pricing rules'],
+      businessRules: [],
     };
     try {
       mockLlmComplete.mockResolvedValueOnce(fromOld({
@@ -2732,7 +2738,7 @@ describe('processMessage', () => {
     const exp = skills.andeanScapes.experiences[0];
     const origPricing = exp.pricing;
     const origAvailability = exp.availability;
-    exp.pricing = { currency: 'COP', lastUpdated: '1970-01-01', items: [], botRules: [PRICING_NOT_AVAILABLE] };
+    exp.pricing = { currency: 'COP', lastUpdated: '1970-01-01', items: [], botRules: [PRICING_NOT_AVAILABLE], businessRules: [] };
     exp.availability = { lastUpdated: '1970-01-01', timezone: 'America/Bogota', availableDates: [], botRule: AVAILABILITY_NOT_AVAILABLE };
     try {
       mockLlmComplete.mockReset();
@@ -2877,6 +2883,79 @@ describe('processMessage — dynamic data guard', () => {
 
     expect(result.reply).not.toMatch(/\$\s?\d/);
     expect(mockLlmComplete).not.toHaveBeenCalled();
+  });
+
+  it('overrides incorrect LLM math with deterministic 5-person quote', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573009993111';
+    const skills = getSkills();
+    const exp = getActiveExperience(skills);
+    const origPricing = exp.pricing;
+    exp.pricing = {
+      currency: 'COP',
+      lastUpdated: '2026-01-01',
+      items: [
+        { id: '2d1n_mining_individual', planId: '2d1n_mining', label: 'Individual', pricePerPerson: 550000, publiclyShow: true },
+        { id: '2d1n_mining_couple', planId: '2d1n_mining', label: 'Pareja', couplePrice: 1000000, peopleIncluded: 2, publiclyShow: true },
+      ],
+      botRules: ['pricing rules'],
+      businessRules: [],
+    };
+    try {
+      mockLlmComplete.mockResolvedValueOnce(fromOld({
+        response: {
+          reply: 'Para 5 personas seria $1,550,000 COP total.',
+          collected_fields: { plan: '2d1n_mining', people: 5, transport_need: 'own' },
+        },
+      }));
+
+      const result = await processMessage({ repos, customerPhone: phone, message: 'cuanto vale para 5 personas el plan 2 dias?' });
+
+      expect(result.reply).toContain('$2,500,000 COP');
+      expect(result.reply).not.toContain('1,550,000');
+      expect(result.priceJustGiven).toBe(true);
+    } finally {
+      exp.pricing = origPricing;
+    }
+  });
+
+  it('does not add transport for 5+ people because extra vehicle cost needs confirmation', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573009993112';
+    const skills = getSkills();
+    const exp = getActiveExperience(skills);
+    const origPricing = exp.pricing;
+    exp.pricing = {
+      currency: 'COP',
+      lastUpdated: '2026-01-01',
+      items: [
+        { id: '2d1n_mining_individual', planId: '2d1n_mining', label: 'Individual', pricePerPerson: 550000, publiclyShow: true },
+        { id: '2d1n_mining_couple', planId: '2d1n_mining', label: 'Pareja', couplePrice: 1000000, peopleIncluded: 2, publiclyShow: true },
+        { id: 'private_transport', label: 'Transporte privado 4x4 desde Bogota', couplePrice: 1700000, peopleIncluded: 4, publiclyShow: true },
+      ],
+      botRules: ['pricing rules'],
+      businessRules: [],
+    };
+    try {
+      mockLlmComplete.mockResolvedValueOnce(fromOld({
+        response: {
+          reply: 'Para 5 personas con transporte seria $4,200,000 COP total.',
+          collected_fields: { plan: '2d1n_mining', people: 5, transport_need: 'from_bogota' },
+        },
+      }));
+
+      const result = await processMessage({ repos, customerPhone: phone, message: 'precio para 5 personas con transporte desde bogota' });
+
+      expect(result.reply).toContain('$2,500,000 COP');
+      expect(result.reply).toContain('confirmar el costo');
+      expect(result.reply).not.toContain('4,200,000');
+    } finally {
+      exp.pricing = origPricing;
+    }
   });
 });
 

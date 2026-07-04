@@ -11,6 +11,7 @@ import { DeepSeekLlmClient } from './llm/deepseek-llm-client.js';
 import type { LlmTurn } from './llm/llm-client.js';
 import type { MergedQualification, ProcessMessageInput, ProcessMessageOutput } from './types.js';
 import { getActiveExperience, getPlans, getPricingItems, getShortDescription, isPricingAvailable } from './product-registry.js';
+import { calculatePriceQuote, formatCop, type PriceQuote, type TransportNeed } from './pricing-calculator.js';
 import {
   extractBookingFields,
   contextAwareExtract,
@@ -212,10 +213,6 @@ const ALL_OPT_OUT_KEYWORDS = [...OPT_OUT_KEYWORDS_ES, ...OPT_OUT_KEYWORDS_EN];
 
 export const llmClient = new DeepSeekLlmClient(true);
 
-function formatPeso(n: number): string {
-  return n.toLocaleString('en-US');
-}
-
 function getPlanPricing(planId: string | undefined | null, skills: Skills): { individualPrice: number | null; couplePrice: number | null; planName: string; duration: string } {
   const exp = getActiveExperience(skills);
   const plans = getPlans(exp);
@@ -237,42 +234,82 @@ function getPlanPricing(planId: string | undefined | null, skills: Skills): { in
 function computePriceFollowUp(personas: unknown, planId: string | undefined | null, lang: string, skills: Skills): string | undefined {
   const { individualPrice, couplePrice, duration } = getPlanPricing(planId, skills);
   if (individualPrice == null || couplePrice == null) return undefined;
-  const n = typeof personas === 'number' ? personas : parseInt(String(personas), 10);
-  if (isNaN(n) || n <= 0) {
+  const quote = calculatePriceQuote(getActiveExperience(skills), { planId, people: personas });
+  if (!quote) {
     return lang === 'es'
-      ? `Plan ${duration}. Individual: $${formatPeso(individualPrice)} COP. Pareja: $${formatPeso(couplePrice)} COP.`
-      : `${duration} Plan. Individual: $${formatPeso(individualPrice)} COP. Couple: $${formatPeso(couplePrice)} COP.`;
+      ? `Plan ${duration}. Individual: $${formatCop(individualPrice)} COP. Pareja: $${formatCop(couplePrice)} COP.`
+      : `${duration} Plan. Individual: $${formatCop(individualPrice)} COP. Couple: $${formatCop(couplePrice)} COP.`;
   }
-  let label: string;
-  let amount: number;
-  if (n === 1) { amount = individualPrice; label = lang === 'es' ? '1 persona' : '1 person'; }
-  else if (n === 2) { amount = couplePrice; label = lang === 'es' ? 'pareja' : 'couple'; }
-  else if (n === 3) { amount = couplePrice + individualPrice; label = lang === 'es' ? '3 personas' : '3 people'; }
-  else if (n === 4) { amount = couplePrice * 2; label = lang === 'es' ? '4 personas (2 parejas)' : '4 people (2 couples)'; }
-  else { amount = (couplePrice / 2) * n; label = lang === 'es' ? `${n} personas` : `${n} people`; }
+  const label = lang === 'es'
+    ? (quote.people === 2 ? 'pareja' : `${quote.people} ${quote.people === 1 ? 'persona' : 'personas'}`)
+    : (quote.people === 2 ? 'couple' : `${quote.people} ${quote.people === 1 ? 'person' : 'people'}`);
   return lang === 'es'
-    ? `En tu caso, ${label}: $${formatPeso(amount)} COP todo incluido.`
-    : `In your case, ${label}: $${formatPeso(amount)} COP all-inclusive.`;
+    ? `En tu caso, ${label}: $${formatCop(quote.planTotal)} COP todo incluido.`
+    : `In your case, ${label}: $${formatCop(quote.planTotal)} COP all-inclusive.`;
 }
 
 function computePartnerPriceLine(personas: unknown, planId: string | undefined | null, lang: string, skills: Skills): string | undefined {
   const { individualPrice, couplePrice, duration } = getPlanPricing(planId, skills);
   if (individualPrice == null || couplePrice == null) return undefined;
-  const n = typeof personas === 'number' ? personas : parseInt(String(personas), 10);
-  if (isNaN(n) || n <= 0) {
+  const quote = calculatePriceQuote(getActiveExperience(skills), { planId, people: personas });
+  if (!quote) {
     return lang === 'es'
-      ? `Plan ${duration}. Individual: $${formatPeso(individualPrice)} COP. Pareja: $${formatPeso(couplePrice)} COP.`
-      : `Plan ${duration}. Individual: $${formatPeso(individualPrice)} COP. Couple: $${formatPeso(couplePrice)} COP.`;
+      ? `Plan ${duration}. Individual: $${formatCop(individualPrice)} COP. Pareja: $${formatCop(couplePrice)} COP.`
+      : `Plan ${duration}. Individual: $${formatCop(individualPrice)} COP. Couple: $${formatCop(couplePrice)} COP.`;
   }
-  let amount: number;
-  if (n === 1) amount = individualPrice;
-  else if (n === 2) amount = couplePrice;
-  else if (n === 3) amount = couplePrice + individualPrice;
-  else if (n === 4) amount = couplePrice * 2;
-  else amount = (couplePrice / 2) * n;
   return lang === 'es'
-    ? `Para ${n} ${n === 1 ? 'persona' : 'personas'} queda en $${formatPeso(amount)} COP total.`
-    : `For ${n} ${n === 1 ? 'person' : 'people'}, it is $${formatPeso(amount)} COP total.`;
+    ? `Para ${quote.people} ${quote.people === 1 ? 'persona' : 'personas'} queda en $${formatCop(quote.planTotal)} COP total.`
+    : `For ${quote.people} ${quote.people === 1 ? 'person' : 'people'}, it is $${formatCop(quote.planTotal)} COP total.`;
+}
+
+function isPriceQuestion(text: string): boolean {
+  const norm = normalizeForKeywordMatch(text);
+  if (norm.includes('how much')) return true;
+  const tokens = new Set(norm.split(/[^a-z0-9]+/).filter(Boolean));
+  return ['precio', 'precios', 'cuanto', 'vale', 'valor', 'costo', 'cuesta', 'cuestan', 'price', 'prices', 'cost', 'costs'].some(t => tokens.has(t));
+}
+
+function wantsApiaryCattle(text: string): boolean {
+  return /\b(apiari[oa]|abejas?|colmenas?|ganader[ií]a|ganadero|ganadera|cattle|bees?|apiary)\b/i.test(text);
+}
+
+// Composes the deterministic quote from skill JSON fragments so all customer
+// copy stays in fallback-replies.json (no business text hardcoded in TS). The
+// numbers come from the calculator (remote-sourced prices + local rules).
+function formatDeterministicQuoteReply(quote: PriceQuote, fb: FallbackReplies['es']): string {
+  const base = fb.quotePlanBase
+    .replace('{{people}}', String(quote.people))
+    .replace('{{planTotal}}', formatCop(quote.planTotal))
+    .replace('{{currency}}', quote.currency);
+
+  if (quote.requiresTransportConfirmation) {
+    return base + fb.quoteTransportConfirm;
+  }
+
+  const addon = quote.addonsTotal > 0
+    ? fb.quoteAddons.replace('{{addonsTotal}}', formatCop(quote.addonsTotal)).replace('{{currency}}', quote.currency)
+    : '';
+  const transport = quote.transportTotal != null
+    ? fb.quoteTransport.replace('{{transportTotal}}', formatCop(quote.transportTotal)).replace('{{currency}}', quote.currency)
+    : '';
+  const total = fb.quoteTotal
+    .replace('{{total}}', formatCop(quote.total ?? quote.planTotal))
+    .replace('{{currency}}', quote.currency);
+
+  return base + addon + transport + total;
+}
+
+function buildDeterministicQuote(message: string, merged: MergedQualification, lang: 'es' | 'en', skills: Skills): string | null {
+  if (!isPriceQuestion(message)) return null;
+  const exp = getActiveExperience(skills);
+  if (!isPricingAvailable(exp)) return null;
+  const quote = calculatePriceQuote(exp, {
+    planId: typeof merged.plan === 'string' ? merged.plan : undefined,
+    people: merged.personas,
+    transportNeed: typeof merged.transporte === 'string' ? merged.transporte as TransportNeed : undefined,
+    includeApiaryCattle: wantsApiaryCattle(message),
+  });
+  return quote ? formatDeterministicQuoteReply(quote, skills.fallbackReplies[lang]) : null;
 }
 
 function buildPartnerConsultSummary(q: MergedQualification, lang: 'es' | 'en', skills: Skills): string {
@@ -642,6 +679,12 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   const pricingAvailable = isPricingAvailable(exp);
   if (!pricingAvailable && replyMentionsPrice(replyText)) {
     replyText = skills.fallbackReplies[lang].priceUnavailable;
+    llmTurn.img = false;
+  }
+
+  const deterministicQuote = buildDeterministicQuote(message, merged, lang, skills);
+  if (deterministicQuote) {
+    replyText = deterministicQuote;
     llmTurn.img = false;
   }
 
