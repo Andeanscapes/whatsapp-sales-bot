@@ -1,4 +1,4 @@
-import { getSkills, refreshSkills, type Skills, type FallbackReplies } from './skill-loader.js';
+import { getSkills, refreshSkills, isDynamicDataFresh, type Skills, type FallbackReplies } from './skill-loader.js';
 import { logger } from '../config/logger.js';
 import { logSystemError } from './error-logger.js';
 import { hasGalleryNudge } from './media-service.js';
@@ -169,6 +169,42 @@ function getPainFallbackReply(pain: LeadPain, lang: 'es' | 'en'): string | null 
 const NON_REENGAGEMENT_PAINS: ReadonlySet<LeadPain> = new Set<LeadPain>([
   'price', 'security', 'partner_group', 'not_interested',
 ]);
+
+// Price / date / reservation intent detector for the dynamic-data guard.
+// Uses word-boundary matching (not bare substring) so casual chat does not
+// leak into the block (e.g. "coffee" must not match "fee", "cuando quieras"
+// should still match "cuando" as a whole word but not partial tokens like
+// "pagaron" matching "pago"). Multi-word phrases are matched literally.
+// Accent-insensitive: the message is normalized (diacritics stripped) so a
+// single ASCII keyword covers both "cuanto" and "cuánto".
+const DYNAMIC_PRICE_DATE_KEYWORDS = [
+  // ES
+  'precio', 'precios', 'cuanto', 'cuanta', 'cuantas', 'cuantos', 'vale', 'valor',
+  'costo', 'cuesta', 'cuestan', 'cobran', 'fecha', 'fechas', 'disponible',
+  'disponibilidad', 'cupo', 'cupos', 'agenda', 'agendar', 'reservar', 'reserva',
+  'reservacion', 'separar', 'pagar', 'pago', 'deposito', 'abono', 'nequi',
+  // EN
+  'price', 'prices', 'cost', 'costs', 'fee', 'fees', 'date', 'dates',
+  'available', 'availability', 'schedule', 'book', 'booking', 'reserve',
+  'reservation', 'pay', 'payment', 'deposit',
+];
+// Multi-word phrases checked with substring after normalization (order-stable).
+const DYNAMIC_PRICE_DATE_PHRASES = ['how much', 'mercado pago'];
+
+function normalizeForKeywordMatch(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function isPriceDateOrReservationMessage(text: string): boolean {
+  const norm = normalizeForKeywordMatch(text);
+  if (DYNAMIC_PRICE_DATE_PHRASES.some(p => norm.includes(p))) return true;
+  const tokens = norm.split(/[^a-z0-9]+/).filter(Boolean);
+  const keywordSet = new Set(DYNAMIC_PRICE_DATE_KEYWORDS);
+  return tokens.some(t => keywordSet.has(t));
+}
 
 const OPT_OUT_KEYWORDS_ES = ['detener', 'cancelar mensajes', 'no me escriban', 'basta', 'suficiente', 'dejen de escribirme', 'no me contacten', 'no me contacte', 'sacame de la lista', 'no quiero recibir mensajes', 'no quiero mas mensajes', 'borra mis datos', 'eliminame', 'eliminame de la lista', 'no me vuelvan a escribir', 'no me manden mas mensajes', 'dejen de molestar', 'paren', 'bloqueo', 'reporto'];
 const OPT_OUT_KEYWORDS_EN = ['stop', 'unsubscribe', 'no more messages', 'remove me', 'do not contact me', 'take me off', 'take me off the list', 'please stop', 'enough', "i'm done", 'i am done', 'unsubscribe me', 'do not text', 'do not message', 'stop messaging', 'leave me alone', 'do not disturb', 'block', 'report spam'];
@@ -531,6 +567,28 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     activateHumanFallback(repos, customerPhone);
     return { reply: skills.fallbackReplies[lang].aiBudgetExhausted, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: true, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
   }
+
+  // ── Dynamic data guard ──────────────────────────────────────────────────
+  // When DYNAMIC_SKILL_URL is configured but the last remote fetch failed,
+  // we have no reliable pricing or availability. Block only price/date/
+  // reservation messages: send a safe holding reply and alert the owner.
+  // Non-price messages (route, safety, inclusions) continue normally.
+  if (!isDynamicDataFresh() && isPriceDateOrReservationMessage(message)) {
+    logger.warn({ phone: customerPhone }, '[BOT] dynamic data unavailable — blocking price/date reply');
+    return {
+      reply: skills.fallbackReplies[lang].dynamicDataUnavailable,
+      shouldSendReply: true,
+      leadScore: currentScore,
+      usedAi: false,
+      shouldAlertOwner: true,
+      ownerAlertType: 'dynamic_pricing_unavailable',
+      shouldSendOwnerImage: false,
+      shouldSendGalleryImages: false,
+      shouldSendImage: false,
+      priceJustGiven: false,
+    };
+  }
+  // ────────────────────────────────────────────────────────────────────────
 
   const salesPhase = repos.conversation.getSalesPhase(customerPhone);
   const systemPrompt = buildSystemPrompt(skills, lang, collectedFields, salesPhase ?? undefined);

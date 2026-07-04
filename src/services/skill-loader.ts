@@ -277,6 +277,7 @@ const langFallbackSchema = z.object({
   dateSelectedLimitedNoDate: z.string(),
   answerQuestionBeforeQualification: z.string(),
   itineraryReply: z.string(),
+  dynamicDataUnavailable: z.string(),
   systemErrorRetry: z.string(),
   galleryIntro: z.string(),
   galleryFollowUp: z.string(),
@@ -370,8 +371,20 @@ function mergeDynamicIntoStatic(dynData: InternalDynamicData | null): void {
   };
 }
 
-export function setDynamicService(service: DynamicDataService): void {
+export function setDynamicService(service: DynamicDataService | null): void {
   cachedService = service;
+}
+
+/**
+ * Returns true when a DYNAMIC_SKILL_URL is configured and the last remote fetch
+ * succeeded (200 or 304). Returns false when no service is configured (tests /
+ * local dev with no URL) so callers treat the absence of a dynamic service as
+ * "data available" — only fail-safe when the URL is explicitly set but remote
+ * is currently unreachable.
+ */
+export function isDynamicDataFresh(): boolean {
+  if (!cachedService) return true;
+  return cachedService.lastFetchOk;
 }
 
 export async function refreshSkills(force = false): Promise<void> {

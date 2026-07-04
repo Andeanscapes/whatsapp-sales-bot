@@ -36,121 +36,17 @@
         ]
       },
       "availability": {
-        "lastUpdated": "2026-05-20",
+        "lastUpdated": "1970-01-01",
         "timezone": "America/Bogota",
-        "availableDates": [
-          {
-            "date": "2026-07-04",
-            "status": "limited",
-            "slotsApprox": 4,
-            "internalNote": "july_weekend_1"
-          },
-          {
-            "date": "2026-07-18",
-            "status": "limited",
-            "slotsApprox": 4,
-            "internalNote": "july_weekend_3"
-          },
-          {
-            "date": "2026-08-01",
-            "status": "limited",
-            "slotsApprox": 4,
-            "internalNote": "august_weekend_1"
-          },
-          {
-            "date": "2026-08-15",
-            "status": "limited",
-            "slotsApprox": 4,
-            "internalNote": "august_weekend_3"
-          },
-          {
-            "date": "2026-09-05",
-            "status": "limited",
-            "slotsApprox": 4,
-            "internalNote": "september_weekend_1"
-          },
-          {
-            "date": "2026-09-19",
-            "status": "limited",
-            "slotsApprox": 4,
-            "internalNote": "september_weekend_3"
-          }
-        ],
-        "botRule": "These are the planned weekend dates for the 2D/1N mining experience in Chivor. NEVER say all dates are booked or sold out as a definitive statement. Always frame it: the team needs to review actual availability for these dates or others. The team can check any date the customer is interested in, including dates not listed here. If the customer asks 'cuales estan libres?', list the planned dates and say the team validates all of them. Never confirm or deny availability — always route through the team."
+        "availableDates": [],
+        "botRule": "AVAILABILITY_NOT_AVAILABLE"
       },
       "pricing": {
         "currency": "COP",
-        "lastUpdated": "2026-05-07",
-        "items": [
-          {
-            "id": "individual",
-            "planId": "2d1n_mining",
-            "label": "Individual (1 persona) — 2D/1N",
-            "pricePerPerson": 550000,
-            "peopleIncluded": 1,
-            "publiclyShow": true,
-            "description": "1 noche en habitacion privada con bano privado. Comidas completas: 1 desayuno, 1 almuerzo fiambre, 1 cena. Experiencia minera Mina La Union ~6h con equipo de seguridad. Taller y charla esmeraldera ~1h. Acompanamiento local Chivor-Hacienda."
-          },
-          {
-            "id": "couple",
-            "planId": "2d1n_mining",
-            "label": "Pareja (2 personas) — 2D/1N",
-            "couplePrice": 1040000,
-            "peopleIncluded": 2,
-            "publiclyShow": true,
-            "description": "1 noche en habitacion privada compartida con bano privado. Comidas completas para 2: 2 desayunos, 2 almuerzos fiambre, 2 cenas. Experiencia minera Mina La Union ~6h. Taller y charla esmeraldera ~1h. Acompanamiento local."
-          },
-          {
-            "id": "individual_3d2n",
-            "planId": "3d2n_rural",
-            "label": "Individual (1 persona) — 3D/2N",
-            "pricePerPerson": 750000,
-            "peopleIncluded": 1,
-            "publiclyShow": true,
-            "description": "2 noches en habitacion privada con bano privado. 6 comidas completas. Dia 1: llegada, charla esmeraldera, cena. Dia 2: almuerzo (en mina o hacienda), mina La Union ~6h, cena. Dia 3: apicultura (abejas) y ganaderia. Equipo de seguridad, acompanamiento local."
-          },
-          {
-            "id": "couple_3d2n",
-            "planId": "3d2n_rural",
-            "label": "Pareja (2 personas) — 3D/2N",
-            "couplePrice": 1400000,
-            "peopleIncluded": 2,
-            "publiclyShow": true,
-            "description": "2 noches en habitacion privada compartida con bano privado. 6 comidas completas para 2. Dia 1: llegada, charla esmeraldera, cena. Dia 2: almuerzo (en mina o hacienda), mina La Union ~6h, cena. Dia 3: apicultura y ganaderia. Equipo de seguridad, acompanamiento local."
-          },
-          {
-            "id": "apiary_cattle_addon",
-            "label": "Apicultura y ganaderia (opcional, por persona)",
-            "pricePerPerson": 55000,
-            "peopleIncluded": null,
-            "publiclyShow": true,
-            "description": "Actividades adicionales en la Hacienda El Recuerdo: apicultura (abejas) y ganaderia. Se realizan el dia de salida antes del mediodia. No incluye comidas extra."
-          },
-          {
-            "id": "private_transport",
-            "label": "Transporte privado 4x4 desde Bogota",
-            "couplePrice": 1700000,
-            "peopleIncluded": 4,
-            "publiclyShow": true,
-            "description": "Transporte privado tipo 4x4 desde Bogota. Capacidad maxima 4 personas. Mismo precio para 1, 2, 3 o 4 personas. Grupos de 5+ requieren vehiculos adicionales (se cobra por vehiculo extra)."
-          }
-        ],
+        "lastUpdated": "1970-01-01",
+        "items": [],
         "botRules": [
-          "Hay 2 planes. 2D/1N: Individual $550,000 (1p) o Pareja $1,040,000 (2p). 3D/2N: Individual $750,000 (1p) o Pareja $1,400,000 (2p) — incluye noche extra, apicultura y ganaderia.",
-          "Siempre usa el precio del plan que eligio el cliente (planId en Pricing items).",
-          "3 personas: Pareja + Individual del plan seleccionado.",
-          "4 personas (2 parejas): Pareja x2 del plan seleccionado.",
-          "5+ personas: usa precio por persona = couplePrice / 2, multiplicado por la cantidad. Ejemplo 2D/1N: $520,000 c/u (10p = $5,200,000). 3D/2N: $700,000 c/u (10p = $7,000,000). NO redondees el precio por persona. Suma el total exacto: (couplePrice / 2) x cantidad.",
-          "Transporte privado 4x4 desde Bogota: $1,700,000 COP (1-4 personas, mismo precio). 5+ personas: vehiculos adicionales. NO inventes el costo de los vehiculos adicionales — di que lo confirmas tu.",
-          "SI el cliente pide transporte privado desde Bogota y son 1-4 personas, SUMA $1,700,000 al plan base y da el total. Si son 5+ personas, NO sumes transporte ni des total final con transporte; da solo total del plan y di que confirmas costo de vehiculos adicionales.",
-          "Bus publico: el cliente lo compra directamente por su cuenta en la terminal que corresponda segun ciudad de origen (Bogota, Tunja u otra). NO sumes bus al precio final del plan. Solo orienta y valida horarios para itinerario.",
-          "Adicional apicultura/ganaderia SOLO se ofrece en el plan 2D/1N (en el 3D/2N ya viene incluido). Precio: $55,000 COP/persona (opcional, dia de salida antes del mediodia).",
-          "Traductor disponible con costo adicional (consultar).",
-          "Somos pet-friendly. Edad minima: 5 anios. Ideal para quienes les gusta caminar y la aventura.",
-          "Cancelacion/reagendamiento: maximo 2 veces, hasta 4 dias antes del tour. Despues no hay reembolso.",
-          "Reserva: 15% de deposito via Nequi o Mercado Pago.",
-          "Never provide Nequi numbers, payment links, placeholders, account data, or final payment instructions. The team confirms payment details.",
-          "Nunca inventes descuentos ni precios que no sigan esta formula."
+          "PRICING_NOT_AVAILABLE"
         ]
       },
       "included": [
@@ -286,13 +182,13 @@
           "lang": "es",
           "intent": "pricing",
           "question": "¿Cuánto cuesta?",
-          "answer": "Tenemos 2 planes. Individual (1 persona): $550,000 COP. Pareja (2 personas, habitacion compartida): $1,040,000 COP. Incluye 1 noche, comidas, experiencia minera, charla esmeraldera. El equipo te confirma disponibilidad."
+          "answer": "Tenemos 2 planes: 2 Dias/1 Noche (individual o pareja) y 3 Dias/2 Noches (incluye apicultura y ganaderia). Ambos todo incluido: alojamiento, comidas, mina, charla esmeraldera. El equipo te confirma precios y disponibilidad."
         },
         {
           "lang": "en",
           "intent": "pricing",
           "question": "How much does it cost?",
-          "answer": "We have 2 plans. Individual (1 person): $550,000 COP. Couple (2 people, shared room): $1,040,000 COP. Includes 1 night, meals, mining experience, emerald workshop. Team confirms availability."
+          "answer": "We have 2 plans: 2 Days/1 Night (individual or couple) and 3 Days/2 Nights (includes beekeeping and cattle). Both all-inclusive: lodging, meals, mine experience, emerald workshop. The team confirms exact prices and availability."
         },
         {
           "lang": "es",
@@ -358,13 +254,13 @@
           "lang": "es",
           "intent": "addons",
           "question": "¿Hay actividades adicionales?",
-          "answer": "Si, en la Hacienda El Recuerdo tenemos actividades de apicultura (abejas) y ganaderia por $55,000 COP adicionales por persona. Se hacen el dia de salida antes del mediodia. Es opcional, se puede agregar al plan."
+          "answer": "Si, en la Hacienda El Recuerdo tenemos actividades de apicultura (abejas) y ganaderia. Son opcionales, se hacen el dia de salida antes del mediodia y tienen un costo adicional por persona. El equipo te confirma el valor."
         },
         {
           "lang": "en",
           "intent": "addons",
           "question": "Are there additional activities?",
-          "answer": "Yes, at Hacienda El Recuerdo we have beekeeping (apiculture) and cattle activities for an additional $55,000 COP per person. They're done on departure day before midday. Optional, can be added to your plan."
+          "answer": "Yes, at Hacienda El Recuerdo we have beekeeping and cattle activities. They're optional, done on departure day before midday, and have an additional cost per person. The team confirms the price."
         },
         {
           "lang": "es",
@@ -430,13 +326,13 @@
           "lang": "es",
           "intent": "transport_price",
           "question": "¿Cuánto cuesta el transporte desde Bogotá?",
-          "answer": "Transporte privado 4x4 desde Bogota: $1,700,000 COP (capacidad maxima 4 personas, mismo precio para 1-4). Si vas en bus publico, lo compras directamente por tu cuenta en la terminal que corresponda segun tu ciudad de origen (Bogota, Tunja u otra). Ese costo no se suma al plan; solo validamos horarios para que te funcione el itinerario."
+          "answer": "Hay opcion de transporte privado 4x4 desde Bogota (capacidad maxima 4 personas, mismo precio para 1-4). El equipo te confirma el costo exacto. Si vas en bus publico, lo compras directamente en la terminal segun tu ciudad de origen; ese costo no se suma al plan."
         },
         {
           "lang": "en",
           "intent": "transport_price",
           "question": "How much is transport from Bogotá?",
-          "answer": "Private 4x4 transport from Bogota: $1,700,000 COP (max 4 people, same price for 1-4). Groups of 5+ need additional vehicles. Public bus Bogota-Chivor also available: $65,000 COP per trip, but schedule must be validated for the tour itinerary."
+          "answer": "Private 4x4 transport from Bogota is available (max 4 people, same price for 1-4). The team confirms the exact cost. Groups of 5+ need additional vehicles. Public bus is also an option: you buy it directly at the terminal for your city; that cost is not added to the plan."
         },
         {
           "lang": "es",
