@@ -414,6 +414,17 @@ function countRecentStartsWith(
 export async function processMessage(input: ProcessMessageInput): Promise<ProcessMessageOutput> {
   const { repos, customerPhone, message, messageId, storeInbound = true } = input;
 
+  // Persist the customer's inbound message for audit/transcript. No-op when the
+  // caller already stored it (storeInbound === false), so early-return guards
+  // and the main flow share one code path without double-writing.
+  const persistInbound = (): void => {
+    if (!storeInbound) return;
+    repos.message.addMessage({
+      whatsapp_message_id: messageId, customer_phone: customerPhone, direction: 'inbound',
+      message_type: 'text', body: message, created_at: new Date().toISOString(), raw_json: null,
+    });
+  };
+
   if (repos.isPaused()) {
     return { reply: '', shouldSendReply: false, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
   }
@@ -453,16 +464,20 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     return { reply: skills.fallbackReplies[lang].optOutConfirmation, shouldSendReply: true, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
   }
 
+  // Terminal state: a booked (converted) lead gets no bot reply. Placed after
+  // opt-out handling so a post-sale "stop" still registers for compliance.
+  // Live bridge and post-handoff forwarding take precedence upstream in the
+  // webhook route, so this only fires for booked leads still in `bot` mode.
+  if (repos.conversation.getBookedAt(customerPhone)) {
+    persistInbound();
+    return { reply: '', shouldSendReply: false, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
+  }
+
   const softClosedAt = repos.conversation.getSoftClosedAt(customerPhone);
 
   const isFirstContact = isNewConversation;
 
-  if (storeInbound) {
-    repos.message.addMessage({
-      whatsapp_message_id: messageId, customer_phone: customerPhone, direction: 'inbound',
-      message_type: 'text', body: message, created_at: new Date().toISOString(), raw_json: null,
-    });
-  }
+  persistInbound();
 
   // ── Follow-up pain reply detection ──────────────────────────────────────
   // When the customer replies after receiving the pain-question follow-up,

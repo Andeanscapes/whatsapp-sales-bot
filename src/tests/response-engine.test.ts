@@ -135,6 +135,29 @@ describe('processMessage', () => {
     expect(result.shouldSendReply).toBe(false);
   });
 
+  it('prevents bot replies for booked (converted) leads', async () => {
+    mockLlmComplete.mockReset();
+    const phone = '573009990003';
+    repos.conversation.upsert(phone, { converted_at: new Date().toISOString() });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'I want to book more' });
+    expect(result.reply).toBe('');
+    expect(result.shouldSendReply).toBe(false);
+    expect(result.usedAi).toBe(false);
+    // Inbound message is still stored for audit/transcript
+    const msgs = repos.message.getRecentMessages(phone);
+    expect(msgs.some(m => m.content === 'I want to book more')).toBe(true);
+  });
+
+  it('still registers opt-out for a booked lead (compliance precedence)', async () => {
+    mockLlmComplete.mockReset();
+    const phone = '573009990004';
+    repos.conversation.upsert(phone, { converted_at: new Date().toISOString() });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'stop' });
+    expect(result.shouldSendReply).toBe(true);
+    expect(result.reply).toContain("won't send");
+    expect(repos.optOut.isOptedOut(phone)).toBe(true);
+  });
+
   it('returns AI reply when DeepSeek succeeds', async () => {
     mockLlmComplete.mockReset();
     mockLlmComplete.mockResolvedValueOnce(fromOld({

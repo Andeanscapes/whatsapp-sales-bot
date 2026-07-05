@@ -89,4 +89,7 @@ export const bridgeMessages = {
       : `El asesor debe escribir desde ${params.displayNumber ?? 'la linea asignada'}.`;
     return `Asignado: ${params.label} (${params.agentName})\nRuta: ${params.type}\n${action}`;
   },
+  returnbotUsage: 'Uso: /returnbot <telefono>',
+  returnbotBooked: 'Lead confirmado (booked). No se puede devolver al modo bot.',
+  returnbotDone: (phone: string): string => `${phone} devuelto al modo bot.`,
 } as const;
