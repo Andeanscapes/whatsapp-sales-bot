@@ -22,6 +22,7 @@ import { deleteHandler } from '../commands/delete.command.js';
 import { daysummaryHandler } from '../commands/daysummary.command.js';
 import { versionHandler } from '../commands/version.command.js';
 import { retryflowHandler } from '../commands/retryflow.command.js';
+import { returnbotHandler } from '../commands/returnbot.command.js';
 import { isAllowedTelegramChat, isOwnerChat } from './lead-routing.js';
 import { sendBridgeReply, sendBridgeMedia } from './bridge-service.js';
 import { bridgeMessages } from './bridge-messages.js';
@@ -444,6 +445,14 @@ export function registerCommands(): void {
     usage: '<telefono>',
     ownerOnly: true,
     handler: retryflowHandler,
+  });
+
+  registerCommand({
+    name: 'returnbot',
+    description: 'Devolver lead al modo bot (cierra bridge/handoff)',
+    usage: '<telefono>',
+    ownerOnly: true,
+    handler: returnbotHandler,
   });
 
   registerCommand({

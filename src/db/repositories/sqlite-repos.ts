@@ -245,6 +245,7 @@ export class SqliteConversationRepo implements ConversationRepository {
       WHERE c.opt_out_at IS NULL
         AND c.handed_off_at IS NULL
         AND c.soft_closed_at IS NULL
+        AND c.converted_at IS NULL
         AND c.follow_up_sent_at IS NULL
         AND COALESCE(c.conversation_mode, 'bot') = 'bot'
         AND (
@@ -282,6 +283,7 @@ export class SqliteConversationRepo implements ConversationRepository {
       WHERE c.opt_out_at IS NULL
         AND c.handed_off_at IS NULL
         AND c.soft_closed_at IS NULL
+        AND c.converted_at IS NULL
         AND COALESCE(c.conversation_mode, 'bot') = 'bot'
         AND (
           SELECT MAX(m.created_at) FROM messages m

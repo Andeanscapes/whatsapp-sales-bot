@@ -41,6 +41,13 @@ export function buildSystemPrompt(skills: Skills, lang?: string, collectedFields
     : null;
 
   const pricingRules = pricingAvailable ? exp.pricing.botRules.join('; ') : null;
+  // Durable business rules (group formulas, addon/transport policy, cancellation,
+  // pet/age, never-invent-discounts) apply even when live pricing is unavailable.
+  // When pricing IS available they are already merged into botRules, so only
+  // surface them standalone in the unavailable case to avoid duplication.
+  const businessRules = !pricingAvailable && exp.pricing.businessRules.length > 0
+    ? exp.pricing.businessRules.join('; ')
+    : null;
   const included = exp.included.join(', ');
   const notIncluded = exp.notIncludedUnlessConfirmed.join(', ');
   const reservationFlow = exp.reservationFlow.join('; ');
@@ -93,6 +100,7 @@ export function buildSystemPrompt(skills: Skills, lang?: string, collectedFields
     '---',
     pricingAvailable ? `Pricing: ${pricingItems}` : null,
     pricingAvailable ? `Pricing rules: ${pricingRules}` : null,
+    businessRules ? `Business rules: ${businessRules}` : null,
     '---',
     `Included: ${included}`,
     `NOT included: ${notIncluded}`,

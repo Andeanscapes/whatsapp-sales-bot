@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { loadSkills } from '../services/skill-loader.js';
 import { migrate } from '../db/migrate.js';
@@ -44,7 +44,8 @@ import { checkTimeWindow } from '../services/time-window-policy.js';
 import { safeReservationHandoff, afterHoursReply, colombiaTimeAwareReply } from '../services/reply-guard.js';
 import { selectPlanImage, canSendPlanImage, canSendImage, hasGalleryNudge, recordGalleryNudge, selectGalleryImages } from '../services/media-service.js';
 import { getActiveExperience } from '../services/product-registry.js';
-import { getSkills } from '../services/skill-loader.js';
+import { getSkills, setDynamicService } from '../services/skill-loader.js';
+import { DynamicDataService } from '../services/dynamic-data-service.js';
 import type { LlmTurn, LlmResult } from '../services/llm/llm-client.js';
 
 interface OldResponse {
@@ -134,6 +135,29 @@ describe('processMessage', () => {
     expect(result.shouldSendReply).toBe(false);
   });
 
+  it('prevents bot replies for booked (converted) leads', async () => {
+    mockLlmComplete.mockReset();
+    const phone = '573009990003';
+    repos.conversation.upsert(phone, { converted_at: new Date().toISOString() });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'I want to book more' });
+    expect(result.reply).toBe('');
+    expect(result.shouldSendReply).toBe(false);
+    expect(result.usedAi).toBe(false);
+    // Inbound message is still stored for audit/transcript
+    const msgs = repos.message.getRecentMessages(phone);
+    expect(msgs.some(m => m.content === 'I want to book more')).toBe(true);
+  });
+
+  it('still registers opt-out for a booked lead (compliance precedence)', async () => {
+    mockLlmComplete.mockReset();
+    const phone = '573009990004';
+    repos.conversation.upsert(phone, { converted_at: new Date().toISOString() });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'stop' });
+    expect(result.shouldSendReply).toBe(true);
+    expect(result.reply).toContain("won't send");
+    expect(repos.optOut.isOptedOut(phone)).toBe(true);
+  });
+
   it('returns AI reply when DeepSeek succeeds', async () => {
     mockLlmComplete.mockReset();
     mockLlmComplete.mockResolvedValueOnce(fromOld({
@@ -165,14 +189,30 @@ describe('processMessage', () => {
       price_given_at: new Date().toISOString(),
     });
 
-    const result = await processMessage({ repos, customerPhone: phone, message: 'seria para 2 pero dejame valido con mi pareja gracias' });
+    const skills = getSkills();
+    const exp = skills.andeanScapes.experiences[0];
+    const origPricing = exp.pricing;
+    exp.pricing = {
+      currency: 'COP', lastUpdated: '2026-01-01',
+      items: [
+        { id: 'individual', planId: '2d1n_mining', label: 'Individual', pricePerPerson: 550000, peopleIncluded: 1, publiclyShow: true },
+        { id: 'couple', planId: '2d1n_mining', label: 'Pareja', couplePrice: 1040000, peopleIncluded: 2, publiclyShow: true },
+      ],
+      botRules: ['pricing rules'],
+      businessRules: [],
+    };
+    try {
+      const result = await processMessage({ repos, customerPhone: phone, message: 'seria para 2 pero dejame valido con mi pareja gracias' });
 
-    expect(result.reply).toContain('Dale Santiago, cero afan');
-    expect(result.reply).toContain('$1,040,000 COP total');
-    expect(result.reply.toLowerCase()).not.toContain('transporte');
-    expect(result.shouldAlertOwner).toBe(false);
-    expect(result.usedAi).toBe(false);
-    expect(mockLlmComplete).not.toHaveBeenCalled();
+      expect(result.reply).toContain('Dale Santiago, cero afan');
+      expect(result.reply).toContain('$1,040,000 COP total');
+      expect(result.reply.toLowerCase()).not.toContain('transporte');
+      expect(result.shouldAlertOwner).toBe(false);
+      expect(result.usedAi).toBe(false);
+      expect(mockLlmComplete).not.toHaveBeenCalled();
+    } finally {
+      exp.pricing = origPricing;
+    }
   });
 
   it('returns graceful reply and alerts owner when DeepSeek fails (qualified, price given)', async () => {
@@ -653,13 +693,29 @@ describe('processMessage', () => {
       price_given_at: new Date().toISOString(),
     });
 
-    const result = await processMessage({ repos, customerPhone: phone, message: 'dejame consultarlo con mi esposa y te escribo' });
+    const skills = getSkills();
+    const exp = skills.andeanScapes.experiences[0];
+    const origPricing = exp.pricing;
+    exp.pricing = {
+      currency: 'COP', lastUpdated: '2026-01-01',
+      items: [
+        { id: 'individual', planId: '2d1n_mining', label: 'Individual', pricePerPerson: 550000, peopleIncluded: 1, publiclyShow: true },
+        { id: 'couple', planId: '2d1n_mining', label: 'Pareja', couplePrice: 1040000, peopleIncluded: 2, publiclyShow: true },
+      ],
+      botRules: ['pricing rules'],
+      businessRules: [],
+    };
+    try {
+      const result = await processMessage({ repos, customerPhone: phone, message: 'dejame consultarlo con mi esposa y te escribo' });
 
-    expect(result.reply).toContain('Dale Juan');
-    expect(result.reply).toContain('Para 10 personas queda en $5,200,000 COP total');
-    expect(result.shouldAlertOwner).toBe(false);
-    expect(result.usedAi).toBe(false);
-    expect(mockLlmComplete).not.toHaveBeenCalled();
+      expect(result.reply).toContain('Dale Juan');
+      expect(result.reply).toContain('Para 10 personas queda en $5,200,000 COP total');
+      expect(result.shouldAlertOwner).toBe(false);
+      expect(result.usedAi).toBe(false);
+      expect(mockLlmComplete).not.toHaveBeenCalled();
+    } finally {
+      exp.pricing = origPricing;
+    }
   });
 
   it('computes correct total for 10 people 3D/2N using couplePrice/2 formula', async () => {
@@ -674,20 +730,35 @@ describe('processMessage', () => {
       price_given_at: new Date().toISOString(),
     });
 
-    const result = await processMessage({ repos, customerPhone: phone, message: 'dejame revisarlo con mi novio y te confirmo' });
+    const skills = getSkills();
+    const exp = skills.andeanScapes.experiences[0];
+    const origPricing = exp.pricing;
+    exp.pricing = {
+      currency: 'COP', lastUpdated: '2026-01-01',
+      items: [
+        { id: 'individual_3d2n', planId: '3d2n_rural', label: 'Individual 3D/2N', pricePerPerson: 750000, peopleIncluded: 1, publiclyShow: true },
+        { id: 'couple_3d2n', planId: '3d2n_rural', label: 'Pareja 3D/2N', couplePrice: 1400000, peopleIncluded: 2, publiclyShow: true },
+      ],
+      botRules: ['pricing rules'],
+      businessRules: [],
+    };
+    try {
+      const result = await processMessage({ repos, customerPhone: phone, message: 'dejame revisarlo con mi novio y te confirmo' });
 
-    expect(result.reply).toContain('Dale Maria');
-    expect(result.reply).toContain('Para 10 personas queda en $7,000,000 COP total');
-    expect(result.shouldAlertOwner).toBe(false);
-    expect(result.usedAi).toBe(false);
+      expect(result.reply).toContain('Dale Maria');
+      expect(result.reply).toContain('Para 10 personas queda en $7,000,000 COP total');
+      expect(result.shouldAlertOwner).toBe(false);
+      expect(result.usedAi).toBe(false);
+    } finally {
+      exp.pricing = origPricing;
+    }
   });
 
-  it('keeps 5+ transport cost unquoted in pricing rules', () => {
+  it('pricing botRules come from dynamic remote, not static JSON', () => {
+    // Static JSON has no pricing rules. When dynamic is loaded they appear.
+    // Without dynamic service, botRules only contains PRICING_NOT_AVAILABLE.
     const rules = getActiveExperience(getSkills()).pricing.botRules.join(' ');
-
-    expect(rules).toContain('Si son 5+ personas, NO sumes transporte');
-    expect(rules).toContain('da solo total del plan');
-    expect(rules).toContain('1-4 personas');
+    expect(rules).toContain('PRICING_NOT_AVAILABLE');
   });
 
   it('alerts owner on message limit for hot leads with price progress', async () => {
@@ -1272,24 +1343,40 @@ describe('processMessage', () => {
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573001112244';
 
-    mockLlmComplete.mockResolvedValueOnce(fromOld({
-      response: {
-        reply: 'Claro! Individual $550,000 y en pareja $1,040,000 COP, todo incluido. Cuantas personas serian?',
-        intent: 'pricing',
-        lead_score_delta: 5,
-        should_send_image: false,
-        needs_human: false,
-        missing_fields: [],
-        collected_fields: { name: 'Luis' },
-      },
-      promptTokens: 600,
-      completionTokens: 70,
-    }));
+    const skills = getSkills();
+    const exp = skills.andeanScapes.experiences[0];
+    const origPricing = exp.pricing;
+    exp.pricing = {
+      currency: 'COP', lastUpdated: '2026-01-01',
+      items: [
+        { id: 'individual', planId: '2d1n_mining', label: 'Individual', pricePerPerson: 550000, peopleIncluded: 1, publiclyShow: true },
+        { id: 'couple', planId: '2d1n_mining', label: 'Pareja', couplePrice: 1040000, peopleIncluded: 2, publiclyShow: true },
+      ],
+      botRules: ['pricing rules'],
+      businessRules: [],
+    };
+    try {
+      mockLlmComplete.mockResolvedValueOnce(fromOld({
+        response: {
+          reply: 'Claro! Individual $550,000 y en pareja $1,040,000 COP, todo incluido. Cuantas personas serian?',
+          intent: 'pricing',
+          lead_score_delta: 5,
+          should_send_image: false,
+          needs_human: false,
+          missing_fields: [],
+          collected_fields: { name: 'Luis' },
+        },
+        promptTokens: 600,
+        completionTokens: 70,
+      }));
 
-    await processMessage({ repos, customerPhone: phone, message: 'cuanto cuesta?' });
+      await processMessage({ repos, customerPhone: phone, message: 'cuanto cuesta?' });
 
-    const row = repos.conversation.getByPhone(phone) as { price_given_at: string | null };
-    expect(row.price_given_at).toBeTruthy();
+      const row = repos.conversation.getByPhone(phone) as { price_given_at: string | null };
+      expect(row.price_given_at).toBeTruthy();
+    } finally {
+      exp.pricing = origPricing;
+    }
   });
 
   it('asks next qualification question when AI fails and qualification incomplete', async () => {
@@ -2093,25 +2180,42 @@ describe('processMessage', () => {
       body: 'quiero validar el plan de 3 dias',
       created_at: new Date(Date.now() - 1000).toISOString(),
     });
-    mockLlmComplete.mockResolvedValueOnce(fromOld({
-      response: {
-        reply: 'Para 3 personas en el plan de 3 dias seria $2,150,000 COP.',
-        intent: 'pricing',
-        lead_score_delta: 10,
-        should_send_image: false,
-        needs_human: false,
-        missing_fields: [],
-        collected_fields: {},
-      },
-      promptTokens: 500,
-      completionTokens: 30,
-    }));
 
-    const result = await processMessage({ repos, customerPhone: phone, message: 'somos tres que precio tiene?' });
+    const skills = getSkills();
+    const exp = skills.andeanScapes.experiences[0];
+    const origPricing = exp.pricing;
+    exp.pricing = {
+      currency: 'COP', lastUpdated: '2026-01-01',
+      items: [
+        { id: 'individual_3d2n', planId: '3d2n_rural', label: 'Individual 3D/2N', pricePerPerson: 750000, peopleIncluded: 1, publiclyShow: true },
+        { id: 'couple_3d2n', planId: '3d2n_rural', label: 'Pareja 3D/2N', couplePrice: 1400000, peopleIncluded: 2, publiclyShow: true },
+      ],
+      botRules: ['pricing rules'],
+      businessRules: [],
+    };
+    try {
+      mockLlmComplete.mockResolvedValueOnce(fromOld({
+        response: {
+          reply: 'Para 3 personas en el plan de 3 dias seria $2,150,000 COP.',
+          intent: 'pricing',
+          lead_score_delta: 10,
+          should_send_image: false,
+          needs_human: false,
+          missing_fields: [],
+          collected_fields: {},
+        },
+        promptTokens: 500,
+        completionTokens: 30,
+      }));
 
-    expect(result.priceFollowUpText).toContain('$2,150,000 COP');
-    const conv = repos.conversation.getByPhone(phone) as { collected_plan: string | null };
-    expect(conv.collected_plan).toBe('3d2n_rural');
+      const result = await processMessage({ repos, customerPhone: phone, message: 'somos tres que precio tiene?' });
+
+      expect(result.priceFollowUpText).toContain('$2,150,000 COP');
+      const conv = repos.conversation.getByPhone(phone) as { collected_plan: string | null };
+      expect(conv.collected_plan).toBe('3d2n_rural');
+    } finally {
+      exp.pricing = origPricing;
+    }
   });
 
   it('uses 3D/2N image after ambiguous mine plus 3 days plan mention', async () => {
@@ -2494,23 +2598,40 @@ describe('processMessage', () => {
       collected_date: 'agosto',
       collected_transport_need: 'own',
     });
-    mockLlmComplete.mockResolvedValueOnce(fromOld({
-      response: {
-        reply: 'Para pareja el plan queda en $1,590,000 COP.',
-        intent: 'pricing',
-        lead_score_delta: 10,
-        should_send_image: false,
-        needs_human: false,
-        missing_fields: [],
-        collected_fields: {},
-      },
-      promptTokens: 500,
-      completionTokens: 30,
-    }));
 
-    const result = await processMessage({ repos, customerPhone: phone, message: 'cuanto cuesta?' });
+    const skills = getSkills();
+    const exp = skills.andeanScapes.experiences[0];
+    const origPricing = exp.pricing;
+    exp.pricing = {
+      currency: 'COP', lastUpdated: '2026-01-01',
+      items: [
+        { id: 'individual_3d2n', planId: '3d2n_rural', label: 'Individual 3D/2N', pricePerPerson: 750000, peopleIncluded: 1, publiclyShow: true },
+        { id: 'couple_3d2n', planId: '3d2n_rural', label: 'Pareja 3D/2N', couplePrice: 1400000, peopleIncluded: 2, publiclyShow: true },
+      ],
+      botRules: ['pricing rules'],
+      businessRules: [],
+    };
+    try {
+      mockLlmComplete.mockResolvedValueOnce(fromOld({
+        response: {
+          reply: 'Para pareja el plan queda en $1,590,000 COP.',
+          intent: 'pricing',
+          lead_score_delta: 10,
+          should_send_image: false,
+          needs_human: false,
+          missing_fields: [],
+          collected_fields: {},
+        },
+        promptTokens: 500,
+        completionTokens: 30,
+      }));
 
-    expect(result.priceFollowUpText).toContain('$1,400,000 COP');
+      const result = await processMessage({ repos, customerPhone: phone, message: 'cuanto cuesta?' });
+
+      expect(result.priceFollowUpText).toContain('$1,400,000 COP');
+    } finally {
+      exp.pricing = origPricing;
+    }
   });
 
   it('migrates old conversations table with collected_plan column', () => {
@@ -2640,7 +2761,7 @@ describe('processMessage', () => {
     const exp = skills.andeanScapes.experiences[0];
     const origPricing = exp.pricing;
     const origAvailability = exp.availability;
-    exp.pricing = { currency: 'COP', lastUpdated: '1970-01-01', items: [], botRules: [PRICING_NOT_AVAILABLE] };
+    exp.pricing = { currency: 'COP', lastUpdated: '1970-01-01', items: [], botRules: [PRICING_NOT_AVAILABLE], businessRules: [] };
     exp.availability = { lastUpdated: '1970-01-01', timezone: 'America/Bogota', availableDates: [], botRule: AVAILABILITY_NOT_AVAILABLE };
     try {
       mockLlmComplete.mockReset();
@@ -2670,6 +2791,193 @@ describe('processMessage', () => {
     } finally {
       exp.pricing = origPricing;
       exp.availability = origAvailability;
+    }
+  });
+});
+
+describe('processMessage — dynamic data guard', () => {
+  const DYNAMIC_URL = 'https://cdn.andeanscapes.com/whatsapp_bot/bot-dynamic.json';
+
+  afterEach(() => {
+    setDynamicService(null);
+    vi.restoreAllMocks();
+  });
+
+  // A service whose fetches always fail keeps lastFetchOk === false, which is
+  // exactly the "remote unavailable" state the guard must react to.
+  async function withStaleDynamicService(): Promise<void> {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('remote down'));
+    const svc = new DynamicDataService(DYNAMIC_URL, 5000);
+    await svc.forceRefresh();
+    expect(svc.lastFetchOk).toBe(false);
+    setDynamicService(svc);
+  }
+
+  // A service with a valid remote payload keeps lastFetchOk === true.
+  async function withFreshDynamicService(): Promise<void> {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true, status: 200, headers: { get: () => null },
+      json: async () => ({ v: 3, updated: '2026-06-06T00:00:00Z', experiences: {} }),
+    } as unknown as Response);
+    const svc = new DynamicDataService(DYNAMIC_URL, 5000);
+    await svc.forceRefresh();
+    expect(svc.lastFetchOk).toBe(true);
+    setDynamicService(svc);
+  }
+
+  it('blocks price question and alerts owner when remote is stale', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    await withStaleDynamicService();
+    const phone = '573001990001';
+
+    const result = await processMessage({ repos, customerPhone: phone, message: 'cuanto vale para 2?' });
+
+    expect(result.reply).toBe(getSkills().fallbackReplies.es.dynamicDataUnavailable);
+    expect(result.shouldAlertOwner).toBe(true);
+    expect(result.ownerAlertType).toBe('dynamic_pricing_unavailable');
+    expect(result.usedAi).toBe(false);
+    expect(result.reply).not.toMatch(/\$\s?\d/);
+    expect(mockLlmComplete).not.toHaveBeenCalled();
+  });
+
+  it('blocks reservation/date questions when remote is stale', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    await withStaleDynamicService();
+
+    const r1 = await processMessage({ repos, customerPhone: '573001990002', message: 'que fechas hay disponibles?' });
+    expect(r1.ownerAlertType).toBe('dynamic_pricing_unavailable');
+
+    const r2 = await processMessage({ repos, customerPhone: '573001990003', message: 'quiero reservar' });
+    expect(r2.ownerAlertType).toBe('dynamic_pricing_unavailable');
+
+    expect(mockLlmComplete).not.toHaveBeenCalled();
+  });
+
+  it('does NOT block non-price questions when remote is stale (passes to LLM)', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    await withStaleDynamicService();
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: { reply: 'La mina es segura, vamos con guia y equipo completo.', intent: 'general' },
+    }));
+
+    const result = await processMessage({ repos, customerPhone: '573001990004', message: 'es seguro entrar a la mina?' });
+
+    expect(result.reply).not.toBe(getSkills().fallbackReplies.es.dynamicDataUnavailable);
+    expect(result.usedAi).toBe(true);
+    expect(mockLlmComplete).toHaveBeenCalled();
+  });
+
+  it('does NOT block price question when remote is fresh (passes to LLM)', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    await withFreshDynamicService();
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: { reply: 'Con gusto, para cuantas personas seria?', intent: 'pricing' },
+    }));
+
+    const result = await processMessage({ repos, customerPhone: '573001990005', message: 'cuanto vale?' });
+
+    expect(result.reply).not.toBe(getSkills().fallbackReplies.es.dynamicDataUnavailable);
+    expect(result.usedAi).toBe(true);
+    expect(mockLlmComplete).toHaveBeenCalled();
+  });
+
+  it('does not leak a numeric price via partner-consult summary when remote is stale', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    await withStaleDynamicService();
+    const phone = '573001990006';
+    // Price previously given (row set), then a partner-consult pause message.
+    repos.conversation.upsert(phone, {
+      collected_name: 'Laura',
+      collected_people: 2,
+      price_given_at: new Date().toISOString(),
+    });
+
+    const result = await processMessage({ repos, customerPhone: phone, message: 'dejame lo consulto con mi pareja' });
+
+    expect(result.reply).not.toMatch(/\$\s?\d/);
+    expect(mockLlmComplete).not.toHaveBeenCalled();
+  });
+
+  it('overrides incorrect LLM math with deterministic 5-person quote', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573009993111';
+    const skills = getSkills();
+    const exp = getActiveExperience(skills);
+    const origPricing = exp.pricing;
+    exp.pricing = {
+      currency: 'COP',
+      lastUpdated: '2026-01-01',
+      items: [
+        { id: '2d1n_mining_individual', planId: '2d1n_mining', label: 'Individual', pricePerPerson: 550000, publiclyShow: true },
+        { id: '2d1n_mining_couple', planId: '2d1n_mining', label: 'Pareja', couplePrice: 1000000, peopleIncluded: 2, publiclyShow: true },
+      ],
+      botRules: ['pricing rules'],
+      businessRules: [],
+    };
+    try {
+      mockLlmComplete.mockResolvedValueOnce(fromOld({
+        response: {
+          reply: 'Para 5 personas seria $1,550,000 COP total.',
+          collected_fields: { plan: '2d1n_mining', people: 5, transport_need: 'own' },
+        },
+      }));
+
+      const result = await processMessage({ repos, customerPhone: phone, message: 'cuanto vale para 5 personas el plan 2 dias?' });
+
+      expect(result.reply).toContain('$2,500,000 COP');
+      expect(result.reply).not.toContain('1,550,000');
+      expect(result.priceJustGiven).toBe(true);
+    } finally {
+      exp.pricing = origPricing;
+    }
+  });
+
+  it('does not add transport for 5+ people because extra vehicle cost needs confirmation', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573009993112';
+    const skills = getSkills();
+    const exp = getActiveExperience(skills);
+    const origPricing = exp.pricing;
+    exp.pricing = {
+      currency: 'COP',
+      lastUpdated: '2026-01-01',
+      items: [
+        { id: '2d1n_mining_individual', planId: '2d1n_mining', label: 'Individual', pricePerPerson: 550000, publiclyShow: true },
+        { id: '2d1n_mining_couple', planId: '2d1n_mining', label: 'Pareja', couplePrice: 1000000, peopleIncluded: 2, publiclyShow: true },
+        { id: 'private_transport', label: 'Transporte privado 4x4 desde Bogota', couplePrice: 1700000, peopleIncluded: 4, publiclyShow: true },
+      ],
+      botRules: ['pricing rules'],
+      businessRules: [],
+    };
+    try {
+      mockLlmComplete.mockResolvedValueOnce(fromOld({
+        response: {
+          reply: 'Para 5 personas con transporte seria $4,200,000 COP total.',
+          collected_fields: { plan: '2d1n_mining', people: 5, transport_need: 'from_bogota' },
+        },
+      }));
+
+      const result = await processMessage({ repos, customerPhone: phone, message: 'precio para 5 personas con transporte desde bogota' });
+
+      expect(result.reply).toContain('$2,500,000 COP');
+      expect(result.reply).toContain('confirmar el costo');
+      expect(result.reply).not.toContain('4,200,000');
+    } finally {
+      exp.pricing = origPricing;
     }
   });
 });

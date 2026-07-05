@@ -5,6 +5,12 @@ import { dynamicDataSchema, type DynamicData, type DynamicMedia } from './dynami
 export const PRICING_NOT_AVAILABLE = 'PRICING_NOT_AVAILABLE';
 export const AVAILABILITY_NOT_AVAILABLE = 'AVAILABILITY_NOT_AVAILABLE';
 
+// Well-known addon ids. The remote feed owns the numbers, but these keys are the
+// contract between bot-dynamic.json addons and the pricing calculator. Kept here
+// (next to the transform that produces the items) so a rename is a single edit.
+export const ADDON_ID_PRIVATE_TRANSPORT = 'private_transport';
+export const ADDON_ID_APIARY_CATTLE = 'apiary_cattle';
+
 export function shouldStripStaticPricing(dynamicSkillUrl: string, hasDynamicData: boolean): boolean {
   return dynamicSkillUrl.trim().length > 0 && !hasDynamicData;
 }
@@ -69,7 +75,8 @@ export class DynamicDataService {
     data: InternalDynamicData | null;
     etag: string | null;
     lastFetchMs: number;
-  } = { data: null, etag: null, lastFetchMs: 0 };
+    lastFetchOk: boolean;
+  } = { data: null, etag: null, lastFetchMs: 0, lastFetchOk: false };
 
   private lastErrorLogMs = 0;
   private static readonly ERROR_LOG_INTERVAL_MS = 60_000;
@@ -90,6 +97,11 @@ export class DynamicDataService {
 
   get isAvailable(): boolean {
     return this.cache.data !== null;
+  }
+
+  /** True only when the last remote fetch completed successfully (non-304, valid JSON). */
+  get lastFetchOk(): boolean {
+    return this.cache.lastFetchOk;
   }
 
   getData(): InternalDynamicData | null {
@@ -142,11 +154,13 @@ export class DynamicDataService {
 
       if (res.status === 304) {
         this.cache.lastFetchMs = Date.now();
+        this.cache.lastFetchOk = true;
         return;
       }
 
       if (!res.ok) {
         this.logError({ status: res.status }, '[DYNAMIC] fetch failed');
+        this.cache.lastFetchOk = false;
         return;
       }
 
@@ -155,12 +169,13 @@ export class DynamicDataService {
       const validated = dynamicDataSchema.parse(raw);
       const transformed = this.transform(validated);
 
-      this.cache = { data: transformed, etag, lastFetchMs: Date.now() };
+      this.cache = { data: transformed, etag, lastFetchMs: Date.now(), lastFetchOk: true };
       logger.info(
         { experiences: Object.keys(transformed.experiences) },
         '[DYNAMIC] data updated',
       );
     } catch (err) {
+      this.cache.lastFetchOk = false;
       if (err instanceof z.ZodError) {
         this.logError({ issues: err.issues }, '[DYNAMIC] validation failed');
       } else {
