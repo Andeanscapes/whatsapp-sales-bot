@@ -35,7 +35,7 @@ describe('findIntent English', () => {
     const result = findIntent('How much is the emerald mining tour?', skills, 'en');
     expect(result).not.toBeNull();
     expect(result!.intent).toBe('pricing');
-    expect(result!.answer).toContain('Reference prices');
+    expect(result!.answer).toContain('team');
     expect(result!.confidence).toBeGreaterThanOrEqual(0.75);
   });
 
@@ -71,7 +71,7 @@ describe('findIntent Spanish', () => {
     const result = findIntent('¿Cuánto vale el tour de esmeraldas?', skills, 'es');
     expect(result).not.toBeNull();
     expect(result!.intent).toBe('pricing');
-    expect(result!.answer).toContain('550');
+    expect(result!.answer).toContain('equipo');
     expect(result!.confidence).toBeGreaterThanOrEqual(0.75);
   });
 
@@ -79,14 +79,14 @@ describe('findIntent Spanish', () => {
     const result = findIntent('Cuales son los precios?', skills);
     expect(result).not.toBeNull();
     expect(result!.intent).toBe('pricing');
-    expect(result!.answer).toContain('550');
+    expect(result!.answer).toContain('equipo');
   });
 
   it('detects English without explicit lang', () => {
     const result = findIntent('What are the prices?', skills);
     expect(result).not.toBeNull();
     expect(result!.intent).toBe('pricing');
-    expect(result!.answer).toContain('Reference prices');
+    expect(result!.answer).toContain('team');
   });
 
   it('detects availability intent in Spanish', () => {

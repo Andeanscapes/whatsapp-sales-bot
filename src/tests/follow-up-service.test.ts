@@ -143,6 +143,16 @@ describe('follow-up service', () => {
     expect(sendText).not.toHaveBeenCalled();
   });
 
+  it('skips booked (converted) leads', async () => {
+    seedSilentLead();
+    repos.conversation.upsert(PHONE, { converted_at: new Date().toISOString() });
+    mockLlmComplete.mockResolvedValue(reply('¿Seguimos?'));
+
+    await runFollowUps(repos);
+
+    expect(sendText).not.toHaveBeenCalled();
+  });
+
   it('skips when budget is exhausted', async () => {
     seedSilentLead();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: false, reason: 'daily_budget_exceeded' });
@@ -192,6 +202,28 @@ describe('follow-up service', () => {
     expect(sendText).toHaveBeenCalledTimes(1);
     const [, painMsg] = vi.mocked(sendText).mock.calls[0] ?? [];
     expect(String(painMsg)).toMatch(/precio|fecha|seguridad|transporte/i);
+  });
+
+  it('skips pain question for booked (converted) leads', async () => {
+    repos.conversation.upsert(PHONE, { language: 'es', lead_score: 15, converted_at: new Date().toISOString() });
+    addMsg('inbound', 'hola cuanto vale?', -2 * 60 * 60 * 1000);
+
+    repos.followUpEvent.insert({
+      customerPhone: PHONE,
+      sequenceNumber: 1,
+      stage: 'first_nudge',
+      sentAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+      repliedAt: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(),
+      scoreBefore: 15,
+      scoreAfter: 15,
+      detectedPain: null,
+      status: 'replied',
+    });
+
+    vi.mocked(sendText).mockClear();
+    await runFollowUps(repos);
+
+    expect(sendText).not.toHaveBeenCalled();
   });
 
   it('does not send pain question when first_nudge not yet replied', async () => {

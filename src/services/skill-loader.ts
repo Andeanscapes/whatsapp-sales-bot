@@ -68,6 +68,11 @@ const experienceSchema = z.object({
     lastUpdated: dateSchema,
     items: z.array(pricingItemSchema),
     botRules: z.array(z.string()),
+    // Non-price business rules (group formulas, addon/transport policy,
+    // cancellation, pet/age, "never invent discounts"). These live in the
+    // static skill (not price VALUES) and are always applied ALONGSIDE the
+    // remote pricing rules — the dynamic feed only owns the numbers.
+    businessRules: z.array(z.string()).default([]),
   }),
   included: z.array(z.string()),
   notIncludedUnlessConfirmed: z.array(z.string()),
@@ -264,6 +269,11 @@ const langFallbackSchema = z.object({
   disculpaYaDicho: z.string(),
   objectionResolvedContinue: z.string(),
   partnerConsultSummary: z.string(),
+  quotePlanBase: z.string(),
+  quoteAddons: z.string(),
+  quoteTransport: z.string(),
+  quoteTotal: z.string(),
+  quoteTransportConfirm: z.string(),
   safeReservationHandoff: z.string(),
   safeReservationHandoffAlt1: z.string(),
   safeReservationHandoffAlt2: z.string(),
@@ -277,6 +287,7 @@ const langFallbackSchema = z.object({
   dateSelectedLimitedNoDate: z.string(),
   answerQuestionBeforeQualification: z.string(),
   itineraryReply: z.string(),
+  dynamicDataUnavailable: z.string(),
   systemErrorRetry: z.string(),
   galleryIntro: z.string(),
   galleryFollowUp: z.string(),
@@ -344,7 +355,13 @@ function applyDynamicToExperiences(
         currency: dyn.pricing.currency,
         lastUpdated: dyn.pricing.lastUpdated,
         items: applyDynamicPricingItems(exp.pricing.items, dyn.pricing.items),
-        botRules: dyn.pricing.botRules,
+        // Apply the remote pricing rules ALONGSIDE the static business rules.
+        // Remote owns the price numbers/formatting; static owns the durable
+        // business logic (group formulas, addon/transport policy, cancellation,
+        // pet/age, never-invent-discounts). The PRICING_NOT_AVAILABLE sentinel is
+        // never merged — when dynamic pricing loads, pricing IS available.
+        botRules: [...dyn.pricing.botRules, ...exp.pricing.businessRules],
+        businessRules: exp.pricing.businessRules,
       },
       availability: {
         lastUpdated: dyn.availability.lastUpdated,
@@ -370,8 +387,20 @@ function mergeDynamicIntoStatic(dynData: InternalDynamicData | null): void {
   };
 }
 
-export function setDynamicService(service: DynamicDataService): void {
+export function setDynamicService(service: DynamicDataService | null): void {
   cachedService = service;
+}
+
+/**
+ * Returns true when a DYNAMIC_SKILL_URL is configured and the last remote fetch
+ * succeeded (200 or 304). Returns false when no service is configured (tests /
+ * local dev with no URL) so callers treat the absence of a dynamic service as
+ * "data available" — only fail-safe when the URL is explicitly set but remote
+ * is currently unreachable.
+ */
+export function isDynamicDataFresh(): boolean {
+  if (!cachedService) return true;
+  return cachedService.lastFetchOk;
 }
 
 export async function refreshSkills(force = false): Promise<void> {
@@ -429,7 +458,7 @@ export function stripSkillsPricing(): void {
       ...cached.andeanScapes,
       experiences: cached.andeanScapes.experiences.map(exp => ({
         ...exp,
-        pricing: { currency: 'COP', lastUpdated: '1970-01-01', items: [], botRules: [PRICING_NOT_AVAILABLE] },
+        pricing: { currency: 'COP', lastUpdated: '1970-01-01', items: [], botRules: [PRICING_NOT_AVAILABLE], businessRules: exp.pricing.businessRules },
         availability: { lastUpdated: '1970-01-01', timezone: 'America/Bogota', availableDates: [], botRule: AVAILABILITY_NOT_AVAILABLE },
       })) as typeof cached.andeanScapes.experiences,
     },

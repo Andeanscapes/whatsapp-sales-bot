@@ -25,6 +25,49 @@ describe('buildSystemPrompt', () => {
     expect(priceContextIndex).toBe(-1);
     expect(salesTacticsIndex).toBeGreaterThan(guardIndex);
   });
+
+  it('surfaces durable business rules even when pricing is unavailable', () => {
+    const skills = withUnavailablePricingAndAvailability(loadSkills());
+    const prompt = buildSystemPrompt(skills);
+
+    // Numbers are gone (no price values) but the durable business rules must
+    // still reach the model so it honors cancellation / addon / no-invent rules.
+    expect(prompt).toContain('Business rules:');
+    expect(prompt).toContain('Cancelacion/reagendamiento: maximo 2 veces');
+    expect(prompt).toContain('Nunca inventes descuentos');
+    // No hardcoded price VALUES leak from the static skill.
+    expect(prompt).not.toMatch(/\$?\s?1,040,000/);
+    expect(prompt).not.toMatch(/\$?\s?550,000/);
+  });
+
+  it('merges static business rules alongside dynamic pricing rules when available', () => {
+    // Default loadSkills has no dynamic service, so pricing is unavailable and
+    // botRules holds only the sentinel. Simulate the merged runtime shape.
+    const skills = loadSkills();
+    const exp = skills.andeanScapes.experiences[0];
+    const orig = exp.pricing;
+    exp.pricing = {
+      currency: 'COP',
+      lastUpdated: '2026-01-01',
+      items: [
+        { id: 'couple', planId: '2d1n_mining', label: 'Pareja', couplePrice: 1040000, peopleIncluded: 2, publiclyShow: true },
+      ],
+      // Runtime merge = remote rules + static businessRules (see applyDynamicToExperiences).
+      botRules: ['REMOTE: 15% deposito via Nequi o Mercado Pago', ...orig.businessRules],
+      businessRules: orig.businessRules,
+    };
+    try {
+      const prompt = buildSystemPrompt(skills);
+      expect(prompt).toContain('Pricing rules:');
+      expect(prompt).toContain('REMOTE: 15% deposito');
+      // Static business rule is applied alongside the remote rule.
+      expect(prompt).toContain('5+ personas');
+      // Not duplicated as a standalone "Business rules:" line when pricing available.
+      expect(prompt).not.toContain('Business rules:');
+    } finally {
+      exp.pricing = orig;
+    }
+  });
 });
 
 function withUnavailablePricingAndAvailability(skills: Skills): Skills {
