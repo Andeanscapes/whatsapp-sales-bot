@@ -178,6 +178,22 @@ describe('follow-up service', () => {
     expect(event?.repliedAt).toBeNull();
   });
 
+  it('strips dynamic owner re-intro and avoids repeating IG link', async () => {
+    repos.conversation.upsert(PHONE, { language: 'es' });
+    addMsg('inbound', 'hola, cuanto vale?', -5 * 60 * 60 * 1000);
+    addMsg('outbound', 'Mira nuestro IG https://www.instagram.com/andean_scapes/', -4 * 60 * 60 * 1000);
+    mockLlmComplete.mockResolvedValueOnce(reply(`Soy ${env.OWNER_NAME}, co-founder de Andean Scapes junto con ${env.PARTNER_NAME}. Me acordé de tu idea de Chivor.`));
+
+    await runFollowUps(repos);
+
+    expect(sendText).toHaveBeenCalledTimes(1);
+    const [, sent] = vi.mocked(sendText).mock.calls[0] ?? [];
+    const body = String(sent);
+    expect(body).not.toContain(`Soy ${env.OWNER_NAME}`);
+    expect(body).toContain('Me acordé de tu idea de Chivor');
+    expect(body).not.toMatch(/Mientras tanto, mira nuestro IG/);
+  });
+
   it('sends pain question when first_nudge has been replied', async () => {
     repos.conversation.upsert(PHONE, { language: 'es', lead_score: 15 });
     // Seed a recent inbound so the service window check passes

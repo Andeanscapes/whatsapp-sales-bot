@@ -221,6 +221,54 @@ export function extractBookingFields(text: string): Record<string, unknown> {
   return fields;
 }
 
+const SPANISH_NUMBER_WORDS: Record<string, number> = {
+  uno: 1, una: 1, un: 1,
+  dos: 2, tres: 3, cuatro: 4, cinco: 5,
+  seis: 6, siete: 7, ocho: 8, nueve: 9,
+  diez: 10, once: 11, doce: 12, trece: 13,
+  catorce: 14, quince: 15, dieciseis: 16, dieciséis: 16,
+  diecisiete: 17, dieciocho: 18, diecinueve: 19, veinte: 20,
+};
+
+function extractPeopleFromReply(text: string): number | null {
+  const norm = text.toLowerCase().trim();
+
+  const toPeople = (raw: string): number | null => {
+    const n = SPANISH_NUMBER_WORDS[raw] ?? parseInt(raw, 10);
+    return Number.isInteger(n) && n >= 1 && n <= 20 ? n : null;
+  };
+
+  const peopleContext = /\b(?:somos|seriamos|ser[ií]amos|serian|ser[ií]an|vamos|iriamos|ir[ií]amos|para)\s+(\d{1,2}|uno|una|un|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|dieciseis|dieciséis|diecisiete|dieciocho|diecinueve|veinte)\b/.exec(norm)
+    ?? /\b(\d{1,2}|uno|una|un|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|dieciseis|dieciséis|diecisiete|dieciocho|diecinueve|veinte)\s+personas\b/.exec(norm);
+  if (peopleContext) {
+    const n = toPeople(peopleContext[1]);
+    if (n != null) return n;
+  }
+
+  // Exact standalone digit (existing behaviour preserved).
+  const soloNum = /^(\d+)$/.exec(norm);
+  if (soloNum) {
+    const n = toPeople(soloNum[1]);
+    if (n != null) return n;
+  }
+
+  // Embedded digit preceded or followed by whitespace/punctuation.
+  const embeddedDigit = /\b(\d{1,2})\b/.exec(norm);
+  if (embeddedDigit) {
+    const n = toPeople(embeddedDigit[1]);
+    if (n != null) return n;
+  }
+
+  // Spanish number-word (uno..veinte).
+  const words = norm.split(/[^a-záéíóúüñ]+/).filter(Boolean);
+  for (const w of words) {
+    const v = toPeople(w);
+    if (v != null) return v;
+  }
+
+  return null;
+}
+
 export function contextAwareExtract(message: string, repos: Repositories, phone: string, existing: Record<string, unknown>): Record<string, unknown> {
   const fields = { ...existing };
   const lastQuestion = getLastAssistantQuestion(repos, phone);
@@ -229,10 +277,8 @@ export function contextAwareExtract(message: string, repos: Repositories, phone:
   if (lastQuestion && !fields.collected_people) {
     const askedPeople = /cu[aá]ntas personas|cu[aá]ntos ser[ií]an|how many people/i.test(lastQuestion);
     if (askedPeople) {
-      const soloNum = /^(\d+)$/.exec(norm);
-      if (soloNum) {
-        fields.collected_people = parseInt(soloNum[1], 10);
-      }
+      const people = extractPeopleFromReply(norm);
+      if (people != null) fields.collected_people = people;
     }
   }
 
