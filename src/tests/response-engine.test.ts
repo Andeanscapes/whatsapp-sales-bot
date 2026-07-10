@@ -19,6 +19,7 @@ import { insertMediaSendAt, getLatestOwnerAlertBody } from './helpers/db-test-he
 import { containsPromptLeakOrPolicyViolation } from '../services/reply-guard.js';
 import { env } from '../config/env.js';
 import { resetRoutingConfigCache, type RoutingConfig } from '../services/lead-routing.js';
+import { qualificationSummary } from '../services/reply-guard.js';
 
 const { mockLlmComplete } = vi.hoisted(() => ({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -3478,5 +3479,158 @@ describe('pain reply flow', () => {
 
     expect(painRepos.conversation.getLeadPain(SEC_PHONE)).toBe('security');
     expect(result.shouldSendGalleryImages).toBe(false);
+  });
+
+  // ── Fix A: group-price override via replyMentionsPrice for 3+ people ────
+  it('overrides LLM group price even when message is not an explicit price question (8 people)', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573009995001';
+    const skills = getSkills();
+    const exp = getActiveExperience(skills);
+    const origPricing = exp.pricing;
+    exp.pricing = {
+      currency: 'COP',
+      lastUpdated: '2026-01-01',
+      items: [
+        { id: 'individual', planId: '2d1n_mining', label: 'Individual', pricePerPerson: 550000, publiclyShow: true },
+        { id: 'couple', planId: '2d1n_mining', label: 'Pareja', couplePrice: 1000000, peopleIncluded: 2, publiclyShow: true },
+      ],
+      botRules: ['pricing rules'],
+      businessRules: [],
+    };
+    try {
+      // Pre-seed 8 people so the override condition fires.
+      repos.conversation.upsert(phone, { collected_people: 8, collected_plan: '2d1n_mining' });
+      // LLM hallucinates a wrong group total ($2,200,000 — the ÷4 bug).
+      mockLlmComplete.mockResolvedValueOnce(fromOld({
+        response: {
+          reply: 'Para 8 personas el plan queda en $2,200,000 COP total.',
+          collected_fields: { people: 8 },
+        },
+      }));
+
+      const result = await processMessage({ repos, customerPhone: phone, message: 'gracias, perfecto' });
+
+      // Calculator says (1,000,000 / 2) * 8 = $4,000,000
+      expect(result.reply).toContain('$4,000,000 COP');
+      expect(result.reply).not.toContain('2,200,000');
+      expect(result.priceJustGiven).toBe(true);
+    } finally {
+      exp.pricing = origPricing;
+    }
+  });
+
+  // ── Fix B: fallback name extraction + repeated-question guard ─────────────
+  it('does not re-ask name when standalone name follows name-ask plus image caption', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573009995002';
+    repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: 'Antes de seguir, ¿como te llamas?', created_at: new Date(Date.now() - 120000).toISOString() });
+    repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'image', body: 'Heinner y Alexandra - Andean Scapes', created_at: new Date(Date.now() - 60000).toISOString() });
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: {
+        reply: 'Te envio los datos de pago por Nequi ahora.',
+        collected_fields: {},
+      },
+    }));
+
+    const result = await processMessage({ repos, customerPhone: phone, message: 'Carlos' });
+
+    expect(result.reply).not.toContain('como te llamas');
+    expect(result.reply).not.toContain('Antes de seguir');
+    expect(result.reply).toContain('Carlos');
+  });
+
+  it('does not repeat the same qualification question after unsafe fallback', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573009995003';
+    const skills = getSkills();
+    const fb = skills.fallbackReplies.es;
+    repos.conversation.upsert(phone, { collected_name: 'Carlos', collected_plan: '2d1n_mining' });
+    repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: fb.askPeople, created_at: new Date(Date.now() - 60000).toISOString() });
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: {
+        reply: 'Te envio los datos de pago por Nequi ahora.',
+        collected_fields: {},
+      },
+    }));
+
+    const result = await processMessage({ repos, customerPhone: phone, message: 'Si' });
+
+    expect(result.reply).not.toBe(fb.askPeople);
+    expect(result.reply).toBe(fb.askDate);
+    const fields = repos.conversation.getCollectedFields(phone);
+    expect(fields.personas).toBeUndefined();
+    expect(repos.conversation.getByPhone(phone)?.collected_people).toBeNull();
+  });
+
+  it('does not hardcode a plan when repeated plan question is skipped', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573009995004';
+    const skills = getSkills();
+    const fb = skills.fallbackReplies.es;
+    repos.conversation.upsert(phone, { collected_name: 'Carlos' });
+    repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: fb.askPlan.replace('{{name}}', 'Carlos'), created_at: new Date(Date.now() - 60000).toISOString() });
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: {
+        reply: 'Te envio los datos de pago por Nequi ahora.',
+        collected_fields: {},
+      },
+    }));
+
+    const result = await processMessage({ repos, customerPhone: phone, message: 'Si' });
+
+    expect(result.reply).not.toBe(fb.askPlan);
+    expect(result.reply).toBe(fb.askPeople);
+    expect(repos.conversation.getByPhone(phone)?.collected_plan).toBeNull();
+  });
+
+  // ── Fix C: qualificationSummary sanitizes internal tokens ─────────────────
+  it('qualificationSummary replaces tentative_unknown with human-readable text', () => {
+    const result = qualificationSummary(
+      { nombre: 'Michell', personas: 3, fecha: 'tentative_unknown', transporte: 'own' },
+      'es',
+      getSkills().fallbackReplies.es,
+    );
+    expect(result).not.toContain('tentative_unknown');
+    expect(result).toContain('fecha por confirmar');
+    expect(result).toContain('3 personas');
+  });
+
+  it('qualificationSummary replaces _relative_ordinal_ tokens', () => {
+    const result = qualificationSummary(
+      { nombre: 'Test', personas: 2, fecha: '_relative_ordinal_1' },
+      'es',
+      getSkills().fallbackReplies.es,
+    );
+    expect(result).not.toContain('_relative_ordinal_1');
+    expect(result).toContain('fecha por confirmar');
+  });
+
+  it('qualificationSummary passes through real date strings unchanged (English)', () => {
+    const result = qualificationSummary(
+      { nombre: 'Ana', personas: 2, fecha: '10 de octubre' },
+      'en',
+      getSkills().fallbackReplies.en,
+    );
+    expect(result).toContain('for 10 de octubre');
+    expect(result).toContain('2 people');
+  });
+
+  it('qualificationSummary passes through real date strings unchanged (Spanish)', () => {
+    const result = qualificationSummary(
+      { nombre: 'Juan', personas: 1, fecha: '5 de enero' },
+      'es',
+      getSkills().fallbackReplies.es,
+    );
+    expect(result).toContain('para 5 de enero');
+    expect(result).toContain('1 personas');
   });
 });

@@ -282,6 +282,7 @@ const langFallbackSchema = z.object({
   referralHandoff: z.string(),
   softCloseReply: z.string(),
   confirmReservationPrompt: z.string(),
+  internalDatePending: z.string(),
   priceUnavailable: z.string(),
   dateSelectedLimited: z.string(),
   dateSelectedLimitedNoDate: z.string(),
