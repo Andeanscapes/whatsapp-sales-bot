@@ -255,10 +255,24 @@ export function containsPromptLeakOrPolicyViolation(reply: string): boolean {
   return false;
 }
 
-export function qualificationSummary(q: MergedQualification, lang: 'es' | 'en'): string {
+function isInternalDateToken(raw: string): boolean {
+  return raw === 'tentative_unknown' || raw.startsWith('_relative_ordinal_');
+}
+
+function humanizeDate(raw: string, lang: 'es' | 'en', fb: FallbackReplies['es']): string | null {
+  if (isInternalDateToken(raw)) {
+    return fb.internalDatePending;
+  }
+  return lang === 'es' ? `para ${raw}` : `for ${raw}`;
+}
+
+export function qualificationSummary(q: MergedQualification, lang: 'es' | 'en', fb: FallbackReplies['es']): string {
   const parts: string[] = [];
   if (q.personas != null) parts.push(lang === 'es' ? `${q.personas} personas` : `${q.personas} people`);
-  if (q.fecha != null) parts.push(lang === 'es' ? `para ${q.fecha}` : `for ${q.fecha}`);
+  if (q.fecha != null) {
+    const human = humanizeDate(String(q.fecha), lang, fb);
+    if (human) parts.push(human);
+  }
   if (q.transporte === 'public_bus') parts.push(lang === 'es' ? 'con bus por su cuenta' : 'with public bus on their own');
   else if (q.transporte != null) parts.push(lang === 'es' ? 'con transporte propio' : 'with your own transport');
   if (q.mascota != null) parts.push(lang === 'es' ? 'con mascota' : 'with pet');
@@ -273,13 +287,13 @@ export function safeReservationHandoff(q: MergedQualification, fb: FallbackRepli
       : fb.safeReservationHandoffMorningHours;
     return template
       .replace('{{name}}', String(q.nombre ?? ''))
-      .replace('{{summary}}', qualificationSummary(q, lang));
+      .replace('{{summary}}', qualificationSummary(q, lang, fb));
   }
   const variants = [fb.safeReservationHandoff, fb.safeReservationHandoffAlt1, fb.safeReservationHandoffAlt2];
   const template = variants[Math.floor(now.getTime() / 1000) % variants.length];
   return template
     .replace('{{name}}', String(q.nombre ?? ''))
-    .replace('{{summary}}', qualificationSummary(q, lang));
+    .replace('{{summary}}', qualificationSummary(q, lang, fb));
 }
 
 function experienceSummary(skills: Skills): string {

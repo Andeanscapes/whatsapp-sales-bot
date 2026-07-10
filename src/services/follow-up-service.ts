@@ -45,6 +45,20 @@ const FOLLOW_UP_TASK =
   '\n' +
   'CRITICAL: Never assume or invent the customer\'s companion or their name. If they said "para 2 personas" but never gave a name, do NOT guess who the other person is. Do NOT use names from the system context (Heinner, Alexandra, etc.) as if they were the customer\'s companion. Only reference companions the customer explicitly named.';
 
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function stripOwnerReIntro(reply: string): string {
+  const owner = escapeRegex(env.OWNER_NAME);
+  const partner = escapeRegex(env.PARTNER_NAME);
+  const introPattern = new RegExp(
+    String.raw`\s*(?:Soy\s+${owner},?\s*co[- ]?founder\s+(?:de\s+|of\s+)?Andean\s+Scapes\s+(?:junto\s+(?:a|con)\s+${partner}|with\s+${partner})[^.]*\.?\s*)`,
+    'gi',
+  );
+  return reply.replace(introPattern, '').trim();
+}
+
 function igInvite(lang: 'es' | 'en' | null, igUrl: string): string {
   if (lang === 'en') {
     return `\n\nIn the meantime, check our IG ${igUrl} — real testimonials, videos, and more content from the experience.`;
@@ -161,10 +175,17 @@ async function runFollowUps(repos: Repositories): Promise<void> {
     }
 
     reply = stripHandoffPhrases(reply);
+    // Strip accidental full-intro re-greetings that the LLM may smuggle in
+    // despite the task prompt's instructions.
+    reply = stripOwnerReIntro(reply);
     // Append IG invite so silent leads have a low-friction way to re-engage.
+    // Skip if the last outbound already includes the IG link — avoid repetitive spam.
     const igUrl = skills.andeanScapes.business.socialLinks?.instagram;
     if (igUrl && reply.length + igUrl.length < 900) {
-      reply += igInvite(lang, igUrl);
+      const lastOutbound = repos.message.getLastOutboundBody(c.customerPhone);
+      if (!lastOutbound?.includes(igUrl)) {
+        reply += igInvite(lang, igUrl);
+      }
     }
     // Same safety guards the live reply path enforces: never let a follow-up
     // promise a reservation or leak the prompt/policy.

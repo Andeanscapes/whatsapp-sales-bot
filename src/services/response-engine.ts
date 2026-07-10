@@ -21,6 +21,7 @@ import {
   resolveLanguage,
   isQualificationComplete,
   nextQualificationQuestion,
+  extractStandaloneName,
   PET_KEYWORDS,
 } from './qualification-engine.js';
 import {
@@ -366,7 +367,7 @@ function routeHumanHandoff(repos: ProcessMessageInput['repos'], customerPhone: s
     repos.conversation.setMode(customerPhone, 'referred');
     return skills.fallbackReplies[lang].referralHandoff
       .replace('{{name}}', String(q.nombre ?? ''))
-      .replace('{{summary}}', qualificationSummary(q, lang))
+      .replace('{{summary}}', qualificationSummary(q, lang, skills.fallbackReplies[lang]))
       .replace('{{agentName}}', line.agentName)
       .replace('{{displayNumber}}', line.displayNumber);
   }
@@ -409,6 +410,50 @@ function countRecentStartsWith(
     .filter(m => m.role === 'assistant')
     .filter(m => texts.some(t => m.content.startsWith(t.slice(0, prefixLen))))
     .length;
+}
+
+const NAME_ASK_PATTERN = /como te llamas|cual es tu nombre|con quien tengo|antes de seguir/i;
+const STANDALONE_NAME_BLOCKLIST = /^(?:para|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|enero|febrero|marzo|abril)$/i;
+
+function normalizeShort(text: string): string {
+  return text.replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 25);
+}
+
+function isTransportNeed(value: unknown): value is TransportNeed {
+  return value == null || value === 'own' || value === 'public_bus' || value === 'from_bogota' || value === 'yes';
+}
+
+function resolveNameFallback(merged: MergedQualification, message: string, recentMessages: RecentMessage[]): MergedQualification {
+  if (merged.nombre) return merged;
+  const trimmed = message.trim();
+  // Only attempt name extraction for short messages that follow a recent name
+  // question. This covers text+image sends where the image caption is the latest
+  // outbound, without treating arbitrary short replies as names.
+  if (trimmed.split(/\s+/).length > 2) return merged;
+  const name = extractStandaloneName(trimmed);
+  if (!name || STANDALONE_NAME_BLOCKLIST.test(name)) return merged;
+  const recentlyAskedName = recentMessages
+    .filter(m => m.role === 'assistant')
+    .slice(-4)
+    .some(m => NAME_ASK_PATTERN.test(m.content));
+  return recentlyAskedName ? { ...merged, nombre: name } : merged;
+}
+
+function skipRepeated(candidate: string, recentMessages: RecentMessage[], merged: MergedQualification, fb: FallbackReplies['es']): string {
+  const candidateNorm = normalizeShort(candidate);
+  const lastAssistant = recentMessages
+    .filter(m => m.role === 'assistant')
+    .slice(-1)
+    .map(m => normalizeShort(m.content));
+  if (!lastAssistant.length || lastAssistant[0] !== candidateNorm) return candidate;
+  // Last assistant message is identical to what we are about to send: advance
+  // the prompt without fabricating qualification data.
+  if (merged.nombre == null) return fb.askPlan.replace('{{name}}', '').trim();
+  if (merged.plan == null) return fb.askPeople;
+  if (merged.personas == null) return fb.askDate;
+  if (merged.fecha == null) return fb.askTransport;
+  if (merged.transporte == null) return fb.aiFailureQualified;
+  return candidate;
 }
 
 export async function processMessage(input: ProcessMessageInput): Promise<ProcessMessageOutput> {
@@ -697,7 +742,23 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     llmTurn.img = false;
   }
 
-  const deterministicQuote = buildDeterministicQuote(message, merged, lang, skills);
+  let deterministicQuote = buildDeterministicQuote(message, merged, lang, skills);
+
+  // When the LLM produces a price for groups of 3+ people, override with the
+  // calculator output. The LLM can hallucinate group math (e.g. couplePrice
+  // divided by 4 instead of 2); the calculator is the single source of truth.
+  if (!deterministicQuote && typeof merged.personas === 'number' && merged.personas >= 3 && replyMentionsPrice(replyText)) {
+    if (pricingAvailable) {
+      const groupQuote = calculatePriceQuote(exp, {
+        planId: typeof merged.plan === 'string' ? merged.plan : undefined,
+        people: merged.personas,
+        transportNeed: isTransportNeed(merged.transporte) ? merged.transporte : undefined,
+        includeApiaryCattle: wantsApiaryCattle(message),
+      });
+      if (groupQuote) deterministicQuote = formatDeterministicQuoteReply(groupQuote, skills.fallbackReplies[lang]);
+    }
+  }
+
   if (deterministicQuote) {
     replyText = deterministicQuote;
     llmTurn.img = false;
@@ -769,7 +830,12 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
       replyText = routeHumanHandoff(repos, customerPhone, merged, lang, skills, replyText);
     } else {
       unsafeReservationBlocked = true;
-      replyText = nextQualificationQuestion(merged, skills.fallbackReplies[lang]);
+      const nameMerged = resolveNameFallback(merged, message, recentMessages);
+      if (!merged.nombre && nameMerged.nombre) {
+        repos.conversation.upsert(customerPhone, { collected_name: nameMerged.nombre });
+      }
+      const qualCandidate = nextQualificationQuestion(nameMerged, skills.fallbackReplies[lang]);
+      replyText = skipRepeated(qualCandidate, recentMessages, nameMerged, skills.fallbackReplies[lang]);
     }
   }
 
@@ -791,7 +857,12 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
       replyText = routeHumanHandoff(repos, customerPhone, merged, lang, skills, safeReservationHandoff(merged, skills.fallbackReplies[lang], lang));
     } else {
       logger.warn({ phone: customerPhone, qComplete, pricePresented }, '[BOT] forced next-qualification — reservation intent with incomplete profile');
-      replyText = nextQualificationQuestion(merged, skills.fallbackReplies[lang]);
+      const nameMerged2 = resolveNameFallback(merged, message, recentMessages);
+      if (!merged.nombre && nameMerged2.nombre) {
+        repos.conversation.upsert(customerPhone, { collected_name: nameMerged2.nombre });
+      }
+      const qualCandidate2 = nextQualificationQuestion(nameMerged2, skills.fallbackReplies[lang]);
+      replyText = skipRepeated(qualCandidate2, recentMessages, nameMerged2, skills.fallbackReplies[lang]);
     }
   }
 
@@ -815,7 +886,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     : deflectionDueToPolicyLeak ? 'policy_violation_blocked'
     : 'hot_lead';
 
-  if (!needsHumanEffective && pricePresented && !galleryAlreadyNudged) {
+  if (!needsHumanEffective && !unsafeReservationBlocked && pricePresented && !galleryAlreadyNudged) {
     const fieldCount = [merged.nombre, merged.plan, merged.personas, merged.fecha, merged.transporte]
       .filter(v => v != null).length;
     if (fieldCount >= 3 && shouldAutoSendGallery(finalScore, false)) {

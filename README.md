@@ -108,7 +108,7 @@ Media forwarding: inbound WhatsApp images, voice notes, and videos are forwarded
 | Messages/customer/hour | 50 | `MAX_BOT_MESSAGES_PER_CUSTOMER_PER_HOUR` |
 | Messages/customer/day | 120 | `MAX_BOT_MESSAGES_PER_CUSTOMER_PER_DAY` |
 | Images/customer/72h | 1 | `media-service.ts` |
-| Gallery images/send | 15 | `MAX_GALLERY_IMAGES_PER_SEND` |
+| Gallery images/send | 10 | `MAX_GALLERY_IMAGES_PER_SEND` |
 
 When limits are hit, the bot alerts the owner via Telegram and stops replying after two guard replies to prevent message loops.
 
