@@ -23,7 +23,11 @@ function formatReport(stats: DailyStats, byLine: LineLeadCount[]): string {
     `🤝 Transferidos hoy: ${stats.handedOff}`,
     `🎉 Reservas hoy: ${stats.bookedToday}`,
     `💤 Soft closed hoy: ${stats.softClosed}`,
-    `💰 IA gastada: $${stats.aiSpentUsd.toFixed(4)}`,
+    '',
+    `🤖 *IA* — ${stats.aiCalls} llamadas`,
+    `💰 Costo total: $${stats.aiSpentUsd.toFixed(4)}`,
+    `📊 Tokens: ${stats.aiPromptTokens.toLocaleString()} prompt | ${stats.aiCompletionTokens.toLocaleString()} completion`,
+    `   Reply: $${stats.aiReplyCost.toFixed(4)} | Analysis: $${stats.aiAnalysisCost.toFixed(4)} | Follow-up: $${stats.aiFollowUpCost.toFixed(4)}`,
   ];
 
   if (byLine.length > 0) {

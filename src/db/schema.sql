@@ -77,7 +77,10 @@ CREATE TABLE IF NOT EXISTS ai_usage (
   completion_tokens INTEGER DEFAULT 0,
   cached_tokens INTEGER DEFAULT 0,
   estimated_cost_usd REAL DEFAULT 0,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  purpose TEXT DEFAULT 'reply',
+  success INTEGER DEFAULT 1,
+  error_type TEXT
 );
 
 CREATE TABLE IF NOT EXISTS owner_alerts (

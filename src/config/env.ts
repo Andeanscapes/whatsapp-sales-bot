@@ -42,6 +42,8 @@ const envSchema = z.object({
   LEAD_ROUTING_JSON: z.string().default(''),
   REPORT_EXCLUDED_PHONES: z.string().default(''),
   BRIDGE_FLOW: z.coerce.number().refine(n => n >= 0 && n <= 100, 'must be 0-100').catch(-1),
+  BRIDGE_SCORE_THRESHOLD: z.coerce.number().refine(n => n >= 0 && n <= 100, 'must be 0-100').catch(75),
+  TIME_PAIN_FOLLOW_HOURS: z.coerce.number().refine(n => n >= 0 && n <= 23, 'must be 0-23').catch(1),
 
   AI_ENABLED: boolSchema.default(true),
   DEEPSEEK_API_KEY: z.string().min(1),
@@ -57,7 +59,7 @@ const envSchema = z.object({
   AI_CACHE_TTL_SECONDS: z.coerce.number().catch(604800),
 
   SEND_IMAGES_ENABLED: boolSchema.default(true),
-  MAX_GALLERY_IMAGES_PER_SEND: z.coerce.number().catch(10),
+  MAX_GALLERY_IMAGES_PER_SEND: z.coerce.number().catch(5),
   MAX_BOT_MESSAGES_PER_CUSTOMER_PER_HOUR: z.coerce.number().catch(50),
   MAX_BOT_MESSAGES_PER_CUSTOMER_PER_DAY: z.coerce.number().catch(120),
   ALLOW_CUSTOMER_REENGAGEMENT_TEMPLATES: boolSchema.default(false),

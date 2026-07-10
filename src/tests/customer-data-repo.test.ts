@@ -18,7 +18,7 @@ function seedCustomer(phone: string, messageId: string): void {
     raw_json: null,
   });
   repos.dedupe.markProcessed(messageId);
-  repos.aiUsage.recordUsage(phone, 'deepseek', 100, 50, 0, 0.001);
+  repos.aiUsage.recordUsage({ phone, model: 'deepseek', promptTokens: 100, completionTokens: 50, cachedTokens: 0, estimatedCost: 0.001, purpose: 'reply', success: true });
   repos.ownerAlert.insert(phone, 'telegram', 90, 'hot', 'body');
   repos.mediaSend.recordSend(phone, 'media-1');
   repos.bridgeSession.open(`chat-${phone}`, phone);

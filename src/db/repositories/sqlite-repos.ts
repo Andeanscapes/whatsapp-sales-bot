@@ -34,6 +34,9 @@ import type {
   FollowUpStage,
   FollowUpStatus,
   LeadPain,
+  AiUsageRecordInput,
+  AiUsageBreakdown,
+  TokenBreakdown,
 } from './types.js';
 import { env } from '../../config/env.js';
 
@@ -249,6 +252,7 @@ export class SqliteConversationRepo implements ConversationRepository {
         AND c.converted_at IS NULL
         AND c.follow_up_sent_at IS NULL
         AND COALESCE(c.conversation_mode, 'bot') = 'bot'
+        AND COALESCE(c.sales_phase, '') != 'closing'
         AND (
           SELECT m.direction FROM messages m
           WHERE m.customer_phone = c.customer_phone
@@ -268,9 +272,10 @@ export class SqliteConversationRepo implements ConversationRepository {
     return rows.map(r => ({ customerPhone: r.customer_phone, language: r.language }));
   }
 
-  getPainQuestionCandidates(serviceWindowStartIso: string, limit: number): FollowUpCandidate[] {
+  getPainQuestionCandidates(serviceWindowStartIso: string, limit: number, firstNudgeRepliedBefore: string): FollowUpCandidate[] {
     // Returns leads where:
     //  - first_nudge was sent AND replied (status='replied')
+    //  - first_nudge reply is old enough (>= TIME_PAIN_FOLLOW_HOURS ago)
     //  - no pain_question event exists yet for them
     //  - last customer inbound is within 24h service window
     //  - not opted out, not handed off
@@ -281,11 +286,13 @@ export class SqliteConversationRepo implements ConversationRepository {
         ON fe.customer_phone = c.customer_phone
         AND fe.stage = 'first_nudge'
         AND fe.status = 'replied'
+        AND fe.replied_at <= ?
       WHERE c.opt_out_at IS NULL
         AND c.handed_off_at IS NULL
         AND c.soft_closed_at IS NULL
         AND c.converted_at IS NULL
         AND COALESCE(c.conversation_mode, 'bot') = 'bot'
+        AND COALESCE(c.sales_phase, '') != 'closing'
         AND (
           SELECT MAX(m.created_at) FROM messages m
           WHERE m.customer_phone = c.customer_phone AND m.direction = 'inbound'
@@ -296,7 +303,7 @@ export class SqliteConversationRepo implements ConversationRepository {
           AND fe2.stage = 'pain_question'
         )
       LIMIT ?
-    `).all(serviceWindowStartIso, limit) as Array<{ customer_phone: string; language: 'es' | 'en' | null }>;
+    `).all(firstNudgeRepliedBefore, serviceWindowStartIso, limit) as Array<{ customer_phone: string; language: 'es' | 'en' | null }>;
     return rows.map(r => ({ customerPhone: r.customer_phone, language: r.language }));
   }
 
@@ -587,10 +594,40 @@ export class SqliteAiUsageRepo implements AiUsageRepository {
     return row.cnt;
   }
 
-  recordUsage(phone: string, model: string, promptTokens: number, completionTokens: number, cachedTokens: number, estimatedCost: number): void {
+  recordUsage(input: AiUsageRecordInput): void {
     this.db.prepare(
-      'INSERT INTO ai_usage (customer_phone, model, prompt_tokens, completion_tokens, cached_tokens, estimated_cost_usd, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(phone, model, promptTokens, completionTokens, cachedTokens, estimatedCost, new Date().toISOString());
+      'INSERT INTO ai_usage (customer_phone, model, prompt_tokens, completion_tokens, cached_tokens, estimated_cost_usd, created_at, purpose, success, error_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(input.phone, input.model, input.promptTokens, input.completionTokens, input.cachedTokens, input.estimatedCost, new Date().toISOString(), input.purpose, input.success ? 1 : 0, input.errorType ?? null);
+  }
+
+  getUsageByPurpose(phone: string, sinceIso: string, untilIso: string | null): AiUsageBreakdown {
+    return this.queryUsageByPurpose('WHERE customer_phone = ? AND created_at >= ? AND (? IS NULL OR created_at < ?)', [phone, sinceIso, untilIso, untilIso]);
+  }
+
+  getGlobalUsageByPurpose(sinceIso: string, untilIso: string | null): AiUsageBreakdown {
+    return this.queryUsageByPurpose('WHERE created_at >= ? AND (? IS NULL OR created_at < ?)', [sinceIso, untilIso, untilIso]);
+  }
+
+  private queryUsageByPurpose(whereClause: string, params: unknown[]): AiUsageBreakdown {
+    const safeWhere = `COALESCE(purpose, 'reply')`;
+    const base = `SELECT ${safeWhere} as purpose, COUNT(*) as calls, COALESCE(SUM(prompt_tokens), 0) as prompt_tokens, COALESCE(SUM(completion_tokens), 0) as completion_tokens, COALESCE(SUM(estimated_cost_usd), 0) as cost_usd FROM ai_usage ${whereClause} GROUP BY ${safeWhere}`;
+    const rows = this.db.prepare(base).all(...params) as Array<{ purpose: string; calls: number; prompt_tokens: number; completion_tokens: number; cost_usd: number }>;
+
+    const zero = (): TokenBreakdown => ({ calls: 0, promptTokens: 0, completionTokens: 0, estimatedCostUsd: 0 });
+    const breakdown: AiUsageBreakdown = { reply: zero(), lead_analysis: zero(), follow_up: zero(), totalCalls: 0, totalPromptTokens: 0, totalCompletionTokens: 0, totalCostUsd: 0 };
+
+    for (const r of rows) {
+      const tb: TokenBreakdown = { calls: r.calls, promptTokens: r.prompt_tokens, completionTokens: r.completion_tokens, estimatedCostUsd: r.cost_usd };
+      if (r.purpose === 'reply') breakdown.reply = tb;
+      else if (r.purpose === 'lead_analysis') breakdown.lead_analysis = tb;
+      else if (r.purpose === 'follow_up') breakdown.follow_up = tb;
+      breakdown.totalCalls += r.calls;
+      breakdown.totalPromptTokens += r.prompt_tokens;
+      breakdown.totalCompletionTokens += r.completion_tokens;
+      breakdown.totalCostUsd += r.cost_usd;
+    }
+
+    return breakdown;
   }
 }
 
@@ -600,9 +637,13 @@ export class SqliteOwnerAlertRepo implements OwnerAlertRepository {
   wasAlertedToday(phone: string, alertType: string): boolean {
     const now = new Date();
     const todayUtcMidnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
+    return this.wasAlertedSince(phone, alertType, todayUtcMidnight);
+  }
+
+  wasAlertedSince(phone: string, alertType: string, sinceIso: string): boolean {
     const row = this.db.prepare(
       'SELECT 1 FROM owner_alerts WHERE customer_phone = ? AND alert_type = ? AND sent_at >= ?'
-    ).get(phone, alertType, todayUtcMidnight);
+    ).get(phone, alertType, sinceIso);
     return !!row;
   }
 
@@ -691,7 +732,13 @@ export class SqliteStatsRepo implements StatsRepository {
         (SELECT COUNT(*) FROM conversations WHERE customer_phone NOT IN (SELECT value FROM json_each(@excludedJson)) AND handed_off_at >= @since AND (@until IS NULL OR handed_off_at < @until)) as handed_off,
         (SELECT COUNT(*) FROM conversations WHERE customer_phone NOT IN (SELECT value FROM json_each(@excludedJson)) AND soft_closed_at >= @since AND (@until IS NULL OR soft_closed_at < @until)) as soft_closed,
         (SELECT COUNT(*) FROM conversations WHERE customer_phone NOT IN (SELECT value FROM json_each(@excludedJson)) AND converted_at >= @since AND (@until IS NULL OR converted_at < @until)) as booked_today,
-        (SELECT COALESCE(SUM(estimated_cost_usd), 0) FROM ai_usage WHERE customer_phone NOT IN (SELECT value FROM json_each(@excludedJson)) AND created_at >= @since AND (@until IS NULL OR created_at < @until)) as ai_spent_usd
+        (SELECT COALESCE(SUM(estimated_cost_usd), 0) FROM ai_usage WHERE customer_phone NOT IN (SELECT value FROM json_each(@excludedJson)) AND created_at >= @since AND (@until IS NULL OR created_at < @until)) as ai_spent_usd,
+        (SELECT COUNT(*) FROM ai_usage WHERE customer_phone NOT IN (SELECT value FROM json_each(@excludedJson)) AND created_at >= @since AND (@until IS NULL OR created_at < @until)) as ai_calls,
+        (SELECT COALESCE(SUM(prompt_tokens), 0) FROM ai_usage WHERE customer_phone NOT IN (SELECT value FROM json_each(@excludedJson)) AND created_at >= @since AND (@until IS NULL OR created_at < @until)) as ai_prompt_tokens,
+        (SELECT COALESCE(SUM(completion_tokens), 0) FROM ai_usage WHERE customer_phone NOT IN (SELECT value FROM json_each(@excludedJson)) AND created_at >= @since AND (@until IS NULL OR created_at < @until)) as ai_completion_tokens,
+        (SELECT COALESCE(SUM(estimated_cost_usd), 0) FROM ai_usage WHERE customer_phone NOT IN (SELECT value FROM json_each(@excludedJson)) AND created_at >= @since AND (@until IS NULL OR created_at < @until) AND COALESCE(purpose, 'reply') = 'reply') as ai_reply_cost,
+        (SELECT COALESCE(SUM(estimated_cost_usd), 0) FROM ai_usage WHERE customer_phone NOT IN (SELECT value FROM json_each(@excludedJson)) AND created_at >= @since AND (@until IS NULL OR created_at < @until) AND COALESCE(purpose, 'reply') = 'lead_analysis') as ai_analysis_cost,
+        (SELECT COALESCE(SUM(estimated_cost_usd), 0) FROM ai_usage WHERE customer_phone NOT IN (SELECT value FROM json_each(@excludedJson)) AND created_at >= @since AND (@until IS NULL OR created_at < @until) AND COALESCE(purpose, 'reply') = 'follow_up') as ai_follow_up_cost
     `).get(params) as {
       new_conversations: number;
       messages_inbound: number;
@@ -701,6 +748,12 @@ export class SqliteStatsRepo implements StatsRepository {
       soft_closed: number;
       booked_today: number;
       ai_spent_usd: number;
+      ai_calls: number;
+      ai_prompt_tokens: number;
+      ai_completion_tokens: number;
+      ai_reply_cost: number;
+      ai_analysis_cost: number;
+      ai_follow_up_cost: number;
     };
 
     return {
@@ -719,6 +772,12 @@ export class SqliteStatsRepo implements StatsRepository {
       softClosed: flow.soft_closed,
       bookedToday: flow.booked_today,
       aiSpentUsd: Math.round(flow.ai_spent_usd * 10000) / 10000,
+      aiCalls: flow.ai_calls,
+      aiPromptTokens: flow.ai_prompt_tokens,
+      aiCompletionTokens: flow.ai_completion_tokens,
+      aiReplyCost: Math.round(flow.ai_reply_cost * 10000) / 10000,
+      aiAnalysisCost: Math.round(flow.ai_analysis_cost * 10000) / 10000,
+      aiFollowUpCost: Math.round(flow.ai_follow_up_cost * 10000) / 10000,
     };
   }
 
@@ -995,6 +1054,9 @@ export class SqliteTranscriptRepo implements TranscriptRepository {
       inbound_count: number;
       outbound_count: number;
       ai_cost_usd: number;
+      ai_prompt_tokens: number;
+      ai_completion_tokens: number;
+      ai_calls: number;
     }
 
     const activeConvs = this.db.prepare(`
@@ -1018,7 +1080,25 @@ export class SqliteTranscriptRepo implements TranscriptRepository {
           WHERE customer_phone = c.customer_phone
             AND created_at >= @since
             AND (@until IS NULL OR created_at < @until)
-        ), 0) AS ai_cost_usd
+        ), 0) AS ai_cost_usd,
+        COALESCE((
+          SELECT SUM(prompt_tokens) FROM ai_usage
+          WHERE customer_phone = c.customer_phone
+            AND created_at >= @since
+            AND (@until IS NULL OR created_at < @until)
+        ), 0) AS ai_prompt_tokens,
+        COALESCE((
+          SELECT SUM(completion_tokens) FROM ai_usage
+          WHERE customer_phone = c.customer_phone
+            AND created_at >= @since
+            AND (@until IS NULL OR created_at < @until)
+        ), 0) AS ai_completion_tokens,
+        COALESCE((
+          SELECT COUNT(*) FROM ai_usage
+          WHERE customer_phone = c.customer_phone
+            AND created_at >= @since
+            AND (@until IS NULL OR created_at < @until)
+        ), 0) AS ai_calls
       FROM conversations c
       JOIN messages m ON m.customer_phone = c.customer_phone
       WHERE m.created_at >= @since
@@ -1076,6 +1156,10 @@ export class SqliteTranscriptRepo implements TranscriptRepository {
         inboundCount: conv.inbound_count,
         outboundCount: conv.outbound_count,
         aiCostUsd: Math.round(conv.ai_cost_usd * 10000) / 10000,
+        aiPromptTokens: conv.ai_prompt_tokens,
+        aiCompletionTokens: conv.ai_completion_tokens,
+        aiCalls: conv.ai_calls,
+        aiUsageBreakdown: this.computeBreakdownForPhone(conv.customer_phone, sinceIso, untilIso),
         messages,
       };
     });
@@ -1092,5 +1176,24 @@ export class SqliteTranscriptRepo implements TranscriptRepository {
       },
       conversations,
     };
+  }
+
+  private computeBreakdownForPhone(phone: string, sinceIso: string, untilIso: string | null): AiUsageBreakdown {
+    const zero = (): TokenBreakdown => ({ calls: 0, promptTokens: 0, completionTokens: 0, estimatedCostUsd: 0 });
+    const breakdown: AiUsageBreakdown = { reply: zero(), lead_analysis: zero(), follow_up: zero(), totalCalls: 0, totalPromptTokens: 0, totalCompletionTokens: 0, totalCostUsd: 0 };
+    const rows = this.db.prepare(
+      'SELECT COALESCE(purpose, \'reply\') as purpose, COUNT(*) as calls, COALESCE(SUM(prompt_tokens), 0) as prompt_tokens, COALESCE(SUM(completion_tokens), 0) as completion_tokens, COALESCE(SUM(estimated_cost_usd), 0) as cost_usd FROM ai_usage WHERE customer_phone = ? AND created_at >= ? AND (? IS NULL OR created_at < ?) GROUP BY COALESCE(purpose, \'reply\')'
+    ).all(phone, sinceIso, untilIso, untilIso) as Array<{ purpose: string; calls: number; prompt_tokens: number; completion_tokens: number; cost_usd: number }>;
+    for (const r of rows) {
+      const tb: TokenBreakdown = { calls: r.calls, promptTokens: r.prompt_tokens, completionTokens: r.completion_tokens, estimatedCostUsd: r.cost_usd };
+      if (r.purpose === 'reply') breakdown.reply = tb;
+      else if (r.purpose === 'lead_analysis') breakdown.lead_analysis = tb;
+      else if (r.purpose === 'follow_up') breakdown.follow_up = tb;
+      breakdown.totalCalls += r.calls;
+      breakdown.totalPromptTokens += r.prompt_tokens;
+      breakdown.totalCompletionTokens += r.completion_tokens;
+      breakdown.totalCostUsd += r.cost_usd;
+    }
+    return breakdown;
   }
 }

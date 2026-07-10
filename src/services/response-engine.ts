@@ -8,9 +8,11 @@ import { checkTimeWindow } from './time-window-policy.js';
 import { checkBudget } from './budget-guard.js';
 import { buildSystemPrompt } from './deepseek-client.js';
 import { DeepSeekLlmClient } from './llm/deepseek-llm-client.js';
+import { analyzeLead, type LeadAnalysis } from './lead-analyzer.js';
 import type { LlmTurn } from './llm/llm-client.js';
 import type { MergedQualification, ProcessMessageInput, ProcessMessageOutput } from './types.js';
-import { getActiveExperience, getPlans, getPricingItems, getShortDescription, isPricingAvailable } from './product-registry.js';
+import { getActiveExperience, getPlans, getPricingItems, getShortDescription, isPricingAvailable, getPublicPaymentFacts } from './product-registry.js';
+import type { PublicPaymentFacts } from './product-registry.js';
 import { calculatePriceQuote, formatCop, type PriceQuote, type TransportNeed } from './pricing-calculator.js';
 import {
   extractBookingFields,
@@ -22,6 +24,7 @@ import {
   isQualificationComplete,
   nextQualificationQuestion,
   extractStandaloneName,
+  detectPlan,
   PET_KEYWORDS,
 } from './qualification-engine.js';
 import {
@@ -35,15 +38,19 @@ import {
   replyMentionsPrice,
   containsHandoffPhrase,
   stripHandoffPhrases,
-  safeReservationHandoff,
-  qualificationSummary,
   containsUnsafeReservationClaim,
   containsPromptLeakOrPolicyViolation,
   isTruncatedReply,
   isGalleryRequest,
   isGalleryConfirmation,
+  stripSelfIntro,
+  detectProactiveLeadPain,
+  isPaymentMethodsQuestion,
+  qualificationSummary,
+  peopleLabel,
 } from './reply-guard.js';
 import { assignLine, isReferralLine } from './lead-routing.js';
+import { normalizeText } from './language-service.js';
 import { INPUT_COST_PER_TOKEN, MS_72H, OUTPUT_COST_PER_TOKEN, SCORE_GALLERY_TRIGGER_THRESHOLD } from './constants.js';
 import type { RecentMessage, LeadPain } from '../db/repositories/types.js';
 
@@ -111,6 +118,39 @@ function enforceMicroQuestionFirstContact(reply: string, isFirstContact: boolean
 
 function getSystemErrorRetry(lang: 'es' | 'en' | null): string {
   return getSkills().fallbackReplies[lang ?? 'es'].systemErrorRetry;
+}
+
+const INTERNAL_SENTINELS = new Set(['undefined', 'null', 'none']);
+
+function sanitizeCollectedFields(fields: Record<string, unknown>, internalDatePending: string): Record<string, unknown> {
+  const safe: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(fields)) {
+    if (k.startsWith('_')) continue;
+    if (k === 'fecha' && typeof v === 'string' && (v === 'tentative_unknown' || v.startsWith('_relative_ordinal_'))) {
+      safe[k] = internalDatePending;
+      continue;
+    }
+    if (typeof v === 'string' && (INTERNAL_SENTINELS.has(v) || v.startsWith('_relative_ordinal_'))) continue;
+    safe[k] = v;
+  }
+  return safe;
+}
+
+type SalesPhase = 'greeting' | 'discovery' | 'value' | 'pricing' | 'objection' | 'closing';
+
+function inferSalesPhase(merged: MergedQualification, priceGiven: boolean, replyText: string, customerMessage: string, currentScore: number, isFirstContact: boolean): SalesPhase {
+  if (isFirstContact) return 'greeting';
+  const norm = customerMessage.toLowerCase().trim();
+  const isObjectionCustomer = /caro|expen|consultar|pensar|lo hablo|lo miro|dud|[^n]o estoy segur|no s[eé]|not sure/i.test(norm);
+  if (priceGiven && isObjectionCustomer) return 'objection';
+  if (priceGiven || replyMentionsPrice(replyText)) {
+    const fullyQualified = merged.nombre && merged.personas != null && merged.fecha != null && merged.transporte != null;
+    if (fullyQualified) return 'closing';
+    return 'pricing';
+  }
+  const hasDesire = merged.personas != null || (merged.plan != null && currentScore >= 15) || (merged.nombre != null && merged.personas != null);
+  if (hasDesire) return 'value';
+  return 'discovery';
 }
 
 const PAIN_OPTION_PATTERNS: Array<{ pain: LeadPain; patterns: RegExp }> = [
@@ -274,17 +314,43 @@ function wantsApiaryCattle(text: string): boolean {
   return /\b(apiari[oa]|abejas?|colmenas?|ganader[ií]a|ganadero|ganadera|cattle|bees?|apiary)\b/i.test(text);
 }
 
-// Composes the deterministic quote from skill JSON fragments so all customer
-// copy stays in fallback-replies.json (no business text hardcoded in TS). The
-// numbers come from the calculator (remote-sourced prices + local rules).
-function formatDeterministicQuoteReply(quote: PriceQuote, fb: FallbackReplies['es']): string {
+type QuotePlan = ReturnType<typeof getPlans>[number];
+
+function quotePlan(skills: Skills, planId: string): QuotePlan {
+  const exp = getActiveExperience(skills);
+  return getPlans(exp).find(plan => plan.id === planId) ?? getPlans(exp)[0];
+}
+
+function applyPlanTokens(text: string, plan: QuotePlan): string {
+  return text
+    .replaceAll('{{planName}}', plan.name)
+    .replaceAll('{{planDuration}}', plan.duration)
+    .replaceAll('{{planSummary}}', plan.shortDescription);
+}
+
+function quoteFitLine(people: number, plan: QuotePlan, fb: FallbackReplies['es']): string {
+  const template = people === 1
+    ? fb.quoteFitSolo
+    : people === 2
+      ? fb.quoteFitCouple
+      : fb.quoteFitGroup.replace('{{people}}', String(people));
+  return applyPlanTokens(template, plan);
+}
+
+// Numbers from calculator; package copy from fallback-replies (value before number).
+function formatDeterministicQuoteReply(quote: PriceQuote, skills: Skills, lang: 'es' | 'en'): string {
+  const fb = skills.fallbackReplies[lang];
+  const plan = quotePlan(skills, quote.planId);
+  const fit = quoteFitLine(quote.people, plan, fb);
+  const valueStack = applyPlanTokens(fb.quoteValueStack, plan);
+  const anchor = applyPlanTokens(fb.quoteAnchor, plan);
   const base = fb.quotePlanBase
-    .replace('{{people}}', String(quote.people))
+    .replace('{{people}}', peopleLabel(quote.people, lang))
     .replace('{{planTotal}}', formatCop(quote.planTotal))
     .replace('{{currency}}', quote.currency);
 
   if (quote.requiresTransportConfirmation) {
-    return base + fb.quoteTransportConfirm;
+    return `${fit} ${valueStack} ${anchor} ${base}${fb.quoteTransportConfirm} ${fb.quoteNextStep}`.trim();
   }
 
   const addon = quote.addonsTotal > 0
@@ -297,7 +363,112 @@ function formatDeterministicQuoteReply(quote: PriceQuote, fb: FallbackReplies['e
     .replace('{{total}}', formatCop(quote.total ?? quote.planTotal))
     .replace('{{currency}}', quote.currency);
 
-  return base + addon + transport + total;
+  const totalLine = quote.total != null && quote.total !== quote.planTotal
+    ? total
+    : '';
+  return `${fit} ${valueStack} ${anchor} ${base}${addon}${transport}${totalLine} ${fb.quoteNextStep}`.trim();
+}
+
+function frameDeterministicQuote(_llmReply: string, quoteReply: string, _fb: FallbackReplies['es']): string {
+  // Package is self-contained (fit + value + number + CTA). Avoid stitching bare LLM fragments.
+  return quoteReply;
+}
+
+/** First full price only after explicit ask, or group size + depth (date/transport/more turns). */
+function canPresentFirstPrice(message: string, merged: MergedQualification, inboundCount: number): boolean {
+  if (isPriceQuestion(message)) return true;
+  if (typeof merged.personas !== 'number') return false;
+  if (merged.fecha != null || merged.transporte != null) return true;
+  if (inboundCount >= 3) return true;
+  return false;
+}
+
+function scrubInternalLeakTokens(reply: string, internalDatePending: string): string {
+  return reply
+    .replace(/\btentative_unknown\b/gi, internalDatePending)
+    .replace(/_relative_ordinal_[a-z0-9_]+/gi, internalDatePending);
+}
+
+function buildPriceGateTeaser(skills: Skills, lang: 'es' | 'en', planId: string | null | undefined): string {
+  const exp = getActiveExperience(skills);
+  const plan = planId ? getPlans(exp).find(p => p.id === planId) : undefined;
+  return applyPlanTokens(skills.fallbackReplies[lang].priceGateTeaser, plan ?? getPlans(exp)[0]);
+}
+
+type CloseKind = 'closing' | 'payment_methods' | 'pending_owner' | 'soft_hold';
+
+function formatMethods(names: string[], lang: 'es' | 'en'): string {
+  if (names.length === 0) return lang === 'es' ? 'metodo disponible' : 'available method';
+  if (names.length === 1) return names[0];
+  const joiner = lang === 'es' ? ' o ' : ' or ';
+  return names.slice(0, -1).join(', ') + joiner + names[names.length - 1];
+}
+
+function displayDate(fecha: unknown, lang: 'es' | 'en'): string {
+  if (typeof fecha === 'string' && fecha.trim() && !fecha.startsWith('_') && fecha !== 'tentative_unknown') {
+    return fecha;
+  }
+  return lang === 'es' ? 'esa fecha' : 'that date';
+}
+
+function displayName(nombre: unknown, lang: 'es' | 'en'): string {
+  if (typeof nombre === 'string' && nombre.trim()) return nombre.trim();
+  return lang === 'es' ? 'Hola' : 'Hi';
+}
+
+function buildCloseReply(
+  skills: Skills,
+  lang: 'es' | 'en',
+  merged: MergedQualification,
+  kind: CloseKind,
+  facts: PublicPaymentFacts,
+): string {
+  const fb = skills.fallbackReplies[lang];
+  const template =
+    kind === 'payment_methods' ? fb.paymentMethodsReply
+    : kind === 'pending_owner' ? fb.reservationPendingOwner
+    : kind === 'soft_hold' ? fb.reservationSoftHold
+    : fb.reservationClosing;
+
+  return template
+    .replaceAll('{{name}}', displayName(merged.nombre, lang))
+    .replaceAll('{{summary}}', qualificationSummary(merged, lang, fb))
+    .replaceAll('{{date}}', displayDate(merged.fecha, lang))
+    .replaceAll('{{deposit}}', String(facts.depositPercent))
+    .replaceAll('{{methods}}', formatMethods(facts.methodNames, lang));
+}
+
+function buildCloseAck(skills: Skills, lang: 'es' | 'en', merged: MergedQualification): string {
+  const fb = skills.fallbackReplies[lang];
+  return fb.reservationPendingAck
+    .replaceAll('{{name}}', displayName(merged.nombre, lang))
+    .replaceAll('{{date}}', displayDate(merged.fecha, lang));
+}
+
+type CloseStage = 'none' | 'closing_offered' | 'pending_sent';
+
+function inferCloseStage(recentMessages: RecentMessage[]): CloseStage {
+  const anchors: Record<'pending_sent' | 'closing_offered', RegExp[]> = {
+    pending_sent: [
+      /estoy validando disponibilidad/i,
+      /I am validating availability/i,
+    ],
+    closing_offered: [
+      /inicie esa validacion|inicie la validacion|quieres que inicie/i,
+      /separamos con anticipo|reserva se separa/i,
+      /booking is held with|shall I start that validation|shall I start it/i,
+      /validacion ahora|validation now/i,
+    ],
+  };
+  for (const msg of recentMessages) {
+    if (msg.role !== 'assistant') continue;
+    if (anchors.pending_sent.some(r => r.test(msg.content))) return 'pending_sent';
+  }
+  for (const msg of recentMessages) {
+    if (msg.role !== 'assistant') continue;
+    if (anchors.closing_offered.some(r => r.test(msg.content))) return 'closing_offered';
+  }
+  return 'none';
 }
 
 function buildDeterministicQuote(message: string, merged: MergedQualification, lang: 'es' | 'en', skills: Skills): string | null {
@@ -310,7 +481,7 @@ function buildDeterministicQuote(message: string, merged: MergedQualification, l
     transportNeed: typeof merged.transporte === 'string' ? merged.transporte as TransportNeed : undefined,
     includeApiaryCattle: wantsApiaryCattle(message),
   });
-  return quote ? formatDeterministicQuoteReply(quote, skills.fallbackReplies[lang]) : null;
+  return quote ? formatDeterministicQuoteReply(quote, skills, lang) : null;
 }
 
 function buildPartnerConsultSummary(q: MergedQualification, lang: 'es' | 'en', skills: Skills): string {
@@ -333,14 +504,20 @@ function instagramUrl(skills: Skills): string {
 function persistCollectedFromLlmTurn(repos: ProcessMessageInput['repos'], phone: string, turn: LlmTurn): void {
   const f = turn.collected_fields;
   const dbFields: Record<string, unknown> = {};
-  if (f.name != null) dbFields.collected_name = f.name;
+  if (f.name != null) {
+    const nameStr = String(f.name).trim();
+    const nameLower = nameStr.toLowerCase();
+    if (nameLower !== env.OWNER_NAME.toLowerCase().trim() && nameLower !== env.PARTNER_NAME.toLowerCase().trim()) {
+      dbFields.collected_name = nameStr;
+    }
+  }
   if (f.plan != null) dbFields.collected_plan = f.plan;
   if (f.people != null) dbFields.collected_people = f.people;
   if (f.date != null) dbFields.collected_date = f.date;
   if (f.transport_need != null) dbFields.collected_transport_need = f.transport_need;
   if (f.pet != null) dbFields.collected_pet = f.pet;
   if (Object.keys(dbFields).length > 0) repos.conversation.upsert(phone, dbFields);
-  if (turn.sales_phase) repos.conversation.setSalesPhase(phone, turn.sales_phase);
+  // sales_phase is engine-owned via inferSalesPhase — ignore LLM sales_phase.
   if (turn.lead.intent) repos.conversation.setLeadIntent(phone, turn.lead.intent);
 }
 
@@ -357,23 +534,6 @@ function buildMergedQualification(dbFields: Record<string, unknown>, llmTurn: Ll
 
 function hasAnyQualificationData(q: MergedQualification): boolean {
   return q.nombre != null || q.plan != null || q.personas != null || q.fecha != null || q.transporte != null;
-}
-
-function routeHumanHandoff(repos: ProcessMessageInput['repos'], customerPhone: string, q: MergedQualification, lang: 'es' | 'en', skills: Skills, defaultReply: string): string {
-  const line = assignLine(repos, customerPhone);
-  if (!line) return defaultReply;
-
-  if (isReferralLine(line)) {
-    repos.conversation.setMode(customerPhone, 'referred');
-    return skills.fallbackReplies[lang].referralHandoff
-      .replace('{{name}}', String(q.nombre ?? ''))
-      .replace('{{summary}}', qualificationSummary(q, lang, skills.fallbackReplies[lang]))
-      .replace('{{agentName}}', line.agentName)
-      .replace('{{displayNumber}}', line.displayNumber);
-  }
-
-  repos.conversation.setMode(customerPhone, 'bridge_active');
-  return defaultReply;
 }
 
 function activateHumanFallback(repos: ProcessMessageInput['repos'], customerPhone: string): void {
@@ -432,11 +592,35 @@ function resolveNameFallback(merged: MergedQualification, message: string, recen
   if (trimmed.split(/\s+/).length > 2) return merged;
   const name = extractStandaloneName(trimmed);
   if (!name || STANDALONE_NAME_BLOCKLIST.test(name)) return merged;
+  const nameLower = name.toLowerCase().trim();
+  if (nameLower === env.OWNER_NAME.toLowerCase().trim() || nameLower === env.PARTNER_NAME.toLowerCase().trim()) return merged;
   const recentlyAskedName = recentMessages
     .filter(m => m.role === 'assistant')
     .slice(-4)
     .some(m => NAME_ASK_PATTERN.test(m.content));
   return recentlyAskedName ? { ...merged, nombre: name } : merged;
+}
+
+function inferPlanFromAssistantMessages(recentMessages: RecentMessage[], skills: Skills): string | null {
+  const plans = getPlans(getActiveExperience(skills));
+  if (!plans.length) return null;
+
+  const planKeywords = new Map(plans.map(p => [p.id, p.keywords]));
+  const assistantTexts = recentMessages
+    .filter(m => m.role === 'assistant')
+    .slice(-5)
+    .map(m => normalizeText(m.content));
+
+  let best: { id: string; score: number } | null = null;
+  for (const [id, keywords] of planKeywords.entries()) {
+    // Require at least 2 keyword matches across the recent assistant messages
+    // to avoid false positives from qualifying questions (e.g. "descanso rural"
+    // in askPlan matching the rural plan).
+    const total = assistantTexts.reduce((s, text) =>
+      s + keywords.reduce((ks, kw) => ks + (text.includes(normalizeText(kw)) ? 1 : 0), 0), 0);
+    if (total >= 2 && (!best || total > best.score)) best = { id, score: total };
+  }
+  return best?.id ?? null;
 }
 
 function skipRepeated(candidate: string, recentMessages: RecentMessage[], merged: MergedQualification, fb: FallbackReplies['es']): string {
@@ -446,13 +630,12 @@ function skipRepeated(candidate: string, recentMessages: RecentMessage[], merged
     .slice(-1)
     .map(m => normalizeShort(m.content));
   if (!lastAssistant.length || lastAssistant[0] !== candidateNorm) return candidate;
-  // Last assistant message is identical to what we are about to send: advance
-  // the prompt without fabricating qualification data.
-  if (merged.nombre == null) return fb.askPlan.replace('{{name}}', '').trim();
-  if (merged.plan == null) return fb.askPeople;
-  if (merged.personas == null) return fb.askDate;
-  if (merged.fecha == null) return fb.askTransport;
-  if (merged.transporte == null) return fb.aiFailureQualified;
+
+  if (merged.nombre == null) return fb.clarifyName;
+  if (merged.plan == null) return fb.clarifyPlan;
+  if (merged.personas == null) return fb.clarifyPeople;
+  if (merged.fecha == null) return fb.clarifyDate;
+  if (merged.transporte == null) return fb.clarifyTransport;
   return candidate;
 }
 
@@ -577,6 +760,16 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   const recentMessages = repos.message.getRecentMessages(customerPhone, 21).filter((_, i, arr) => i < arr.length - 1);
 
   const regexScore = scoreMessage(normalized, skills);
+
+  // ── Pain detection (proactive, not just during follow-up) ─────────────────
+  // Persist only explicit blockers. Generic requests for price, dates, transport,
+  // or a couple plan are normal intent signals, not customer pain.
+  const existingPain = repos.conversation.getLeadPain(customerPhone);
+  const detectedPain = detectProactiveLeadPain(message);
+  if (detectedPain && detectedPain !== existingPain) {
+    repos.conversation.setLeadPain(customerPhone, detectedPain, message.slice(0, 200));
+  }
+  // ──────────────────────────────────────────────────────────────────────────
   const currentScore = repos.conversation.getLeadScore(customerPhone);
   // Single source of truth for gallery dedup: the gallery is offered at most once
   // per customer. Every automatic send path below reuses this flag so we never
@@ -584,9 +777,17 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   const galleryAlreadyNudged = hasGalleryNudge(repos, customerPhone);
 
   if (isSoftCloseMessage(message)) {
-    if (!softClosedAt) repos.conversation.upsert(customerPhone, { soft_closed_at: new Date().toISOString() });
-    const declineScoreAlert = currentScore >= skills.salesStrategy.hotLeadThreshold;
-    return { reply: skills.fallbackReplies[lang].softCloseReply.replace('{{instagramUrl}}', instagramUrl(skills)), shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: declineScoreAlert, ownerAlertType: declineScoreAlert ? 'decline_review' : undefined, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
+    // Price objections with qualification data are recoverable: let the LLM
+    // handle them instead of hard-closing with the IG soft-close.
+    const hasQualData = dbQualification.personas != null || dbQualification.fecha != null || dbQualification.nombre != null;
+    const isPriceObj = /muy caro|esta caro|algo caro|me parece caro|carisimo|se sale del presupuesto|fuera de presupuesto|no me alcanza|consultarlo|lo consulto|lo hablo|lo pienso|consultar/i.test(normalized);
+    if (hasQualData && isPriceObj && !softClosedAt) {
+      // Don't soft-close — let the objection fall through to the LLM for handling.
+    } else {
+      if (!softClosedAt) repos.conversation.upsert(customerPhone, { soft_closed_at: new Date().toISOString() });
+      const declineScoreAlert = currentScore >= skills.salesStrategy.hotLeadThreshold;
+      return { reply: skills.fallbackReplies[lang].softCloseReply.replace('{{instagramUrl}}', instagramUrl(skills)), shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: declineScoreAlert, ownerAlertType: declineScoreAlert ? 'decline_review' : undefined, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
+    }
   }
 
   const lastAssistantQuestion = getLastAssistantQuestion(repos, customerPhone);
@@ -629,15 +830,25 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   const limits = checkTimeWindow(repos, customerPhone);
   if (limits.isLimited) {
     logger.warn({ phone: customerPhone, reason: limits.reason }, '[BOT] message limit reached');
+    // Alert-only under limit: never auto-mute. Only /bridge silences the bot.
     if (preLimitHandoffAllowed || preLimitReservationIntent) {
-      repos.conversation.setHandedOff(customerPhone);
       const overrideScore = Math.max(currentScore, skills.salesStrategy.urgentLeadThreshold);
       repos.conversation.upsert(customerPhone, { lead_score: overrideScore });
-      const handoffReply = safeReservationHandoff(dbQualification, skills.fallbackReplies[lang], lang);
-      return { reply: routeHumanHandoff(repos, customerPhone, dbQualification, lang, skills, handoffReply), shouldSendReply: true, leadScore: overrideScore, usedAi: false, shouldAlertOwner: true, ownerAlertType: 'reservation_handoff', shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
+      const preLimitCloseStage = inferCloseStage(recentMessages);
+      let closing: string;
+      if (preLimitHandoffAllowed) {
+        if (preLimitCloseStage === 'pending_sent') {
+          closing = buildCloseAck(skills, lang, dbQualification);
+        } else {
+          const kind: CloseKind = preLimitCloseStage === 'closing_offered' ? 'pending_owner' : 'closing';
+          closing = buildCloseReply(skills, lang, dbQualification, kind, getPublicPaymentFacts(skills));
+        }
+      } else {
+        closing = skills.fallbackReplies[lang].aiFailureQualified;
+      }
+      return { reply: closing, shouldSendReply: true, leadScore: overrideScore, usedAi: false, shouldAlertOwner: true, ownerAlertType: 'reservation_handoff', shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
     }
     if (currentScore >= skills.salesStrategy.hotLeadThreshold || (!!preLimitPriceRow && currentScore >= 20)) {
-      activateHumanFallback(repos, customerPhone);
       return { reply: skills.fallbackReplies[lang].messageLimitHandoff, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: true, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
     }
     const fb = skills.fallbackReplies[lang];
@@ -688,7 +899,8 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   // ────────────────────────────────────────────────────────────────────────
 
   const salesPhase = repos.conversation.getSalesPhase(customerPhone);
-  const systemPrompt = buildSystemPrompt(skills, lang, collectedFields, salesPhase ?? undefined);
+  const safeCollected = sanitizeCollectedFields(collectedFields, skills.fallbackReplies[lang].internalDatePending);
+  const systemPrompt = buildSystemPrompt(skills, lang, safeCollected, salesPhase ?? undefined);
   const llmHistory = recentMessages.map(m => ({ role: m.role, content: m.content }));
   const llmMessage = message.length > MAX_INBOUND_CHARS ? message.slice(0, MAX_INBOUND_CHARS) : message;
 
@@ -696,15 +908,32 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   const knownPain = isPainQuestionReply ? detectLeadPain(message) : repos.conversation.getLeadPain(customerPhone);
   const painSuffix = knownPain ? buildPainSystemPromptSuffix(knownPain, lang) : undefined;
 
-  const llmResult = await llmClient.complete({ systemPrompt, systemPromptSuffix: painSuffix, message: llmMessage, history: llmHistory, lang });
+  // ── Short numeric reply context hint ────────────────────────────────────
+  // When the customer replies with a short number after a quant-question,
+  // annotate the message so the LLM interprets it in context (group size,
+  // date ordinal, plan option), not as hesitation.
+  const isShortNumeric = /^\d{1,3}$/.test(llmMessage.trim());
+  const lastAssistantMsg = recentMessages.filter(m => m.role === 'assistant').slice(-1)[0]?.content ?? '';
+  const askedQuantity = /cu[aá]nt|how many|fecha|date|month|mes|plan|opci[oó]n|option|cu[aá]l|which/i.test(lastAssistantMsg);
+  const enrichedMessage = isShortNumeric && askedQuantity
+    ? `${llmMessage}\n\n[Context: The customer replied with a short number. Interpret it in context of the last assistant question. Do not assume hesitation or dismissal.]`
+    : llmMessage;
+  // ──────────────────────────────────────────────────────────────────────────
+
+  const llmResult = await llmClient.complete({ systemPrompt, systemPromptSuffix: painSuffix, message: enrichedMessage, history: llmHistory, lang });
 
   if (!llmResult) {
     logger.warn('[LLM] DeepSeek call failed, sending minimal fallback');
-    const painFallback = knownPain ? getPainFallbackReply(knownPain, lang) : null;
-    const fallbackText = painFallback
-      ?? (collectedFields?.nombre
-        ? (skills.fallbackReplies[lang].llmFailureWarm?.replace('{{name}}', String(collectedFields.nombre)) ?? skills.fallbackReplies[lang].aiFailureQualified)
-        : skills.fallbackReplies[lang].aiFailureQualified);
+    const painFallback = isPainQuestionReply ? detectLeadPain(message) : null;
+    const painReply = painFallback ? getPainFallbackReply(painFallback, lang) : null;
+    const fieldCount = [collectedFields?.nombre, collectedFields?.personas, collectedFields?.fecha].filter(v => v != null).length;
+    const isNearClosing = fieldCount >= 3;
+    const fallbackText: string = painReply
+      ?? (isNearClosing
+        ? skills.fallbackReplies[lang].aiFailureQualified
+        : (collectedFields?.nombre
+          ? (skills.fallbackReplies[lang].llmFailureWarm?.replace('{{name}}', String(collectedFields.nombre)) ?? skills.fallbackReplies[lang].aiFailureQualified)
+          : skills.fallbackReplies[lang].aiFailureQualified));
     return {
       reply: fallbackText, shouldSendReply: true,
       leadScore: currentScore, usedAi: true, shouldAlertOwner: hasAnyQualificationData(dbQualification),
@@ -714,26 +943,99 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
 
   const llmTurn = llmResult.turn;
   const estimatedCost = llmResult.tokens.prompt * INPUT_COST_PER_TOKEN + llmResult.tokens.completion * OUTPUT_COST_PER_TOKEN;
-  repos.aiUsage.recordUsage(customerPhone, env.DEEPSEEK_MODEL, llmResult.tokens.prompt, llmResult.tokens.completion, 0, estimatedCost);
+  repos.aiUsage.recordUsage({ phone: customerPhone, model: env.DEEPSEEK_MODEL, promptTokens: llmResult.tokens.prompt, completionTokens: llmResult.tokens.completion, cachedTokens: 0, estimatedCost, purpose: 'reply', success: true });
   persistCollectedFromLlmTurn(repos, customerPhone, llmTurn);
 
   const updatedCollected = reconstructFromHistory(repos, customerPhone, getCollectedFields(repos, customerPhone));
-  const merged = buildMergedQualification(updatedCollected, llmTurn);
+  let merged = buildMergedQualification(updatedCollected, llmTurn);
 
-  const llmLeadInput: LlmLeadInput = {
-    intent: llmTurn.lead.intent,
-    scoreDelta: llmTurn.lead.score_delta,
-    confidence: llmTurn.lead.confidence,
-    buyingSignals: llmTurn.lead.buying_signals,
-    blockers: llmTurn.lead.blockers,
-  };
+  // ── LLM-powered lead analysis (separate scoring call) ───────────────────
+  // Gated behind the budget guard: the analyzer is a second DeepSeek call, so
+  // it must respect daily/monthly USD budgets and per-customer/global call caps.
+  // The reply call already recorded its usage row, so re-checking here reflects
+  // the just-consumed budget. When budget is tight we skip analysis (score
+  // unchanged) rather than overspend.
+  const prePriceRow = repos.conversation.getPriceGivenAt(customerPhone);
+  const analysisBudget = checkBudget(repos, customerPhone);
+  let analysis: LeadAnalysis | null = null;
+  if (analysisBudget.aiAllowed) {
+    analysis = await analyzeLead({
+      latestMessage: message,
+      history: recentMessages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+      currentScore,
+      salesPhase,
+      collectedFields: safeCollected as Record<string, unknown>,
+      priceGiven: !!prePriceRow,
+      isFollowUpReply: latestFollowUpEvent?.stage === 'first_nudge' && latestFollowUpEvent.status === 'sent',
+      isPainQuestionReply,
+      lastAssistantQuestion,
+      lang,
+    });
+  } else {
+    logger.warn({ phone: customerPhone, reason: analysisBudget.reason }, '[LEAD_ANALYZER] skipped — budget guard');
+  }
+
+  let llmLeadInput: LlmLeadInput;
+  if (analysis) {
+    const analysisCost = analysis.promptTokens * INPUT_COST_PER_TOKEN + analysis.completionTokens * OUTPUT_COST_PER_TOKEN;
+    repos.aiUsage.recordUsage({ phone: customerPhone, model: env.DEEPSEEK_MODEL, promptTokens: analysis.promptTokens, completionTokens: analysis.completionTokens, cachedTokens: 0, estimatedCost: analysisCost, purpose: 'lead_analysis', success: true });
+    llmLeadInput = {
+      intent: analysis.intent,
+      scoreDelta: analysis.scoreDelta,
+      confidence: analysis.confidence,
+      buyingSignals: analysis.buyingSignals,
+      blockers: analysis.blockers,
+    };
+  } else {
+    logger.warn({ phone: customerPhone }, '[LEAD_ANALYZER] unavailable — keeping current score');
+    llmLeadInput = {
+      intent: 'curious',
+      scoreDelta: 0,
+      confidence: 0,
+      buyingSignals: [],
+      blockers: [],
+    };
+  }
   const hybrid = computeHybridScore(currentScore, llmLeadInput, regexScore.score, isReEngagement, skills.salesStrategy.hotLeadThreshold);
   repos.conversation.upsert(customerPhone, { lead_score: hybrid.score });
+
+  // ── Determine whether this lead should bridge / alert owner ──────────────
+  // Primary gate: analyzer confirms real booking readiness at/above threshold.
+  const analyzerReadyToBook = analysis?.intent === 'ready_to_book' && analysis.reservationReadiness === 'strong';
+  const analyzerWarmAfterPrice = analysis?.afterPriceInterest === true && analysis.reservationReadiness === 'medium';
+  const shouldBridgeByScore = hybrid.score >= env.BRIDGE_SCORE_THRESHOLD && (analyzerReadyToBook || analyzerWarmAfterPrice);
+  // Safety fallback: when the analyzer is unavailable (HTTP/timeout/invalid JSON
+  // or budget-skipped) we must not silently drop a booking-ready lead. If the
+  // deterministic signals are unambiguous — full qualification, price already
+  // shown, and explicit reservation intent — bridge as before.
+  const analyzerUnavailable = analysis === null;
+  // ─────────────────────────────────────────────────────────────────────────
 
   let replyText = llmTurn.reply || '';
   replyText = stripHandoffPhrases(replyText);
   replyText = stripReaskedQuestions(replyText, merged);
   replyText = enforceMicroQuestionFirstContact(replyText, isFirstContact, lang);
+
+  // ── Plan inference from customer message ────────────────────────────────
+  // When the DB has no collected_plan but the customer's message clearly picks
+  // one (ordinal, duration), persist it. Never infer plan from assistant text.
+  if (merged.plan == null) {
+    const userPlan = detectPlan(message);
+    if (userPlan) {
+      repos.conversation.upsert(customerPhone, { collected_plan: userPlan });
+      merged = { ...merged, plan: userPlan };
+    }
+  }
+  // ──────────────────────────────────────────────────────────────────────────
+
+  // ── Self-intro guard ────────────────────────────────────────────────────
+  // When the conversation already has qualification data, the LLM must NOT
+  // re-introduce itself. Engine-level defense against prompt drift.
+  const qualFieldCountForIntro = [merged.nombre, merged.personas, merged.fecha, merged.transporte].filter(v => v != null).length;
+  if (qualFieldCountForIntro >= 2) {
+    replyText = stripSelfIntro(replyText, qualFieldCountForIntro);
+  }
+  // ──────────────────────────────────────────────────────────────────────────
 
   const exp = getActiveExperience(skills);
   const pricingAvailable = isPricingAvailable(exp);
@@ -741,28 +1043,37 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     replyText = skills.fallbackReplies[lang].priceUnavailable;
     llmTurn.img = false;
   }
+  const inboundCount = recentMessages.filter(m => m.role === 'user').length + 1;
+  const priceUnlocked = !!prePriceRow || canPresentFirstPrice(message, merged, inboundCount);
 
-  let deterministicQuote = buildDeterministicQuote(message, merged, lang, skills);
+  let deterministicQuote: string | null = null;
+  if (priceUnlocked) {
+    deterministicQuote = buildDeterministicQuote(message, merged, lang, skills);
 
-  // When the LLM produces a price for groups of 3+ people, override with the
-  // calculator output. The LLM can hallucinate group math (e.g. couplePrice
-  // divided by 4 instead of 2); the calculator is the single source of truth.
-  if (!deterministicQuote && typeof merged.personas === 'number' && merged.personas >= 3 && replyMentionsPrice(replyText)) {
-    if (pricingAvailable) {
-      const groupQuote = calculatePriceQuote(exp, {
+    // Calculator is source of truth. Always wrap numbers in the value package.
+    // Skip override when price already given — re-engagement, not first present.
+    if (!prePriceRow && !deterministicQuote && typeof merged.personas === 'number' && replyMentionsPrice(replyText) && pricingAvailable) {
+      const priceOverrideQuote = calculatePriceQuote(exp, {
         planId: typeof merged.plan === 'string' ? merged.plan : undefined,
         people: merged.personas,
         transportNeed: isTransportNeed(merged.transporte) ? merged.transporte : undefined,
         includeApiaryCattle: wantsApiaryCattle(message),
       });
-      if (groupQuote) deterministicQuote = formatDeterministicQuoteReply(groupQuote, skills.fallbackReplies[lang]);
+      if (priceOverrideQuote) deterministicQuote = formatDeterministicQuoteReply(priceOverrideQuote, skills, lang);
     }
-  }
-
-  if (deterministicQuote) {
-    replyText = deterministicQuote;
+  } else if (replyMentionsPrice(replyText)) {
+    // Group size alone is not enough — sell package value first, ask one depth question.
+    replyText = buildPriceGateTeaser(skills, lang, typeof merged.plan === 'string' ? merged.plan : undefined);
     llmTurn.img = false;
   }
+
+  const usedDeterministicQuote = deterministicQuote != null;
+  if (deterministicQuote) {
+    replyText = frameDeterministicQuote(replyText, deterministicQuote, skills.fallbackReplies[lang]);
+    llmTurn.img = false;
+  }
+
+  replyText = scrubInternalLeakTokens(replyText, skills.fallbackReplies[lang].internalDatePending);
 
   if (!replyText.trim()) {
     const fallbackText = collectedFields?.nombre
@@ -776,9 +1087,18 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   }
 
   const initialPriceJustGiven = replyMentionsPrice(replyText);
-  const priceRow = repos.conversation.getPriceGivenAt(customerPhone);
-  const pricePresented = !!(initialPriceJustGiven || priceRow);
-  if (initialPriceJustGiven && !priceRow) repos.conversation.upsert(customerPhone, { price_given_at: new Date().toISOString() });
+  const pricePresented = !!(initialPriceJustGiven || prePriceRow);
+  if (initialPriceJustGiven && !prePriceRow) repos.conversation.upsert(customerPhone, { price_given_at: new Date().toISOString() });
+
+  // ── Phase progression (inferred, not LLM-dependent) ──────────────────────
+  // The LLM runs in plain-text mode so the structured sales_phase field always
+  // defaults to "discovery". Infer the real phase from conversation state so
+  // the next turn's prompt context includes the correct phase.
+  const inferredPhase = inferSalesPhase(merged, pricePresented, replyText, message, currentScore, isFirstContact);
+  if (inferredPhase && inferredPhase !== salesPhase) {
+    repos.conversation.setSalesPhase(customerPhone, inferredPhase);
+  }
+  // ──────────────────────────────────────────────────────────────────────────
 
   let needsHumanEffective = false;
   let finalScore = hybrid.score;
@@ -797,45 +1117,121 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   // deterministic patterns miss (e.g. confirming the bot's own soft-close question).
   const llmReadyToBook = llmTurn.action === 'handoff' || llmTurn.lead.intent === 'ready_to_book';
 
-  if (qComplete && pricePresented && (reservationIntent || recentReservation || llmReadyToBook)) {
+  const paymentQ = isPaymentMethodsQuestion(message);
+  const closeIntent = reservationIntent || recentReservation || llmReadyToBook;
+  const closeStage = inferCloseStage(recentMessages);
+  const paymentFacts = getPublicPaymentFacts(skills);
+
+  // ── Payment methods question: public facts + owner handoff alert ────
+  // Explicit payment-detail request is high commercial intent even if
+  // qualification is incomplete. Always alert owner (reservation_handoff
+  // cooldown), but keep bot mode — agent must still /bridge to take over.
+  // Never expose phone numbers / payment links here (template is public-only).
+  if (paymentQ && pricePresented) {
+    replyText = buildCloseReply(skills, lang, merged, 'payment_methods', paymentFacts);
     needsHumanEffective = true;
-    shouldSendGallery = !galleryAlreadyNudged && shouldAutoSendGallery(hybrid.score, false);
-    repos.conversation.setHandedOff(customerPhone);
+    shouldSendGallery = false;
+    llmTurn.img = false;
     finalScore = Math.max(hybrid.score, skills.salesStrategy.urgentLeadThreshold);
     repos.conversation.upsert(customerPhone, { lead_score: finalScore });
-    replyText = routeHumanHandoff(repos, customerPhone, merged, lang, skills, safeReservationHandoff(merged, skills.fallbackReplies[lang], lang));
-  } else if (reservationIntent || recentReservation || llmReadyToBook) {
+    logger.info({
+      phone: customerPhone,
+      paymentQ,
+      closeIntent,
+      qComplete: isQualificationComplete(merged),
+      paymentEscalation: true,
+    }, '[BOT] payment methods reply sent');
+  }
+
+  // ── Reservation / close intent: analyzer-gated bridge ──────────────────
+  // Primary path: the LLM analyzer decides whether to alert/bridge the owner.
+  // Many fields or deterministic regex patterns alone do NOT trigger bridge.
+  // Fallback path: when the analyzer is UNAVAILABLE (HTTP/timeout/invalid JSON
+  // or budget-skipped), never silently drop a booking-ready lead — bridge when
+  // qualification is complete, price was shown, and reservation intent is
+  // explicit (the pre-analyzer deterministic guarantee).
+  const deterministicBridgeFallback = analyzerUnavailable && closeIntent;
+  if (qComplete && pricePresented && (shouldBridgeByScore || deterministicBridgeFallback)) {
+    if (closeStage === 'pending_sent') {
+      replyText = buildCloseAck(skills, lang, merged);
+    } else {
+      const kind: CloseKind = closeStage === 'closing_offered' ? 'pending_owner' : (paymentQ ? 'payment_methods' : 'closing');
+      replyText = buildCloseReply(skills, lang, merged, kind, paymentFacts);
+    }
+    needsHumanEffective = true;
+    shouldSendGallery = false;
+    llmTurn.img = false;
+    finalScore = Math.max(hybrid.score, skills.salesStrategy.urgentLeadThreshold);
+    repos.conversation.upsert(customerPhone, { lead_score: finalScore });
+    logger.info({
+      phone: customerPhone,
+      score: finalScore,
+      intent: analysis?.intent,
+      readiness: analysis?.reservationReadiness,
+      fallback: deterministicBridgeFallback,
+    }, '[BOT] reservation bridge triggered');
+  } else if (qComplete && pricePresented && closeIntent) {
     logger.warn({
       phone: customerPhone,
       qComplete,
       pricePresented,
-      hasPriceRow: !!priceRow,
-      name: merged.nombre,
-      plan: merged.plan,
-      personas: merged.personas,
-      fecha: merged.fecha,
-      transporte: merged.transporte,
-      action: llmTurn.action,
-      intent: llmTurn.lead.intent,
-    }, '[BOT] reservation intent detected but handoff blocked — qComplete or pricePresented false');
+      score: hybrid.score,
+      threshold: env.BRIDGE_SCORE_THRESHOLD,
+      intent: analysis?.intent,
+      readiness: analysis?.reservationReadiness,
+    }, '[BOT] reservation intent detected but analyzer score below bridge threshold — bot continues');
   }
 
-  if (!needsHumanEffective && containsUnsafeReservationClaim(replyText)) {
+  // ── Unsafe reservation claim: block LLM but close deterministically ─────
+  if (containsUnsafeReservationClaim(replyText)) {
     logger.warn({ phone: customerPhone }, '[BOT] blocked unsafe reservation claim');
-    if (qComplete && pricePresented) {
-      replyText = safeReservationHandoff(merged, skills.fallbackReplies[lang], lang);
+    unsafeReservationBlocked = true;
+    shouldSendGallery = false;
+    llmTurn.img = false;
+    if (pricePresented && (isQualificationComplete(merged) || [merged.nombre, merged.personas, merged.fecha, merged.transporte].filter(v => v != null).length >= 3)) {
+      if (closeStage === 'pending_sent') {
+        replyText = buildCloseAck(skills, lang, merged);
+      } else {
+        const kind: CloseKind = closeStage === 'closing_offered' ? 'pending_owner' : (paymentQ ? 'payment_methods' : 'closing');
+        replyText = buildCloseReply(skills, lang, merged, kind, paymentFacts);
+      }
       needsHumanEffective = true;
-      shouldSendGallery = !galleryAlreadyNudged && shouldAutoSendGallery(hybrid.score, false);
-      repos.conversation.setHandedOff(customerPhone);
-      replyText = routeHumanHandoff(repos, customerPhone, merged, lang, skills, replyText);
+      finalScore = Math.max(hybrid.score, skills.salesStrategy.urgentLeadThreshold);
+      repos.conversation.upsert(customerPhone, { lead_score: finalScore });
+    } else if (pricePresented) {
+      // Some qual data exists but profile incomplete — guide next step.
+      replyText = buildCloseReply(skills, lang, merged, 'soft_hold', paymentFacts);
     } else {
-      unsafeReservationBlocked = true;
+      // No price, incomplete — continue qualification
       const nameMerged = resolveNameFallback(merged, message, recentMessages);
       if (!merged.nombre && nameMerged.nombre) {
         repos.conversation.upsert(customerPhone, { collected_name: nameMerged.nombre });
       }
-      const qualCandidate = nextQualificationQuestion(nameMerged, skills.fallbackReplies[lang]);
-      replyText = skipRepeated(qualCandidate, recentMessages, nameMerged, skills.fallbackReplies[lang]);
+      let effectiveMerged = nameMerged;
+      if (effectiveMerged.plan == null) {
+        const inferred = inferPlanFromAssistantMessages(recentMessages, skills);
+        if (inferred) {
+          repos.conversation.upsert(customerPhone, { collected_plan: inferred });
+          effectiveMerged = { ...effectiveMerged, plan: inferred };
+        }
+      }
+      const qualFieldCount = [effectiveMerged.nombre, effectiveMerged.personas, effectiveMerged.fecha, effectiveMerged.transporte].filter(v => v != null).length;
+      if (isQualificationComplete(effectiveMerged)) {
+        needsHumanEffective = true;
+        finalScore = Math.max(hybrid.score, skills.salesStrategy.urgentLeadThreshold);
+        repos.conversation.upsert(customerPhone, { lead_score: finalScore });
+        if (closeStage === 'pending_sent') {
+          replyText = buildCloseAck(skills, lang, effectiveMerged);
+        } else {
+          const kind: CloseKind = closeStage === 'closing_offered' ? 'pending_owner' : (paymentQ ? 'payment_methods' : 'closing');
+          replyText = buildCloseReply(skills, lang, effectiveMerged, kind, paymentFacts);
+        }
+      } else if (effectiveMerged.plan == null && qualFieldCount >= 3) {
+        replyText = skills.fallbackReplies[lang].aiFailureQualified;
+      } else {
+        const qualCandidate = nextQualificationQuestion(effectiveMerged, skills.fallbackReplies[lang]);
+        replyText = skipRepeated(qualCandidate, recentMessages, effectiveMerged, skills.fallbackReplies[lang]);
+      }
     }
   }
 
@@ -845,33 +1241,21 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     deflectionDueToPolicyLeak = true;
   }
 
-  if (!needsHumanEffective && !deflectionDueToPolicyLeak
-    && (reservationIntent || recentReservation || llmReadyToBook)) {
-    if (qComplete && pricePresented) {
-      logger.warn({ phone: customerPhone }, '[BOT] forced handoff — reservation intent with complete qualification');
-      needsHumanEffective = true;
-      shouldSendGallery = !galleryAlreadyNudged && shouldAutoSendGallery(hybrid.score, false);
-      repos.conversation.setHandedOff(customerPhone);
-      finalScore = Math.max(hybrid.score, skills.salesStrategy.urgentLeadThreshold);
-      repos.conversation.upsert(customerPhone, { lead_score: finalScore });
-      replyText = routeHumanHandoff(repos, customerPhone, merged, lang, skills, safeReservationHandoff(merged, skills.fallbackReplies[lang], lang));
-    } else {
-      logger.warn({ phone: customerPhone, qComplete, pricePresented }, '[BOT] forced next-qualification — reservation intent with incomplete profile');
-      const nameMerged2 = resolveNameFallback(merged, message, recentMessages);
-      if (!merged.nombre && nameMerged2.nombre) {
-        repos.conversation.upsert(customerPhone, { collected_name: nameMerged2.nombre });
-      }
-      const qualCandidate2 = nextQualificationQuestion(nameMerged2, skills.fallbackReplies[lang]);
-      replyText = skipRepeated(qualCandidate2, recentMessages, nameMerged2, skills.fallbackReplies[lang]);
-    }
-  }
-
   const finalPriceJustGiven = replyMentionsPrice(replyText);
-  if (finalPriceJustGiven && !priceRow) repos.conversation.upsert(customerPhone, { price_given_at: new Date().toISOString() });
+  if (finalPriceJustGiven && !prePriceRow) repos.conversation.upsert(customerPhone, { price_given_at: new Date().toISOString() });
+
+  // ── When closing was triggered deterministically, lock phase so follow-ups
+  // ── are permanently excluded for this lead.
+  if (needsHumanEffective) {
+    repos.conversation.setSalesPhase(customerPhone, 'closing');
+  }
+  // ────────────────────────────────────────────────────────────────────────
 
   const outputPriceJustGiven = !needsHumanEffective && finalPriceJustGiven;
   const llmAlreadyGaveDetailedPrice = initialPriceJustGiven && replyText.length > 150;
-  const outputPriceFollowUpText = outputPriceJustGiven && !llmAlreadyGaveDetailedPrice ? computePriceFollowUp(merged.personas, merged.plan as string | undefined, lang, skills) : undefined;
+  const outputPriceFollowUpText = outputPriceJustGiven && !usedDeterministicQuote && !llmAlreadyGaveDetailedPrice
+    ? computePriceFollowUp(merged.personas, merged.plan as string | undefined, lang, skills)
+    : undefined;
 
   if (merged.mascota && PET_KEYWORDS.test(message) && !/pet[- ]friendly|mascotas?|perros?|dogs?|pets?/i.test(replyText)) {
     replyText = lang === 'es'
@@ -886,7 +1270,12 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     : deflectionDueToPolicyLeak ? 'policy_violation_blocked'
     : 'hot_lead';
 
-  if (!needsHumanEffective && !unsafeReservationBlocked && pricePresented && !galleryAlreadyNudged) {
+  // ── Hard guard: never gallery or owner image on close / unsafe ──────────
+  if (needsHumanEffective || unsafeReservationBlocked) {
+    shouldSendGallery = false;
+  }
+
+  if (!needsHumanEffective && !unsafeReservationBlocked && pricePresented && !galleryAlreadyNudged && inferredPhase !== 'closing') {
     const fieldCount = [merged.nombre, merged.plan, merged.personas, merged.fecha, merged.transporte]
       .filter(v => v != null).length;
     if (fieldCount >= 3 && shouldAutoSendGallery(finalScore, false)) {
@@ -909,7 +1298,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     reply: replyText, shouldSendReply: true,
     leadScore: finalScore, usedAi: true,
     shouldAlertOwner, ownerAlertType, shouldSendImage,
-    shouldSendOwnerImage: isFirstContact && !repos.mediaSend.hasRecentSameImage(customerPhone, 'owner_intro', new Date(Date.now() - MS_72H).toISOString()),
+    shouldSendOwnerImage: isFirstContact && !needsHumanEffective && !unsafeReservationBlocked && !repos.mediaSend.hasRecentSameImage(customerPhone, 'owner_intro', new Date(Date.now() - MS_72H).toISOString()),
     shouldSendGalleryImages: shouldSendGallery,
     priceJustGiven: outputPriceJustGiven, priceFollowUpText: outputPriceFollowUpText,
   };

@@ -1,6 +1,7 @@
 import type { Repositories } from '../db/repositories/index.js';
 import { normalizeText } from './language-service.js';
 import type { FallbackReplies, Skills } from './skill-loader.js';
+import type { LeadPain } from '../db/repositories/types.js';
 import type { MergedQualification } from './types.js';
 import {
   isCorrectionMessage,
@@ -179,6 +180,9 @@ export function isReservationIntentOrConfirmation(
     /(?:revision de reserva|dejarlo para revision|lo dejemos para revision|pasarlo al equipo|paso (?:esto |todo )?al equipo)/,
     /(?:want (?:me|us) to check|shall (?:I|we) check availability)/,
     /(?:listo para|preparado para|ready to)/,
+    /(?:inicie esa validacion|inicie la validacion|quieres que inicie|quieres que la inicie)/,
+    /(?:shall i start that validation|shall i start it|start it now|want me to start)/,
+    /(?:separamos con anticipo|reserva se separa|booking is held with)/,
   ];
   return reservationQuestionPatterns.some(p => p.test(questionNorm));
 }
@@ -198,6 +202,23 @@ export function replyMentionsPrice(reply: string): boolean {
   return tests.some(p => p.test(reply));
 }
 
+export function stripSelfIntro(reply: string, qualFieldCount: number): string {
+  if (qualFieldCount < 2) return reply;
+  const sanitized = reply.replace(/\b(?:Hola!?\s*)?(?:Soy\s+\w+,?\s*)?(?:co[- ]?(?:founder|fundador)[^.!?]*\.?\s*)/gi, '');
+  return sanitized.trim() || reply;
+}
+
+export function detectProactiveLeadPain(message: string): LeadPain | null {
+  const norm = message.toLowerCase().trim();
+  if (/\b(muy caro|esta caro|algo caro|costoso|fuera de presupuesto|no me alcanza|no me da|expensive|too expensive|over budget|can'?t afford)\b/i.test(norm)) return 'price';
+  if (/\b(no tengo fecha|no se que fecha|todavia no se cuando|problema con la fecha|schedule conflict|no date yet|not sure when)\b/i.test(norm)) return 'date_time';
+  if (/\b(es seguro|es peligroso|me da miedo|claustrofobia|safety concern|is it safe|is it dangerous|afraid|scared)\b/i.test(norm)) return 'security';
+  if (/\b(no tengo carro|como llego|dificil llegar|necesito transporte|transport problem|no car|how do i get there)\b/i.test(norm)) return 'logistics_4x4';
+  if (/\b(no entiendo|no me queda claro|como funciona exactamente|i don'?t understand|not clear|how does it work)\b/i.test(norm)) return 'experience_clarity';
+  if (/\b(lo consulto|lo hablo|lo pienso|tengo que consultar|consultarlo con|discuss it with|check with my|talk to my)\b/i.test(norm)) return 'partner_group';
+  return null;
+}
+
 export function containsHandoffPhrase(reply: string): boolean {
   return HANDOFF_PHRASE_REGEX.test(reply);
 }
@@ -206,17 +227,26 @@ export function stripHandoffPhrases(reply: string): string {
   return reply.replace(HANDOFF_PHRASE_GLOBAL_REGEX, '').replace(/\n{3,}/g, '\n\n').trim();
 }
 
+export function isPaymentMethodsQuestion(text: string): boolean {
+  const norm = normalizeText(text);
+  return (
+    /\b(metodos? de pago|medios? de pago|formas? de pago|como se paga|como pago|con que pago|nequi|mercado pago|anticipo|deposito|abono)\b/i.test(norm)
+    || /\b(payment methods?|how (can|do) i pay|how to pay|deposit|down payment|nequi|mercado pago)\b/i.test(norm)
+  );
+}
+
 export function containsUnsafeReservationClaim(reply: string): boolean {
   const norm = normalizeText(reply);
   return /\[[^\]]*(inserte|insert|numero|número|payment|pago)[^\]]*\]/i.test(reply)
     || /\b(nequi|mercado pago)\b[\s\S]{0,80}\b\d{7,}\b/i.test(reply)
-    || /\b(dep[oó]sito|deposit|pago|payment)\b[\s\S]{0,80}\b(nequi|mercado pago)\b/i.test(reply)
+    || /\b(nequi|mercado pago)\b[\s\S]{0,120}\b(https?:\/\/|wa\.me|bit\.ly)\b/i.test(reply)
+    || /\b(transfiere|transfer|envia al|send to|numero|n[uú]mero)\b[\s\S]{0,80}\b(nequi|mercado pago|\d{7,})\b/i.test(reply)
     || /\b(puedo separarte|queda reservado|te separo|separamos el cupo)\b[\s\S]{0,100}\b(?:\d{1,2}\s+de\s+\w+|\d{4}-\d{2}-\d{2}|lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo|cupo|fecha)\b/i.test(reply)
     || /\b(ya esta confirmado|ya tienes cupo|te confirmo el cupo|tienes cupo|separado|reservado para ti|tu reserva esta|tu reserva qued[oó])\b/i.test(reply)
     || /\b(fecha confirmada|confirmo la fecha|disponibilidad confirmada)\b[\s\S]{0,60}\b\d{1,2}\s+de\s+\w+/i.test(reply)
     || /\b(ya quedo|quedaste|estas|ya estas)\s+(reservado|apartado|separado|confirmado|agendado)\b/i.test(reply)
     || /\b(listo,? ya|ya,? listo)\s*(?:esta|qued[oó]|confirmado|reservado|agendado|separado)\b/i.test(reply)
-    || /\bconfirmo\s+(?:la\s+)?(?:fecha|disponibilidad|cupo)\b/i.test(reply)
+    || /\bconfirmo\s+(?:la\s+)?(?:fecha|disponibilidad|cupo)\b(?![\s\S]{0,30}\b(?:limitad[ao]|dentro\s+de\s+las|poc[ao]|escas[ao]|sujet[ao]|[ea]st[aá]))/i.test(reply)
     || /\bte\s+(?:env[ií]o|mando|paso|doy)\s+(?:los\s+)?(?:datos|n[uú]meros?|link|info|informaci[oó]n)\b/i.test(reply)
     || /(?:listo|perfecto|dale|bueno),?\s*\w+[.,]\s*me\s+(?:encanta|gusta)\s+el\s+plan\b[^.!?]{0,200}\bconfirmo\b/i.test(reply)
     || /\btu reserva quedo confirmad[ao]\b/i.test(norm);
@@ -266,9 +296,17 @@ function humanizeDate(raw: string, lang: 'es' | 'en', fb: FallbackReplies['es'])
   return lang === 'es' ? `para ${raw}` : `for ${raw}`;
 }
 
+/** Locale-aware people count with correct singular/plural ("1 persona" / "2 people"). */
+export function peopleLabel(n: number, lang: 'es' | 'en'): string {
+  if (lang === 'es') return n === 1 ? '1 persona' : `${n} personas`;
+  return n === 1 ? '1 person' : `${n} people`;
+}
+
 export function qualificationSummary(q: MergedQualification, lang: 'es' | 'en', fb: FallbackReplies['es']): string {
   const parts: string[] = [];
-  if (q.personas != null) parts.push(lang === 'es' ? `${q.personas} personas` : `${q.personas} people`);
+  if (q.personas != null) {
+    parts.push(peopleLabel(Number(q.personas), lang));
+  }
   if (q.fecha != null) {
     const human = humanizeDate(String(q.fecha), lang, fb);
     if (human) parts.push(human);

@@ -142,6 +142,28 @@ describe('sendAlert — per-line delivery', () => {
     expect(mockSendTelegram).toHaveBeenCalledTimes(1);
     expect(repos.ownerAlert.wasAlertedToday(PHONE, 'reservation_handoff')).toBe(false);
   });
+
+  it('dedupes reservation_handoff within cooldown window', async () => {
+    pinBridgeLine();
+    mockSendTelegram.mockResolvedValue(undefined);
+
+    await sendAlert({
+      customerPhone: PHONE,
+      score: 90,
+      intent: 'reservation_handoff',
+      message: 'Quiero reservar',
+    }, repos);
+    mockSendTelegram.mockClear();
+
+    await sendAlert({
+      customerPhone: PHONE,
+      score: 95,
+      intent: 'reservation_handoff',
+      message: 'Quiero reservar ya',
+    }, repos);
+
+    expect(mockSendTelegram).not.toHaveBeenCalled();
+  });
 });
 
 describe('sendAlert — single-line mode', () => {

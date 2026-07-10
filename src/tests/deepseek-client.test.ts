@@ -68,6 +68,39 @@ describe('buildSystemPrompt', () => {
       exp.pricing = orig;
     }
   });
+
+  it('keeps payment credentials out of the LLM prompt', () => {
+    const skills = loadSkills();
+    skills.dynamicData = {
+      experiences: {},
+      media: null,
+      payments: {
+        currency: 'COP',
+        deposit: {
+          type: 'percentage', value: 15, label: 'Anticipo', calculationRule: 'x * 0.15',
+          remainingBalance: { type: 'percentage', value: 85, label: 'Saldo' },
+        },
+        methods: [{
+          id: 'nequi', name: 'Nequi', type: 'mobile_transfer', enabled: true,
+          phoneNumber: '3000000000', fullPhoneNumber: '+573000000000', currency: 'COP',
+          instructions: 'Transfiere al 3000000000', requiresPaymentProof: true,
+        }],
+        confirmation: { automatic: false, requiresTeamValidation: true, message: 'Validar primero.' },
+        displayPolicy: {
+          showMethodsAfterAvailabilityValidation: true,
+          showWhenCustomerAsks: true,
+          neverRequestFullPaymentWithoutConfirmation: true,
+        },
+      },
+    };
+
+    const prompt = buildSystemPrompt(skills);
+
+    expect(prompt).toContain('Deposit required: 15%');
+    expect(prompt).toContain('Enabled payment method names: Nequi');
+    expect(prompt).not.toContain('3000000000');
+    expect(prompt).not.toContain('Transfiere al');
+  });
 });
 
 function withUnavailablePricingAndAvailability(skills: Skills): Skills {
