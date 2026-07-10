@@ -36,7 +36,8 @@ export function recordGalleryNudge(repos: Repositories, phone: string): void {
 }
 
 export function selectGalleryImages(images: InternalGalleryImage[]): InternalGalleryImage[] {
-  const limit = Math.max(0, Math.floor(env.MAX_GALLERY_IMAGES_PER_SEND));
+  // Never send more than 5 gallery images. WhatsApp penalizes media floods.
+  const limit = Math.max(0, Math.floor(Math.min(env.MAX_GALLERY_IMAGES_PER_SEND, 5)));
   if (images.length <= limit) return images;
 
   const shuffled = [...images];

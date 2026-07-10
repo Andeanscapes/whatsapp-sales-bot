@@ -43,7 +43,7 @@ export interface ConversationRepository {
   getBookedAt(phone: string): string | null;
   setBooked(phone: string): void;
   getFollowUpCandidates(cutoffIso: string, serviceWindowStartIso: string, limit: number): FollowUpCandidate[];
-  getPainQuestionCandidates(serviceWindowStartIso: string, limit: number): FollowUpCandidate[];
+  getPainQuestionCandidates(serviceWindowStartIso: string, limit: number, firstNudgeRepliedBefore: string): FollowUpCandidate[];
   markFollowUpSent(phone: string): void;
   setLeadPain(phone: string, pain: LeadPain, detail?: string): void;
   getLeadPain(phone: string): LeadPain | null;
@@ -76,16 +76,50 @@ export interface AiCacheRepository {
   set(key: string, value: unknown, ttlSeconds: number): void;
 }
 
+export type AiUsagePurpose = 'reply' | 'lead_analysis' | 'follow_up';
+
+export interface AiUsageRecordInput {
+  phone: string;
+  model: string;
+  promptTokens: number;
+  completionTokens: number;
+  cachedTokens: number;
+  estimatedCost: number;
+  purpose: AiUsagePurpose;
+  success: boolean;
+  errorType?: string | null;
+}
+
+export interface TokenBreakdown {
+  calls: number;
+  promptTokens: number;
+  completionTokens: number;
+  estimatedCostUsd: number;
+}
+
+export interface AiUsageBreakdown {
+  reply: TokenBreakdown;
+  lead_analysis: TokenBreakdown;
+  follow_up: TokenBreakdown;
+  totalCalls: number;
+  totalPromptTokens: number;
+  totalCompletionTokens: number;
+  totalCostUsd: number;
+}
+
 export interface AiUsageRepository {
   getDailyCost(todayStart: string): number;
   getMonthlyCost(monthStart: string): number;
   countCustomerDaily(phone: string, todayStart: string): number;
   countGlobalDaily(todayStart: string): number;
-  recordUsage(phone: string, model: string, promptTokens: number, completionTokens: number, cachedTokens: number, estimatedCost: number): void;
+  recordUsage(input: AiUsageRecordInput): void;
+  getUsageByPurpose(phone: string, sinceIso: string, untilIso: string | null): AiUsageBreakdown;
+  getGlobalUsageByPurpose(sinceIso: string, untilIso: string | null): AiUsageBreakdown;
 }
 
 export interface OwnerAlertRepository {
   wasAlertedToday(phone: string, alertType: string): boolean;
+  wasAlertedSince(phone: string, alertType: string, sinceIso: string): boolean;
   insert(phone: string, channel: string, score: number, alertType: string, body: string): void;
 }
 
@@ -197,6 +231,12 @@ export interface DailyStats {
   softClosed: number;
   bookedToday: number;
   aiSpentUsd: number;
+  aiCalls: number;
+  aiPromptTokens: number;
+  aiCompletionTokens: number;
+  aiReplyCost: number;
+  aiAnalysisCost: number;
+  aiFollowUpCost: number;
 }
 
 export interface ConversationSummary {
@@ -315,6 +355,10 @@ export interface DayConversationSummary {
   inboundCount: number;
   outboundCount: number;
   aiCostUsd: number;
+  aiPromptTokens: number;
+  aiCompletionTokens: number;
+  aiCalls: number;
+  aiUsageBreakdown: AiUsageBreakdown;
   messages: DayMessage[];
 }
 

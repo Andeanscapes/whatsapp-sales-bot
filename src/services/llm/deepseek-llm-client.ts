@@ -1,26 +1,9 @@
-import { z } from 'zod';
 import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
 import { type LlmClient, type LlmClientInput, type LlmTurn, type LlmResult } from './llm-client.js';
+import { requestDeepSeekCompletion } from './deepseek-completion.js';
 
 const DEEPSEEK_FETCH_TIMEOUT_MS = 30_000;
-
-const deepSeekApiResponseSchema = z.object({
-  choices: z.array(z.object({
-    finish_reason: z.string().optional().catch(undefined),
-    message: z.object({
-      content: z.string().nullable().optional(),
-      reasoning_content: z.string().nullable().optional(),
-    }).catch(() => ({ content: '' })),
-  })).min(1),
-  usage: z.object({
-    prompt_tokens: z.number().int().optional().catch(undefined),
-    completion_tokens: z.number().int().optional().catch(undefined),
-    completion_tokens_details: z.object({
-      reasoning_tokens: z.number().int().optional().catch(undefined),
-    }).optional().catch(undefined),
-  }).optional(),
-});
 
 function parsePlainTextContent(content: string): LlmTurn | null {
   const reply = content.trim();
@@ -36,17 +19,11 @@ function parsePlainTextContent(content: string): LlmTurn | null {
 }
 
 export class DeepSeekLlmClient implements LlmClient {
-  private readonly baseUrl: string;
-  private readonly apiKey: string;
-  private readonly model: string;
   private readonly maxTokens: number;
   private readonly temperature: number;
   private readonly retryOnFail: boolean;
 
   constructor(retryOnFail = false) {
-    this.baseUrl = env.DEEPSEEK_BASE_URL;
-    this.apiKey = env.DEEPSEEK_API_KEY;
-    this.model = env.DEEPSEEK_MODEL;
     this.maxTokens = env.DEEPSEEK_MAX_OUTPUT_TOKENS;
     this.temperature = env.DEEPSEEK_TEMPERATURE;
     this.retryOnFail = retryOnFail;
@@ -87,66 +64,26 @@ export class DeepSeekLlmClient implements LlmClient {
 
     messages.push({ role: 'user', content: `<customer_message>${input.message.replace(/<\/customer_message>/gi, '')}</customer_message>` });
 
-    const body: Record<string, unknown> = {
-      model: this.model,
+    const result = await requestDeepSeekCompletion({
       messages,
-      max_tokens: this.maxTokens,
+      maxTokens: this.maxTokens,
       temperature: this.temperature,
-      thinking: { type: 'disabled' },
-    };
+      timeoutMs: DEEPSEEK_FETCH_TIMEOUT_MS,
+      logTag: '[LLM]',
+    });
+    if (!result) return null;
 
-    try {
-      const response = await fetch(`${this.baseUrl}/chat/completions`, {
-        method: 'POST',
-        signal: AbortSignal.timeout(DEEPSEEK_FETCH_TIMEOUT_MS),
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-      });
-
-      if (!response.ok) {
-        logger.warn({ status: response.status }, '[LLM] http error');
-        return null;
-      }
-
-      const data = await response.json();
-      const apiParse = deepSeekApiResponseSchema.safeParse(data);
-      if (!apiParse.success) {
-        logger.warn({ error: apiParse.error.message.slice(0, 200) }, '[LLM] invalid api response');
-        return null;
-      }
-
-      const choice = apiParse.data.choices[0];
-      const content = choice?.message?.content?.trim();
-      if (!content) {
-        logger.warn({
-          finishReason: choice?.finish_reason,
-          completionTokens: apiParse.data.usage?.completion_tokens ?? 0,
-          reasoningTokens: apiParse.data.usage?.completion_tokens_details?.reasoning_tokens ?? 0,
-          hasReasoningContent: Boolean(choice?.message?.reasoning_content),
-        }, '[LLM] empty content');
-        return null;
-      }
-
-      if (content.length < 2) {
-        logger.warn({ preview: content.slice(0, 200) }, '[LLM] content too short');
-        return null;
-      }
-
-      const turn = parsePlainTextContent(content);
-      if (!turn) {
-        logger.warn({ preview: content.slice(0, 200) }, '[LLM] failed to parse content');
-        return null;
-      }
-
-      const tokens = apiParse.data.usage?.prompt_tokens ?? 0;
-      const completionTokens = apiParse.data.usage?.completion_tokens ?? 0;
-      return { turn, tokens: { prompt: tokens, completion: completionTokens } };
-    } catch (error) {
-      logger.warn({ error: error instanceof Error ? error.message : 'unknown' }, '[LLM] request failed');
+    if (result.content.length < 2) {
+      logger.warn({ preview: result.content.slice(0, 200) }, '[LLM] content too short');
       return null;
     }
+
+    const turn = parsePlainTextContent(result.content);
+    if (!turn) {
+      logger.warn({ preview: result.content.slice(0, 200) }, '[LLM] failed to parse content');
+      return null;
+    }
+
+    return { turn, tokens: { prompt: result.promptTokens, completion: result.completionTokens } };
   }
 }

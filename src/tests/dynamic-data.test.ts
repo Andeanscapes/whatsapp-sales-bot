@@ -4,6 +4,86 @@ import { DynamicDataService, shouldStripStaticPricing } from '../services/dynami
 import { loadSkills, isDynamicDataFresh, setDynamicService, refreshSkills, getSkills } from '../services/skill-loader.js';
 
 describe('dynamic data validation', () => {
+  it('accepts the v4 payment contract with optional availability', () => {
+    const parsed = dynamicDataSchema.parse({
+      v: 4,
+      updated: '2026-07-09T00:00:00Z',
+      payments: {
+        currency: 'COP',
+        deposit: {
+          type: 'percentage', value: 15, label: 'Anticipo',
+          calculationRule: 'depositAmount = totalReservationAmount * 0.15',
+          remainingBalancePercentage: 85,
+        },
+        methods: [{
+          id: 'nequi', name: 'Nequi', type: 'mobile_transfer', enabled: true,
+          phoneNumber: '3000000000', formattedPhoneNumber: '300 000 0000', countryCode: '+57',
+          fullPhoneNumber: '+573000000000', currency: 'COP', instructions: 'Transferencia por Nequi.',
+          requiresPaymentProof: true,
+        }, {
+          id: 'mercado_pago', name: 'Mercado Pago', type: 'payment_link', enabled: true,
+          currency: 'COP', paymentLink: null, instructions: 'El equipo enviara el enlace.',
+          requiresPaymentProof: false,
+        }],
+        confirmation: { automatic: false, requiresTeamValidation: true, message: 'Validacion requerida.' },
+        displayPolicy: {
+          showAfterAvailabilityValidation: true,
+          showWhenCustomerWantsToReserve: true,
+          showWhenCustomerAsksHowToPay: true,
+          doNotRequestPaymentBeforeAvailabilityValidation: true,
+          neverRequestFullPaymentWithoutConfirmation: true,
+        },
+      },
+      media: {},
+      experiences: {
+        emerald_mining_tour: {
+          pricing: {
+            currency: 'COP',
+            plans: { '2d1n_mining': { individual: 550000, couple: 1000000 } },
+            addons: {},
+            paymentPolicy: {
+              depositRequired: true, depositPercentage: 15, remainingBalancePercentage: 85,
+              paymentMethods: ['nequi', 'mercado_pago'], paymentDataReference: 'payments',
+              requiresAvailabilityValidation: true, requiresPaymentValidation: true,
+            },
+            rules: ['Para confirmar la reserva se requiere un anticipo del 15%.'],
+          },
+        },
+      },
+    });
+
+    expect(parsed.payments?.deposit.value).toBe(15);
+    expect(parsed.experiences.emerald_mining_tour?.availability.dates).toEqual([]);
+  });
+
+  it('rejects non-HTTPS payment links', () => {
+    expect(() => dynamicDataSchema.parse({
+      v: 4,
+      updated: '2026-07-09T00:00:00Z',
+      payments: {
+        currency: 'COP',
+        deposit: {
+          type: 'percentage', value: 15, label: 'Anticipo', calculationRule: 'x',
+          remainingBalancePercentage: 85,
+        },
+        methods: [{
+          id: 'mercado_pago', name: 'Mercado Pago', type: 'payment_link', enabled: true,
+          currency: 'COP', paymentLink: 'http://evil.example/pay', instructions: 'Pagar.',
+          requiresPaymentProof: false,
+        }],
+        confirmation: { automatic: false, requiresTeamValidation: true, message: 'Validar.' },
+        displayPolicy: {
+          showAfterAvailabilityValidation: true,
+          showWhenCustomerWantsToReserve: true,
+          showWhenCustomerAsksHowToPay: true,
+          doNotRequestPaymentBeforeAvailabilityValidation: true,
+          neverRequestFullPaymentWithoutConfirmation: true,
+        },
+      },
+      experiences: {},
+    })).toThrow();
+  });
+
   it('rejects unknown fields', () => {
     const data = {
       v: 1,

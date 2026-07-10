@@ -5,11 +5,11 @@ import { migrate } from '../db/migrate.js';
 import { createRepositories, type Repositories } from '../db/repositories/index.js';
 import { env } from '../config/env.js';
 import { resetRoutingConfigCache, type RoutingConfig } from '../services/lead-routing.js';
-import type { LlmResult, LlmTurn } from '../services/llm/llm-client.js';
+import type { LlmClientInput, LlmResult, LlmTurn } from '../services/llm/llm-client.js';
+import type { LeadAnalysis } from '../services/lead-analyzer.js';
 
 const { mockLlmComplete } = vi.hoisted(() => ({
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  mockLlmComplete: vi.fn<any>(() => Promise.resolve(null)),
+  mockLlmComplete: vi.fn<(input: LlmClientInput) => Promise<LlmResult | null>>(() => Promise.resolve(null)),
 }));
 
 vi.mock('../services/llm/deepseek-llm-client.js', () => ({
@@ -19,6 +19,14 @@ vi.mock('../services/budget-guard.js', () => ({ checkBudget: vi.fn(() => ({ aiAl
 vi.mock('../services/time-window-policy.js', () => ({
   checkTimeWindow: vi.fn(() => ({ isLimited: false })),
   isWithinServiceWindow: vi.fn(() => true),
+}));
+
+const { mockAnalyzeLead } = vi.hoisted(() => ({
+  mockAnalyzeLead: vi.fn<() => Promise<LeadAnalysis | null>>(() => Promise.resolve(null)),
+}));
+
+vi.mock('../services/lead-analyzer.js', () => ({
+  analyzeLead: mockAnalyzeLead,
 }));
 
 import { processMessage } from '../services/response-engine.js';
@@ -78,6 +86,7 @@ beforeEach(() => {
   env.LEAD_ROUTING_JSON = JSON.stringify(config);
   resetRoutingConfigCache();
   mockLlmComplete.mockReset();
+  mockAnalyzeLead.mockReset();
 });
 
 afterEach(() => {
@@ -87,7 +96,7 @@ afterEach(() => {
 });
 
 describe('referral handoff routing', () => {
-  it('sets referred mode and uses the referral reply with agent + display number', async () => {
+  it('alerts owner and continues with LLM reply instead of referral handoff', async () => {
     repos.conversation.upsert(PHONE, {
       collected_name: 'Marta',
       collected_plan: '2d1n_mining',
@@ -104,15 +113,22 @@ describe('referral handoff routing', () => {
       created_at: new Date(Date.now() - 5_000).toISOString(),
     });
     mockLlmComplete.mockResolvedValueOnce(bookingTurn());
+    mockAnalyzeLead.mockResolvedValueOnce({
+      intent: 'ready_to_book', scoreDelta: 80, confidence: 1.0,
+      buyingSignals: ['reservation_confirm'], blockers: [],
+      afterPriceInterest: true, reservationReadiness: 'strong',
+      rationale: 'cliente quiere reservar', promptTokens: 50, completionTokens: 30,
+    });
 
     const result = await processMessage({ repos, customerPhone: PHONE, message: 'si por favor' });
 
-    expect(result.reply).toContain('Zaret');
-    expect(result.reply).toContain('+573001112233');
-    expect(repos.conversation.getMode(PHONE)).toBe('referred');
+    expect(result.reply).toBeTruthy();
+    expect(result.shouldAlertOwner).toBe(true);
+    expect(result.ownerAlertType).toBe('reservation_handoff');
+    expect(repos.conversation.getMode(PHONE)).toBe('bot');
   });
 
-  it('hands off on the LLM booking signal even when the customer message lacks regex intent', async () => {
+  it('alerts owner on LLM booking signal instead of handoff', async () => {
     seedQualifiedLead();
     // Bot's own soft-close question that the regex confirmation patterns missed.
     repos.message.addMessage({
@@ -124,15 +140,21 @@ describe('referral handoff routing', () => {
     });
     // LLM reply has no booking keywords, but its structured signal says handoff.
     mockLlmComplete.mockResolvedValueOnce(bookingTurn({ reply: 'Perfecto, lo dejo anotado.', action: 'handoff' }));
+    mockAnalyzeLead.mockResolvedValueOnce({
+      intent: 'ready_to_book', scoreDelta: 80, confidence: 1.0,
+      buyingSignals: ['handoff_signal'], blockers: [],
+      afterPriceInterest: true, reservationReadiness: 'strong',
+      rationale: 'senial de booking', promptTokens: 50, completionTokens: 30,
+    });
 
     const result = await processMessage({ repos, customerPhone: PHONE, message: 'Si' });
 
-    expect(result.reply).toContain('Zaret');
+    expect(result.reply).toBeTruthy();
     expect(result.shouldAlertOwner).toBe(true);
-    expect(repos.conversation.getMode(PHONE)).toBe('referred');
+    expect(repos.conversation.getMode(PHONE)).toBe('bot');
   });
 
-  it('hands off when "Si" confirms the bot\'s revision-de-reserva question (regex path)', async () => {
+  it('alerts owner when "Si" confirms revision-de-reserva without handoff', async () => {
     seedQualifiedLead();
     repos.message.addMessage({
       customer_phone: PHONE,
@@ -143,25 +165,37 @@ describe('referral handoff routing', () => {
     });
     // LLM gives a neutral, non-booking action — only the regex confirmation should drive handoff.
     mockLlmComplete.mockResolvedValueOnce(bookingTurn({ reply: 'Anotado.', action: 'answer', intent: 'qualifying' }));
+    mockAnalyzeLead.mockResolvedValueOnce({
+      intent: 'ready_to_book', scoreDelta: 80, confidence: 1.0,
+      buyingSignals: ['user_confirm'], blockers: [],
+      afterPriceInterest: true, reservationReadiness: 'strong',
+      rationale: 'confirma reserva', promptTokens: 50, completionTokens: 30,
+    });
 
     const result = await processMessage({ repos, customerPhone: PHONE, message: 'Si' });
 
-    expect(result.reply).toContain('Zaret');
-    expect(repos.conversation.getMode(PHONE)).toBe('referred');
+    expect(result.reply).toBeTruthy();
+    expect(result.shouldAlertOwner).toBe(true);
+    expect(repos.conversation.getMode(PHONE)).toBe('bot');
   });
 
-  it('on a bridge line, keeps the default reply and switches to bridge_active (no referral text)', async () => {
+  it('on a bridge line, alerts owner without handoff', async () => {
     useRouting(bridgeConfig);
     seedQualifiedLead();
     mockLlmComplete.mockResolvedValueOnce(bookingTurn({ reply: 'Perfecto, confirmado.', action: 'handoff' }));
+    mockAnalyzeLead.mockResolvedValueOnce({
+      intent: 'ready_to_book', scoreDelta: 80, confidence: 1.0,
+      buyingSignals: ['reservar_ya'], blockers: [],
+      afterPriceInterest: true, reservationReadiness: 'strong',
+      rationale: 'listo para reservar', promptTokens: 50, completionTokens: 30,
+    });
 
     const result = await processMessage({ repos, customerPhone: PHONE, message: 'quiero reservar' });
 
-    // Bridge lines do not expose a referral agent/number to the customer.
-    expect(result.reply).not.toContain('Zaret');
-    expect(result.reply).not.toContain('+573001112233');
+    expect(result.reply).toBeTruthy();
     expect(result.shouldAlertOwner).toBe(true);
-    expect(repos.conversation.getMode(PHONE)).toBe('bridge_active');
+    expect(result.ownerAlertType).toBe('reservation_handoff');
+    expect(repos.conversation.getMode(PHONE)).toBe('bot');
   });
 
   it('does NOT hand off when the LLM signals booking but price was never presented', async () => {

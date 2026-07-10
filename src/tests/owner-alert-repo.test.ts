@@ -57,3 +57,17 @@ describe('OwnerAlertRepository.wasAlertedToday (UTC timezone)', () => {
     expect(repos.ownerAlert.wasAlertedToday(phone, 'urgent')).toBe(true);
   });
 });
+
+describe('OwnerAlertRepository.wasAlertedSince', () => {
+  it('returns true only for alerts after the cutoff', () => {
+    const phone = '573001112280';
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    insertAlertAt(phone, 'telegram', 90, 'reservation_handoff', twoHoursAgo);
+
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    expect(repos.ownerAlert.wasAlertedSince(phone, 'reservation_handoff', oneHourAgo)).toBe(false);
+
+    const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+    expect(repos.ownerAlert.wasAlertedSince(phone, 'reservation_handoff', threeHoursAgo)).toBe(true);
+  });
+});

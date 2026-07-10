@@ -366,6 +366,13 @@ export function registerCommands(): void {
   });
 
   registerCommand({
+    name: 'bridge',
+    description: 'Abrir bridge con lead asignado (alias de chat)',
+    usage: '<telefono>',
+    handler: chatHandler,
+  });
+
+  registerCommand({
     name: 'end',
     description: 'Cerrar bridge activo',
     usage: '',

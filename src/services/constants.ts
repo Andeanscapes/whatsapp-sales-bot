@@ -18,7 +18,10 @@ export const SCORE_CONFIDENCE_FLOOR = 0.3;
 export const SCORE_HOT_THRESHOLD_MARGIN = 10;
 export const SCORE_BLOCKER_PENALTY_FLOOR = -5;
 
-export const SCORE_GALLERY_TRIGGER_THRESHOLD = 20;
+export const SCORE_GALLERY_TRIGGER_THRESHOLD = 60;
+
+/** Min gap between repeatable reservation_* owner alerts for the same phone. */
+export const RESERVATION_ALERT_COOLDOWN_MS = 60 * 60 * 1000;
 
 export const INPUT_COST_PER_TOKEN = 0.15 / 1_000_000;
 export const OUTPUT_COST_PER_TOKEN = 0.60 / 1_000_000;

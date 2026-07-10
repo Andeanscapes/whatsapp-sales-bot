@@ -23,27 +23,80 @@ const MAX_FOLLOW_HOURS = 19;
 const POLL_MS = 60_000;
 /** Per tick, cap candidates so a backlog never blocks other bot/Telegram work. */
 const FOLLOW_UP_BATCH = 5;
+/**
+ * Max wasted LLM drafts per lead before we give up on the first nudge.
+ * Bounds cost when DeepSeek keeps returning empty / unusable drafts within the
+ * service window. Reset once the lead is marked (sent or attempt-exhausted).
+ */
+const MAX_FIRST_NUDGE_DRAFT_ATTEMPTS = 3;
+const firstNudgeDraftAttempts = new Map<string, number>();
 
 const FOLLOW_UP_TASK =
-  'RE-ENGAGEMENT TASK: Reconnect with someone who stopped replying. Your goal is NOT to sell — it is to spark genuine curiosity with something unexpected and personal.\n' +
+  'RE-ENGAGEMENT TASK: Reconnect with someone who stopped replying. Your goal is NOT to sell — it is to spark genuine curiosity with something UNIQUE to THIS conversation.\n' +
   '\n' +
   'HOW TO WIN:\n' +
-  '- Open with a pattern interrupt: "Me acorde de ti", "Vi algo y pense en ti", "Tengo una pregunta", "Se me vino una idea"\n' +
-  '- Make it about THEM: their dream, their date, their group. Zero mentions of product, company, or price\n' +
-  '- Create a curiosity gap: one short question that makes them think or smile. Not yes/no\n' +
-  '- Use their name if you know it. Reference their date/people naturally if mentioned\n' +
-  '- Max 200 chars. 1-2 sentences. 1 emoji max if natural. Tone: a friend texting\n' +
+  '- Hook must be CONCRETE and UNIQUE from this conversation history ONLY: their name, their date, their group size, their exact words, their situation.\n' +
+  '- Examples of GOOD hooks: "Juana, ¿te acordas que hablamos de octubre? Justo vi algo de esa epoca...", "Pensando en tu viaje de octubre, ¿ya sabes como vas a llegar?"\n' +
+  '- Create a curiosity gap: one short question tied to something they already shared. Not yes/no.\n' +
+  '- Max ~200 chars. 1-2 sentences. 1 emoji max if natural. Tone: a friend texting, NOT a salesperson.\n' +
+  '- Language: same as the customer used in history.\n' +
   '\n' +
-  'WHAT KILLS CONVERSIONS:\n' +
-  '- "Hola de nuevo", "Como vas", "Solo pasaba a ver", "Sigues interesado", "Queria saber"\n' +
-  '- Mentioning the product, price, company, "reservar", "comprar", "plan"\n' +
-  '- Sounding like a bot, script, or desperate salesperson\n' +
-  '- Multiple questions, long paragraphs, corporate tone\n' +
-  '- English replies when the customer speaks Spanish, or vice versa\n' +
+  'BANNED PHRASES (will be cleaned or rejected):\n' +
+  '- "pensé en ti" / "pense en ti" / "pensé en ustedes"\n' +
+  '- "me acordé de ti" / "me acorde de ti" / "me acordé de ustedes"\n' +
+  '- "vi algo y pensé en ti" / "se me vino una idea" / "se me vino una imagen" (as generic openers without concrete history)\n' +
+  '- "sigues interesado" / "solo pasaba a ver" / "cómo vas" / "hola de nuevo" / "como vas"\n' +
+  '- Zero mentions of product, price, company, "reservar", "plan", deposit, IG, social media, links.\n' +
   '\n' +
-  'SAFETY: Never confirm dates, availability, spots, payments. Never include links or IG handles.\n' +
+  'SAFETY: Never confirm dates, availability, spots, payments. Never include links or IG handles. Never invent companions or names not in history.\n' +
   '\n' +
-  'CRITICAL: Never assume or invent the customer\'s companion or their name. If they said "para 2 personas" but never gave a name, do NOT guess who the other person is. Do NOT use names from the system context (Heinner, Alexandra, etc.) as if they were the customer\'s companion. Only reference companions the customer explicitly named.';
+  'CRITICAL: Never assume or invent the customer\'s companion or their name. If they said "para 2 personas" but never gave a name, do NOT guess who the other person is. Only reference facts the customer explicitly shared.';
+
+/**
+ * Cliché phrases to remove. Matched anywhere (leading or mid-sentence) so a
+ * draft like "Justo hoy me acordé de ti, ¿sigues?" is cleaned, not leaked.
+ * Leading punctuation/connectors are consumed to avoid dangling ", ?".
+ */
+const RETRYABLE_NUDGE_PHRASES = [
+  /(?:^|[,.;:!¡¿]?\s*)(?:¡?hola\s+de\s+nuevo!?|hola\s+otra\s+vez!?)[,!.:\s-]*/gi,
+  /(?:^|[,.;:!¡¿]?\s*)(?:pens[eé]\s+en\s+(?:ti|ustedes))[,!.:\s-]*/gi,
+  /(?:^|[,.;:!¡¿]?\s*)(?:me\s+acord[eé]\s+de\s+(?:ti|ustedes))[,!.:\s-]*/gi,
+  /(?:^|[,.;:!¡¿]?\s*)(?:vi\s+algo\s+y\s+pens[eé]\s+en\s+ti|se\s+me\s+vino\s+una\s+(?:idea|imagen))[,!.:\s-]*/gi,
+  /(?:^|[,.;:!¡¿]?\s*)(?:sigues\s+interesad[oa]|solo\s+pasaba\s+a\s+ver|c[oó]mo\s+vas|como\s+vas)[,!.:\s-]*/gi,
+];
+
+const HARD_BLOCK_NUDGE_PATTERNS = [
+  /\b(?:reservar|comprar|costo|precio|dep[oó]sito)\b/i,
+  /\bplan(?:es)?\s+(?:de\s+\d|minero|rural|2d|3d)\b/i,
+  /https?:\/\//i,
+  /\binstagram\b/i,
+];
+
+function stripRetryableNudgeOpeners(reply: string): string {
+  let cleaned = reply.trim();
+  for (const pattern of RETRYABLE_NUDGE_PHRASES) {
+    cleaned = cleaned.replace(pattern, ' ').replace(/\s{2,}/g, ' ').trim();
+  }
+  // Capitalize first letter if stripping left a lowercase lead.
+  if (cleaned) cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+  return cleaned;
+}
+
+/**
+ * Records a wasted draft attempt for a lead. When the cap is hit we mark the
+ * follow-up as sent so the worker stops retrying and burning LLM budget.
+ * Returns true when the lead should be given up on.
+ */
+function registerWastedDraft(repos: Repositories, phone: string): boolean {
+  const next = (firstNudgeDraftAttempts.get(phone) ?? 0) + 1;
+  if (next >= MAX_FIRST_NUDGE_DRAFT_ATTEMPTS) {
+    firstNudgeDraftAttempts.delete(phone);
+    repos.conversation.markFollowUpSent(phone);
+    return true;
+  }
+  firstNudgeDraftAttempts.set(phone, next);
+  return false;
+}
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -57,13 +110,6 @@ function stripOwnerReIntro(reply: string): string {
     'gi',
   );
   return reply.replace(introPattern, '').trim();
-}
-
-function igInvite(lang: 'es' | 'en' | null, igUrl: string): string {
-  if (lang === 'en') {
-    return `\n\nIn the meantime, check our IG ${igUrl} — real testimonials, videos, and more content from the experience.`;
-  }
-  return `\n\nMientras tanto, mira nuestro IG ${igUrl} — testimonios reales, videos y mas contenido de la experiencia.`;
 }
 
 function configuredHours(): number {
@@ -103,7 +149,7 @@ async function sendAndRecord(
   });
   if (result) {
     const cost = result.tokens.prompt * INPUT_COST_PER_TOKEN + result.tokens.completion * OUTPUT_COST_PER_TOKEN;
-    repos.aiUsage.recordUsage(phone, env.DEEPSEEK_MODEL, result.tokens.prompt, result.tokens.completion, 0, cost);
+    repos.aiUsage.recordUsage({ phone, model: env.DEEPSEEK_MODEL, promptTokens: result.tokens.prompt, completionTokens: result.tokens.completion, cachedTokens: 0, estimatedCost: cost, purpose: 'follow_up', success: true });
   }
 }
 
@@ -117,7 +163,9 @@ async function runFollowUps(repos: Repositories): Promise<void> {
   const serviceWindowStart = new Date(now - 23 * 60 * 60 * 1000).toISOString();
 
   // ── Stage 2: pain question — send to leads who replied the first nudge ───
-  const painCandidates = repos.conversation.getPainQuestionCandidates(serviceWindowStart, FOLLOW_UP_BATCH);
+  const painDelayHours = env.TIME_PAIN_FOLLOW_HOURS ?? 1;
+  const firstNudgeRepliedBefore = new Date(now - painDelayHours * 60 * 60 * 1000).toISOString();
+  const painCandidates = repos.conversation.getPainQuestionCandidates(serviceWindowStart, FOLLOW_UP_BATCH, firstNudgeRepliedBefore);
   for (const c of painCandidates) {
     if (repos.optOut.isOptedOut(c.customerPhone)) continue;
     if (!isWithinServiceWindow(repos, c.customerPhone)) continue;
@@ -155,9 +203,12 @@ async function runFollowUps(repos: Repositories): Promise<void> {
     const collected = getCollectedFields(repos, c.customerPhone);
     const salesPhase = repos.conversation.getSalesPhase(c.customerPhone);
 
+    // Never follow up on leads already in closing / pending validation.
+    if (salesPhase === 'closing') continue;
+
     // Reuse the production system prompt so follow-ups stay grounded in skill facts.
     const systemPrompt = buildSystemPrompt(skills, lang, collected, salesPhase ?? undefined);
-    const history = repos.message.getRecentMessages(c.customerPhone, 16);
+    const history = repos.message.getRecentMessages(c.customerPhone, 24);
 
     const result = await llmClient.complete({
       systemPrompt,
@@ -169,8 +220,8 @@ async function runFollowUps(repos: Repositories): Promise<void> {
 
     let reply = result?.turn.reply.trim() ?? '';
     if (!reply) {
-      // Mark as attempted so a permanently-empty case does not retry forever.
-      repos.conversation.markFollowUpSent(c.customerPhone);
+      const gaveUp = registerWastedDraft(repos, c.customerPhone);
+      logger.warn({ phone: c.customerPhone, gaveUp }, '[FOLLOW_UP] empty draft; retry within window until attempt cap');
       continue;
     }
 
@@ -178,14 +229,18 @@ async function runFollowUps(repos: Repositories): Promise<void> {
     // Strip accidental full-intro re-greetings that the LLM may smuggle in
     // despite the task prompt's instructions.
     reply = stripOwnerReIntro(reply);
-    // Append IG invite so silent leads have a low-friction way to re-engage.
-    // Skip if the last outbound already includes the IG link — avoid repetitive spam.
-    const igUrl = skills.andeanScapes.business.socialLinks?.instagram;
-    if (igUrl && reply.length + igUrl.length < 900) {
-      const lastOutbound = repos.message.getLastOutboundBody(c.customerPhone);
-      if (!lastOutbound?.includes(igUrl)) {
-        reply += igInvite(lang, igUrl);
-      }
+    reply = stripRetryableNudgeOpeners(reply);
+    if (!reply) {
+      const gaveUp = registerWastedDraft(repos, c.customerPhone);
+      logger.warn({ phone: c.customerPhone, gaveUp }, '[FOLLOW_UP] retryable draft stripped empty; retry within window until attempt cap');
+      continue;
+    }
+    // Reject drafts that leak commercial intent or unsafe links. These are not
+    // style issues, so mark attempted to avoid unsafe retry loops.
+    if (HARD_BLOCK_NUDGE_PATTERNS.some(p => p.test(reply))) {
+      logger.warn({ phone: c.customerPhone, snippet: reply.slice(0, 80) }, '[FOLLOW_UP] draft blocked by hard nudge guard; skipping send');
+      repos.conversation.markFollowUpSent(c.customerPhone);
+      continue;
     }
     // Same safety guards the live reply path enforces: never let a follow-up
     // promise a reservation or leak the prompt/policy.
@@ -198,6 +253,7 @@ async function runFollowUps(repos: Repositories): Promise<void> {
     const seqNumber = repos.followUpEvent.countByPhone(c.customerPhone) + 1;
     try {
       await sendAndRecord(c.customerPhone, reply, repos, seqNumber, 'first_nudge', currentScore, result);
+      firstNudgeDraftAttempts.delete(c.customerPhone);
       logger.info({ phone: c.customerPhone }, '[FOLLOW_UP] first nudge sent');
     } catch (err) {
       logger.warn({ err, phone: c.customerPhone }, '[FOLLOW_UP] send failed');
@@ -211,6 +267,11 @@ export function startFollowUpScheduler(repos: Repositories): ReturnType<typeof s
     void runFollowUps(repos).catch(err => logger.warn({ err }, '[FOLLOW_UP] worker failed'));
   }, POLL_MS);
   return interval;
+}
+
+/** Test-only: clears the in-memory wasted-draft attempt counters. */
+export function resetFollowUpDraftAttempts(): void {
+  firstNudgeDraftAttempts.clear();
 }
 
 export { runFollowUps };

@@ -3,7 +3,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import type { Skills } from './skill-loader.js';
 import { substituteTokens } from './skill-loader.js';
-import { getActiveExperience, getPlans, isPricingAvailable, isAvailabilityAvailable } from './product-registry.js';
+import { getActiveExperience, getPaymentInfo, getPlans, isPricingAvailable, isAvailabilityAvailable } from './product-registry.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -52,6 +52,21 @@ export function buildSystemPrompt(skills: Skills, lang?: string, collectedFields
   const notIncluded = exp.notIncludedUnlessConfirmed.join(', ');
   const reservationFlow = exp.reservationFlow.join('; ');
 
+  // ── Payment info (from remote dynamic JSON) ──────────────────────────────
+  const paymentData = getPaymentInfo(skills);
+  const paymentFacts: string[] = [];
+  if (paymentData) {
+    paymentFacts.push(`Payment currency: ${paymentData.currency}`);
+    paymentFacts.push(`Deposit required: ${paymentData.deposit.value}% (${paymentData.deposit.label})`);
+    const enabledMethods = paymentData.methods.filter(m => m.enabled).map(m => m.name);
+    if (enabledMethods.length > 0) {
+      paymentFacts.push(`Enabled payment method names: ${enabledMethods.join(', ')}`);
+    }
+    paymentFacts.push(`Payment details require prior availability validation: ${paymentData.displayPolicy.showMethodsAfterAvailabilityValidation}`);
+    paymentFacts.push(`Never reveal phone numbers, payment links, transfer instructions, or request payment. The deterministic system owns payment-detail release.`);
+  }
+  // ──────────────────────────────────────────────────────────────────────────
+
   const ferryInfo = route.ferryInfo ?? '';
   const alternateRoute = route.alternateRoute ?? '';
   const arrivalTips = route.arrivalTips ?? '';
@@ -86,6 +101,7 @@ export function buildSystemPrompt(skills: Skills, lang?: string, collectedFields
     `Business: ${skills.andeanScapes.business.name} — ${shortDesc}`,
     `Brand intro: ${skills.andeanScapes.business.shortBrandIntro ?? ''}`,
     `Location: ${skills.andeanScapes.business.location}${meetingPt ? '. Meeting point: ' + meetingPt : ''}`,
+    lang ? `Language: ${lang}. Keep this language unless the customer explicitly asks to switch.` : null,
     '---',
     `AVAILABLE PLANS:\n${plansList}`,
     '---',
@@ -105,6 +121,7 @@ export function buildSystemPrompt(skills: Skills, lang?: string, collectedFields
     `Included: ${included}`,
     `NOT included: ${notIncluded}`,
     `Reservation flow: ${reservationFlow}`,
+    ...paymentFacts,
     '---',
     climateText ? `Climate: ${climateText}` : null,
     roadInfo ? `Road info: ${roadInfo}` : null,
@@ -158,10 +175,14 @@ export function buildSystemPrompt(skills: Skills, lang?: string, collectedFields
 
   if (collectedFields && Object.keys(collectedFields).length > 0) {
     const fieldLines: string[] = [];
+    const populatedCount = Object.values(collectedFields).filter(v => v != null).length;
     for (const [k, v] of Object.entries(collectedFields)) {
       if (v != null) fieldLines.push(`  - ${k}: ${v}`);
     }
     facts.unshift('LO QUE YA SABEMOS DE ESTE CLIENTE (NO vuelvas a preguntar esto):\n' + fieldLines.join('\n'));
+    if (populatedCount >= 2) {
+      facts.unshift('CONTINUACION: Esta conversacion ya esta avanzada. NO te presentes de nuevo ni empieces desde cero. Sigue desde donde quedaste usando los datos de arriba.');
+    }
   }
 
   if (salesPhase) {
