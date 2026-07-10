@@ -35,6 +35,7 @@ import type {
   FollowUpStatus,
   LeadPain,
 } from './types.js';
+import { env } from '../../config/env.js';
 
 const ALLOWED_CONVERSATION_COLUMNS = new Set([
   'language', 'lead_score', 'last_seen_at', 'opt_out_at', 'handed_off_at',
@@ -433,10 +434,14 @@ export class SqliteMessageRepo implements MessageRepository {
   constructor(private db: Database.Database) {}
 
   addMessage(msg: StoredMessage): void {
+    // Repo reads env only to stamp the deployed app version onto bot-generated
+    // (outbound) messages, so reports can trace which release produced a reply.
+    // Centralized here to avoid threading env.APP_VERSION through every caller.
+    const appVersion = msg.app_version ?? (msg.direction === 'outbound' ? env.APP_VERSION : null);
     this.db.prepare(
-      `INSERT OR IGNORE INTO messages (whatsapp_message_id, customer_phone, direction, message_type, body, created_at, raw_json)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    ).run(msg.whatsapp_message_id ?? null, msg.customer_phone, msg.direction, msg.message_type, msg.body ?? null, msg.created_at, msg.raw_json ?? null);
+      `INSERT OR IGNORE INTO messages (whatsapp_message_id, customer_phone, direction, message_type, body, created_at, raw_json, app_version)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(msg.whatsapp_message_id ?? null, msg.customer_phone, msg.direction, msg.message_type, msg.body ?? null, msg.created_at, msg.raw_json ?? null, appVersion);
   }
 
   getLastOutboundBody(phone: string): string | null {
@@ -897,6 +902,7 @@ interface TranscriptMessageRow {
   message_type: string;
   body: string | null;
   created_at: string;
+  app_version: string | null;
 }
 
 interface TranscriptUsageRow {
@@ -919,7 +925,7 @@ export class SqliteTranscriptRepo implements TranscriptRepository {
     `).all() as TranscriptConversationRow[];
 
     const messagesStmt = this.db.prepare(`
-      SELECT direction, message_type, body, created_at
+      SELECT direction, message_type, body, created_at, app_version
       FROM messages
       WHERE customer_phone = ?
       ORDER BY created_at ASC, id ASC
@@ -941,6 +947,7 @@ export class SqliteTranscriptRepo implements TranscriptRepository {
         role: m.direction === 'inbound' ? 'customer' : 'bot',
         type: m.message_type,
         text: m.body ?? '',
+        appVersion: m.app_version ?? null,
       }));
       const hasUsage = usage && (usage.prompt_tokens || usage.completion_tokens || usage.estimated_cost_usd);
       return {
@@ -1022,7 +1029,7 @@ export class SqliteTranscriptRepo implements TranscriptRepository {
     `).all({ since: sinceIso, until: untilIso, excludedJson: JSON.stringify(excludedPhones) }) as ActiveConvRow[];
 
     const messagesStmt = this.db.prepare(`
-      SELECT direction, message_type, body, created_at
+      SELECT direction, message_type, body, created_at, app_version
       FROM messages
       WHERE customer_phone = ?
         AND created_at >= ?
@@ -1045,6 +1052,7 @@ export class SqliteTranscriptRepo implements TranscriptRepository {
         direction: m.direction as 'inbound' | 'outbound',
         type: m.message_type,
         text: m.body ?? '',
+        appVersion: m.app_version ?? null,
       }));
 
       totalMessages += conv.message_count;
