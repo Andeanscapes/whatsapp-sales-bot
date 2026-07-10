@@ -7,6 +7,11 @@ export function migrate(db: Database.Database): void {
   const schema = readFileSync(schemaPath, 'utf-8');
   db.exec(schema);
   try {
+    db.exec('ALTER TABLE messages ADD COLUMN app_version TEXT');
+  } catch {
+    // column already exists — safe to ignore
+  }
+  try {
     db.exec('ALTER TABLE conversations ADD COLUMN handed_off_at TEXT');
   } catch {
     // column already exists — safe to ignore
