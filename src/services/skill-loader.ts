@@ -148,6 +148,10 @@ const andeanScapesSchema = z.object({
       instagram: z.string(),
     }).optional(),
     languages: z.array(z.string()),
+    publicPaymentFallback: z.object({
+      depositPercent: z.number().min(0).max(100),
+      methodNames: z.array(z.string()).min(1),
+    }),
   }),
   experiences: z.array(experienceSchema).min(1),
 });
@@ -247,6 +251,11 @@ const langFallbackSchema = z.object({
   askPeople: z.string(),
   askDate: z.string(),
   askTransport: z.string(),
+  clarifyName: z.string(),
+  clarifyPlan: z.string(),
+  clarifyPeople: z.string(),
+  clarifyDate: z.string(),
+  clarifyTransport: z.string(),
   aiFailureQualified: z.string(),
   aiFailureQualifiedV2: z.string(),
   aiFailureQualifiedV3: z.string(),
@@ -269,6 +278,19 @@ const langFallbackSchema = z.object({
   disculpaYaDicho: z.string(),
   objectionResolvedContinue: z.string(),
   partnerConsultSummary: z.string(),
+  quoteContext: z.string(),
+  quoteNextStep: z.string(),
+  reservationClosing: z.string(),
+  paymentMethodsReply: z.string(),
+  reservationPendingOwner: z.string(),
+  reservationPendingAck: z.string(),
+  reservationSoftHold: z.string(),
+  priceGateTeaser: z.string(),
+  quoteFitSolo: z.string(),
+  quoteFitCouple: z.string(),
+  quoteFitGroup: z.string(),
+  quoteValueStack: z.string(),
+  quoteAnchor: z.string(),
   quotePlanBase: z.string(),
   quoteAddons: z.string(),
   quoteTransport: z.string(),
@@ -317,6 +339,7 @@ export interface Skills {
   media: MediaSkill;
   fallbackReplies: FallbackReplies;
   dynamicMedia: InternalDynamicMedia | null;
+  dynamicData: InternalDynamicData | null;
 }
 
 let cached: Skills | null = null;
@@ -430,6 +453,7 @@ export function loadSkills(): Skills {
     media: mediaSchema.parse(rawMedia),
     fallbackReplies: fallbackRepliesSchema.parse(rawFallback),
     dynamicMedia: null,
+    dynamicData: null,
   };
 
   if (cachedService) {
@@ -437,6 +461,7 @@ export function loadSkills(): Skills {
     if (dynData) {
       skills.andeanScapes.experiences = applyDynamicToExperiences(skills.andeanScapes.experiences, dynData);
       skills.dynamicMedia = dynData.media;
+      skills.dynamicData = dynData;
     }
   }
 

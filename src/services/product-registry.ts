@@ -1,6 +1,6 @@
 import type { Skills, AndeanScapesSkill } from './skill-loader.js';
 import { PRICING_NOT_AVAILABLE, AVAILABILITY_NOT_AVAILABLE } from './dynamic-data-service.js';
-import type { InternalPlanImage, InternalGalleryImage } from './dynamic-data-service.js';
+import type { InternalPlanImage, InternalGalleryImage, InternalPaymentData } from './dynamic-data-service.js';
 
 type Experience = AndeanScapesSkill['experiences'][number];
 
@@ -45,4 +45,24 @@ export function getDynamicPlanImages(skills: Skills): InternalPlanImage[] {
 
 export function getGalleryImages(skills: Skills): InternalGalleryImage[] {
   return skills.dynamicMedia?.galleryImages ?? [];
+}
+
+export function getPaymentInfo(skills: Skills): InternalPaymentData | null {
+  return skills.dynamicData?.payments ?? null;
+}
+
+export interface PublicPaymentFacts {
+  depositPercent: number;
+  methodNames: string[];
+}
+
+export function getPublicPaymentFacts(skills: Skills): PublicPaymentFacts {
+  const payments = skills.dynamicData?.payments ?? null;
+  if (payments) {
+    const methodNames = payments.methods.filter(m => m.enabled).map(m => m.name);
+    if (methodNames.length > 0) {
+      return { depositPercent: payments.deposit.value, methodNames };
+    }
+  }
+  return skills.andeanScapes.business.publicPaymentFallback;
 }

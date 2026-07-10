@@ -114,6 +114,21 @@ export function migrate(db: Database.Database): void {
     opened_at TEXT NOT NULL,
     last_activity_at TEXT NOT NULL
   )`);
+  try {
+    db.exec('ALTER TABLE ai_usage ADD COLUMN purpose TEXT DEFAULT \'reply\'');
+  } catch {
+    // column already exists — safe to ignore
+  }
+  try {
+    db.exec('ALTER TABLE ai_usage ADD COLUMN success INTEGER DEFAULT 1');
+  } catch {
+    // column already exists — safe to ignore
+  }
+  try {
+    db.exec('ALTER TABLE ai_usage ADD COLUMN error_type TEXT');
+  } catch {
+    // column already exists — safe to ignore
+  }
 }
 
 export function createAndMigrate(dbPath: string): Database.Database {

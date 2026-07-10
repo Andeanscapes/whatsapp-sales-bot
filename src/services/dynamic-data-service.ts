@@ -66,6 +66,26 @@ export interface InternalDynamicMedia {
 export interface InternalDynamicData {
   experiences: Record<string, InternalExperienceData>;
   media: InternalDynamicMedia | null;
+  payments: InternalPaymentData | null;
+}
+
+export interface InternalPaymentData {
+  currency: string;
+  deposit: {
+    type: 'percentage'; value: number; label: string; calculationRule: string;
+    remainingBalance: { type: 'percentage'; value: number; label?: string };
+  };
+  methods: Array<{
+    id: string; name: string; type: string; enabled: boolean;
+    phoneNumber?: string; formattedPhoneNumber?: string; countryCode?: string; fullPhoneNumber?: string;
+    currency: string; instructions: string; paymentLink?: string | null; requiresPaymentProof: boolean;
+  }>;
+  confirmation: { automatic: boolean; requiresTeamValidation: boolean; message: string };
+  displayPolicy: {
+    showMethodsAfterAvailabilityValidation: boolean;
+    showWhenCustomerAsks: boolean;
+    neverRequestFullPaymentWithoutConfirmation: boolean;
+  };
 }
 
 export class DynamicDataService {
@@ -184,6 +204,30 @@ export class DynamicDataService {
     }
   }
 
+  private transformPayments(raw: DynamicData['payments'] | null): InternalPaymentData | null {
+    if (!raw) return null;
+    return {
+      currency: raw.currency,
+      deposit: {
+        type: raw.deposit.type,
+        value: raw.deposit.value,
+        label: raw.deposit.label,
+        calculationRule: raw.deposit.calculationRule,
+        remainingBalance: {
+          type: 'percentage' as const,
+          value: raw.deposit.remainingBalancePercentage,
+        },
+      },
+      methods: raw.methods.map(m => ({ ...m })),
+      confirmation: { ...raw.confirmation },
+      displayPolicy: {
+        showMethodsAfterAvailabilityValidation: raw.displayPolicy.showAfterAvailabilityValidation,
+        showWhenCustomerAsks: raw.displayPolicy.showWhenCustomerAsksHowToPay,
+        neverRequestFullPaymentWithoutConfirmation: raw.displayPolicy.neverRequestFullPaymentWithoutConfirmation,
+      },
+    };
+  }
+
   private transform(data: DynamicData): InternalDynamicData {
     const experiences: Record<string, InternalExperienceData> = {};
     const today = data.updated?.split('T')[0] ?? new Date().toISOString().split('T')[0];
@@ -230,9 +274,11 @@ export class DynamicDataService {
         slotsApprox: d.sl ?? null,
       }));
 
-      const botRules = dynExp.pricing.rules
-        ? dynExp.pricing.rules.split('|').map(s => s.trim()).filter(Boolean)
-        : [PRICING_NOT_AVAILABLE];
+      const botRules = Array.isArray(dynExp.pricing.rules)
+        ? dynExp.pricing.rules.map(s => s.trim()).filter(Boolean)
+        : dynExp.pricing.rules
+          ? dynExp.pricing.rules.split('|').map(s => s.trim()).filter(Boolean)
+          : [PRICING_NOT_AVAILABLE];
 
       const botRule = dynExp.availability.rule || AVAILABILITY_NOT_AVAILABLE;
 
@@ -252,6 +298,6 @@ export class DynamicDataService {
       };
     }
 
-    return { experiences, media: this.transformMedia(data.media ?? null) };
+    return { experiences, media: this.transformMedia(data.media ?? null), payments: this.transformPayments(data.payments ?? null) };
   }
 }

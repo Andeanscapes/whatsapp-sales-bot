@@ -1,10 +1,16 @@
 import type { Repositories } from '../db/repositories/index.js';
-import { normalizeText, detectLanguageOrNull, type SupportedLanguage } from './language-service.js';
+import { normalizeText, detectLanguageOrNull, detectExplicitLanguageSwitch, type SupportedLanguage } from './language-service.js';
 import type { FallbackReplies } from './skill-loader.js';
 import { getSkills } from './skill-loader.js';
 import type { MergedQualification } from './types.js';
 import { getActiveExperience, getPlans } from './product-registry.js';
 import { MONTH_NAMES } from './constants.js';
+import { env } from '../config/env.js';
+
+function isForbiddenCustomerName(name: string): boolean {
+  const n = name.toLowerCase().trim();
+  return n === env.OWNER_NAME.toLowerCase().trim() || n === env.PARTNER_NAME.toLowerCase().trim();
+}
 
 export const NAME_PATTERNS = [
   /soy ([A-ZÁÉÍÓÚÜÑ][a-záéíóúüñ]+)/i,
@@ -44,6 +50,11 @@ export function detectPlan(message: string): string | null {
     ['2d1n_mining', /\b(2\s*d|2\s*dias|2\s*días|dos\s+dias|dos\s+días|1\s*noche|una\s+noche)\b/],
   ]);
 
+  const ordinalPlanBoosts = new Map<string, RegExp>([
+    ['2d1n_mining', /\b(?:el\s+primer[oa]?|el\s+de\s+2|el\s+de\s+dos|el\s+corto|plan\s+de\s+2|plan\s+de\s+dos)\b/],
+    ['3d2n_rural', /\b(?:el\s+segundo[oa]?|el\s+de\s+3|el\s+de\s+tres|el\s+largo|plan\s+de\s+3|plan\s+de\s+tres)\b/],
+  ]);
+
   let best: { id: string; score: number } | null = null;
   let tied = false;
 
@@ -54,6 +65,9 @@ export function detectPlan(message: string): string | null {
 
     const durationBoost = durationBoosts.get(plan.id);
     if (durationBoost?.test(norm)) score += 10;
+
+    const ordinalBoost = ordinalPlanBoosts.get(plan.id);
+    if (ordinalBoost?.test(norm)) score += 12;
 
     if (score === 0) continue;
     if (!best || score > best.score) {
@@ -87,7 +101,8 @@ export function nextQualificationQuestion(q: MergedQualification, fb: FallbackRe
   if (q.plan == null) return fb.askPlan.replace('{{name}}', String(q.nombre));
   if (q.personas == null) return fb.askPeople;
   if (q.fecha == null) return fb.askDate;
-  return fb.askTransport;
+  if (q.transporte == null) return fb.askTransport;
+  return fb.aiFailureQualified;
 }
 
 export function extractStandaloneName(text: string): string | null {
@@ -183,7 +198,7 @@ export function extractBookingFields(text: string): Record<string, unknown> {
     const m = text.match(p);
     if (m && m[1].length >= 2 && m[1].length <= 20) {
       const name = m[1];
-      if (!NAME_BLACKLIST.test(name)) {
+      if (!NAME_BLACKLIST.test(name) && !isForbiddenCustomerName(name)) {
         fields.collected_name = name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
         break;
       }
@@ -286,13 +301,13 @@ export function contextAwareExtract(message: string, repos: Repositories, phone:
     const askedName = /como te llamas|cual es tu nombre|con quien tengo/i.test(lastQuestion);
     if (askedName) {
       const standaloneName = extractStandaloneName(norm);
-      if (standaloneName) fields.collected_name = standaloneName;
+      if (standaloneName && !isForbiddenCustomerName(standaloneName)) fields.collected_name = standaloneName;
     }
   }
 
   if (!fields.collected_name && isCorrectionMessage(norm)) {
     const correctionName = extractStandaloneName(norm);
-    if (correctionName) fields.collected_name = correctionName;
+    if (correctionName && !isForbiddenCustomerName(correctionName)) fields.collected_name = correctionName;
   }
 
   if (lastQuestion && !fields.collected_transport_need) {
@@ -382,7 +397,11 @@ export function getCollectedFields(repos: Repositories, phone: string): Record<s
 }
 
 export function resolveLanguage(repos: Repositories, phone: string, message: string): SupportedLanguage {
-  const detected = detectLanguageOrNull(message);
-  if (detected) return detected;
-  return repos.conversation.getLanguage(phone) ?? 'es';
+  const explicit = detectExplicitLanguageSwitch(message);
+  if (explicit) return explicit;
+
+  const existing = repos.conversation.getLanguage(phone);
+  if (existing) return existing;
+
+  return detectLanguageOrNull(message) ?? 'es';
 }

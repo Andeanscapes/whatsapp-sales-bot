@@ -22,7 +22,7 @@ vi.mock('../services/whatsapp-client.js', () => ({
   sendText: vi.fn(() => Promise.resolve()),
 }));
 
-import { runFollowUps } from '../services/follow-up-service.js';
+import { runFollowUps, resetFollowUpDraftAttempts } from '../services/follow-up-service.js';
 import { sendText } from '../services/whatsapp-client.js';
 import { checkBudget } from '../services/budget-guard.js';
 import type { LlmResult } from '../services/llm/llm-client.js';
@@ -72,6 +72,7 @@ beforeEach(() => {
   mockLlmComplete.mockReset();
   vi.mocked(sendText).mockClear();
   vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+  resetFollowUpDraftAttempts();
 });
 
 afterEach(() => {
@@ -166,7 +167,7 @@ describe('follow-up service', () => {
   it('records first_nudge event with correct stage and score', async () => {
     seedSilentLead();
     repos.conversation.upsert(PHONE, { lead_score: 15 });
-    mockLlmComplete.mockResolvedValueOnce(reply('Me acordé de ti'));
+    mockLlmComplete.mockResolvedValueOnce(reply('¿Seguimos armando esa idea del viaje?'));
 
     await runFollowUps(repos);
 
@@ -244,7 +245,7 @@ describe('follow-up service', () => {
 
   it('does not send pain question when first_nudge not yet replied', async () => {
     seedSilentLead();
-    mockLlmComplete.mockResolvedValueOnce(reply('Me acordé de ti'));
+    mockLlmComplete.mockResolvedValueOnce(reply('¿Seguimos armando esa idea del viaje?'));
 
     // Send first nudge (status = 'sent', not replied)
     await runFollowUps(repos);
@@ -254,5 +255,85 @@ describe('follow-up service', () => {
     await runFollowUps(repos);
 
     expect(sendText).not.toHaveBeenCalled();
+  });
+
+  it('skips leads in closing phase (pending validation)', async () => {
+    seedSilentLead();
+    repos.conversation.setSalesPhase(PHONE, 'closing');
+    mockLlmComplete.mockResolvedValue(reply('¿Seguimos con esa idea del viaje?'));
+
+    await runFollowUps(repos);
+
+    expect(sendText).not.toHaveBeenCalled();
+  });
+
+  it('strips a retryable cliché opener and sends the remaining nudge', async () => {
+    seedSilentLead();
+    mockLlmComplete.mockResolvedValueOnce(reply('Hola de nuevo! Pensando en tu viaje de noviembre en moto, ¿ya sabes a qué hora saldrías?'));
+
+    await runFollowUps(repos);
+
+    expect(sendText).toHaveBeenCalledTimes(1);
+    const [, sent] = vi.mocked(sendText).mock.calls[0] ?? [];
+    expect(String(sent)).toBe('Pensando en tu viaje de noviembre en moto, ¿ya sabes a qué hora saldrías?');
+    expect(repos.conversation.getByPhone(PHONE)?.follow_up_sent_at).toBeTruthy();
+  });
+
+  it('retries later when a retryable opener strips to an empty draft', async () => {
+    seedSilentLead();
+    mockLlmComplete.mockResolvedValueOnce(reply('Hola de nuevo!'));
+
+    await runFollowUps(repos);
+
+    expect(sendText).not.toHaveBeenCalled();
+    expect(repos.conversation.getByPhone(PHONE)?.follow_up_sent_at).toBeNull();
+  });
+
+  it('gives up after repeated unusable drafts to bound LLM cost', async () => {
+    seedSilentLead();
+    mockLlmComplete.mockResolvedValue(reply('Hola de nuevo!'));
+
+    // 3 consecutive empty-after-strip drafts hit MAX_FIRST_NUDGE_DRAFT_ATTEMPTS.
+    await runFollowUps(repos);
+    expect(repos.conversation.getByPhone(PHONE)?.follow_up_sent_at).toBeNull();
+    await runFollowUps(repos);
+    expect(repos.conversation.getByPhone(PHONE)?.follow_up_sent_at).toBeNull();
+    await runFollowUps(repos);
+
+    expect(sendText).not.toHaveBeenCalled();
+    expect(repos.conversation.getByPhone(PHONE)?.follow_up_sent_at).toBeTruthy();
+  });
+
+  it('strips a mid-sentence cliché phrase and still sends', async () => {
+    seedSilentLead();
+    mockLlmComplete.mockResolvedValueOnce(reply('Justo hoy me acordé de ti, ¿ya definiste la fecha de noviembre?'));
+
+    await runFollowUps(repos);
+
+    expect(sendText).toHaveBeenCalledTimes(1);
+    const [, sent] = vi.mocked(sendText).mock.calls[0] ?? [];
+    expect(String(sent)).not.toMatch(/me acord[eé] de ti/i);
+    expect(String(sent)).toMatch(/noviembre/i);
+  });
+
+  it('marks hard-blocked commercial drafts as attempted', async () => {
+    seedSilentLead();
+    mockLlmComplete.mockResolvedValueOnce(reply('¿Quieres reservar el plan 2D hoy?'));
+
+    await runFollowUps(repos);
+
+    expect(sendText).not.toHaveBeenCalled();
+    expect(repos.conversation.getByPhone(PHONE)?.follow_up_sent_at).toBeTruthy();
+  });
+
+  it('does not append an Instagram link to first nudges', async () => {
+    seedSilentLead();
+    mockLlmComplete.mockResolvedValueOnce(reply('¿Ya pensaste como llegar en octubre?'));
+
+    await runFollowUps(repos);
+
+    expect(sendText).toHaveBeenCalledTimes(1);
+    const [, sent] = vi.mocked(sendText).mock.calls[0] ?? [];
+    expect(String(sent)).not.toMatch(/instagram\.com|mira nuestro IG/i);
   });
 });

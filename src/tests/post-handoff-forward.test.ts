@@ -33,7 +33,7 @@ const PHONE = '573001112233';
 const routing: RoutingConfig = {
   salesLines: [
     { id: 'line1_bridge', type: 'bridge', label: 'Bridge', weight: 50, telegramChatId: '111', agentName: 'Heinner' },
-    { id: 'line2_referral', type: 'referral', label: 'Referral', weight: 50, telegramChatId: '222', agentName: 'Alexandra', displayNumber: '+573124815443' },
+    { id: 'line2_referral', type: 'referral', label: 'Referral', weight: 50, telegramChatId: '222', agentName: 'Alexandra', displayNumber: '+573001112233' },
   ],
 };
 
@@ -150,12 +150,12 @@ describe('forwardPostHandoffMessage', () => {
     expect(result).toContain('Ya tengo');
     expect(mockSendTelegram).toHaveBeenCalledTimes(1);
     expect(mockSendTelegram.mock.calls[0][0]).toBe('222');
-    expect(mockSendTelegram.mock.calls[0][1]).toContain('Responder desde WhatsApp Business app: +573124815443');
+    expect(mockSendTelegram.mock.calls[0][1]).toContain('Responder desde WhatsApp Business app: +573001112233');
     expect(mockSendTelegram.mock.calls[0][1]).toContain('https://wa.me/573001112233');
     expect(repos.message.getLastInboundBodies(PHONE, 1)[0]?.body).toBe('Me das mas info?');
   });
 
-  it('notifies bridge agent with /chat instructions when no live bridge session exists', async () => {
+  it('notifies bridge agent with /bridge instructions when no live bridge session exists', async () => {
     seedHandedOff('line1_bridge', '111');
     repos.conversation.setMode(PHONE, 'bridge_active');
 
@@ -164,7 +164,7 @@ describe('forwardPostHandoffMessage', () => {
     expect(result).toBeTruthy();
     expect(mockSendTelegram).toHaveBeenCalledTimes(1);
     expect(mockSendTelegram.mock.calls[0][0]).toBe('111');
-    expect(mockSendTelegram.mock.calls[0][1]).toContain('/chat 573001112233');
+    expect(mockSendTelegram.mock.calls[0][1]).toContain('/bridge 573001112233');
   });
 
   it('does not notify opted-out customers', async () => {
@@ -411,11 +411,12 @@ describe('notifyAssignedLineIfDormant', () => {
 
     const result = await notifyAssignedLineIfDormant(repos, msg('Hola de nuevo'));
 
-    expect(result).toBe(true);
+    // Dormant notify never short-circuits; text inbound is stored by processMessage.
+    expect(result).toBe(false);
     expect(mockSendTelegram).toHaveBeenCalledTimes(1);
     expect(mockSendTelegram.mock.calls[0][0]).toBe('111');
-    expect(mockSendTelegram.mock.calls[0][1]).toContain('/chat 573001112233');
-    expect(repos.message.getLastInboundBodies(PHONE, 1)[0]?.body).toBe('Hola de nuevo');
+    expect(mockSendTelegram.mock.calls[0][1]).toContain('/bridge 573001112233');
+    expect(repos.message.getLastInboundBodies(PHONE, 1)).toHaveLength(0);
   });
 
   it('does not notify when mode is bridge_active', async () => {
@@ -472,11 +473,11 @@ describe('notifyAssignedLineIfDormant', () => {
     if (!conv) throw new Error('missing conversation');
     const history = formatLeadHistory(conv, repos.message.getRecentMessages(PHONE, 500));
 
-    expect(result).toBe(true);
+    expect(result).toBe(false);
     expect(mockSendTelegramPhoto).toHaveBeenCalledTimes(1);
     const [, , , caption] = mockSendTelegramPhoto.mock.calls[0];
     expect(caption).toContain('envio una imagen');
-    expect(caption).toContain('/chat');
+    expect(caption).toContain('/bridge');
     expect(history).toContain('📷 comprobante');
   });
 
@@ -487,11 +488,11 @@ describe('notifyAssignedLineIfDormant', () => {
 
     const result = await notifyAssignedLineIfDormant(repos, imgMsg('', 'wamid-img-fail'));
 
-    expect(result).toBe(true);
+    expect(result).toBe(false);
     expect(mockSendTelegramPhoto).not.toHaveBeenCalled();
     expect(mockSendTelegram).toHaveBeenCalledTimes(1);
     expect(mockSendTelegram.mock.calls[0][1]).toContain('envio una imagen');
-    expect(mockSendTelegram.mock.calls[0][1]).toContain('/chat');
+    expect(mockSendTelegram.mock.calls[0][1]).toContain('/bridge');
   });
 
   it('downloads and sends dormant customer audio as Telegram voice + text notice', async () => {
@@ -504,7 +505,7 @@ describe('notifyAssignedLineIfDormant', () => {
     if (!conv) throw new Error('missing conversation');
     const history = formatLeadHistory(conv, repos.message.getRecentMessages(PHONE, 500));
 
-    expect(result).toBe(true);
+    expect(result).toBe(false);
     expect(mockSendTelegramVoice).toHaveBeenCalledTimes(1);
     const [, buf,] = mockSendTelegramVoice.mock.calls[0];
     expect(buf).toBeInstanceOf(Buffer);
@@ -522,7 +523,7 @@ describe('notifyAssignedLineIfDormant', () => {
     if (!conv) throw new Error('missing conversation');
     const history = formatLeadHistory(conv, repos.message.getRecentMessages(PHONE, 500));
 
-    expect(result).toBe(true);
+    expect(result).toBe(false);
     expect(mockSendTelegram.mock.calls[0][1]).toContain('envio un video');
     expect(history).toContain('🎥 video');
   });

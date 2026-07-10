@@ -9,7 +9,11 @@
     "socialLinks": {
       "instagram": "https://www.instagram.com/andean_scapes/"
     },
-    "languages": ["English", "Spanish", "French on request"]
+    "languages": ["English", "Spanish", "French on request"],
+    "publicPaymentFallback": {
+      "depositPercent": 15,
+      "methodNames": ["Nequi", "Mercado Pago"]
+    }
   },
   "experiences": [
     {

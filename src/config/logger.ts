@@ -7,14 +7,18 @@ function maskPhone(value: unknown): string {
   return str.slice(0, 3) + '***' + str.slice(-3);
 }
 
+function maskPhonesInText(value: string): string {
+  return value.replace(/\+?\d[\d\s-]{8,}\d/g, match => maskPhone(match.replace(/\D/g, '')));
+}
+
 function truncateBody(value: unknown): string {
-  const str = String(value ?? '');
+  const str = maskPhonesInText(String(value ?? ''));
   if (str.length <= 80) return str;
   return str.slice(0, 80) + '\u2026';
 }
 
 function truncateReply(value: unknown): string {
-  const str = String(value ?? '');
+  const str = maskPhonesInText(String(value ?? ''));
   if (str.length <= 120) return str;
   return str.slice(0, 120) + '\u2026';
 }
@@ -61,10 +65,23 @@ export const logger = pino({
   },
   serializers: {
     phone: maskPhone,
+    from: maskPhone,
+    to: maskPhone,
+    chatId: maskPhone,
+    agentChatId: maskPhone,
+    assignedAgentChat: maskPhone,
     customerPhone: maskPhone,
     customer_phone: maskPhone,
+    displayPhoneNumber: maskPhone,
+    display_phone_number: maskPhone,
+    phones: (value: unknown) => Array.isArray(value)
+      ? value.map(phone => typeof phone === 'object' && phone !== null
+        ? { ...phone, display_phone_number: maskPhone((phone as { display_phone_number?: unknown }).display_phone_number) }
+        : phone)
+      : value,
     body: truncateBody,
     message: truncateBody,
+    preview: truncateBody,
     reply: truncateReply,
     text: truncateBody,
     url: sanitizeUrl,

@@ -18,7 +18,7 @@ export const bridgeMessages = {
   chatClosed: (phone: string): string => `Chat cerrado con ${phone}.`,
   sent: (phone: string): string => `Enviado a ${phone}`,
   sendFailed: (reason: string): string => `Error enviando WhatsApp desde bridge: ${reason}`,
-  bridgeUsage: 'Uso: /chat <telefono>',
+  bridgeUsage: 'Uso: /bridge <telefono>  (alias: /chat)',
   leadUsage: 'Uso: /lead <telefono>',
   bookingUsage: 'Uso: /booking <telefono>',
   deleteUsage: 'Uso: /delete <telefono>',
@@ -64,28 +64,28 @@ export const bridgeMessages = {
   newCustomerAudio: (phone: string): string => `Audio de ${phone}`,
   newCustomerVideo: (phone: string): string => `Video de ${phone}`,
   dormantBridgeNotice: (phone: string, text: string): string =>
-    `${customerMessageBody(phone, text)}\n\nUsa /chat ${phone} para responder.`,
+    `${customerMessageBody(phone, text)}\n\nUsa /bridge ${phone} para tomar control.`,
   dormantBridgeImageNotice: (phone: string): string =>
-    `${phone} envio una imagen.\n\nUsa /chat ${phone} para responder.`,
+    `${phone} envio una imagen.\n\nUsa /bridge ${phone} para tomar control.`,
   dormantBridgeAudioNotice: (phone: string): string =>
-    `${phone} envio un audio.\n\nUsa /chat ${phone} para responder.`,
+    `${phone} envio un audio.\n\nUsa /bridge ${phone} para tomar control.`,
   dormantBridgeVideoNotice: (phone: string): string =>
-    `${phone} envio un video.\n\nUsa /chat ${phone} para responder.`,
+    `${phone} envio un video.\n\nUsa /bridge ${phone} para tomar control.`,
   customerImageFailed: (phone: string): string =>
     `${phone} envio una imagen pero no se pudo descargar. Pidele al cliente que la reenvie.`,
   customerAudioFailed: (phone: string): string =>
     `${phone} envio un audio pero no se pudo descargar. Pidele al cliente que lo reenvie.`,
-  imageNoActiveChat: 'No hay chat activo. Abre uno con /chat <telefono> antes de enviar una imagen.',
+  imageNoActiveChat: 'No hay chat activo. Abre uno con /bridge <telefono> antes de enviar una imagen.',
   postHandoffCustomerMessage: (params: { phone: string; text: string; bridge: boolean; displayNumber?: string }): string => {
     const action = params.bridge
-      ? `Usa /chat ${params.phone} para responder desde el bridge.`
+      ? `Usa /bridge ${params.phone} para responder desde el bridge.`
       : `Responder desde WhatsApp Business app: ${params.displayNumber ?? 'linea asignada'}.`;
-    return `Nuevo mensaje despues del handoff de ${params.phone}\nWhatsApp: https://wa.me/${params.phone}\n\n${params.text}\n\n${action}`;
+    return `Nuevo mensaje del lead ${params.phone}\nWhatsApp: https://wa.me/${params.phone}\n\n${params.text}\n\n${action}`;
   },
   fallbackAlert: (body: string): string => `[FALLBACK] ${body}`,
   alertFooter: (params: { label: string; agentName: string; type: string; bridge: boolean; displayNumber?: string }): string => {
     const action = params.bridge
-      ? 'Responder con /chat <telefono> y luego escribir aqui.'
+      ? 'Responder con /bridge <telefono> y luego escribir aqui.'
       : `El asesor debe escribir desde ${params.displayNumber ?? 'la linea asignada'}.`;
     return `Asignado: ${params.label} (${params.agentName})\nRuta: ${params.type}\n${action}`;
   },

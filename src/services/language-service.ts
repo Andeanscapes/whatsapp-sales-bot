@@ -34,6 +34,31 @@ export function detectLanguage(text: string): SupportedLanguage {
   return detectLanguageOrNull(text) ?? 'es';
 }
 
+// Shared fragments (matched against accent-stripped, lowercased text) so the ES
+// and EN switch patterns stay in sync and avoid triple-duplicated alternations.
+const SWITCH_VERB = 'habla|hablame|responde|responda|contestame|contesta|conteste|puedes\\s+(?:responder|contestar|hablar)|puede\\s+(?:responder|contestar|hablar)|responder|respondeme';
+const SWITCH_COURTESY = 'por\\s+favor|pls|please';
+
+// "habla (en) espanol", "en espanol por favor", "espanol por favor".
+const EXPLICIT_SWITCH_ES = new RegExp(
+  `\\b(?:${SWITCH_VERB})\\s+(?:en\\s+)?espanol\\b|\\ben\\s+espanol\\s+(?:${SWITCH_COURTESY})\\b|\\bespanol\\s+(?:${SWITCH_COURTESY})\\b`,
+  'i',
+);
+
+// "speak (in) english", "can you reply in english", "english please", plus the
+// Spanish-verb + ingles forms ("hablame en ingles").
+const EXPLICIT_SWITCH_EN = new RegExp(
+  `\\b(?:speak|reply|respond|answer|talk)\\s+(?:in\\s+)?english\\b|\\b(?:can\\s+you|please|could\\s+you)\\s+(?:speak|reply|respond|answer)\\s+(?:in\\s+)?english\\b|\\bin\\s+english\\s+(?:please|pls)\\b|\\benglish\\s+(?:please|pls)\\b|\\b(?:${SWITCH_VERB})\\s+(?:en\\s+)?ingles\\b|\\ben\\s+ingles\\s+(?:${SWITCH_COURTESY})\\b|\\bingles\\s+(?:${SWITCH_COURTESY})\\b`,
+  'i',
+);
+
+export function detectExplicitLanguageSwitch(text: string): SupportedLanguage | null {
+  const norm = normalizeText(text);
+  if (EXPLICIT_SWITCH_EN.test(norm)) return 'en';
+  if (EXPLICIT_SWITCH_ES.test(norm)) return 'es';
+  return null;
+}
+
 export function detectLanguageOrNull(text: string): SupportedLanguage | null {
   const normalized = normalizeText(text);
   const words = new Set(normalized.split(' ').filter(Boolean));
