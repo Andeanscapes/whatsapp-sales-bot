@@ -31,9 +31,10 @@ function insertConversation(phone: string, firstSeenAt: string, leadScore: numbe
 }
 
 function insertMessage(phone: string, direction: 'inbound' | 'outbound', body: string, createdAt: string): void {
+  const appVersion = direction === 'outbound' ? env.APP_VERSION : null;
   db.prepare(
-    'INSERT INTO messages (customer_phone, direction, message_type, body, created_at) VALUES (?, ?, ?, ?, ?)'
-  ).run(phone, direction, 'text', body, createdAt);
+    'INSERT INTO messages (customer_phone, direction, message_type, body, created_at, app_version) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(phone, direction, 'text', body, createdAt, appVersion);
 }
 
 function insertAiUsage(phone: string, cost: number, createdAt: string): void {
@@ -69,6 +70,21 @@ describe('getDayActivity', () => {
     expect(result.conversations[0].messages).toHaveLength(2);
     expect(result.totals.totalConversations).toBe(1);
     expect(result.totals.totalMessages).toBe(2);
+  });
+
+  it('sets appVersion on outbound messages, null on inbound', () => {
+    insertConversation('+111', todayMidnight(), 50, 'Alice');
+    insertMessage('+111', 'inbound', 'Hola', todayH(10));
+    insertMessage('+111', 'outbound', 'Respuesta', todayH(10));
+
+    const result = repos.transcripts.getDayActivity(todayMidnight(), null);
+
+    const msgs = result.conversations[0].messages;
+    expect(msgs).toHaveLength(2);
+    const inboundMsg = msgs.find(m => m.direction === 'inbound');
+    const outboundMsg = msgs.find(m => m.direction === 'outbound');
+    expect(inboundMsg!.appVersion).toBeNull();
+    expect(outboundMsg!.appVersion).toBe(env.APP_VERSION);
   });
 
   it('excludes messages outside period', () => {

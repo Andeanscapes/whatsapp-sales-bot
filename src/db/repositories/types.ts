@@ -7,6 +7,7 @@ export interface StoredMessage {
   body?: string;
   created_at: string;
   raw_json?: string | null;
+  app_version?: string | null;
 }
 
 export interface RecentMessage {
@@ -265,6 +266,7 @@ export interface TranscriptTurn {
   role: 'customer' | 'bot';
   type: string;
   text: string;
+  appVersion?: string | null;
 }
 
 export interface TranscriptRecord {
@@ -294,6 +296,7 @@ export interface DayMessage {
   direction: 'inbound' | 'outbound';
   type: string;
   text: string;
+  appVersion?: string | null;
 }
 
 export interface DayConversationSummary {

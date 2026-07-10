@@ -6,7 +6,7 @@ import { env } from '../config/env.js';
 import { resetRoutingConfigCache } from '../services/lead-routing.js';
 import { statsHandler } from '../commands/stats.command.js';
 import { recentHandler } from '../commands/recent.command.js';
-import { getReportExcludedPhones } from '../services/report-exclusions.js';
+import { getReportExcludedPhones, normalizePhone } from '../services/report-exclusions.js';
 
 const TEST_PHONE = '573009998888';
 const REAL_PHONE = '573001112233';
@@ -41,14 +41,27 @@ afterEach(() => {
 });
 
 describe('report exclusions parsing', () => {
-  it('normalizes and filters configured phones', () => {
+  it('includes configured phones plus owner phone', () => {
     env.REPORT_EXCLUDED_PHONES = ' +57 300 999 8888 , 573001112233 ,';
-    expect(getReportExcludedPhones()).toEqual(['573009998888', '573001112233']);
+    const phones = getReportExcludedPhones();
+    expect(phones).toContain('573009998888');
+    expect(phones).toContain('573001112233');
+    expect(phones).toContain(normalizePhone(env.OWNER_PERSONAL_WHATSAPP_NUMBER));
   });
 
-  it('returns empty list when unset', () => {
+  it('includes owner phone even when REPORT_EXCLUDED_PHONES unset', () => {
     env.REPORT_EXCLUDED_PHONES = '';
-    expect(getReportExcludedPhones()).toEqual([]);
+    const phones = getReportExcludedPhones();
+    expect(phones).toHaveLength(1);
+    expect(phones[0]).toBe(normalizePhone(env.OWNER_PERSONAL_WHATSAPP_NUMBER));
+  });
+
+  it('dedupes owner phone when also listed in REPORT_EXCLUDED_PHONES', () => {
+    const owner = normalizePhone(env.OWNER_PERSONAL_WHATSAPP_NUMBER);
+    env.REPORT_EXCLUDED_PHONES = `${owner}, 573001112233`;
+    const phones = getReportExcludedPhones();
+    expect(phones.filter(p => p === owner)).toHaveLength(1);
+    expect(phones).toContain('573001112233');
   });
 });
 

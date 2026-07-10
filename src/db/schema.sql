@@ -53,7 +53,8 @@ CREATE TABLE IF NOT EXISTS messages (
   message_type TEXT NOT NULL,
   body TEXT,
   created_at TEXT NOT NULL,
-  raw_json TEXT
+  raw_json TEXT,
+  app_version TEXT
 );
 
 CREATE TABLE IF NOT EXISTS processed_webhook_messages (
