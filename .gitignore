@@ -20,5 +20,5 @@ node_modules/
 .DS_Store
 .vscode/
 .idea/
-.claude/
+.claude/settings.local.json
 *.log
