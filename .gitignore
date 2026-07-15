@@ -8,6 +8,7 @@
 # runtime data
 /data/
 /exports/
+/artifacts/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
@@ -20,5 +21,5 @@ node_modules/
 .DS_Store
 .vscode/
 .idea/
-.claude/
+.claude/settings.local.json
 *.log
