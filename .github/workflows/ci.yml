@@ -35,9 +35,9 @@ jobs:
 
   conversation-eval:
     runs-on: ubuntu-latest
-    # DETERMINISTIC merge gate. Mock LLM. Zero tokens. Blocking.
-    # Runs on PRs and develop pushes (NOT master — master uses the real-LLM job below).
-    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/develop'
+    # DETERMINISTIC gate. Mock LLM. Zero tokens. Blocking.
+    # Runs after pushes and on PRs that do not target master.
+    if: github.event_name == 'push' || github.base_ref != 'master'
     env:
       OWNER_NAME: TestOwner
       PARTNER_NAME: TestPartner
@@ -68,12 +68,12 @@ jobs:
 
   conversation-eval-llm:
     runs-on: ubuntu-latest
-    # REAL DeepSeek eval. master push only. Burns tokens.
+    # REAL DeepSeek eval. PRs into master only. Burns tokens.
     # Blocking with drop-tolerance: fails only if the average drops more than
     # MAX_SCORE_DROP vs the committed master LLM baseline, or falls below the
     # low absolute floor MIN_CONVERSATION_SCORE. LLM output is non-deterministic,
     # so the gate tolerates run-to-run variance instead of a hard >=80 check.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: github.event_name == 'pull_request' && github.base_ref == 'master' && github.event.pull_request.head.repo.full_name == github.repository
     env:
       OWNER_NAME: TestOwner
       PARTNER_NAME: TestPartner
