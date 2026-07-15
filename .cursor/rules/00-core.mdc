@@ -1,0 +1,10 @@
+# This repo's rules live in AGENTS.md. The file at the repo root is the single source of truth for:
+# - Architecture invariants
+# - Business facts source (JSON skill files, never hardcoded)
+# - Database repository seam
+# - Security rules (secrets, localhost binding, no `any`)
+# - Validation gate (typecheck, lint, test, build, simulate)
+#
+# For complex tasks, generate a plan first before writing code.
+# Agent workflows: see docs/agent-workflows.md
+# Full architecture docs: see docs/bot-architecture.md
