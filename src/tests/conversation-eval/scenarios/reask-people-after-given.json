@@ -1,0 +1,31 @@
+{
+  "id": "reask-people-after-given",
+  "source": "prod-summary-2026-07-10#573028431999",
+  "tags": ["qualification", "regression"],
+  "lang": "es",
+  "scorecard": {
+    "qualification": { "minFieldsBeforeEnd": 2 },
+    "salesStrategy": { "forbidPriceBeforeMinFields": 2 },
+    "safety": { "forbidPatterns": ["tentative_unknown"] }
+  },
+  "turns": [
+    {
+      "user": "Hola, quiero precios y fechas",
+      "mockReply": "¡Hola! Soy Heinner, co-founder de Andean Scapes junto con Alexandra. Creamos experiencias únicas en Boyacá. ¿Cómo te llamas?",
+      "expect": { "shouldSendReply": true }
+    },
+    {
+      "user": "Michell",
+      "mockReply": "Perfecto Michell. ¿Cuántas personas serían?",
+      "expect": { "shouldSendReply": true, "replyMustNotMatch": ["cómo te llamas"] }
+    },
+    {
+      "user": "Pues no estoy segura, podría ser para 3",
+      "mockReply": "Entendido, Michell. Vamos con 3 personas entonces. ¿Para qué fecha lo tienen pensado?",
+      "expect": {
+        "shouldSendReply": true,
+        "replyMustNotMatch": ["cuántas personas", "cuantas personas", "how many people"]
+      }
+    }
+  ]
+}

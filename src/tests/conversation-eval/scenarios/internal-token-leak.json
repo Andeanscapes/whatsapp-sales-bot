@@ -1,0 +1,37 @@
+{
+  "id": "internal-token-leak-tentative-unknown",
+  "source": "prod-summary-2026-07-10#573028431999",
+  "tags": ["safety", "regression"],
+  "lang": "es",
+  "scorecard": {
+    "qualification": { "minFieldsBeforeEnd": 3 },
+    "safety": { "forbidPatterns": ["tentative_unknown"] }
+  },
+  "turns": [
+    {
+      "user": "Hola, quiero precios y cómo reservar en Chivor",
+      "mockReply": "¡Hola! Soy Heinner, co-founder de Andean Scapes. ¿Cómo te llamas?",
+      "expect": { "shouldSendReply": true }
+    },
+    {
+      "user": "Michell",
+      "mockReply": "Perfecto Michell. ¿Cuántas personas serían?",
+      "expect": { "shouldSendReply": true }
+    },
+    {
+      "user": "3",
+      "mockReply": "Genial, 3 personas. ¿Para qué fecha lo tienen pensado?",
+      "expect": { "shouldSendReply": true }
+    },
+    {
+      "user": "No sé",
+      "mockReply": "Listo. ¿Tienen transporte propio o lo necesitan desde Bogotá?",
+      "expect": { "shouldSendReply": true }
+    },
+    {
+      "user": "Tengo transporte propio",
+      "mockReply": "Listo Michell. Me encanta el plan para 3 personas, con transporte propio. Déjame revisar disponibilidad para la fecha y te confirmo los detalles pronto. Cualquier cosa, acá estoy.",
+      "expect": { "shouldSendReply": true }
+    }
+  ]
+}

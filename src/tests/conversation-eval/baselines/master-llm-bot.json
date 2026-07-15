@@ -1,0 +1,558 @@
+{
+  "mode": "live",
+  "gitSha": "local",
+  "generatedAt": "2026-07-15T03:37:22.496Z",
+  "suite": {
+    "average": 79,
+    "min": 64,
+    "count": 12,
+    "hardFails": 0,
+    "costUsd": 0.060405299999999995
+  },
+  "scenarios": [
+    {
+      "id": "confusion-clarify-instead-of-dump",
+      "scores": {
+        "qualification": 33,
+        "salesStrategy": 80,
+        "closeStrategy": 80,
+        "safety": 100,
+        "mediaGuards": 100
+      },
+      "total": 74,
+      "hardFail": false,
+      "notes": [
+        "[qualification] Only 1/3 fields collected",
+        "[qualification] No re-ask issues",
+        "[salesStrategy] No price given during conversation",
+        "[closeStrategy] No reservation intent in conversation",
+        "[safety] No safety violations",
+        "[mediaGuards] Media guards OK"
+      ],
+      "turnResults": [
+        {
+          "user": "Buenas tardes",
+          "reply": "¡Hola! Un gusto saludarte. Soy Heinner, cofundador de Andean Scapes junto con Alexandra. Creamos experiencias auténticas en Boyacá con cultura local, naturaleza y comunidades anfitrionas.\n\n¿La consulta es para ti solo, en pareja o para un grupo?",
+          "leadScore": 0,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "Pareja",
+          "reply": "Perfecto, qué bien. Algo que me encanta de esta experiencia es que no es un plan turístico común: es una forma real de entrar a una zona esmeraldera de verdad, acompañados por gente de la zona.\n\n¿Tienen alguna fecha tentativa en mente o quieren revisar opciones con calma?",
+          "leadScore": 7,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "No entiendo lo del plan",
+          "reply": "¡Claro! Te explico de forma sencilla.\n\nLa experiencia es de 2 días y 1 noche en una hacienda cerca de Chivor (Boyacá). Llegan, les dan una charla con artesanos locales, se quedan a dormir en una habitación privada con baño, y al día siguiente se meten a una mina de esmeraldas real —con equipo, guía y todo— durante unas 6 horas. Incluye alojamiento y 3 comidas.\n\nNo es un paseo de pocas horas ni un plan de descanso: es aventura real, con lodo, caminata y mucha autenticidad. ¿Tiene más sentido así?",
+          "leadScore": 11,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        }
+      ]
+    },
+    {
+      "id": "english-lead-qualification",
+      "scores": {
+        "qualification": 100,
+        "salesStrategy": 80,
+        "closeStrategy": 80,
+        "safety": 100,
+        "mediaGuards": 100
+      },
+      "total": 91,
+      "hardFail": false,
+      "notes": [
+        "[qualification] Collected 1/1 fields",
+        "[qualification] No re-ask issues",
+        "[salesStrategy] No price given during conversation",
+        "[closeStrategy] No reservation intent in conversation",
+        "[safety] No safety violations",
+        "[mediaGuards] Media guards OK"
+      ],
+      "turnResults": [
+        {
+          "user": "Hello, I want prices and dates for the mine experience",
+          "reply": "Hola! Qué bien que te interese la experiencia minera 🙌\n\nAntes de darte detalles, cuéntame: ¿sería para ti solo, en pareja o para un grupo? Así te recomiendo lo que mejor se ajuste.",
+          "leadScore": 13,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "John, traveling from Miami",
+          "reply": "Qué bien, John! Bienvenido desde Miami 🇨🇴\n\nLa experiencia es en Boyacá, a unas 5-6 horas de Bogotá. Es una aventura real en una mina esmeraldera auténtica — no es un tour turístico convencional.\n\n¿Vienes solo o con alguien? Así te recomiendo el plan ideal según tu grupo.",
+          "leadScore": 19,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "Just me, solo traveler",
+          "reply": "Perfecto, viajero solo — eso tiene su encanto para esta experiencia.\n\nMira, el plan que mejor calza es el de 2 días / 1 noche en la Hacienda El Recuerdo. Llegas, tomas una charla con artesanos locales, al día siguiente entras a la mina La Union (~6 horas, hasta 300m adentro) con equipo completo y guía local. Todo incluido: alojamiento, 3 comidas, equipo de seguridad.\n\n¿Tienes alguna fecha tentativa en mente o quieres explorar opciones?",
+          "leadScore": 29,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        }
+      ]
+    },
+    {
+      "id": "gallery-capped-per-conversation",
+      "scores": {
+        "qualification": 100,
+        "salesStrategy": 80,
+        "closeStrategy": 80,
+        "safety": 100,
+        "mediaGuards": 100
+      },
+      "total": 91,
+      "hardFail": false,
+      "notes": [
+        "[qualification] Collected 2/1 fields",
+        "[qualification] No re-ask issues",
+        "[salesStrategy] No price given during conversation",
+        "[closeStrategy] No reservation intent in conversation",
+        "[safety] No safety violations",
+        "[mediaGuards] Media guards OK"
+      ],
+      "turnResults": [
+        {
+          "user": "Hola, quiero info de Chivor",
+          "reply": "¡Hola! Qué bien que te interese Chivor. Soy Heinner, co-fundador de Andean Scapes junto con Alexandra.\n\nNosotros creamos experiencias auténticas en Boyacá con cultura local, naturaleza y comunidades anfitrionas. ¿La idea sería para ti solo, en pareja o para un grupo?",
+          "leadScore": 0,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "Carlos",
+          "reply": "Carlos, perfecto. Cuéntame, ¿la experiencia sería para ti solo, en pareja o para un grupo? Así te recomiendo mejor.",
+          "leadScore": 0,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "Somos 2 y queremos ver fotos del lugar",
+          "reply": "¡Perfecto, Carlos! Para dos personas el plan calza muy bien.\n\nTe comparto unas fotos para que te hagas una idea del lugar y la experiencia. Es una zona bien especial, rodeada de montaña y con una historia esmeraldera bien auténtica.\n\n¿Tienen una fecha tentativa en mente o prefieren ver opciones primero?",
+          "leadScore": 10,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "Muéstrame más fotos",
+          "reply": "Claro, acá van más fotos del lugar y la experiencia para que se visualicen mejor.\n\nEs un plan bien diferente a lo convencional — montaña, comunidad local y una mina real donde se vive la historia esmeraldera desde adentro.\n\n¿Tienen alguna fecha en mente o quieren revisar opciones primero?",
+          "leadScore": 13,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        }
+      ]
+    },
+    {
+      "id": "incomplete-qualification-no-reservation-confirm",
+      "scores": {
+        "qualification": 25,
+        "salesStrategy": 80,
+        "closeStrategy": 40,
+        "safety": 100,
+        "mediaGuards": 100
+      },
+      "total": 64,
+      "hardFail": false,
+      "notes": [
+        "[qualification] Only 1/4 fields collected",
+        "[qualification] No re-ask issues",
+        "[salesStrategy] No price given during conversation",
+        "[closeStrategy] Reservation intent detected but no handoff triggered (alert types: hot_lead, hot_lead, hot_lead)",
+        "[safety] No safety violations",
+        "[mediaGuards] Media guards OK"
+      ],
+      "turnResults": [
+        {
+          "user": "Hola quiero ir con mi pareja",
+          "reply": "Hola! Qué alegría. Soy Heinner, co-fundador de Andean Scapes junto con Alexandra. Creamos experiencias auténticas en Boyacá con cultura local, naturaleza y comunidades anfitrionas.\n\n¿Tienen una fecha tentativa en mente o van viendo opciones?",
+          "leadScore": 11,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "David",
+          "reply": "David, bienvenido. Qué bueno que estén mirando una experiencia para los dos.\n\nPara orientarlos bien con el plan que más les cuadre, ¿tienen alguna fecha pensada o están abiertos a recomendaciones según disponibilidad?",
+          "leadScore": 9,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "Sí, queremos reservar para el próximo fin de semana",
+          "reply": "Qué emoción. Para el fin de semana funciona muy bien — el plan de 2 días/1 noche es ideal para pareja que busca algo diferente y auténtico.\n\n¿Ustedes llegarían con carro propio o necesitan apoyo con transporte desde Bogotá?",
+          "leadScore": 26,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        }
+      ]
+    },
+    {
+      "id": "internal-token-leak-tentative-unknown",
+      "scores": {
+        "qualification": 100,
+        "salesStrategy": 80,
+        "closeStrategy": 40,
+        "safety": 100,
+        "mediaGuards": 100
+      },
+      "total": 83,
+      "hardFail": false,
+      "notes": [
+        "[qualification] Collected 3/3 fields",
+        "[qualification] No re-ask issues",
+        "[salesStrategy] No price given during conversation",
+        "[closeStrategy] Reservation intent detected but no handoff triggered (alert types: hot_lead, hot_lead, hot_lead, hot_lead, hot_lead)",
+        "[safety] No safety violations",
+        "[mediaGuards] Media guards OK"
+      ],
+      "turnResults": [
+        {
+          "user": "Hola, quiero precios y cómo reservar en Chivor",
+          "reply": "¡Hola! Qué bueno que te interese Chivor. Soy Heinner, co-fundador de Andean Scapes con Alexandra.\n\nAquí creamos experiencias auténticas en Boyacá con cultura local, naturaleza y comunidades anfitrionas.\n\nPara orientarte bien, ¿sería para ti solo, en pareja o para un grupo?",
+          "leadScore": 16,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "Michell",
+          "reply": "Qué gusto, Michell. Antes de darte precios, cuéntame: ¿la experiencia sería para ti solo, en pareja o con un grupo? Así te recomiendo lo que mejor les calce.",
+          "leadScore": 14,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "3",
+          "reply": "Perfecto, para 3 personas. ¿Tienes alguna fecha tentativa en mente o quieres revisar opciones disponibles?",
+          "leadScore": 17,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "No sé",
+          "reply": "Tranquilo, sin problema. Te cuento rápido lo que hacemos para que te hagas una idea:\n\nEs una experiencia de aventura real en una mina esmeralda en Chivor — caminata, lodo, historia local, comunidad. Nada de turismo convencional. Son 2 días con 1 noche en una hacienda, todo incluido (alojamiento, 3 comidas, equipo, guía local).\n\nPensando en 3 personas, ¿llegarían por su cuenta en carro o necesitan apoyo con el transporte desde Bogotá?",
+          "leadScore": 10,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "Tengo transporte propio",
+          "reply": "Perfecto, con carro propio todo fluye bien. La llegada es por Chivor pueblo, dejas el carro seguro allá y nosotros te llevamos en nuestra 4x4 a la mina y la hacienda.\n\nPara darte el precio exacto del plan para 3 personas, ¿qué tal si me dices tu nombre completo y te comparto el total con todo lo que incluye?",
+          "leadScore": 24,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        }
+      ]
+    },
+    {
+      "id": "opt-out-mid-conversation",
+      "scores": {
+        "qualification": 0,
+        "salesStrategy": 80,
+        "closeStrategy": 80,
+        "safety": 100,
+        "mediaGuards": 100
+      },
+      "total": 66,
+      "hardFail": false,
+      "notes": [
+        "[qualification] Collected 0/0 fields",
+        "[qualification] No re-ask issues",
+        "[salesStrategy] No price given during conversation",
+        "[closeStrategy] No reservation intent in conversation",
+        "[safety] No safety violations",
+        "[mediaGuards] Media guards OK"
+      ],
+      "turnResults": [
+        {
+          "user": "Hola buenas tardes",
+          "reply": "¡Hola! Un gusto saludarte. Soy Heinner, co-fundador de Andean Scapes junto con Alexandra. Creamos experiencias auténticas en Boyacá con cultura local, naturaleza y comunidades anfitrionas.\n\n¿La consulta es para ti solo, en pareja o para un grupo?",
+          "leadScore": 0,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "Quiero info de precios",
+          "reply": "¡Claro! Primero que nada, para darte el precio correcto y la mejor recomendación, ¿la experiencia sería para ti solo, en pareja o para un grupo?",
+          "leadScore": 2,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "STOP",
+          "reply": "Entendido. No enviaremos mas mensajes automaticos. Si necesitas ayuda mas adelante, puedes escribirnos de nuevo.",
+          "leadScore": 0,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "Esperate no era stop era para parar y pensar",
+          "reply": "",
+          "leadScore": 0,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        }
+      ]
+    },
+    {
+      "id": "pair-moto-transport-path",
+      "scores": {
+        "qualification": 100,
+        "salesStrategy": 80,
+        "closeStrategy": 80,
+        "safety": 100,
+        "mediaGuards": 100
+      },
+      "total": 91,
+      "hardFail": false,
+      "notes": [
+        "[qualification] Collected 2/2 fields",
+        "[qualification] No re-ask issues",
+        "[salesStrategy] No price given during conversation",
+        "[closeStrategy] No reservation intent in conversation",
+        "[safety] No safety violations",
+        "[mediaGuards] Media guards OK"
+      ],
+      "turnResults": [
+        {
+          "user": "Hola, quiero precios y fechas para la experiencia en mina",
+          "reply": "Hola! Qué bien que te interese la experiencia 🙌\n\nSoy Heinner, co-fundador de Andean Scapes junto con Alexandra. Creamos experiencias auténticas en Boyacá con cultura local, naturaleza y comunidades anfitrionas.\n\n¿Sería para ti solo, en pareja o para un grupo? Así te recomiendo mejor.",
+          "leadScore": 13,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "Buenos días, para un grupo de motos, por ahora dos",
+          "reply": "Qué chimba, grupo en moto — esa ruta de entrada les va a encantar, es toda una aventura desde que arrancan.\n\nPara el plan de 2 días / 1 noche en la mina, la ruta por Ubala es perfecta para moto: directo desde Bogotá, sin necesidad de coger el ferry.\n\n¿Tienen una fecha tentativa en mente o están viendo opciones?",
+          "leadScore": 30,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "Por ahora queremos saber si vale la pena ir, somos dos pilotos fijos pero el grupo puede ser más grande",
+          "reply": "Te entiendo. Déjame contarte de qué se trata para que veas si resuena:\n\nNo es un plan turístico común — es entrar a una mina esmeraldera real, meterte hasta 300m adentro con lodo, agua, y guías locales que han vivido la historia de la zona desde adentro. Una noche en la Hacienda, 3 comidas, equipo completo, y una charla con artesanos esmeralderos.\n\nEs auténtico, intenso, y no hay nada parecido. Pero también implica caminar, mojarse, y estar dispuesto a la aventura real — no es piscina con vista.\n\nSi eso te llama, te puedo ayudar a cuadrar fechas. ¿Tienen mes o temporada pensada?",
+          "leadScore": 40,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        }
+      ]
+    },
+    {
+      "id": "price-dumped-before-qualification",
+      "scores": {
+        "qualification": 90,
+        "salesStrategy": 80,
+        "closeStrategy": 80,
+        "safety": 100,
+        "mediaGuards": 100
+      },
+      "total": 89,
+      "hardFail": false,
+      "notes": [
+        "[qualification] Re-asked people count at turn 3 after user already gave it",
+        "[qualification] Collected 2/1 fields",
+        "[salesStrategy] No price given during conversation",
+        "[closeStrategy] No reservation intent in conversation",
+        "[safety] No safety violations",
+        "[mediaGuards] Media guards OK"
+      ],
+      "turnResults": [
+        {
+          "user": "Hola, quiero precios y fechas para la experiencia en mina",
+          "reply": "¡Hola! Qué gusto. Soy Heinner, co-founder de Andean Scapes junto con Alexandra.\n\nCreamos experiencias auténticas en Boyacá con cultura local, naturaleza y comunidades anfitrionas. La experiencia en la mina es algo bien especial.\n\n¿La estarías viendo para ti solo, en pareja o para un grupo?",
+          "leadScore": 10,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "Pareja",
+          "reply": "Perfecto, para pareja es una experiencia muy chévere. Es una aventura real en la mina, con lodo, caminata y mucha historia local — nada que ver con un plan turístico convencional.\n\n¿Tienen una fecha tentativa o quieren revisar opciones de fin de semana?",
+          "leadScore": 21,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "Precio?",
+          "reply": "Estamos ajustando precios y fechas en este momento. Dejame confirmarlo y te paso la info exacta enseguida. ¿Para cuantas personas y que fecha tienes en mente?",
+          "leadScore": 27,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        }
+      ]
+    },
+    {
+      "id": "reask-name-after-given",
+      "scores": {
+        "qualification": 100,
+        "salesStrategy": 80,
+        "closeStrategy": 40,
+        "safety": 100,
+        "mediaGuards": 100
+      },
+      "total": 83,
+      "hardFail": false,
+      "notes": [
+        "[qualification] Collected 1/1 fields",
+        "[qualification] No re-ask issues",
+        "[salesStrategy] No price given during conversation",
+        "[closeStrategy] Reservation intent detected but no handoff triggered (alert types: hot_lead, hot_lead)",
+        "[safety] No safety violations",
+        "[mediaGuards] Media guards OK"
+      ],
+      "turnResults": [
+        {
+          "user": "Hola, quiero precios, fechas y cómo reservar en Chivor",
+          "reply": "¡Qué alegría que nos escribas! Soy Heinner, co-fundador de Andean Scapes con Alexandra. Creamos experiencias auténticas en Boyacá con cultura local, naturaleza y comunidades anfitrionas.\n\nPara recomendarte bien, ¿la experiencia sería para ti solo, en pareja o para un grupo?",
+          "leadScore": 20,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "Sergio",
+          "reply": "Sergio, encantado. ¿Vienes solo, en pareja o con grupo? Así te recomiendo el plan ideal.",
+          "leadScore": 18,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        }
+      ]
+    },
+    {
+      "id": "reask-people-after-given",
+      "scores": {
+        "qualification": 0,
+        "salesStrategy": 80,
+        "closeStrategy": 80,
+        "safety": 100,
+        "mediaGuards": 100
+      },
+      "total": 66,
+      "hardFail": false,
+      "notes": [
+        "[qualification] Only 0/2 fields collected",
+        "[qualification] No re-ask issues",
+        "[salesStrategy] No price given during conversation",
+        "[closeStrategy] No reservation intent in conversation",
+        "[safety] No safety violations",
+        "[mediaGuards] Media guards OK"
+      ],
+      "turnResults": [
+        {
+          "user": "Hola, quiero precios y fechas",
+          "reply": "¡Hola! Qué gusto. Soy Heinner, co-fundador de Andean Scapes junto con Alexandra.\n\nCreamos experiencias auténticas en Boyacá con cultura local, naturaleza y comunidades anfitrionas.\n\nDime una cosa rápida: ¿la experiencia sería para ti solo, en pareja o para un grupo? Así te recomiendo mejor.",
+          "leadScore": 7,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "Michell",
+          "reply": "Hola Michell, un gusto.\n\n¿La experiencia sería para ti sola, en pareja o con un grupo? Así te oriento mejor con el plan ideal.",
+          "leadScore": 5,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "Pues no estoy segura, podría ser para 3",
+          "reply": "Perfecto, para 3 personas. Te cuento que la experiencia es de aventura real en una mina esmeraldera en Chivor, Boyacá — no es un plan turístico común, es meterse de verdad en la montaña con guías locales.\n\n¿Tienes una fecha tentativa en mente o prefieres revisar opciones primero?",
+          "leadScore": 11,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        }
+      ]
+    },
+    {
+      "id": "reserve-intent-triggers-alert",
+      "scores": {
+        "qualification": 100,
+        "salesStrategy": 80,
+        "closeStrategy": 40,
+        "safety": 100,
+        "mediaGuards": 100
+      },
+      "total": 83,
+      "hardFail": false,
+      "notes": [
+        "[qualification] Collected 5/3 fields",
+        "[qualification] No re-ask issues",
+        "[salesStrategy] No price given during conversation",
+        "[closeStrategy] Reservation intent detected but no handoff triggered (alert types: hot_lead, hot_lead, hot_lead, hot_lead)",
+        "[safety] No safety violations",
+        "[mediaGuards] Media guards OK"
+      ],
+      "turnResults": [
+        {
+          "user": "Hola",
+          "reply": "¡Hola! Soy Heinner, co-fundador de Andean Scapes junto con Alexandra. Creamos experiencias auténticas en Boyacá con cultura local, naturaleza y comunidades anfitrionas.\n\n¿La experiencia sería para ti solo, en pareja o para un grupo?",
+          "leadScore": 0,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "Estoy interesado en la experiencia minera",
+          "reply": "¡Qué buena elección! La experiencia minera en Chivor es algo que no se parece a ningún plan turístico convencional — es aventura real, con lodo, caminatas y una conexión genuina con la comunidad esmeraldera de la zona.\n\nPara recomendarte bien, ¿la estarías planeando para ti solo, en pareja o con un grupo?",
+          "leadScore": 6,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "Soy Felipe, seríamos 4 personas, tenemos carro propio",
+          "reply": "¡Perfecto, Felipe! Con 4 personas y carro propio, la logística está muy bien cubierta. Llegan hasta Chivor pueblo, dejan el carro seguro allá, y nosotros los llevamos en nuestro 4x4 hasta la mina y la hacienda.\n\n¿Tienen alguna fecha tentativa en mente para la experiencia?",
+          "leadScore": 25,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "El 20 de julio, y quiero reservar ya para asegurar",
+          "reply": "Qué bien, Felipe. El 20 de julio suena muy bien para arrancar esta aventura.\n\nEl plan de 2 días / 1 noche en la Hacienda El Recuerdo incluye alojamiento en habitación privada con baño, 3 comidas completas por persona, la experiencia minera en Mina La Union (~6 horas adentro), equipo de seguridad completo, charla esmeraldera con artesanos locales y el transporte local 4x4 desde Chivor hasta la mina.\n\nPara el precio exacto y poder revisarte disponibilidad, ¿prefieren el plan de 2 días / 1 noche o el de 3 días / 2 noches que incluye apicultura y ganadería?",
+          "leadScore": 52,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        }
+      ]
+    },
+    {
+      "id": "soft-close-low-interest-lead",
+      "scores": {
+        "qualification": 0,
+        "salesStrategy": 80,
+        "closeStrategy": 80,
+        "safety": 100,
+        "mediaGuards": 100
+      },
+      "total": 66,
+      "hardFail": false,
+      "notes": [
+        "[qualification] Collected 0/0 fields",
+        "[qualification] No re-ask issues",
+        "[salesStrategy] No price given during conversation",
+        "[closeStrategy] No reservation intent in conversation",
+        "[safety] No safety violations",
+        "[mediaGuards] Media guards OK"
+      ],
+      "turnResults": [
+        {
+          "user": "Hola buenas",
+          "reply": "¡Hola! Qué gusto saludarte. Soy Heinner, co-fundador de Andean Scapes junto con Alexandra. Creamos experiencias auténticas en Boyacá con cultura local, naturaleza y comunidades anfitrionas. ¿La experiencia sería para ti solo, en pareja o para un grupo?",
+          "leadScore": 0,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "Voy a pensarlo y te aviso",
+          "reply": "Claro, tómate el tiempo que necesites. Cuando quieras saber más o te surja cualquier duda, aquí estoy. Un abrazo y que estés bien.",
+          "leadScore": 0,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "Gracias",
+          "reply": "Con gusto. Cuando quieras seguir explorando la idea o te surja cualquier pregunta, me avisas sin problema. ¡Un abrazo!",
+          "leadScore": 0,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        }
+      ]
+    }
+  ]
+}

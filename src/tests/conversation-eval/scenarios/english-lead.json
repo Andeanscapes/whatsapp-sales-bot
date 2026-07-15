@@ -1,0 +1,29 @@
+{
+  "id": "english-lead-qualification",
+  "tags": ["qualification", "i18n"],
+  "lang": "en",
+  "scorecard": {
+    "qualification": { "minFieldsBeforeEnd": 1 },
+    "safety": { "forbidPatterns": ["tentative_unknown"] }
+  },
+  "turns": [
+    {
+      "user": "Hello, I want prices and dates for the mine experience",
+      "mockReply": "Hello! Great to meet you. I'm Heinner, co-founder of Andean Scapes with Alexandra. We create authentic experiences in Boyacá with local culture and nature. Before I share details, what's your name?",
+      "expect": { "shouldSendReply": true }
+    },
+    {
+      "user": "John, traveling from Miami",
+      "mockReply": "Great John! How many people would it be for the experience?",
+      "expect": {
+        "shouldSendReply": true,
+        "replyMustNotMatch": ["what'?s your name", "what is your name"]
+      }
+    },
+    {
+      "user": "Just me, solo traveler",
+      "mockReply": "Got it, John. The solo plan is $550,000 COP per person for the 2-day/1-night mining experience. It includes lodging at Hacienda El Recuerdo, 3 meals, and the guided mine tour with equipment. Do you have a date in mind?",
+      "expect": { "shouldSendReply": true }
+    }
+  ]
+}
