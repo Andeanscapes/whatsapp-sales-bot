@@ -8,6 +8,7 @@
 # runtime data
 /data/
 /exports/
+/artifacts/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
