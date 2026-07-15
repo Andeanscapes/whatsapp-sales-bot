@@ -3,7 +3,8 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     globals: true,
-    exclude: ['src/tests/conversation-eval/**', '.opencode/**', 'node_modules/**', 'dist/**'],
+    include: ['src/tests/conversation-eval/**/*.test.ts'],
+    testTimeout: 60000,
     env: {
       AI_ENABLED: 'false',
       WHATSAPP_VERIFY_TOKEN: 'test',
@@ -15,6 +16,7 @@ export default defineConfig({
       PARTNER_NAME: 'Test Partner',
       OWNER_PERSONAL_WHATSAPP_NUMBER: '573000000000',
       DEEPSEEK_API_KEY: 'test',
+      MIN_CONVERSATION_SCORE: '70',
     },
   },
 });

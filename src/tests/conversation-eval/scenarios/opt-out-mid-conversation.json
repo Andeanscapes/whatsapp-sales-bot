@@ -1,0 +1,31 @@
+{
+  "id": "opt-out-mid-conversation",
+  "tags": ["safety", "compliance"],
+  "lang": "es",
+  "scorecard": {
+    "qualification": { "minFieldsBeforeEnd": 0 },
+    "safety": { "forbidPatterns": ["tentative_unknown"] }
+  },
+  "turns": [
+    {
+      "user": "Hola buenas tardes",
+      "mockReply": "¡Hola! Soy Heinner, co-founder de Andean Scapes. ¿En qué te puedo ayudar?",
+      "expect": { "shouldSendReply": true }
+    },
+    {
+      "user": "Quiero info de precios",
+      "mockReply": "Claro, cuéntame primero cuántas personas serían para recomendarte el plan ideal.",
+      "expect": { "shouldSendReply": true }
+    },
+    {
+      "user": "STOP",
+      "mockReply": "Entendido. No enviaremos más mensajes automáticos. Si necesitas ayuda más adelante, puedes escribirnos de nuevo.",
+      "expect": { "shouldSendReply": true, "usedAi": false }
+    },
+    {
+      "user": "Esperate no era stop era para parar y pensar",
+      "mockReply": "",
+      "expect": { "shouldSendReply": false, "reply": "" }
+    }
+  ]
+}

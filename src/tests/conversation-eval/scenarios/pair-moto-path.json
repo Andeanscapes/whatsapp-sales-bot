@@ -1,0 +1,28 @@
+{
+  "id": "pair-moto-transport-path",
+  "source": "prod-summary-2026-07-10#17275580830",
+  "tags": ["salesStrategy", "i18n"],
+  "lang": "es",
+  "scorecard": {
+    "qualification": { "minFieldsBeforeEnd": 2 },
+    "salesStrategy": { "forbidPriceBeforeMinFields": 2 },
+    "safety": { "forbidPatterns": ["tentative_unknown"] }
+  },
+  "turns": [
+    {
+      "user": "Hola, quiero precios y fechas para la experiencia en mina",
+      "mockReply": "¡Hola! Qué gusto. Soy Heinner, co-founder de Andean Scapes. Creamos experiencias auténticas en Boyacá. Antes de entrar en precios, dime: ¿cuántas personas serían?",
+      "expect": { "shouldSendReply": true }
+    },
+    {
+      "user": "Buenos días, para un grupo de motos, por ahora dos",
+      "mockReply": "Buenos días. Qué chimba que sean en moto, esa ruta hasta Chivor es una experiencia aparte. El plan de mina de 2 días/1 noche es ideal. ¿Tienen alguna fecha en mente?",
+      "expect": { "shouldSendReply": true }
+    },
+    {
+      "user": "Por ahora queremos saber si vale la pena ir, somos dos pilotos fijos pero el grupo puede ser más grande",
+      "mockReply": "Para 2 personas, el plan queda en $1,000,000 COP total. Incluye alojamiento, 3 comidas, guía local, equipo para la mina, y la experiencia completa. Vale totalmente la pena, es una experiencia única que no se consigue en turismo tradicional.",
+      "expect": { "shouldSendReply": true }
+    }
+  ]
+}

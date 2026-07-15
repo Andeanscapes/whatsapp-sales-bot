@@ -1,0 +1,27 @@
+{
+  "id": "reask-name-after-given",
+  "source": "prod-summary-2026-07-10#573223810993",
+  "tags": ["qualification", "regression"],
+  "lang": "es",
+  "scorecard": {
+    "qualification": { "minFieldsBeforeEnd": 1 },
+    "salesStrategy": { "forbidPriceBeforeMinFields": 2 },
+    "safety": { "forbidPatterns": ["tentative_unknown"] }
+  },
+  "turns": [
+    {
+      "user": "Hola, quiero precios, fechas y cómo reservar en Chivor",
+      "mockReply": "¡Hola! Qué gusto. Soy Heinner, co-founder de Andean Scapes junto con Alexandra. Creamos experiencias auténticas en Boyacá con cultura local y naturaleza. Antes de seguir, ¿cómo te llamas?",
+      "expect": { "shouldSendReply": true, "usedAi": true }
+    },
+    {
+      "user": "Sergio",
+      "mockReply": "Perfecto, Sergio. ¿Cuántas personas serían para la experiencia?",
+      "expect": {
+        "shouldSendReply": true,
+        "usedAi": true,
+        "replyMustNotMatch": ["cómo te llamas", "cuál es tu nombre", "cual es tu nombre"]
+      }
+    }
+  ]
+}

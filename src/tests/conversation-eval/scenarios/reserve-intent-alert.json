@@ -1,0 +1,35 @@
+{
+  "id": "reserve-intent-triggers-alert",
+  "tags": ["closeStrategy", "safety"],
+  "lang": "es",
+  "scorecard": {
+    "qualification": { "minFieldsBeforeEnd": 3 },
+    "closeStrategy": { "requireHandoffOnReserve": true },
+    "safety": { "forbidPatterns": ["reserva confirmada", "pago confirmado"] }
+  },
+  "turns": [
+    {
+      "user": "Hola",
+      "mockReply": "¡Hola! Soy Heinner, co-founder de Andean Scapes. ¿En qué te puedo ayudar?",
+      "expect": { "shouldSendReply": true }
+    },
+    {
+      "user": "Estoy interesado en la experiencia minera",
+      "mockReply": "¡Qué bien! Es una experiencia increíble. Para recomendarte el plan ideal: ¿cómo te llamas y cuántas personas serían?",
+      "expect": { "shouldSendReply": true }
+    },
+    {
+      "user": "Soy Felipe, seríamos 4 personas, tenemos carro propio",
+      "mockReply": "Perfecto Felipe. Para 4 personas con carro propio, el plan de 2 días/1 noche es ideal. Incluye alojamiento en la Hacienda, 3 comidas, experiencia minera con guía y equipo. ¿Para qué fecha lo tienen pensado?",
+      "expect": { "shouldSendReply": true }
+    },
+    {
+      "user": "El 20 de julio, y quiero reservar ya para asegurar",
+      "mockReply": "Entendido Felipe. Voy a validar disponibilidad para el 20 de julio. Enseguida te confirmo.",
+      "expect": {
+        "shouldSendReply": true,
+        "replyMustNotMatch": ["reserva confirmada", "pago confirmado"]
+      }
+    }
+  ]
+}
