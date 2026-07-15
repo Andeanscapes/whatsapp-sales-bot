@@ -35,10 +35,9 @@ jobs:
 
   conversation-eval:
     runs-on: ubuntu-latest
-    # DETERMINISTIC only. Mock LLM. Zero tokens. Hard CI gate.
-    # Local LLM eval (burns tokens) is never run in CI:
-    #   npm run eval:conversations:llm-bot    (real LLM generates bot replies)
-    #   npm run eval:conversations:llm-judge  (LLM scores mocked transcripts)
+    # DETERMINISTIC merge gate. Mock LLM. Zero tokens. Blocking.
+    # Runs on PRs and develop pushes (NOT master — master uses the real-LLM job below).
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/develop'
     env:
       OWNER_NAME: TestOwner
       PARTNER_NAME: TestPartner
@@ -67,7 +66,43 @@ jobs:
           name: conversation-eval-report
           path: artifacts/conversation-eval.json
 
-  # To compare feature branch vs develop:
+  conversation-eval-llm:
+    runs-on: ubuntu-latest
+    # REAL DeepSeek eval. master push only. Burns tokens.
+    # Blocking with drop-tolerance: fails only if the average drops more than
+    # MAX_SCORE_DROP vs the committed master LLM baseline, or falls below the
+    # low absolute floor MIN_CONVERSATION_SCORE. LLM output is non-deterministic,
+    # so the gate tolerates run-to-run variance instead of a hard >=80 check.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    env:
+      OWNER_NAME: TestOwner
+      PARTNER_NAME: TestPartner
+      WHATSAPP_VERIFY_TOKEN: test
+      WHATSAPP_ACCESS_TOKEN: test
+      WHATSAPP_APP_SECRET: test
+      WHATSAPP_PHONE_NUMBER_ID: test
+      WHATSAPP_BUSINESS_ACCOUNT_ID: test
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      OWNER_PERSONAL_WHATSAPP_NUMBER: "573001112233"
+      AI_ENABLED: "true"
+      MIN_CONVERSATION_SCORE: "65"
+      MAX_SCORE_DROP: "8"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm install
+      - run: npm run eval:conversations:llm-bot
+      - run: npm run eval:conversations:compare -- --baseline src/tests/conversation-eval/baselines/master-llm-bot.json --current artifacts/conversation-eval-llm-bot.json --min-average $MIN_CONVERSATION_SCORE --max-drop $MAX_SCORE_DROP
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: conversation-eval-llm-report
+          path: artifacts/conversation-eval-llm-bot.json
+
+  # To compare feature branch vs develop (deterministic, local):
   # 1. git checkout develop && npm run eval:conversations && cp artifacts/conversation-eval.json /tmp/dev-eval.json
   # 2. git checkout feature && npm run eval:conversations
   # 3. npm run eval:conversations:compare -- --baseline /tmp/dev-eval.json --current artifacts/conversation-eval.json
