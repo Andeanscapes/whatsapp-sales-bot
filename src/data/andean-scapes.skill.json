@@ -404,6 +404,18 @@
         },
         {
           "lang": "es",
+          "intent": "mine_assignment",
+          "question": "¿La experiencia siempre es en Mina La Union?",
+          "answer": "El tour puede realizarse en cualquiera de las minas con las que tenemos convenio. No se asegura una mina en particular. Son minas de carbon convertidas en experiencia esmeraldera, con agua, lodo, humedad, equipo y guia local."
+        },
+        {
+          "lang": "en",
+          "intent": "mine_assignment",
+          "question": "Is the experience always at La Union Mine?",
+          "answer": "The tour may take place at any of the partner mines we work with. We do not guarantee a particular mine. They are coal mines adapted for the emerald-region experience, with water, mud, humidity, safety gear, and a local guide."
+        },
+        {
+          "lang": "es",
           "intent": "availability",
           "question": "¿Hay fechas disponibles?",
           "answer": "Fechas planeadas que tenemos en el radar (el equipo debe validar disponibilidad real): Julio: sábado 4 y sábado 18. Agosto: sábado 1 y sábado 15. Septiembre: sábado 5 y sábado 19. Si te sirve alguna de estas (u otra fecha), podemos pedirle al equipo que la revise. No tenemos confirmación final sin el equipo — pero él puede validar cualquier fecha que te interese."

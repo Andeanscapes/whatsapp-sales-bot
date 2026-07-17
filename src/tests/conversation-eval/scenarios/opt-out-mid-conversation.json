@@ -2,10 +2,9 @@
   "id": "opt-out-mid-conversation",
   "tags": ["safety", "compliance"],
   "lang": "es",
-  "scorecard": {
-    "qualification": { "minFieldsBeforeEnd": 0 },
-    "safety": { "forbidPatterns": ["tentative_unknown"] }
-  },
+  "criteria": [
+    { "id": "opt-out-is-deterministic", "rule": "output_flag_equals", "flag": "usedAi", "expected": false, "turn": 3, "weight": 1, "critical": true }
+  ],
   "turns": [
     {
       "user": "Hola buenas tardes",

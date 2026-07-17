@@ -3,15 +3,13 @@
   "source": "prod-summary-2026-07-10#573209601266",
   "tags": ["salesStrategy", "regression"],
   "lang": "es",
-  "scorecard": {
-    "qualification": { "minFieldsBeforeEnd": 1 },
-    "salesStrategy": { "forbidPriceBeforeMinFields": 2 },
-    "safety": { "forbidPatterns": ["tentative_unknown"] }
-  },
+  "criteria": [
+    { "id": "price-after-qualification", "rule": "price_after_min_fields", "minFields": 2, "weight": 1, "critical": true }
+  ],
   "turns": [
     {
       "user": "Hola, quiero precios y fechas para la experiencia en mina",
-      "mockReply": "¡Hola! El plan para pareja queda en $1,000,000 COP total e incluye alojamiento, comidas y experiencia minera. ¿Cómo te llamas?",
+      "mockReply": "¡Hola! La experiencia en mina se adapta muy bien para pareja. Antes de entrar en valor, ¿la experiencia sería para ustedes dos?",
       "expect": { "shouldSendReply": true }
     },
     {

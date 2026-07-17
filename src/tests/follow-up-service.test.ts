@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
-import { loadSkills } from '../services/skill-loader.js';
+import { getSkills, loadSkills } from '../services/skill-loader.js';
 import { migrate } from '../db/migrate.js';
 import { createRepositories, type Repositories } from '../db/repositories/index.js';
 import { env } from '../config/env.js';
@@ -22,7 +22,7 @@ vi.mock('../services/whatsapp-client.js', () => ({
   sendText: vi.fn(() => Promise.resolve()),
 }));
 
-import { runFollowUps, resetFollowUpDraftAttempts } from '../services/follow-up-service.js';
+import { runFollowUps } from '../services/follow-up-service.js';
 import { sendText } from '../services/whatsapp-client.js';
 import { checkBudget } from '../services/budget-guard.js';
 import type { LlmResult } from '../services/llm/llm-client.js';
@@ -72,7 +72,6 @@ beforeEach(() => {
   mockLlmComplete.mockReset();
   vi.mocked(sendText).mockClear();
   vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
-  resetFollowUpDraftAttempts();
 });
 
 afterEach(() => {
@@ -103,14 +102,13 @@ describe('follow-up service', () => {
     expect(sendText).not.toHaveBeenCalled();
   });
 
-  it('blocks an unsafe reservation claim and does not send', async () => {
+  it('replaces an unsafe reservation claim with a safe nudge', async () => {
     seedSilentLead();
     mockLlmComplete.mockResolvedValueOnce(reply('Tu reserva quedó confirmada para esa fecha.'));
 
     await runFollowUps(repos);
 
-    expect(sendText).not.toHaveBeenCalled();
-    // Marked so it does not retry the same bad generation forever.
+    expect(sendText).toHaveBeenCalledWith(PHONE, getSkills().fallbackReplies.es.followUpSafeNudge);
     expect(repos.conversation.getByPhone(PHONE)?.follow_up_sent_at).toBeTruthy();
   });
 
@@ -131,6 +129,59 @@ describe('follow-up service', () => {
 
     await runFollowUps(repos);
 
+    expect(sendText).not.toHaveBeenCalled();
+  });
+
+  it('does not send when a new inbound arrives after candidate selection', async () => {
+    seedSilentLead();
+    mockLlmComplete.mockImplementationOnce(async () => {
+      addMsg('inbound', 'Tengo otra pregunta', 0);
+      return reply('¿Qué detalle quieres revisar?');
+    });
+
+    await runFollowUps(repos);
+
+    expect(mockLlmComplete).toHaveBeenCalledTimes(1);
+    expect(repos.message.getLastMessageDirection(PHONE)).toBe('inbound');
+    expect(sendText).not.toHaveBeenCalled();
+    expect(repos.conversation.getByPhone(PHONE)?.follow_up_sent_at).toBeNull();
+  });
+
+  it('skips soft-closed leads', async () => {
+    seedSilentLead();
+    repos.conversation.setSoftClosed(PHONE);
+    mockLlmComplete.mockResolvedValue(reply('¿Seguimos?'));
+
+    await runFollowUps(repos);
+
+    expect(mockLlmComplete).not.toHaveBeenCalled();
+    expect(sendText).not.toHaveBeenCalled();
+  });
+
+  it('does not send when the lead soft-closes during draft generation', async () => {
+    seedSilentLead();
+    mockLlmComplete.mockImplementationOnce(async () => {
+      addMsg('inbound', 'No gracias, por ahora no', 0);
+      repos.conversation.setSoftClosed(PHONE);
+      return reply('¿Seguimos?');
+    });
+
+    await runFollowUps(repos);
+
+    expect(repos.conversation.getSoftClosedAt(PHONE)).toBeTruthy();
+    expect(sendText).not.toHaveBeenCalled();
+    expect(repos.conversation.getByPhone(PHONE)?.follow_up_sent_at).toBeNull();
+  });
+
+  it('does not follow up on job inquiries', async () => {
+    repos.conversation.upsert(PHONE, { language: 'es' });
+    addMsg('inbound', 'Hola, ¿tienen vacantes? Quiero enviar mi hoja de vida.', -5 * 60 * 60 * 1000);
+    addMsg('outbound', 'Gracias por escribirnos.', -4 * 60 * 60 * 1000);
+    mockLlmComplete.mockResolvedValue(reply('¿Seguimos hablando?'));
+
+    await runFollowUps(repos);
+
+    expect(mockLlmComplete).not.toHaveBeenCalled();
     expect(sendText).not.toHaveBeenCalled();
   });
 
@@ -193,6 +244,15 @@ describe('follow-up service', () => {
     expect(body).not.toContain(`Soy ${env.OWNER_NAME}`);
     expect(body).toContain('Me acordé de tu idea de Chivor');
     expect(body).not.toMatch(/Mientras tanto, mira nuestro IG/);
+  });
+
+  it('replaces a draft that addresses the customer with the partner name', async () => {
+    seedSilentLead();
+    mockLlmComplete.mockResolvedValueOnce(reply(`${env.PARTNER_NAME}, ¿ya definieron la fecha?`));
+
+    await runFollowUps(repos);
+
+    expect(sendText).toHaveBeenCalledWith(PHONE, getSkills().fallbackReplies.es.followUpSafeNudge);
   });
 
   it('sends pain question when first_nudge has been replied', async () => {
@@ -279,28 +339,23 @@ describe('follow-up service', () => {
     expect(repos.conversation.getByPhone(PHONE)?.follow_up_sent_at).toBeTruthy();
   });
 
-  it('retries later when a retryable opener strips to an empty draft', async () => {
+  it('uses a safe nudge when a retryable opener strips to an empty draft', async () => {
     seedSilentLead();
     mockLlmComplete.mockResolvedValueOnce(reply('Hola de nuevo!'));
 
     await runFollowUps(repos);
 
-    expect(sendText).not.toHaveBeenCalled();
-    expect(repos.conversation.getByPhone(PHONE)?.follow_up_sent_at).toBeNull();
+    expect(sendText).toHaveBeenCalledWith(PHONE, getSkills().fallbackReplies.es.followUpSafeNudge);
+    expect(repos.conversation.getByPhone(PHONE)?.follow_up_sent_at).toBeTruthy();
   });
 
-  it('gives up after repeated unusable drafts to bound LLM cost', async () => {
+  it('uses a safe nudge when the LLM returns no draft', async () => {
     seedSilentLead();
-    mockLlmComplete.mockResolvedValue(reply('Hola de nuevo!'));
+    mockLlmComplete.mockResolvedValue(null);
 
-    // 3 consecutive empty-after-strip drafts hit MAX_FIRST_NUDGE_DRAFT_ATTEMPTS.
-    await runFollowUps(repos);
-    expect(repos.conversation.getByPhone(PHONE)?.follow_up_sent_at).toBeNull();
-    await runFollowUps(repos);
-    expect(repos.conversation.getByPhone(PHONE)?.follow_up_sent_at).toBeNull();
     await runFollowUps(repos);
 
-    expect(sendText).not.toHaveBeenCalled();
+    expect(sendText).toHaveBeenCalledWith(PHONE, getSkills().fallbackReplies.es.followUpSafeNudge);
     expect(repos.conversation.getByPhone(PHONE)?.follow_up_sent_at).toBeTruthy();
   });
 
@@ -316,13 +371,13 @@ describe('follow-up service', () => {
     expect(String(sent)).toMatch(/noviembre/i);
   });
 
-  it('marks hard-blocked commercial drafts as attempted', async () => {
+  it('replaces hard-blocked commercial drafts with a safe nudge', async () => {
     seedSilentLead();
     mockLlmComplete.mockResolvedValueOnce(reply('¿Quieres reservar el plan 2D hoy?'));
 
     await runFollowUps(repos);
 
-    expect(sendText).not.toHaveBeenCalled();
+    expect(sendText).toHaveBeenCalledWith(PHONE, getSkills().fallbackReplies.es.followUpSafeNudge);
     expect(repos.conversation.getByPhone(PHONE)?.follow_up_sent_at).toBeTruthy();
   });
 

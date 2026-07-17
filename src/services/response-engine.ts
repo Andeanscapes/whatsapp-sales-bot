@@ -11,7 +11,7 @@ import { DeepSeekLlmClient } from './llm/deepseek-llm-client.js';
 import { analyzeLead, type LeadAnalysis } from './lead-analyzer.js';
 import type { LlmTurn } from './llm/llm-client.js';
 import type { MergedQualification, ProcessMessageInput, ProcessMessageOutput } from './types.js';
-import { getActiveExperience, getPlans, getPricingItems, getShortDescription, isPricingAvailable, getPublicPaymentFacts } from './product-registry.js';
+import { getActiveExperience, getCommonQuestions, getPlans, getPricingItems, getShortDescription, isPricingAvailable, getPublicPaymentFacts } from './product-registry.js';
 import type { PublicPaymentFacts } from './product-registry.js';
 import { calculatePriceQuote, formatCop, type PriceQuote, type TransportNeed } from './pricing-calculator.js';
 import {
@@ -66,6 +66,35 @@ export {
 export type { ProcessMessageInput, ProcessMessageOutput };
 
 const MAX_INBOUND_CHARS = 1500;
+const SPANISH_MONTH_INDEX: Record<string, number> = {
+  enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6,
+  julio: 7, agosto: 8, septiembre: 9, octubre: 10, noviembre: 11, diciembre: 12,
+};
+
+function extractPastExplicitDate(text: string, now = new Date()): string | null {
+  const match = text.match(/\b(\d{1,2})\s+de\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\s+de\s+(\d{4})\b/i);
+  if (!match) return null;
+  const day = Number(match[1]);
+  const month = SPANISH_MONTH_INDEX[match[2].toLowerCase()];
+  const year = Number(match[3]);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Bogota', year: 'numeric', month: 'numeric', day: 'numeric',
+  }).formatToParts(now);
+  const current = Object.fromEntries(parts.map(part => [part.type, Number(part.value)]));
+  const candidateValue = year * 10_000 + month * 100 + day;
+  const currentValue = current.year * 10_000 + current.month * 100 + current.day;
+  return candidateValue < currentValue ? match[0] : null;
+}
+
+function factualPolicyReply(skills: Skills, lang: 'es' | 'en', message: string): string | null {
+  const emeraldQuestion = /(?:esmerald.{0,80}(?:encontr|hall|qued|llev|garant|segur)|(?:encontr|hall|qued|llev|garant|segur).{0,80}esmerald)/i.test(message);
+  const mineQuestion = /(?:mina.{0,80}(?:la uni[oó]n|activa|siempre)|(?:la uni[oó]n|activa|siempre).{0,80}mina)/i.test(message);
+  if (!emeraldQuestion && !mineQuestion) return null;
+  const questions = getCommonQuestions(getActiveExperience(skills));
+  const intents = [emeraldQuestion ? 'emerald' : null, mineQuestion ? 'mine_assignment' : null].filter((intent): intent is string => intent !== null);
+  const answers = intents.map(intent => questions.find(question => question.lang === lang && question.intent === intent)?.answer).filter((answer): answer is string => Boolean(answer));
+  return answers.length > 0 ? answers.join('\n\n') : null;
+}
 
 function shouldAutoSendGallery(currentScore: number, isExplicitRequest: boolean): boolean {
   if (isExplicitRequest) return true;
@@ -307,7 +336,8 @@ function isPriceQuestion(text: string): boolean {
   const norm = normalizeForKeywordMatch(text);
   if (norm.includes('how much')) return true;
   const tokens = new Set(norm.split(/[^a-z0-9]+/).filter(Boolean));
-  return ['precio', 'precios', 'cuanto', 'vale', 'valor', 'costo', 'cuesta', 'cuestan', 'price', 'prices', 'cost', 'costs'].some(t => tokens.has(t));
+  if (['precio', 'precios', 'vale', 'valor', 'costo', 'cuesta', 'cuestan', 'price', 'prices', 'cost', 'costs'].some(t => tokens.has(t))) return true;
+  return tokens.has('cuanto') && !/\bcuanto\s+(dura|tiempo)\b/.test(norm);
 }
 
 function wantsApiaryCattle(text: string): boolean {
@@ -740,9 +770,30 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   }
   // ────────────────────────────────────────────────────────────────────────
 
+  const pastDate = extractPastExplicitDate(message);
+  if (pastDate) {
+    return {
+      reply: skills.fallbackReplies[lang].pastDateReply.replace('{{date}}', pastDate),
+      shouldSendReply: true, leadScore: repos.conversation.getLeadScore(customerPhone), usedAi: false,
+      shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false,
+      shouldSendImage: false, priceJustGiven: false,
+    };
+  }
+
+  const policyReply = factualPolicyReply(skills, lang, message);
+  if (policyReply) {
+    return {
+      reply: policyReply, shouldSendReply: true, leadScore: repos.conversation.getLeadScore(customerPhone), usedAi: false,
+      shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false,
+      shouldSendImage: false, priceJustGiven: false,
+    };
+  }
+
   const bookingFields = extractBookingFields(message);
   const contextFields = contextAwareExtract(message, repos, customerPhone, bookingFields);
   repos.conversation.upsert(customerPhone, { language: lang, ...contextFields });
+  const introducedLargeGroup = typeof contextFields.collected_people === 'number'
+    && contextFields.collected_people > skills.salesStrategy.maxGroupSizePerDate;
 
   const rawCollected = getCollectedFields(repos, customerPhone);
   const richCollected = reconstructFromHistory(repos, customerPhone, rawCollected);
@@ -1039,8 +1090,15 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
 
   const exp = getActiveExperience(skills);
   const pricingAvailable = isPricingAvailable(exp);
-  if (!pricingAvailable && replyMentionsPrice(replyText)) {
-    replyText = skills.fallbackReplies[lang].priceUnavailable;
+  if (
+    !pricingAvailable
+    && replyText.trim()
+    && !containsPromptLeakOrPolicyViolation(replyText)
+    && (isPriceQuestion(message) || replyMentionsPrice(replyText))
+  ) {
+    replyText = typeof merged.personas === 'number'
+      ? skills.fallbackReplies[lang].priceUnavailableKnownGroup.replace('{{people}}', String(merged.personas))
+      : skills.fallbackReplies[lang].priceUnavailable;
     llmTurn.img = false;
   }
   const inboundCount = recentMessages.filter(m => m.role === 'user').length + 1;
@@ -1239,6 +1297,12 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     logger.warn({ phone: customerPhone }, '[BOT] blocked prompt leak or policy violation');
     replyText = skills.fallbackReplies[lang].aiFailureQualified;
     deflectionDueToPolicyLeak = true;
+  }
+
+  if (introducedLargeGroup) {
+    const caveat = skills.fallbackReplies[lang].largeGroupReview
+      .replace('{{maxGroupSize}}', String(skills.salesStrategy.maxGroupSizePerDate));
+    replyText = `${replyText.trim()}\n\n${caveat}`;
   }
 
   const finalPriceJustGiven = replyMentionsPrice(replyText);

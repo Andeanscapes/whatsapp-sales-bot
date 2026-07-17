@@ -7,6 +7,7 @@ import type { Repositories } from '../../db/repositories/index.js';
 import type { LlmResult, LlmTurn } from '../../services/llm/llm-client.js';
 import type { LlmClientInput } from '../../services/llm/llm-client.js';
 import type { ScenarioTurn } from './schema.js';
+import { recordGalleryNudge } from '../../services/media-service.js';
 
 export interface TurnRecord {
   turnNumber: number;
@@ -68,6 +69,18 @@ export async function runTurn(
   turnDef: ScenarioTurn,
   turnNumber: number,
 ): Promise<TurnRecord> {
+  if (turnDef.seedPriceGiven) ctx.repos.conversation.setPriceGiven(ctx.customerPhone);
+  if (turnDef.seedGalleryNudge) recordGalleryNudge(ctx.repos, ctx.customerPhone);
+  if (turnDef.seedLeadScore !== undefined) ctx.repos.conversation.updateLeadScore(ctx.customerPhone, turnDef.seedLeadScore);
+  if (turnDef.seedQualification) {
+    ctx.repos.conversation.upsert(ctx.customerPhone, {
+      collected_name: turnDef.seedQualification.name,
+      collected_people: turnDef.seedQualification.people,
+      collected_date: turnDef.seedQualification.date,
+      collected_transport_need: turnDef.seedQualification.transport,
+      collected_plan: turnDef.seedQualification.plan,
+    });
+  }
   const input: ProcessMessageInput = {
     repos: ctx.repos,
     customerPhone: ctx.customerPhone,

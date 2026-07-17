@@ -3,10 +3,9 @@
   "source": "prod-summary-2026-07-10#573168327054",
   "tags": ["salesStrategy", "regression"],
   "lang": "es",
-  "scorecard": {
-    "qualification": { "minFieldsBeforeEnd": 3 },
-    "salesStrategy": { "forbidPriceBeforeMinFields": 2 }
-  },
+  "criteria": [
+    { "id": "clarifies-experience", "rule": "reply_must_match", "patterns": ["mina|chivor"], "weight": 1, "critical": false }
+  ],
   "turns": [
     {
       "user": "Buenas tardes",

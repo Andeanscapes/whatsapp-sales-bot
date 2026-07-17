@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=24.18.0 <25"
+  },
   "scripts": {
     "build": "rm -rf dist && tsc && cp -r src/data dist/data && mkdir -p dist/db dist/prompts && cp src/db/schema.sql dist/db/schema.sql && cp src/prompts/deepseek-system.prompt.md dist/prompts/deepseek-system.prompt.md && cp src/prompts/lead-analyzer.prompt.md dist/prompts/lead-analyzer.prompt.md",
     "start": "node dist/server.js",
@@ -17,7 +20,6 @@
     "test": "vitest run",
     "eval:conversations": "vitest run --config vitest.conversation.config.ts",
     "eval:conversations:llm-bot": "AI_ENABLED=true tsx src/scripts/eval-conversations-llm-bot.ts",
-    "eval:conversations:llm-judge": "CONV_LIVE=1 AI_ENABLED=true vitest run --config vitest.conversation.config.ts",
     "eval:conversations:compare": "tsx src/scripts/compare-conversation-eval.ts",
     "start:tunnel": "cloudflared tunnel --url http://127.0.0.1:3000",
     "simulate": "AI_ENABLED=false tsx src/scripts/simulate-message.ts",
@@ -45,7 +47,7 @@
     "@eslint/js": "^9.39.4",
     "@secretlint/secretlint-rule-preset-recommend": "^9.0.0",
     "@types/better-sqlite3": "^7.6.0",
-    "@types/node": "^22.0.0",
+    "@types/node": "^24.13.3",
     "eslint": "^9.39.4",
     "secretlint": "^9.0.0",
     "tsx": "^4.0.0",

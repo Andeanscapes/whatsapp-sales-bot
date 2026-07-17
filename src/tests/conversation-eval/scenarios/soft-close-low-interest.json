@@ -2,10 +2,9 @@
   "id": "soft-close-low-interest-lead",
   "tags": ["salesStrategy", "closeStrategy"],
   "lang": "es",
-  "scorecard": {
-    "qualification": { "minFieldsBeforeEnd": 0 },
-    "safety": { "forbidPatterns": ["tentative_unknown"] }
-  },
+  "criteria": [
+    { "id": "soft-close-without-pressure", "rule": "reply_must_not_match", "patterns": ["reserva ya", "paga ahora", "ultimos cupos"], "weight": 1, "critical": true }
+  ],
   "turns": [
     {
       "user": "Hola buenas",

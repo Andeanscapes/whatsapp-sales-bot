@@ -2,10 +2,9 @@
   "id": "gallery-capped-per-conversation",
   "tags": ["mediaGuards", "regression"],
   "lang": "es",
-  "scorecard": {
-    "qualification": { "minFieldsBeforeEnd": 1 },
-    "mediaGuards": { "maxImagesPerTurn": 3 }
-  },
+  "criteria": [
+    { "id": "gallery-not-repeated", "rule": "output_flag_equals", "flag": "shouldSendGalleryImages", "expected": false, "turn": 4, "weight": 1, "critical": true }
+  ],
   "turns": [
     {
       "user": "Hola, quiero info de Chivor",
@@ -25,6 +24,7 @@
     {
       "user": "Muéstrame más fotos",
       "mockReply": "Esas son las principales. Si te interesa, podemos revisar disponibilidad para la fecha que tengas en mente.",
+      "seedGalleryNudge": true,
       "expect": { "shouldSendReply": true }
     }
   ]

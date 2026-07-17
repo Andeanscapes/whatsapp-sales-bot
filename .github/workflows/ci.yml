@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 24.18.0
           cache: npm
       - run: npm install
       - run: npm run typecheck
@@ -55,7 +55,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 24.18.0
           cache: npm
       - run: npm install
       - run: npm run eval:conversations
@@ -91,7 +91,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 24.18.0
           cache: npm
       - run: npm install
       - run: npm run eval:conversations:llm-bot

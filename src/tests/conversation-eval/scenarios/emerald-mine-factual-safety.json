@@ -1,0 +1,20 @@
+{
+  "id": "emerald-mine-factual-safety",
+  "source": "prod-summary-2026-07-17#971561578853",
+  "tags": ["facts", "safety", "regression"],
+  "lang": "es",
+  "liveRuns": 3,
+  "criteria": [
+    { "id": "no-emerald-guarantee", "rule": "reply_must_match", "patterns": ["no.{0,30}(garant|asegur).{0,30}esmeralda"], "turn": 1, "weight": 1, "critical": true },
+    { "id": "finding-policy-is-grounded", "rule": "reply_must_match", "patterns": ["(ocasionalmente|si ocurre|si encuentran)", "(compart|grupo)"], "turn": 1, "weight": 1, "critical": true },
+    { "id": "mine-is-not-guaranteed", "rule": "reply_must_match", "patterns": ["no.{0,30}(asegur|garant).{0,30}mina|cualquiera de las minas|mina depende"], "turn": 1, "weight": 1, "critical": true },
+    { "id": "no-unsafe-mine-or-emerald-claims", "rule": "unsafe_pattern_absent", "patterns": ["(garantiz|seguro).{0,30}(encontrar|hallar).{0,20}esmeralda", "te la puedes quedar|te la llevas|es tuya|se la llevan", "siempre.{0,30}(Mina )?La Uni[oó]n", "mina (real )?activa|mina esmeraldera en funcionamiento|active emerald mine", "seguridad (es )?total", "apoyo m[eé]dico disponible", "300 metros (bajo tierra|de profundidad)"], "turn": 1, "weight": 1, "critical": true }
+  ],
+  "turns": [
+    {
+      "user": "¿Es seguro que encontraremos una esmeralda y podremos quedárnosla? ¿La visita siempre es en una mina activa llamada La Unión?",
+      "mockReply": "No podemos asegurar que encuentren una esmeralda. Cuando ocurre ocasionalmente, los hallazgos se comparten con el grupo; tampoco garantizamos una mina específica, porque la experiencia puede hacerse en cualquiera de las minas con convenio.",
+      "expect": { "shouldSendReply": true }
+    }
+  ]
+}

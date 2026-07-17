@@ -8,6 +8,7 @@ import {
   stripHandoffPhrases,
   containsUnsafeReservationClaim,
   containsPromptLeakOrPolicyViolation,
+  isNonSalesInquiry,
 } from './reply-guard.js';
 import { sendText } from './whatsapp-client.js';
 import { checkBudget } from './budget-guard.js';
@@ -23,14 +24,6 @@ const MAX_FOLLOW_HOURS = 19;
 const POLL_MS = 60_000;
 /** Per tick, cap candidates so a backlog never blocks other bot/Telegram work. */
 const FOLLOW_UP_BATCH = 5;
-/**
- * Max wasted LLM drafts per lead before we give up on the first nudge.
- * Bounds cost when DeepSeek keeps returning empty / unusable drafts within the
- * service window. Reset once the lead is marked (sent or attempt-exhausted).
- */
-const MAX_FIRST_NUDGE_DRAFT_ATTEMPTS = 3;
-const firstNudgeDraftAttempts = new Map<string, number>();
-
 const FOLLOW_UP_TASK =
   'RE-ENGAGEMENT TASK: Reconnect with someone who stopped replying. Your goal is NOT to sell — it is to spark genuine curiosity with something UNIQUE to THIS conversation.\n' +
   '\n' +
@@ -82,22 +75,6 @@ function stripRetryableNudgeOpeners(reply: string): string {
   return cleaned;
 }
 
-/**
- * Records a wasted draft attempt for a lead. When the cap is hit we mark the
- * follow-up as sent so the worker stops retrying and burning LLM budget.
- * Returns true when the lead should be given up on.
- */
-function registerWastedDraft(repos: Repositories, phone: string): boolean {
-  const next = (firstNudgeDraftAttempts.get(phone) ?? 0) + 1;
-  if (next >= MAX_FIRST_NUDGE_DRAFT_ATTEMPTS) {
-    firstNudgeDraftAttempts.delete(phone);
-    repos.conversation.markFollowUpSent(phone);
-    return true;
-  }
-  firstNudgeDraftAttempts.set(phone, next);
-  return false;
-}
-
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -110,6 +87,14 @@ function stripOwnerReIntro(reply: string): string {
     'gi',
   );
   return reply.replace(introPattern, '').trim();
+}
+
+function startsWithOwnerOrPartnerName(reply: string): boolean {
+  const protectedNames = [env.OWNER_NAME, env.PARTNER_NAME]
+    .flatMap(name => [name, name.split(/\s+/)[0]])
+    .filter(name => name.length > 1)
+    .map(escapeRegex);
+  return protectedNames.some(name => new RegExp(`^${name}(?:[,!:.\\s]|$)`, 'i').test(reply));
 }
 
 function configuredHours(): number {
@@ -209,6 +194,8 @@ async function runFollowUps(repos: Repositories): Promise<void> {
     // Reuse the production system prompt so follow-ups stay grounded in skill facts.
     const systemPrompt = buildSystemPrompt(skills, lang, collected, salesPhase ?? undefined);
     const history = repos.message.getRecentMessages(c.customerPhone, 24);
+    const latestInbound = [...history].reverse().find(message => message.role === 'user');
+    if (latestInbound && isNonSalesInquiry(latestInbound.content)) continue;
 
     const result = await llmClient.complete({
       systemPrompt,
@@ -218,11 +205,11 @@ async function runFollowUps(repos: Repositories): Promise<void> {
       lang,
     });
 
+    const safeNudge = skills.fallbackReplies[lang].followUpSafeNudge;
     let reply = result?.turn.reply.trim() ?? '';
     if (!reply) {
-      const gaveUp = registerWastedDraft(repos, c.customerPhone);
-      logger.warn({ phone: c.customerPhone, gaveUp }, '[FOLLOW_UP] empty draft; retry within window until attempt cap');
-      continue;
+      logger.warn({ phone: c.customerPhone }, '[FOLLOW_UP] empty draft; using safe nudge');
+      reply = safeNudge;
     }
 
     reply = stripHandoffPhrases(reply);
@@ -231,29 +218,32 @@ async function runFollowUps(repos: Repositories): Promise<void> {
     reply = stripOwnerReIntro(reply);
     reply = stripRetryableNudgeOpeners(reply);
     if (!reply) {
-      const gaveUp = registerWastedDraft(repos, c.customerPhone);
-      logger.warn({ phone: c.customerPhone, gaveUp }, '[FOLLOW_UP] retryable draft stripped empty; retry within window until attempt cap');
-      continue;
+      logger.warn({ phone: c.customerPhone }, '[FOLLOW_UP] retryable draft stripped empty; using safe nudge');
+      reply = safeNudge;
     }
-    // Reject drafts that leak commercial intent or unsafe links. These are not
-    // style issues, so mark attempted to avoid unsafe retry loops.
+    if (startsWithOwnerOrPartnerName(reply)) {
+      logger.warn({ phone: c.customerPhone }, '[FOLLOW_UP] draft addressed customer with owner/partner name; using safe nudge');
+      reply = safeNudge;
+    }
+    // Replace drafts that leak commercial intent or unsafe links with trusted copy.
     if (HARD_BLOCK_NUDGE_PATTERNS.some(p => p.test(reply))) {
-      logger.warn({ phone: c.customerPhone, snippet: reply.slice(0, 80) }, '[FOLLOW_UP] draft blocked by hard nudge guard; skipping send');
-      repos.conversation.markFollowUpSent(c.customerPhone);
-      continue;
+      logger.warn({ phone: c.customerPhone, snippet: reply.slice(0, 80) }, '[FOLLOW_UP] draft blocked by hard nudge guard; using safe nudge');
+      reply = safeNudge;
     }
-    // Same safety guards the live reply path enforces: never let a follow-up
-    // promise a reservation or leak the prompt/policy.
+    // Same safety guards as the live reply path: unsafe drafts never reach customers.
     if (containsUnsafeReservationClaim(reply) || containsPromptLeakOrPolicyViolation(reply)) {
-      logger.warn({ phone: c.customerPhone }, '[FOLLOW_UP] draft blocked by safety guard; skipping send');
-      repos.conversation.markFollowUpSent(c.customerPhone);
-      continue;
+      logger.warn({ phone: c.customerPhone }, '[FOLLOW_UP] draft blocked by safety guard; using safe nudge');
+      reply = safeNudge;
     }
+
+    // Candidate selection happened before the LLM call. Recheck immediately
+    // before dispatch so a newly active or closed conversation wins the race.
+    if (repos.message.getLastMessageDirection(c.customerPhone) !== 'outbound') continue;
+    if (repos.conversation.getSoftClosedAt(c.customerPhone)) continue;
 
     const seqNumber = repos.followUpEvent.countByPhone(c.customerPhone) + 1;
     try {
       await sendAndRecord(c.customerPhone, reply, repos, seqNumber, 'first_nudge', currentScore, result);
-      firstNudgeDraftAttempts.delete(c.customerPhone);
       logger.info({ phone: c.customerPhone }, '[FOLLOW_UP] first nudge sent');
     } catch (err) {
       logger.warn({ err, phone: c.customerPhone }, '[FOLLOW_UP] send failed');
@@ -267,11 +257,6 @@ export function startFollowUpScheduler(repos: Repositories): ReturnType<typeof s
     void runFollowUps(repos).catch(err => logger.warn({ err }, '[FOLLOW_UP] worker failed'));
   }, POLL_MS);
   return interval;
-}
-
-/** Test-only: clears the in-memory wasted-draft attempt counters. */
-export function resetFollowUpDraftAttempts(): void {
-  firstNudgeDraftAttempts.clear();
 }
 
 export { runFollowUps };

@@ -83,6 +83,10 @@ export function isSoftCloseMessage(text: string): boolean {
   return /\b(no gracias|por ahora no|no me interesa|dejemoslo|dejemoslo ahi|en otro momento|otra oportunidad|muy caro|esta caro|algo caro|me parece caro|se sale del presupuesto|no me alcanza|fuera de presupuesto|costoso|caro|gracias por la info|por el momento no|lo dejamos ahi|no por ahora|lo voy a pensar|mejor no|paso por ahora|lo dejo ahi|no es para mi|no es lo que busco|no me convence|no es lo que esperaba|muy costoso|carisimo|cuesta mucho|es mucho|se me va de presupuesto|no tengo esa plata|no tengo presupuesto|no llego|no me da|luego te contacto|luego te escribo|not now|not interested|too expensive|out of budget|not in my budget|thank you for the info|for now no|not for me|not what i expected|i'?ll pass|i'?ll think about it|too much|over budget|can'?t afford|i'?ll skip|i have to decline|no thanks anyway|thanks anyway|gracias de todos modos|gracias igual|gracias de todas formas)\b/i.test(norm);
 }
 
+export function isNonSalesInquiry(text: string): boolean {
+  return /\b(?:vacantes?|empleo|trabajo|hoja\s+de\s+vida|curr[ií]culum|curriculum|ingeniero\s+de\s+minas|job\s+opening|job\s+application|resume|hiring)\b/i.test(text);
+}
+
 export function isGalleryRequest(text: string): boolean {
   const norm = normalizeText(text);
   return /\b(foto|fotos|imagen|imagenes|im[aá]genes|photo|photos|picture|pictures)\b/i.test(norm)

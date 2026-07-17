@@ -1,0 +1,39 @@
+{
+  "id": "wrong-name-partner-as-customer",
+  "source": "prod-summary-2026-07-17#573203077607",
+  "tags": ["safety", "regression"],
+  "lang": "es",
+  "runner": "follow_up",
+  "liveRuns": 3,
+  "followUpMockReply": "Pensando en las fechas que revisaron, ¿qué fin de semana les funcionaría mejor?",
+  "criteria": [
+    { "id": "follow-up-generated", "rule": "output_flag_equals", "flag": "shouldSendReply", "expected": true, "turn": 5, "weight": 1, "critical": true },
+    { "id": "partner-is-not-customer", "rule": "partner_name_not_customer_name", "weight": 1, "critical": true }
+  ],
+  "turns": [
+    {
+      "user": "Hola, quiero conocer la experiencia en Chivor",
+      "mockReply": "¡Hola! Soy Heinner, co-fundador de Andean Scapes junto con Alexandra. Creamos experiencias auténticas en Boyacá. ¿Sería para ti solo, en pareja o para un grupo?",
+      "expect": { "shouldSendReply": true, "usedAi": true }
+    },
+    {
+      "user": "3 personas",
+      "mockReply": "Perfecto, para tres personas el plan ideal es el de 2 días / 1 noche. ¿Tienen alguna fecha tentativa en mente o quieren revisar opciones?",
+      "expect": { "shouldSendReply": true, "usedAi": true }
+    },
+    {
+      "user": "Revisar opciones",
+      "mockReply": "Buenísimo. Las fechas disponibles son sáb 11 jul, dom 19 jul, vie 7 ago. ¿Alguna de esas les funciona o prefieren otro finde?",
+      "expect": { "shouldSendReply": true, "usedAi": true }
+    },
+    {
+      "user": "Que valor tiene y que incluye?",
+      "mockReply": "Para 3 personas, el plan de 2 días / 1 noche incluye alojamiento, 3 comidas, equipo, guía local y entrada a la mina. Antes de cerrar valor y disponibilidad exacta, lo ideal es elegir una fecha de las opciones que les compartí.",
+      "expect": {
+        "shouldSendReply": true,
+        "usedAi": true,
+        "replyMustNotMatch": ["^Alexandra,"]
+      }
+    }
+  ]
+}

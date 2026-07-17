@@ -126,6 +126,8 @@ export function buildSystemPrompt(skills: Skills, lang?: string, collectedFields
     climateText ? `Climate: ${climateText}` : null,
     roadInfo ? `Road info: ${roadInfo}` : null,
     difficultyText ? `Difficulty: ${difficultyText}` : null,
+    `Mine assignment: ${exp.mineDetails.notes}`,
+    `Emerald finding policy: ${exp.emeraldPolicy.notes}`,
     idealFor ? `Ideal for: ${idealFor}` : null,
     notIdealFor ? `NOT ideal for: ${notIdealFor}` : null,
     '---',

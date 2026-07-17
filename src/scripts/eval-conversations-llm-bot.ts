@@ -2,11 +2,13 @@ import { readdirSync, readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { env } from '../config/env.js';
-import { loadSkills } from '../services/skill-loader.js';
+import { loadSkills, refreshSkills } from '../services/skill-loader.js';
 import { createRunContext, runTurn } from '../tests/conversation-eval/runner.js';
-import { scoreScenario } from '../tests/conversation-eval/score-deterministic.js';
+import { runFollowUpScenario } from '../tests/conversation-eval/follow-up-runner.js';
+import { evaluateScenario } from '../tests/conversation-eval/evaluate-scenario.js';
 import { buildReport, printReport, writeReport } from '../tests/conversation-eval/report.js';
 import { scenarioSchema, type Scenario, type ScenarioResult } from '../tests/conversation-eval/schema.js';
+import { aggregateRuns } from '../tests/conversation-eval/aggregate-runs.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const scenariosDir = join(__dirname, '..', 'tests', 'conversation-eval', 'scenarios');
@@ -16,81 +18,96 @@ function progressLabel(current: number, total: number): string {
   return `[LLM_BOT_EVAL] ${current}/${total} (${percent}%)`;
 }
 
-function requireLiveLlmConfig(): void {
-  if (!env.DEEPSEEK_API_KEY || env.DEEPSEEK_API_KEY === 'test') {
-    throw new Error('A real DEEPSEEK_API_KEY is required for npm run eval:conversations:llm-bot');
-  }
-  if (!env.AI_ENABLED) {
-    throw new Error('AI_ENABLED=true is required for npm run eval:conversations:llm-bot');
-  }
-}
-
 function loadScenarios(): Scenario[] {
   return readdirSync(scenariosDir)
-    .filter(f => f.endsWith('.json'))
-    .map(f => scenarioSchema.parse(JSON.parse(readFileSync(join(scenariosDir, f), 'utf8'))));
+    .filter(file => file.endsWith('.json'))
+    .map(file => scenarioSchema.parse(JSON.parse(readFileSync(join(scenariosDir, file), 'utf8'))));
+}
+
+function option(name: string): string | undefined {
+  const index = process.argv.indexOf(name);
+  return index === -1 ? undefined : process.argv[index + 1];
+}
+
+function requireLiveLlmConfig(): void {
+  if (!env.DEEPSEEK_API_KEY || env.DEEPSEEK_API_KEY === 'test') throw new Error('A real DEEPSEEK_API_KEY is required');
+  if (!env.AI_ENABLED) throw new Error('AI_ENABLED=true is required');
+}
+
+function buildResult(scenario: Scenario, evaluation: ReturnType<typeof evaluateScenario>, turns: ScenarioResult['turnResults'], runs: { total: number; passed: number }): ScenarioResult {
+  const minimumFailure = scenario.minLiveScore !== undefined && evaluation.score < scenario.minLiveScore;
+  return {
+    id: scenario.id,
+    score: evaluation.score,
+    hardFail: evaluation.hardFail || minimumFailure,
+    notes: minimumFailure ? [...evaluation.notes, `[minimum] score ${evaluation.score} < ${scenario.minLiveScore}`] : evaluation.notes,
+    criteria: evaluation.criteria,
+    turnResults: turns,
+    ...(runs.total > 1 ? { runs } : {}),
+  };
 }
 
 async function main(): Promise<void> {
   requireLiveLlmConfig();
   loadSkills();
+  await refreshSkills(true);
 
-  const scenarios = loadScenarios();
+  const selectedId = option('--scenario');
+  const requestedRuns = Number(option('--runs') ?? 1);
+  if (!Number.isInteger(requestedRuns) || requestedRuns < 1 || requestedRuns > 5) throw new Error('--runs must be an integer from 1 to 5');
+
+  const scenarios = loadScenarios().filter(scenario => !selectedId || scenario.id === selectedId);
+  if (scenarios.length === 0) throw new Error(`No scenario found for ${selectedId}`);
+
   const results: ScenarioResult[] = [];
   let totalCostUsd = 0;
-  const todayStart = new Date().toISOString().split('T')[0];
+  const todayStart = new Date().toISOString().slice(0, 10);
 
-  for (let si = 0; si < scenarios.length; si++) {
-    const scenario = scenarios[si];
-    const ctx = createRunContext({ phoneSuffix: si });
+  for (let scenarioIndex = 0; scenarioIndex < scenarios.length; scenarioIndex++) {
+    const scenario = scenarios[scenarioIndex];
+    const runCount = Math.max(requestedRuns, scenario.liveRuns);
+    const runResults: ScenarioResult[] = [];
 
-    console.log(`${progressLabel(si + 1, scenarios.length)} starting ${scenario.id}`);
-
-    try {
-      for (let ti = 0; ti < scenario.turns.length; ti++) {
-        const record = await runTurn(ctx, scenario.turns[ti], ti + 1);
-        ctx.turns.push(record);
-        console.log(`${progressLabel(si + 1, scenarios.length)} ${scenario.id} turn ${ti + 1}/${scenario.turns.length}`);
+    for (let run = 0; run < runCount; run++) {
+      const progress = progressLabel(scenarioIndex + 1, scenarios.length);
+      console.log(`${progress} starting ${scenario.id} run ${run + 1}/${runCount}`);
+      const ctx = createRunContext({ phoneSuffix: scenarioIndex * 10 + run });
+      try {
+        if (scenario.runner === 'follow_up') {
+          ctx.turns.push(...await runFollowUpScenario(ctx, scenario));
+          console.log(`${progress} ${scenario.id} run ${run + 1}/${runCount} follow-up complete`);
+        } else {
+          for (let turnIndex = 0; turnIndex < scenario.turns.length; turnIndex++) {
+            ctx.turns.push(await runTurn(ctx, scenario.turns[turnIndex], turnIndex + 1));
+            console.log(`${progress} ${scenario.id} run ${run + 1}/${runCount} turn ${turnIndex + 1}/${scenario.turns.length}`);
+          }
+        }
+        const evaluation = evaluateScenario(scenario, ctx.turns);
+        const turns = ctx.turns.map(turn => ({
+          user: turn.user,
+          reply: turn.reply,
+          leadScore: turn.processOutput.leadScore,
+          shouldAlertOwner: turn.processOutput.shouldAlertOwner,
+          shouldSendImage: turn.processOutput.shouldSendImage,
+        }));
+        runResults.push(buildResult(scenario, evaluation, turns, { total: 1, passed: evaluation.hardFail ? 0 : 1 }));
+        totalCostUsd += ctx.repos.aiUsage.getDailyCost(todayStart);
+      } finally {
+        ctx.destroy();
       }
-
-      const collectedFields = ctx.repos.conversation.getCollectedFields(ctx.customerPhone);
-      const scoreResult = scoreScenario(scenario, ctx.turns, collectedFields);
-      const turnResults: ScenarioResult['turnResults'] = ctx.turns.map(t => ({
-        user: t.user,
-        reply: t.reply,
-        leadScore: t.processOutput.leadScore,
-        shouldAlertOwner: t.processOutput.shouldAlertOwner,
-        shouldSendImage: t.processOutput.shouldSendImage,
-      }));
-
-      results.push({
-        id: scenario.id,
-        scores: scoreResult.scores,
-        total: scoreResult.total,
-        hardFail: scoreResult.hardFail,
-        notes: scoreResult.notes,
-        turnResults,
-      });
-
-      totalCostUsd += ctx.repos.aiUsage.getDailyCost(todayStart);
-      console.log(`${progressLabel(si + 1, scenarios.length)} finished ${scenario.id} score=${scoreResult.total}`);
-    } finally {
-      ctx.destroy();
     }
+
+    const aggregated = aggregateRuns(runResults);
+    results.push(runCount > 1 ? aggregated : { ...aggregated, runs: undefined });
+    console.log(`${progressLabel(scenarioIndex + 1, scenarios.length)} finished ${scenario.id} score=${aggregated.score}`);
   }
 
   const report = buildReport('live', results, totalCostUsd);
   printReport(report);
   const path = writeReport(report, 'conversation-eval-llm-bot.json');
+  if (report.suite.hardFails > 0) throw new Error(`Conversation eval hard failures: ${report.suite.hardFails}`);
   const minScore = Number(process.env.MIN_CONVERSATION_SCORE ?? 70);
-
-  if (report.suite.hardFails > 0) {
-    throw new Error(`Conversation eval hard failures: ${report.suite.hardFails}`);
-  }
-  if (report.suite.average < minScore) {
-    throw new Error(`Conversation eval average ${report.suite.average} below ${minScore}`);
-  }
-
+  if (report.suite.average < minScore) throw new Error(`Conversation eval average ${report.suite.average} below ${minScore}`);
   console.log(`Report written to: ${path}`);
 }
 

@@ -2,6 +2,7 @@
   "hotLeadThreshold": 90,
   "urgentLeadThreshold": 95,
   "maxScore": 100,
+  "maxGroupSizePerDate": 8,
 
   "conversationStrategy": {
     "phase1_entry": {
