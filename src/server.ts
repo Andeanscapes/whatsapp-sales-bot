@@ -92,9 +92,13 @@ async function start() {
   let followUpInterval: ReturnType<typeof setInterval> | undefined;
   try {
     telegramInterval = await startTelegramBot(repos);
-    followUpInterval = startFollowUpScheduler(repos);
   } catch (err) {
     logger.error(err, '[INIT] failed to start Telegram bot');
+  }
+  try {
+    followUpInterval = startFollowUpScheduler(repos);
+  } catch (err) {
+    logger.error(err, '[INIT] failed to start follow-up scheduler');
   }
 
   process.on('SIGTERM', gracefulShutdown('SIGTERM', db, app, telegramInterval, followUpInterval));

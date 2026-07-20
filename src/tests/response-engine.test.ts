@@ -3299,6 +3299,364 @@ describe('processMessage', () => {
       exp.availability = origAvailability;
     }
   });
+
+  it('answers reservation lead-time through the LLM using skill context', async () => {
+    mockLlmComplete.mockReset();
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'No manejamos un plazo fijo; el equipo valida la disponibilidad real.' } }));
+    const phone = '573001119901';
+    const result = await processMessage({
+      repos, customerPhone: phone, message: 'Con cuánta anticipación se reserva?',
+    });
+    expect(result.usedAi).toBe(true);
+    expect(result.reply.toLowerCase()).toMatch(/anticipacion|equipo/);
+    expect(mockLlmComplete).toHaveBeenCalled();
+  });
+
+  it('answers fracture recovery through the LLM using skill context', async () => {
+    mockLlmComplete.mockReset();
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'Valídalo primero con tu médico: hay caminatas, terreno rural y lodo.' } }));
+    const phone = '573001119902';
+    const result = await processMessage({
+      repos,
+      customerPhone: phone,
+      message: 'Me estoy recuperando de una fractura y no puedo arriesgar una caída. Podría hacer la experiencia minera?',
+    });
+    expect(result.usedAi).toBe(true);
+    expect(result.reply.toLowerCase()).toMatch(/medico|m[eé]dico|doctor/);
+    expect(result.reply.toLowerCase()).toMatch(/lodo|terreno|caminata/);
+    expect(result.reply.toLowerCase()).not.toMatch(/revis.{0,20}disponibilidad/);
+    expect(result.shouldSendOwnerImage).toBe(false);
+    expect(result.shouldSendGalleryImages).toBe(false);
+    expect(result.shouldSendImage).toBe(false);
+    expect(mockLlmComplete).toHaveBeenCalled();
+  });
+
+  it('does not append large-group sales copy to fracture guidance', async () => {
+    mockLlmComplete.mockReset();
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'Consulta primero con tu médico.' } }));
+    const safetyReply = getActiveExperience(getSkills()).commonQuestions
+      .find(question => question.intent === 'physical_recovery' && question.lang === 'es')?.answer;
+
+    const result = await processMessage({
+      repos,
+      customerPhone: '573001119916',
+      message: 'Somos 25 personas y me recupero de una fractura. Tengo movilidad limitada. Puedo hacer la experiencia?',
+    });
+
+    expect(result.reply).toBe(safetyReply);
+    expect(result.reply).not.toContain(getSkills().fallbackReplies.es.largeGroupReview.replace('{{maxGroupSize}}', String(getSkills().salesStrategy.maxGroupSizePerDate)));
+  });
+
+  it('uses validated safety copy when fracture guidance is blocked by budget', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockClear();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: false, reason: 'daily_budget_exceeded' });
+    const phone = '573001119911';
+
+    try {
+      const result = await processMessage({
+        repos,
+        customerPhone: phone,
+        message: 'Me estoy recuperando de una fractura y tengo movilidad limitada. Puedo hacer la experiencia?',
+      });
+
+      expect(result.usedAi).toBe(false);
+      expect(result.reply.toLowerCase()).toMatch(/medico|m[eé]dico|doctor/);
+      expect(result.reply).not.toBe(getSkills().fallbackReplies.es.aiBudgetExhausted);
+      expect(checkBudget).toHaveBeenCalled();
+      expect(mockLlmComplete).not.toHaveBeenCalled();
+    } finally {
+      vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    }
+  });
+
+  it('uses validated fracture guidance when the message limit is reached', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkTimeWindow).mockReturnValueOnce({ isLimited: true, reason: 'hourly_limit' });
+
+    const result = await processMessage({
+      repos,
+      customerPhone: '573001119914',
+      message: 'Me recupero de una fractura y tengo movilidad limitada. Puedo hacer la experiencia?',
+    });
+
+    expect(result.usedAi).toBe(false);
+    expect(result.reply.toLowerCase()).toMatch(/medico|m[eé]dico|doctor/);
+    expect(result.reply).not.toBe(getSkills().fallbackReplies.es.messageLimitReached);
+    expect(mockLlmComplete).not.toHaveBeenCalled();
+  });
+
+  it('prioritizes fracture guidance over reservation lead time in a mixed question', async () => {
+    mockLlmComplete.mockReset();
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'Primero valida con tu médico si puedes hacer caminatas y transitar por lodo.' } }));
+    const phone = '573001119912';
+
+    const result = await processMessage({
+      repos,
+      customerPhone: phone,
+      message: 'Me recupero de una fractura. Si puedo ir, ¿con cuánta anticipación debo reservar?',
+    });
+
+    expect(result.usedAi).toBe(true);
+    expect(result.reply.toLowerCase()).toMatch(/medico|m[eé]dico|doctor/);
+    expect(result.reply.toLowerCase()).not.toMatch(/plazo fijo|lead time/);
+    expect(mockLlmComplete).toHaveBeenCalled();
+  });
+
+  it('prioritizes fracture guidance over other deterministic FAQs', async () => {
+    mockLlmComplete.mockReset();
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'Primero valida con tu médico: la experiencia incluye caminatas y terreno con lodo.' } }));
+    const phone = '573001119913';
+
+    const result = await processMessage({
+      repos,
+      customerPhone: phone,
+      message: 'Estoy recuperándome de una fractura. ¿Puedo entrar y encontrar esmeraldas?',
+    });
+
+    expect(result.usedAi).toBe(true);
+    expect(result.reply.toLowerCase()).toMatch(/medico|m[eé]dico|doctor/);
+    expect(result.reply.toLowerCase()).not.toMatch(/hallazgo|encontrar una esmeralda/);
+    expect(mockLlmComplete).toHaveBeenCalled();
+  });
+
+  it('returns dual solo/couple quote for ambiguous party comparison when pricing is available', async () => {
+    mockLlmComplete.mockReset();
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'Voy a comparar ambas opciones.' } }));
+    const phone = '573001119903';
+    const skills = getSkills();
+    const exp = getActiveExperience(skills);
+    const origPricing = exp.pricing;
+    exp.pricing = {
+      currency: 'COP',
+      lastUpdated: '2026-01-01',
+      items: [
+        { id: '2d1n_individual', planId: '2d1n_mining', label: 'Individual', pricePerPerson: 550000, publiclyShow: true },
+        { id: '2d1n_couple', planId: '2d1n_mining', label: 'Pareja', couplePrice: 1000000, publiclyShow: true },
+      ],
+      botRules: [],
+      businessRules: [],
+    };
+    try {
+      repos.conversation.upsert(phone, { collected_plan: '2d1n_mining' });
+      const result = await processMessage({
+        repos,
+        customerPhone: phone,
+        message: 'Me das los precios para una persona o para pareja?',
+      });
+      expect(result.usedAi).toBe(true);
+      expect(result.reply).toMatch(/para una persona/i);
+      expect(result.reply).toMatch(/para pareja/i);
+      expect(result.reply).toMatch(/550[,.]?000|1[,.]?000[,.]?000/);
+      expect(result.priceJustGiven).toBe(true);
+      expect(repos.conversation.getCollectedFields(phone).personas).toBeUndefined();
+      expect(mockLlmComplete).toHaveBeenCalled();
+    } finally {
+      exp.pricing = origPricing;
+    }
+  });
+
+  it('withholds dual quote when pricing unavailable for ambiguous party comparison', async () => {
+    mockLlmComplete.mockReset();
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'Voy a revisar ambas opciones.' } }));
+    const phone = '573001119904';
+    const skills = getSkills();
+    const exp = getActiveExperience(skills);
+    const origPricing = exp.pricing;
+    exp.pricing = { currency: 'COP', lastUpdated: '1970-01-01', items: [], botRules: [PRICING_NOT_AVAILABLE], businessRules: [] };
+    try {
+      const result = await processMessage({
+        repos,
+        customerPhone: phone,
+        message: 'solo o pareja, cuanto sale?',
+      });
+      expect(result.usedAi).toBe(true);
+      expect(result.reply).toMatch(/para una persona/i);
+      expect(result.reply).toMatch(/para pareja/i);
+      expect(result.reply).toMatch(/equipo/);
+      expect(result.priceJustGiven).toBe(false);
+      expect(mockLlmComplete).toHaveBeenCalled();
+    } finally {
+      exp.pricing = origPricing;
+    }
+  });
+
+  it('asks which plan to compare instead of silently quoting the first plan', async () => {
+    mockLlmComplete.mockReset();
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'Primero definamos el plan.' } }));
+    const phone = '573001119907';
+    const exp = getActiveExperience(getSkills());
+    const origPricing = exp.pricing;
+    exp.pricing = {
+      currency: 'COP',
+      lastUpdated: '2026-01-01',
+      items: [
+        { id: 'individual', planId: '2d1n_mining', label: 'Individual', pricePerPerson: 550000, publiclyShow: true },
+        { id: 'couple', planId: '2d1n_mining', label: 'Pareja', couplePrice: 1000000, publiclyShow: true },
+      ],
+      botRules: [],
+      businessRules: [],
+    };
+    try {
+      const result = await processMessage({
+        repos,
+        customerPhone: phone,
+        message: 'Me das los precios para una persona o para pareja?',
+      });
+
+      expect(result.usedAi).toBe(true);
+      expect(result.reply).toMatch(/una persona/i);
+      expect(result.reply).toMatch(/pareja/i);
+      expect(result.reply).toMatch(/plan/i);
+      expect(result.reply).not.toMatch(/\$[\d,.]+/);
+      expect(result.priceJustGiven).toBe(false);
+    } finally {
+      exp.pricing = origPricing;
+    }
+  });
+
+  it('applies message limits before deterministic comparison replies', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: true, reason: 'hourly_limit' });
+    const phone = '573001119908';
+
+    const result = await processMessage({
+      repos,
+      customerPhone: phone,
+      message: 'Me das los precios para una persona o para pareja?',
+    });
+
+    expect(result.reply).toBe(getSkills().fallbackReplies.es.messageLimitReached);
+    expect(result.shouldAlertOwner).toBe(true);
+    expect(mockLlmComplete).not.toHaveBeenCalled();
+  });
+
+  it('does not treat a total-capacity question as a price request', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: { reply: 'El equipo confirma el tamaño máximo del grupo.', collected_fields: {} },
+    }));
+    const phone = '573001119909';
+
+    const result = await processMessage({
+      repos,
+      customerPhone: phone,
+      message: '¿Cuántas personas en total permite el grupo?',
+    });
+
+    expect(result.usedAi).toBe(true);
+    expect(result.reply).toBe('El equipo confirma el tamaño máximo del grupo.');
+    expect(result.priceJustGiven).toBe(false);
+  });
+
+  it('does not treat recovering money as a physical-recovery safety question', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: { reply: 'Cuéntame qué ocurrió con el pago para orientarte.', collected_fields: {} },
+    }));
+    const phone = '573001119910';
+
+    const result = await processMessage({
+      repos,
+      customerPhone: phone,
+      message: 'Estoy recuperando mi dinero de una reserva anterior.',
+    });
+
+    expect(result.usedAi).toBe(true);
+    expect(result.reply).toBe('Cuéntame qué ocurrió con el pago para orientarte.');
+  });
+
+  it('preserves after-month constraint without locking that month as the date', async () => {
+    mockLlmComplete.mockReset();
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'El equipo debe validar ese rango.' } }));
+    const phone = '573001119905';
+    repos.conversation.upsert(phone, { collected_date: 'septiembre' });
+    const result = await processMessage({
+      repos,
+      customerPhone: phone,
+      message: 'Somos pareja y queremos viajar después de noviembre. Qué fechas tienen?',
+    });
+    expect(result.usedAi).toBe(true);
+    expect(result.reply.toLowerCase()).toMatch(/despu[eé]s de noviembre|after november/);
+    expect(result.reply.toLowerCase()).toMatch(/equipo/);
+    expect(result.reply.toLowerCase()).not.toMatch(/tenemos disponible|cupo limitado|unica fecha|única fecha/);
+    expect(repos.conversation.getCollectedFields(phone).personas).toBe(2);
+    expect(repos.conversation.getCollectedFields(phone).fecha).toBeUndefined();
+    expect(mockLlmComplete).toHaveBeenCalled();
+  });
+
+  it('keeps an after-month constraint from restoring an older date on later turns', async () => {
+    mockLlmComplete.mockReset();
+    mockLlmComplete
+      .mockResolvedValueOnce(fromOld({ response: { reply: 'El equipo debe validar ese rango.' } }))
+      .mockResolvedValueOnce(fromOld({ response: { reply: 'Te cuento sobre el plan.', collected_fields: { date: 'septiembre' } } }));
+    const phone = '573001119915';
+    repos.conversation.upsert(phone, { collected_date: 'septiembre' });
+
+    await processMessage({
+      repos,
+      customerPhone: phone,
+      message: 'Queremos viajar después de noviembre. Qué fechas tienen?',
+    });
+    await processMessage({ repos, customerPhone: phone, message: 'Y qué incluye el plan?' });
+
+    const fields = repos.conversation.getCollectedFields(phone);
+    expect(fields.fecha).toBeUndefined();
+    expect(fields._date_window).toMatch(/despu[eé]s de noviembre/i);
+    expect(mockLlmComplete.mock.calls[1]?.[0].systemPrompt).toContain('después de noviembre');
+  });
+
+  it('forces deterministic 4-person quote for total-exacto ask even when LLM waffles', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001119906';
+    const skills = getSkills();
+    const exp = getActiveExperience(skills);
+    const origPricing = exp.pricing;
+    exp.pricing = {
+      currency: 'COP',
+      lastUpdated: '2026-01-01',
+      items: [
+        { id: 'individual', planId: '2d1n_mining', label: 'Individual', pricePerPerson: 550000, publiclyShow: true },
+        { id: 'couple', planId: '2d1n_mining', label: 'Pareja', couplePrice: 1000000, publiclyShow: true },
+      ],
+      botRules: [],
+      businessRules: [],
+    };
+    try {
+      repos.conversation.upsert(phone, {
+        collected_name: 'Ana',
+        collected_people: 4,
+        collected_date: 'septiembre de 2026',
+        collected_transport_need: 'own',
+        collected_plan: '2d1n_mining',
+      });
+      mockLlmComplete.mockResolvedValueOnce(fromOld({
+        response: {
+          reply: '¡Qué bien! Un grupo de 4 en carro propio. Para darte el total exacto, ¿me confirmas si eres Ana o viajas con alguien más?',
+          collected_fields: {},
+        },
+      }));
+
+      const result = await processMessage({
+        repos,
+        customerPhone: phone,
+        message: 'Somos 4 personas, queremos el plan de 2 días y 1 noche, vamos en carro propio. ¿Cuál es el total exacto para las 4 personas?',
+      });
+
+      expect(result.reply).toMatch(/4 personas/i);
+      expect(result.reply).toContain('$2,000,000 COP');
+      expect(result.reply).not.toMatch(/confirmas si eres Ana/i);
+      expect(result.priceJustGiven).toBe(true);
+    } finally {
+      exp.pricing = origPricing;
+    }
+  });
 });
 
 describe('processMessage — dynamic data guard', () => {
@@ -3828,6 +4186,29 @@ describe('pain reply flow', () => {
     painDb = new Database(':memory:');
     migrate(painDb);
     painRepos = createRepositories(painDb);
+  });
+
+  it.each(['price_nudge', 'final_nudge'] as const)('marks a reply to %s as replied', async stage => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: false, reason: 'daily_budget_exceeded' });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = stage === 'price_nudge' ? '573009998870' : '573009998871';
+    painRepos.conversation.upsert(phone, { language: 'es', lead_score: 10 });
+    painRepos.followUpEvent.insert({
+      customerPhone: phone,
+      sequenceNumber: stage === 'price_nudge' ? 2 : 3,
+      stage,
+      sentAt: new Date().toISOString(),
+      repliedAt: null,
+      scoreBefore: 10,
+      scoreAfter: null,
+      detectedPain: null,
+      status: 'sent',
+    });
+
+    await processMessage({ repos: painRepos, customerPhone: phone, message: 'Sí, cuéntame más' });
+
+    expect(painRepos.followUpEvent.getLatestByPhone(phone)?.status).toBe('replied');
   });
 
   it('stores lead_pain when customer replies to pain question', async () => {

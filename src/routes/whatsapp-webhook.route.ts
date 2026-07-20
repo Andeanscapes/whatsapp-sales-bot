@@ -9,7 +9,7 @@ import { sendText, sendImageUrl, downloadMedia } from '../services/whatsapp-clie
 import { canSendImage, recordGalleryNudge, recordImageSend, selectGalleryImages, selectPlanImage, canSendPlanImage } from '../services/media-service.js';
 import { sendAlert } from '../services/alert-service.js';
 import { sendTelegramMessage, sendTelegramPhoto, sendTelegramVoice } from '../services/telegram-bot.js';
-import { getLineById, hasRoutingConfig, isReferralLine } from '../services/lead-routing.js';
+import { getLineById, hasRoutingConfig, isBridgeTelegramChat, isReferralLine } from '../services/lead-routing.js';
 import { getOwnerImage, getDynamicPlanImages, getGalleryImages } from '../services/product-registry.js';
 import { isBridgeActive } from '../services/bridge-service.js';
 import { bridgeMessages } from '../services/bridge-messages.js';
@@ -134,13 +134,17 @@ export function extractMessages(body: unknown): ExtractedMessage[] | null {
  * `referred` customers (handed to another line) keep getting bot replies here.
  */
 export async function forwardBridgeMessage(repos: Repositories, msg: ExtractedMessage): Promise<boolean> {
-  if (!hasRoutingConfig()) return false;
   if (repos.isPaused()) return false;
   if (repos.optOut.isOptedOut(msg.from)) return false;
   if (!isBridgeActive(repos, msg.from)) return false;
 
   const session = repos.bridgeSession.getByCustomer(msg.from);
   if (!session) return false;
+  if (!isBridgeTelegramChat(session.agentChatId)) {
+    repos.bridgeSession.close(session.agentChatId);
+    repos.conversation.setMode(msg.from, 'bot');
+    return false;
+  }
 
   repos.message.addMessage({
     whatsapp_message_id: msg.id,

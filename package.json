@@ -7,7 +7,7 @@
     "node": ">=24.18.0 <25"
   },
   "scripts": {
-    "build": "rm -rf dist && tsc && cp -r src/data dist/data && mkdir -p dist/db dist/prompts && cp src/db/schema.sql dist/db/schema.sql && cp src/prompts/deepseek-system.prompt.md dist/prompts/deepseek-system.prompt.md && cp src/prompts/lead-analyzer.prompt.md dist/prompts/lead-analyzer.prompt.md",
+    "build": "rm -rf dist && tsc && cp -r src/data dist/data && mkdir -p dist/db dist/prompts && cp src/db/schema.sql dist/db/schema.sql && cp src/prompts/deepseek-system.prompt.md dist/prompts/deepseek-system.prompt.md && cp src/prompts/deepseek-follow-up.prompt.md dist/prompts/deepseek-follow-up.prompt.md && cp src/prompts/lead-analyzer.prompt.md dist/prompts/lead-analyzer.prompt.md",
     "start": "node dist/server.js",
     "dev": "tsx watch src/server.ts",
     "dev:env": "ENV_FILE=.env.dev tsx watch src/server.ts",

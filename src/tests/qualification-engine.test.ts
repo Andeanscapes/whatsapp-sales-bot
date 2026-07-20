@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 import { loadSkills } from '../services/skill-loader.js';
 import { migrate } from '../db/migrate.js';
 import { createRepositories, type Repositories } from '../db/repositories/index.js';
-import { extractBookingFields, isCorrectionMessage, contextAwareExtract, detectPlan, resolveLanguage } from '../services/qualification-engine.js';
+import { extractBookingFields, isAmbiguousPartyComparison, isCorrectionMessage, contextAwareExtract, detectPlan, resolveLanguage } from '../services/qualification-engine.js';
 import { detectExplicitLanguageSwitch } from '../services/language-service.js';
 
 describe('extractBookingFields — people detection', () => {
@@ -29,6 +29,23 @@ describe('extractBookingFields — people detection', () => {
     'somos 3',
   ])('detects 3 people from "%s"', (text) => {
     expect(extractBookingFields(text).collected_people).toBe(3);
+  });
+
+  it.each([
+    'solo o pareja',
+    'una persona o pareja',
+    'solo o quizás pareja',
+    'Me das los precios para una persona o para pareja?',
+  ])('does not settle an ambiguous party comparison from "%s"', (text) => {
+    expect(isAmbiguousPartyComparison(text)).toBe(true);
+    expect(extractBookingFields(text).collected_people).toBeUndefined();
+  });
+
+  it.each([
+    'solo me interesa la experiencia en pareja',
+    'solo quiero info para pareja',
+  ])('does not treat non-comparison solo+pareja as ambiguous: "%s"', (text) => {
+    expect(isAmbiguousPartyComparison(text)).toBe(false);
   });
 });
 

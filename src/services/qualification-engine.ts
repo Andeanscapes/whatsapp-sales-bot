@@ -22,6 +22,18 @@ export const NAME_PATTERNS = [
 
 export const NAME_BLACKLIST = /^(?:hola|buenas|hello|hi|hey|ok|si|no|yes|ya|gracias|thanks|quiero|cual|como|cuanto|donde|cuando|que|qué|cual|cuál|precio|itinerario|agenda|actividades|what|how|where|when|porque|por qu[eé]|me|te|se|el|la|los|las|es|own|solo|sola|bien|listo)$/i;
 
+/** True when customer compares solo vs couple without settling one size. */
+export function isAmbiguousPartyComparison(text: string): boolean {
+  const norm = normalizeText(text);
+  const soloSide = String.raw`(?:solo|sola|una\s+persona|1\s+persona|individual|just\s+me|alone|solo\s+traveler)`;
+  const coupleSide = String.raw`(?:pareja|couple|dos\s+personas|2\s+personas)`;
+  const connector = String.raw`(?:\bo\b|\bo\s+quiz[aá]s\b|\bor\b|\bvs\.?\b|\bversus\b)`;
+  return new RegExp(String.raw`${soloSide}.{0,40}${connector}.{0,40}${coupleSide}`, 'i').test(norm)
+    || new RegExp(String.raw`${coupleSide}.{0,40}${connector}.{0,40}${soloSide}`, 'i').test(norm)
+    || /precios?\s+para\s+(?:una\s+)?persona\s+o\s+(?:para\s+)?pareja/i.test(norm)
+    || /(?:una\s+)?persona\s+o\s+(?:para\s+)?pareja/i.test(norm);
+}
+
 export const TRANSPORT_OWN_PATTERNS = [
   /\b(?:veh[ií]culo propio|carro propio|mi carro|mi coche|mi auto|mi camioneta|en mi carro|voy en carro|voy con carro|llevo carro|tengo mi carro|moto|moto propia|vamos en (?:carro|moto|auto)|tenemos (?:carro|moto|auto|veh[ií]culo)|transporte propio|transporte si|si tenemos)\b/i,
   /\b(?:propio transporte|transporte propio|coche propio|no necesitamos transporte|nosotros manejamos|manejamos|si propio|yo manejo|manejo|si[,.]?\s*mi\s+(?:carro|auto|coche|camioneta)|s[ií][,.]?\s*(?:mi\s+)?(?:carro|auto|coche|camioneta|propio))\b/i,
@@ -181,11 +193,13 @@ export function extractBookingFields(text: string): Record<string, unknown> {
   }
 
   const couplePattern = /\b(?:couple|pareja|dos personas|2 personas|mi esposo y yo|mi esposa y yo|mi novio y yo|mi novia y yo|mi pareja y yo|mi hija y yo|mi hijo y yo|mi (?:mam[aá]|madre|made) y yo|vamos dos|somos dos|somos 2|vamos 2)\b/i;
-  if (couplePattern.test(text) && !fields.collected_people) {
+  const soloPattern = /\b(?:sola|solo|voy sola|voy solo|ir[ií]a sola|ir[ií]a solo|yo sola|yo solo|una persona|1 persona|just me|only me|me alone|solo traveler)\b/i;
+  const ambiguousParty = isAmbiguousPartyComparison(text);
+  if (couplePattern.test(text) && !fields.collected_people && !ambiguousParty) {
     fields.collected_people = 2;
   }
 
-  if (/\b(?:sola|solo|voy sola|voy solo|ir[ií]a sola|ir[ií]a solo|yo sola|yo solo|una persona|1 persona|just me|only me|me alone|solo traveler)\b/i.test(text) && !fields.collected_people) {
+  if (soloPattern.test(text) && !fields.collected_people && !ambiguousParty) {
     fields.collected_people = 1;
   }
 

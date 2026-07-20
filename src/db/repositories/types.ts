@@ -30,6 +30,9 @@ export interface ConversationRepository {
   getLeadScore(phone: string): number;
   updateLeadScore(phone: string, score: number): void;
   getCollectedFields(phone: string): Record<string, unknown>;
+  clearCollectedDate(phone: string): void;
+  getCollectedDateWindow(phone: string): string | null;
+  setCollectedDateWindow(phone: string, window: string | null): void;
   getCollectedPlan(phone: string): string | null;
   getLanguage(phone: string): 'es' | 'en' | null;
   getSalesPhase(phone: string): string | null;
@@ -43,7 +46,7 @@ export interface ConversationRepository {
   getBookedAt(phone: string): string | null;
   setBooked(phone: string): void;
   getFollowUpCandidates(cutoffIso: string, serviceWindowStartIso: string, limit: number): FollowUpCandidate[];
-  getPainQuestionCandidates(serviceWindowStartIso: string, limit: number, firstNudgeRepliedBefore: string): FollowUpCandidate[];
+  getSecondFollowUpCandidates(anchorBeforeIso: string, serviceWindowStartIso: string, limit: number): FollowUpCandidate[];
   markFollowUpSent(phone: string): void;
   setLeadPain(phone: string, pain: LeadPain, detail?: string): void;
   getLeadPain(phone: string): LeadPain | null;
@@ -133,14 +136,17 @@ export type ConversationMode = 'bot' | 'bridge_active' | 'referred';
 
 export type LeadPain = 'price' | 'date_time' | 'security' | 'logistics_4x4' | 'experience_clarity' | 'partner_group' | 'not_interested' | 'other';
 
-export type FollowUpStage = 'first_nudge' | 'pain_question';
-export type FollowUpStatus = 'sent' | 'replied';
+export type FollowUpStage = 'first_nudge' | 'second_nudge' | 'price_nudge' | 'final_nudge' | 'pain_question';
+export type FollowUpStatus = 'pending' | 'sent' | 'replied' | 'suppressed' | 'failed' | 'uncertain';
 
 export interface FollowUpEvent {
   id?: number;
   customerPhone: string;
   sequenceNumber: number;
   stage: FollowUpStage;
+  anchorInboundAt?: string | null;
+  claimedAt?: string | null;
+  decisionReason?: string | null;
   sentAt: string | null;
   repliedAt: string | null;
   scoreBefore: number;
@@ -151,6 +157,10 @@ export interface FollowUpEvent {
 
 export interface FollowUpEventRepository {
   insert(event: Omit<FollowUpEvent, 'id'>): void;
+  claim(event: Omit<FollowUpEvent, 'id'>): boolean;
+  markClaimSent(phone: string, anchorInboundAt: string, stage: FollowUpStage, sentAt: string): void;
+  markClaimFailed(phone: string, anchorInboundAt: string, stage: FollowUpStage, reason: string): void;
+  markClaimUncertain(phone: string, anchorInboundAt: string, stage: FollowUpStage, reason: string): void;
   getLatestByPhone(phone: string): FollowUpEvent | null;
   markReplied(phone: string, sequenceNumber: number, scoreAfter: number, detectedPain: LeadPain | null): void;
   countByPhone(phone: string): number;
@@ -190,6 +200,7 @@ export interface ConversationRow {
   ad_referral_json: string | null;
   collected_name: string | null;
   collected_date: string | null;
+  collected_date_window: string | null;
   collected_people: number | null;
   collected_transport_need: string | null;
   collected_lodging_need: string | null;
@@ -215,6 +226,7 @@ export interface ConversationRow {
 export interface FollowUpCandidate {
   customerPhone: string;
   language: 'es' | 'en' | null;
+  anchorInboundAt?: string;
 }
 
 export interface DailyStats {
@@ -359,6 +371,7 @@ export interface DayConversationSummary {
   aiCompletionTokens: number;
   aiCalls: number;
   aiUsageBreakdown: AiUsageBreakdown;
+  followUps: FollowUpEvent[];
   messages: DayMessage[];
 }
 
@@ -370,6 +383,10 @@ export interface PeriodActivityTotals {
   totalInbound: number;
   totalOutbound: number;
   totalAiCostUsd: number;
+  followUpsSent: number;
+  followUpsReplied: number;
+  followUpHandoffs: number;
+  followUpBookings: number;
 }
 
 export interface DayActivityResult {

@@ -36,6 +36,18 @@ const turnSchema = z.object({
   }).strict().optional(),
 });
 
+const followUpSeedSchema = z.object({
+  phase: z.string().optional(),
+  score: z.number().int().min(0).max(100).optional(),
+  qualification: z.object({
+    name: z.string().optional(),
+    people: z.number().int().positive().optional(),
+    date: z.string().optional(),
+    transport: z.string().optional(),
+    plan: z.string().optional(),
+  }).strict().optional(),
+}).strict();
+
 const criterionRuleSchema = z.enum([
   'reply_must_match',
   'reply_must_not_match',
@@ -87,6 +99,7 @@ export const scenarioSchema = z.object({
   lang: z.enum(['es', 'en']).default('es'),
   runner: z.enum(['message', 'follow_up']).default('message'),
   followUpMockReply: z.string().optional(),
+  followUpSeed: followUpSeedSchema.optional(),
   liveRuns: z.number().int().min(1).max(5).default(1),
   minLiveScore: z.number().min(0).max(100).optional(),
   mockPricing: z.object({

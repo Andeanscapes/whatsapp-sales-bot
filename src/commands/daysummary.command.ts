@@ -58,6 +58,7 @@ function formatSummary(result: DayActivityResult, label: string, documentSent: b
     `👥 Conversaciones: ${totals.totalConversations}`,
     `📨 Mensajes: ${totals.totalMessages} (← ${totals.totalInbound} | → ${totals.totalOutbound})`,
     `💰 IA: $${totals.totalAiCostUsd.toFixed(4)}`,
+    `🔁 Seguimientos: ${totals.followUpsSent} enviados | ${totals.followUpsReplied} respondidos | ${totals.followUpHandoffs} handoffs | ${totals.followUpBookings} reservas`,
     '',
   ];
 

@@ -5,6 +5,17 @@ const WHATSAPP_FETCH_TIMEOUT_MS = 10_000;
 /** Binary media transfers (download/upload) need more headroom than JSON message calls. */
 const WHATSAPP_MEDIA_TIMEOUT_MS = 30_000;
 
+export class WhatsAppSendError extends Error {
+  constructor(
+    message: string,
+    readonly deliveryUncertain: boolean,
+    readonly retryable = false,
+  ) {
+    super(message);
+    this.name = 'WhatsAppSendError';
+  }
+}
+
 /** WhatsApp Cloud API image limit is 5MB; cap inbound downloads to protect memory. */
 export const MAX_MEDIA_BYTES = 5 * 1024 * 1024;
 /** WhatsApp Cloud API video limit is 16MB. */
@@ -45,24 +56,30 @@ async function readCappedBuffer(res: Response, maxBytes: number): Promise<Buffer
 export async function sendText(to: string, text: string): Promise<void> {
   const url = `https://graph.facebook.com/${env.WHATSAPP_GRAPH_API_VERSION}/${env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
   logger.info({ to, textLen: text.length, preview: text.slice(0, 80) }, '[WHATSAPP] sending text');
-  const response = await fetch(url, {
-    method: 'POST',
-    signal: AbortSignal.timeout(WHATSAPP_FETCH_TIMEOUT_MS),
-    headers: {
-      'Authorization': `Bearer ${env.WHATSAPP_ACCESS_TOKEN}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      to,
-      type: 'text',
-      text: { body: text, preview_url: true },
-    }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      signal: AbortSignal.timeout(WHATSAPP_FETCH_TIMEOUT_MS),
+      headers: {
+        'Authorization': `Bearer ${env.WHATSAPP_ACCESS_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to,
+        type: 'text',
+        text: { body: text, preview_url: true },
+      }),
+    });
+  } catch (error) {
+    throw new WhatsAppSendError(error instanceof Error ? error.message : 'WhatsApp transport failed', true);
+  }
   if (!response.ok) {
     const body = await response.text().catch(() => '<unreadable>');
     logger.warn({ status: response.status, body: body.slice(0, 500), to, phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID }, '[WHATSAPP] text send failed');
-    throw new Error(`WhatsApp API error: HTTP ${response.status} – ${body.slice(0, 120)}`);
+    const retryable = response.status === 429 || response.status >= 500;
+    throw new WhatsAppSendError(`WhatsApp API error: HTTP ${response.status} – ${body.slice(0, 120)}`, false, retryable);
   }
   logger.info({ to }, '[WHATSAPP] text sent ok');
 }

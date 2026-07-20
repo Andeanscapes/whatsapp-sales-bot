@@ -244,6 +244,48 @@ describe('forwardPostHandoffMessage', () => {
 });
 
 describe('forwardBridgeMessage', () => {
+  it('forwards an owner bridge when lead routing is disabled', async () => {
+    env.LEAD_ROUTING_JSON = '';
+    resetRoutingConfigCache();
+    repos.conversation.upsert(PHONE, { language: 'es' });
+    repos.conversation.setMode(PHONE, 'bridge_active');
+    repos.bridgeSession.open(env.TELEGRAM_CHAT_ID, PHONE);
+
+    const forwarded = await forwardBridgeMessage(repos, msg('Hola owner', 'wamid-owner-bridge'));
+
+    expect(forwarded).toBe(true);
+    expect(mockSendTelegram).toHaveBeenCalledWith(env.TELEGRAM_CHAT_ID, expect.stringContaining('Hola owner'));
+    expect(repos.conversation.getMode(PHONE)).toBe('bridge_active');
+  });
+
+  it('closes a stale non-owner bridge when lead routing is disabled', async () => {
+    env.LEAD_ROUTING_JSON = '';
+    resetRoutingConfigCache();
+    repos.conversation.upsert(PHONE, { language: 'es' });
+    repos.conversation.setMode(PHONE, 'bridge_active');
+    repos.bridgeSession.open('removed-agent', PHONE);
+
+    const forwarded = await forwardBridgeMessage(repos, msg('Mensaje privado', 'wamid-stale-bridge'));
+
+    expect(forwarded).toBe(false);
+    expect(mockSendTelegram).not.toHaveBeenCalled();
+    expect(repos.bridgeSession.getByCustomer(PHONE)).toBeNull();
+    expect(repos.conversation.getMode(PHONE)).toBe('bot');
+  });
+
+  it('closes a bridge session whose line changed to referral', async () => {
+    repos.conversation.upsert(PHONE, { language: 'es' });
+    repos.conversation.setMode(PHONE, 'bridge_active');
+    repos.bridgeSession.open('222', PHONE);
+
+    const forwarded = await forwardBridgeMessage(repos, msg('Mensaje privado', 'wamid-referral-bridge'));
+
+    expect(forwarded).toBe(false);
+    expect(mockSendTelegram).not.toHaveBeenCalled();
+    expect(repos.bridgeSession.getByCustomer(PHONE)).toBeNull();
+    expect(repos.conversation.getMode(PHONE)).toBe('bot');
+  });
+
   it('reopens the bot path when active bridge Telegram delivery fails', async () => {
     repos.conversation.upsert(PHONE, { language: 'es' });
     repos.conversation.setAssignment(PHONE, { assignedLineId: 'line1_bridge', assignedAgentChat: '111' });

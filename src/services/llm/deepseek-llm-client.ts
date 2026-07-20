@@ -33,7 +33,8 @@ export class DeepSeekLlmClient implements LlmClient {
     const startTime = Date.now();
 
     const result = await this.callApi(input);
-    if (result) {
+    input.onAttempt?.({ tokens: result?.tokens ?? { prompt: 0, completion: 0 }, success: result?.turn != null });
+    if (result?.turn) {
       logger.info({ elapsed: Date.now() - startTime, tokens: result.tokens }, '[LLM] response');
       return { turn: result.turn, tokens: result.tokens };
     }
@@ -41,7 +42,8 @@ export class DeepSeekLlmClient implements LlmClient {
     if (this.retryOnFail) {
       logger.warn('[LLM] retry');
       const retry = await this.callApi(input);
-      if (retry) {
+      input.onAttempt?.({ tokens: retry?.tokens ?? { prompt: 0, completion: 0 }, success: retry?.turn != null });
+      if (retry?.turn) {
         logger.info({ elapsed: Date.now() - startTime, tokens: retry.tokens }, '[LLM] response');
         return { turn: retry.turn, tokens: retry.tokens };
       }
@@ -50,7 +52,7 @@ export class DeepSeekLlmClient implements LlmClient {
     return null;
   }
 
-  private async callApi(input: LlmClientInput): Promise<{ turn: LlmTurn; tokens: { prompt: number; completion: number } } | null> {
+  private async callApi(input: LlmClientInput): Promise<{ turn: LlmTurn | null; tokens: { prompt: number; completion: number } } | null> {
     const systemContent = input.systemPromptSuffix
       ? `${input.systemPrompt}\n\n${input.systemPromptSuffix}`
       : input.systemPrompt;
@@ -73,17 +75,19 @@ export class DeepSeekLlmClient implements LlmClient {
     });
     if (!result) return null;
 
+    const tokens = { prompt: result.promptTokens, completion: result.completionTokens };
+
     if (result.content.length < 2) {
       logger.warn({ preview: result.content.slice(0, 200) }, '[LLM] content too short');
-      return null;
+      return { turn: null, tokens };
     }
 
     const turn = parsePlainTextContent(result.content);
     if (!turn) {
       logger.warn({ preview: result.content.slice(0, 200) }, '[LLM] failed to parse content');
-      return null;
+      return { turn: null, tokens };
     }
 
-    return { turn, tokens: { prompt: result.promptTokens, completion: result.completionTokens } };
+    return { turn, tokens };
   }
 }
