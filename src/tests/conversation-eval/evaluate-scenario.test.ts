@@ -73,4 +73,20 @@ describe('conversation criteria', () => {
     const input = scenario([{ id: 'quote', rule: 'group_quote_integrity', people: 4, planId: '2d1n_mining', expectedTotal: 2000000, weight: 1, critical: true }]);
     expect(evaluateScenario(input, [turn('Somos 4', 'Para 2 personas, el valor total es $1,000,000 COP.')]).hardFail).toBe(true);
   });
+
+  it('enforces max question marks', () => {
+    const input = scenario([{ id: 'q', rule: 'max_question_marks', max: 1, weight: 1, critical: true }]);
+    expect(evaluateScenario(input, [turn('Hola', 'Incluye X. ¿Cuántas personas?')]).score).toBe(100);
+    expect(evaluateScenario(input, [turn('Hola', '¿A? ¿B?')]).hardFail).toBe(true);
+  });
+
+  it('supports output_flag_not_equals and conversationMode', () => {
+    const record = turn('Hola', 'ok');
+    record.processOutput.conversationMode = 'human_pending';
+    record.processOutput.salesPhase = 'closing';
+    const equals = scenario([{ id: 'mode', rule: 'output_flag_equals', flag: 'conversationMode', expected: 'human_pending', weight: 1, critical: true }]);
+    const notEquals = scenario([{ id: 'phase', rule: 'output_flag_not_equals', flag: 'salesPhase', expected: 'booked', weight: 1, critical: true }]);
+    expect(evaluateScenario(equals, [record]).score).toBe(100);
+    expect(evaluateScenario(notEquals, [record]).score).toBe(100);
+  });
 });

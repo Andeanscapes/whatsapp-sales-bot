@@ -43,6 +43,12 @@ export async function runFollowUpScenario(ctx: RunContext, scenario: Scenario): 
     collected_transport_need: scenario.followUpSeed?.qualification?.transport,
     collected_plan: scenario.followUpSeed?.qualification?.plan,
   });
+  if (scenario.followUpSeed?.softClosed) {
+    ctx.repos.conversation.setSoftClosed(ctx.customerPhone);
+  }
+  if (scenario.followUpSeed?.conversationMode) {
+    ctx.repos.conversation.setMode(ctx.customerPhone, scenario.followUpSeed.conversationMode);
+  }
   for (let index = 0; index < scenario.turns.length; index++) {
     const turn = scenario.turns[index];
     const inboundAt = new Date(now - (5 * 60 * 60 * 1000) + index * 60_000).toISOString();

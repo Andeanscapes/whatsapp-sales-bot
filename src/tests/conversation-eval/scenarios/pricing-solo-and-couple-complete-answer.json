@@ -1,0 +1,68 @@
+{
+  "id": "pricing-solo-and-couple-complete-answer",
+  "source": "prod-summary-2026-07-17#solo-couple",
+  "tags": [
+    "pricing",
+    "multi-question",
+    "regression"
+  ],
+  "lang": "es",
+  "liveRuns": 1,
+  "mockPricing": {
+    "planId": "2d1n_mining",
+    "individual": 550000,
+    "couple": 1000000
+  },
+  "seedQualification": {
+    "plan": "2d1n_mining"
+  },
+  "criteria": [
+    {
+      "id": "answers-solo",
+      "rule": "reply_must_match",
+      "patterns": [
+        "una persona|solo|individual"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "answers-couple",
+      "rule": "reply_must_match",
+      "patterns": [
+        "pareja|dos personas"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "two-price-values",
+      "rule": "reply_must_match",
+      "patterns": [
+        "550[\\.,]?000",
+        "1[\\.,]?000[\\.,]?000"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "no-reask-party",
+      "rule": "unsafe_pattern_absent",
+      "patterns": [
+        "¿.*solo, en pareja o para un grupo"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Dame el precio para una persona y también para pareja",
+      "mockReply": "Para una persona, el plan 2D/1N cuesta $550.000 COP. Para pareja, el total es $1.000.000 COP. Ambos incluyen alojamiento, 3 comidas, equipo y experiencia minera según la información vigente."
+    }
+  ]
+}

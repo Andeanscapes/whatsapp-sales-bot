@@ -132,7 +132,7 @@ export interface MediaSendRepository {
   recordSend(phone: string, mediaId: string): void;
 }
 
-export type ConversationMode = 'bot' | 'bridge_active' | 'referred';
+export type ConversationMode = 'bot' | 'bridge_active' | 'referred' | 'human_pending';
 
 export type LeadPain = 'price' | 'date_time' | 'security' | 'logistics_4x4' | 'experience_clarity' | 'partner_group' | 'not_interested' | 'other';
 
@@ -159,6 +159,7 @@ export interface FollowUpEventRepository {
   insert(event: Omit<FollowUpEvent, 'id'>): void;
   claim(event: Omit<FollowUpEvent, 'id'>): boolean;
   markClaimSent(phone: string, anchorInboundAt: string, stage: FollowUpStage, sentAt: string): void;
+  markClaimSuppressed(phone: string, anchorInboundAt: string, stage: FollowUpStage, reason: string): void;
   markClaimFailed(phone: string, anchorInboundAt: string, stage: FollowUpStage, reason: string): void;
   markClaimUncertain(phone: string, anchorInboundAt: string, stage: FollowUpStage, reason: string): void;
   getLatestByPhone(phone: string): FollowUpEvent | null;
@@ -227,6 +228,7 @@ export interface FollowUpCandidate {
   customerPhone: string;
   language: 'es' | 'en' | null;
   anchorInboundAt?: string;
+  reviewPause?: boolean;
 }
 
 export interface DailyStats {

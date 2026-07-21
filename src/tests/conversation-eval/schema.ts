@@ -13,6 +13,16 @@ const expectSchema = z.object({
   replyMustContain: z.array(z.string()).optional(),
 }).strict();
 
+const qualificationSeedSchema = z.object({
+  name: z.string().optional(),
+  people: z.number().int().positive().optional(),
+  date: z.string().optional(),
+  transport: z.string().optional(),
+  plan: z.string().optional(),
+}).strict();
+
+const conversationModeSchema = z.enum(['bot', 'bridge_active', 'referred', 'human_pending']);
+
 const turnSchema = z.object({
   user: z.string().min(1),
   mockReply: z.string(),
@@ -27,31 +37,35 @@ const turnSchema = z.object({
   seedPriceGiven: z.boolean().optional(),
   seedGalleryNudge: z.boolean().optional(),
   seedLeadScore: z.number().int().min(0).max(100).optional(),
-  seedQualification: z.object({
-    name: z.string().optional(),
-    people: z.number().int().positive().optional(),
-    date: z.string().optional(),
-    transport: z.string().optional(),
-    plan: z.string().optional(),
-  }).strict().optional(),
+  seedQualification: qualificationSeedSchema.optional(),
 });
 
 const followUpSeedSchema = z.object({
   phase: z.string().optional(),
   score: z.number().int().min(0).max(100).optional(),
-  qualification: z.object({
-    name: z.string().optional(),
-    people: z.number().int().positive().optional(),
-    date: z.string().optional(),
-    transport: z.string().optional(),
-    plan: z.string().optional(),
-  }).strict().optional(),
+  qualification: qualificationSeedSchema.optional(),
+  softClosed: z.boolean().optional(),
+  conversationMode: conversationModeSchema.optional(),
+}).strict();
+
+const seedConversationSchema = z.object({
+  conversationMode: conversationModeSchema.optional(),
+  phase: z.string().optional(),
+  softClosed: z.boolean().optional(),
+  priceGiven: z.boolean().optional(),
+  qualification: qualificationSeedSchema.optional(),
+}).strict();
+
+const seedSystemSchema = z.object({
+  dynamicSkillAvailable: z.boolean().optional(),
+  dynamicSkillRequired: z.boolean().optional(),
 }).strict();
 
 const criterionRuleSchema = z.enum([
   'reply_must_match',
   'reply_must_not_match',
   'output_flag_equals',
+  'output_flag_not_equals',
   'known_field_not_reasked',
   'price_after_min_fields',
   'big_group_date_validation',
@@ -59,6 +73,21 @@ const criterionRuleSchema = z.enum([
   'partner_name_not_customer_name',
   'unsafe_pattern_absent',
   'group_quote_integrity',
+  'max_question_marks',
+]);
+
+const outputFlagSchema = z.enum([
+  'shouldSendReply',
+  'shouldAlertOwner',
+  'shouldSendImage',
+  'shouldSendOwnerImage',
+  'shouldSendGalleryImages',
+  'usedAi',
+  'priceJustGiven',
+  'conversationMode',
+  'salesPhase',
+  'softClosed',
+  'sendOwnerImage',
 ]);
 
 const criterionSchema = z.object({
@@ -68,8 +97,8 @@ const criterionSchema = z.object({
   critical: z.boolean().default(false),
   patterns: z.array(z.string().min(1)).min(1).optional(),
   field: z.enum(['name', 'people', 'date', 'transport']).optional(),
-  flag: z.enum(['shouldSendReply', 'shouldAlertOwner', 'shouldSendImage', 'shouldSendOwnerImage', 'shouldSendGalleryImages', 'usedAi', 'priceJustGiven']).optional(),
-  expected: z.boolean().optional(),
+  flag: outputFlagSchema.optional(),
+  expected: z.union([z.boolean(), z.string()]).optional(),
   turn: z.number().int().min(1).optional(),
   suppliedTurn: z.number().int().min(1).optional(),
   minFields: z.number().int().min(0).max(6).optional(),
@@ -77,6 +106,7 @@ const criterionSchema = z.object({
   people: z.number().int().positive().optional(),
   planId: z.string().min(1).optional(),
   expectedTotal: z.number().int().positive().optional(),
+  max: z.number().int().min(0).max(20).optional(),
 }).strict().superRefine((criterion, ctx) => {
   if (['reply_must_match', 'reply_must_not_match', 'unsafe_pattern_absent'].includes(criterion.rule) && !criterion.patterns) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${criterion.rule} requires patterns` });
@@ -84,11 +114,15 @@ const criterionSchema = z.object({
   if (criterion.rule === 'known_field_not_reasked' && (!criterion.field || criterion.suppliedTurn === undefined)) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'known_field_not_reasked requires field and suppliedTurn' });
   }
-  if (criterion.rule === 'output_flag_equals' && (criterion.flag === undefined || criterion.expected === undefined)) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'output_flag_equals requires flag and expected' });
+  if ((criterion.rule === 'output_flag_equals' || criterion.rule === 'output_flag_not_equals')
+    && (criterion.flag === undefined || criterion.expected === undefined)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${criterion.rule} requires flag and expected` });
   }
   if (criterion.rule === 'group_quote_integrity' && (criterion.people === undefined || criterion.planId === undefined || criterion.expectedTotal === undefined)) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'group_quote_integrity requires people, planId, and expectedTotal' });
+  }
+  if (criterion.rule === 'max_question_marks' && criterion.max === undefined) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'max_question_marks requires max' });
   }
 });
 
@@ -100,6 +134,9 @@ export const scenarioSchema = z.object({
   runner: z.enum(['message', 'follow_up']).default('message'),
   followUpMockReply: z.string().optional(),
   followUpSeed: followUpSeedSchema.optional(),
+  seedQualification: qualificationSeedSchema.optional(),
+  seedConversation: seedConversationSchema.optional(),
+  seedSystem: seedSystemSchema.optional(),
   liveRuns: z.number().int().min(1).max(5).default(1),
   minLiveScore: z.number().min(0).max(100).optional(),
   mockPricing: z.object({

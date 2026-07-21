@@ -315,15 +315,18 @@ export async function forwardPostHandoffMedia(repos: Repositories, msg: Extracte
 }
 
 /**
- * Legacy handed-off conversations without a live bridge still notify their
- * assigned agent. A normal alert-only assignment must not enter this path: the
- * bot continues until an agent explicitly runs /bridge.
+ * Notify the assigned bridge agent without silencing the bot.
+ * Runs for:
+ * - mode `bot` with a sticky bridge assignment (dormant assignment)
+ * - mode `human_pending` (close escalated; bot still replies until /bridge)
+ * Does not run for live `bridge_active` (handled by forwardBridgeMessage).
  */
 export async function notifyAssignedLineIfDormant(repos: Repositories, msg: ExtractedMessage): Promise<boolean> {
   if (!hasRoutingConfig()) return false;
   if (repos.isPaused()) return false;
   if (repos.optOut.isOptedOut(msg.from)) return false;
-  if (repos.conversation.getMode(msg.from) !== 'bot') return false;
+  const mode = repos.conversation.getMode(msg.from);
+  if (mode !== 'bot' && mode !== 'human_pending') return false;
   if (repos.conversation.getHandedOffAt(msg.from)) return false;
 
   const assignment = repos.conversation.getAssignment(msg.from);

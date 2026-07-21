@@ -1,0 +1,57 @@
+{
+  "id": "availability-request-not-replaced-by-generic-plan",
+  "source": "prod-summary-2026-07-17#confirm-availability-loop",
+  "tags": [
+    "availability",
+    "direct-question",
+    "regression",
+    "conversion"
+  ],
+  "lang": "es",
+  "liveRuns": 1,
+  "seedQualification": {
+    "people": 2,
+    "plan": "2d1n_mining",
+    "date": "sábado 22 de agosto",
+    "transport": "own"
+  },
+  "criteria": [
+    {
+      "id": "answers-availability-action",
+      "rule": "reply_must_match",
+      "patterns": [
+        "validar|confirmar|disponibilidad"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "references-date",
+      "rule": "reply_must_match",
+      "patterns": [
+        "22 de agosto"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "no-generic-template-loop",
+      "rule": "unsafe_pattern_absent",
+      "patterns": [
+        "Para darte el valor exacto, ¿tienen fecha tentativa o vienen por su cuenta",
+        "Aventura minera en Chivor.{0,180}Pet-friendly"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Por favor confirma disponibilidad para el sábado 22 de agosto",
+      "mockReply": "Claro. Voy a validar disponibilidad para 2 personas el sábado 22 de agosto y te confirmamos. Mientras tanto, puedo compartirte el proceso para separar el cupo."
+    }
+  ]
+}

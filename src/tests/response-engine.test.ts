@@ -216,7 +216,25 @@ describe('processMessage', () => {
     expect(result.usedAi).toBe(true);
   });
 
-  it('pauses with shareable summary when user needs to consult partner after price', async () => {
+  it('restores a requested guide inclusion omitted by the LLM', async () => {
+    mockLlmComplete.mockReset();
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: {
+        reply: 'Dura 2 días y 1 noche. Incluye alojamiento, 3 comidas y equipo de seguridad. La edad mínima es 5 años y aceptamos mascotas.',
+      },
+    }));
+
+    const result = await processMessage({
+      repos,
+      customerPhone: '573001112230',
+      message: '¿Cuánto dura, qué incluye, cuál es la edad mínima y aceptan mascotas?',
+    });
+
+    expect(result.reply).toMatch(/gu[ií]a/i);
+    expect(result.usedAi).toBe(true);
+  });
+
+  it('acknowledges a review pause without repeating price or sending gallery', async () => {
     mockLlmComplete.mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     const phone = '573001112232';
@@ -241,15 +259,53 @@ describe('processMessage', () => {
     try {
       const result = await processMessage({ repos, customerPhone: phone, message: 'seria para 2 pero dejame valido con mi pareja gracias' });
 
-      expect(result.reply).toContain('Dale Santiago, cero afan');
-      expect(result.reply).toContain('$1,040,000 COP total');
-      expect(result.reply.toLowerCase()).not.toContain('transporte');
+      expect(result.reply).toBe(getSkills().fallbackReplies.es.reviewPauseAcknowledgement);
+      expect(result.reply).not.toMatch(/\$\s?\d/);
+      expect(result.shouldSendGalleryImages).toBe(false);
       expect(result.shouldAlertOwner).toBe(false);
       expect(result.usedAi).toBe(false);
       expect(mockLlmComplete).not.toHaveBeenCalled();
     } finally {
       exp.pricing = origPricing;
     }
+  });
+
+  it('acknowledges a time-based review pause consistently', async () => {
+    mockLlmComplete.mockReset();
+    const phone = '573001112231';
+    repos.conversation.upsert(phone, { price_given_at: new Date().toISOString() });
+
+    const result = await processMessage({ repos, customerPhone: phone, message: 'Déjame confirmar esta semana' });
+
+    expect(result.reply).toBe(getSkills().fallbackReplies.es.reviewPauseAcknowledgement);
+    expect(result.usedAi).toBe(false);
+    expect(mockLlmComplete).not.toHaveBeenCalled();
+  });
+
+  it('applies message limits before acknowledging a review pause', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkTimeWindow).mockReturnValueOnce({ isLimited: true, reason: 'hourly_limit' });
+    const phone = '573001112235';
+    repos.conversation.upsert(phone, { price_given_at: new Date().toISOString() });
+
+    const result = await processMessage({ repos, customerPhone: phone, message: 'Déjame revisar con mi familia' });
+
+    expect(result.reply).not.toBe(getSkills().fallbackReplies.es.reviewPauseAcknowledgement);
+    expect(result.shouldAlertOwner).toBe(true);
+    expect(mockLlmComplete).not.toHaveBeenCalled();
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+  });
+
+  it('acknowledges an English family review pause', async () => {
+    mockLlmComplete.mockReset();
+    const phone = '573001112236';
+    repos.conversation.upsert(phone, { language: 'en', price_given_at: new Date().toISOString() });
+
+    const result = await processMessage({ repos, customerPhone: phone, message: 'I need to review this with my family' });
+
+    expect(result.reply).toBe(getSkills().fallbackReplies.en.reviewPauseAcknowledgement);
+    expect(result.usedAi).toBe(false);
+    expect(mockLlmComplete).not.toHaveBeenCalled();
   });
 
   it('returns graceful reply and alerts owner when DeepSeek fails (qualified, price given)', async () => {
@@ -704,7 +760,7 @@ describe('processMessage', () => {
     });
   });
 
-  it('pauses with partner summary when user says "validar con mi esposa" after price', async () => {
+  it('acknowledges a partner review pause without repeating the package', async () => {
     mockLlmComplete.mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
@@ -718,7 +774,8 @@ describe('processMessage', () => {
 
     const result = await processMessage({ repos, customerPhone: phone, message: 'Listo voy a validar con mi esposa y te escribo' });
 
-    expect(result.reply).toContain('Dale Claudio');
+    expect(result.reply).toBe(getSkills().fallbackReplies.es.reviewPauseAcknowledgement);
+    expect(result.reply).not.toMatch(/\$\s?\d/);
     expect(result.shouldAlertOwner).toBe(false);
     expect(result.usedAi).toBe(false);
     expect(mockLlmComplete).not.toHaveBeenCalled();
@@ -751,8 +808,8 @@ describe('processMessage', () => {
     try {
       const result = await processMessage({ repos, customerPhone: phone, message: 'dejame consultarlo con mi esposa y te escribo' });
 
-      expect(result.reply).toContain('Dale Juan');
-      expect(result.reply).toContain('Para 10 personas queda en $5,200,000 COP total');
+      expect(result.reply).toBe(getSkills().fallbackReplies.es.reviewPauseAcknowledgement);
+      expect(result.reply).not.toMatch(/\$\s?\d/);
       expect(result.shouldAlertOwner).toBe(false);
       expect(result.usedAi).toBe(false);
       expect(mockLlmComplete).not.toHaveBeenCalled();
@@ -788,8 +845,8 @@ describe('processMessage', () => {
     try {
       const result = await processMessage({ repos, customerPhone: phone, message: 'dejame revisarlo con mi novio y te confirmo' });
 
-      expect(result.reply).toContain('Dale Maria');
-      expect(result.reply).toContain('Para 10 personas queda en $7,000,000 COP total');
+      expect(result.reply).toBe(getSkills().fallbackReplies.es.reviewPauseAcknowledgement);
+      expect(result.reply).not.toMatch(/\$\s?\d/);
       expect(result.shouldAlertOwner).toBe(false);
       expect(result.usedAi).toBe(false);
     } finally {
@@ -1381,7 +1438,7 @@ describe('processMessage', () => {
       expect(result.reply).not.toContain('3000000000');
       expect(result.reply).not.toMatch(/https?:\/\//i);
 
-      expect(repos.conversation.getMode(phone)).toBe('bot');
+      expect(repos.conversation.getMode(phone)).toBe('human_pending');
       const handed = repos.conversation.getByPhone(phone) as { handed_off_at: string | null };
       expect(handed.handed_off_at).toBeNull();
 

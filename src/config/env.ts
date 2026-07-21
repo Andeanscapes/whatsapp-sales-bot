@@ -62,7 +62,7 @@ export const envSchema = z.object({
   MAX_BOT_MESSAGES_PER_CUSTOMER_PER_DAY: z.coerce.number().catch(120),
   ALLOW_CUSTOMER_REENGAGEMENT_TEMPLATES: boolSchema.default(false),
   TIME_FOLLOW_HOURS: z.coerce.number().min(1 / 60).max(19).catch(4),
-  TIME_FINAL_NUDGE_HOURS: z.coerce.number().min(1 / 60).max(23).catch(23),
+  TIME_FINAL_NUDGE_HOURS: z.coerce.number().min(1 / 60).max(23).catch(22),
   FOLLOW_UP_SEND_START_HOUR: z.coerce.number().int().min(0).max(23).catch(8),
   FOLLOW_UP_SEND_END_HOUR: z.coerce.number().int().min(1).max(24).catch(20),
 

@@ -1,0 +1,34 @@
+{
+  "id": "follow-up-suppressed-after-wrong-service",
+  "source": "prod-summary-2026-07-19#nature-only",
+  "tags": [
+    "follow-up",
+    "soft-close",
+    "regression"
+  ],
+  "lang": "es",
+  "runner": "follow_up",
+  "liveRuns": 1,
+  "followUpSeed": {
+    "softClosed": true,
+    "phase": "discovery"
+  },
+  "followUpMockReply": "No debe enviarse.",
+  "criteria": [
+    {
+      "id": "no-follow-up",
+      "rule": "output_flag_equals",
+      "flag": "shouldSendReply",
+      "expected": false,
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Solo busco naturaleza y paisaje; no me interesa la mina",
+      "mockReply": "Entiendo. Nuestra experiencia está enfocada en minería, así que probablemente no sea adecuada para ti."
+    }
+  ]
+}

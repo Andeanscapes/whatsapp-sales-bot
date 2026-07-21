@@ -32,6 +32,26 @@ describe('extractBookingFields — people detection', () => {
   });
 
   it.each([
+    'Es para la familia 4 adultos',
+    'Seríamos 4 adultas',
+    'We are 4 adults',
+  ])('detects four adults from "%s"', (text) => {
+    expect(extractBookingFields(text).collected_people).toBe(4);
+  });
+
+  it.each([
+    'Somos 4 adultos y 2 niños',
+    'Somos 2 niños y 4 adultos',
+    'We are 4 adults and 2 children',
+    'We are 2 children and 4 adults',
+    'Somos 4 adultos y un niño',
+    'Somos 4 adultos y dos niñas',
+    'We are 4 adults and one child',
+  ])('does not guess a total for mixed adult and child counts from "%s"', (text) => {
+    expect(extractBookingFields(text).collected_people).toBeUndefined();
+  });
+
+  it.each([
     'solo o pareja',
     'una persona o pareja',
     'solo o quizás pareja',

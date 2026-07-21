@@ -11,7 +11,7 @@ import { DeepSeekLlmClient } from './llm/deepseek-llm-client.js';
 import { analyzeLead, type LeadAnalysis } from './lead-analyzer.js';
 import type { LlmTurn } from './llm/llm-client.js';
 import type { MergedQualification, ProcessMessageInput, ProcessMessageOutput } from './types.js';
-import { getActiveExperience, getCommonQuestions, getPlans, getPricingItems, getShortDescription, isPricingAvailable, getPublicPaymentFacts } from './product-registry.js';
+import { getActiveExperience, getCommonQuestions, getPlans, getPricingItems, isPricingAvailable, getPublicPaymentFacts } from './product-registry.js';
 import type { PublicPaymentFacts } from './product-registry.js';
 import { calculatePriceQuote, formatCop, type PriceQuote, type TransportNeed } from './pricing-calculator.js';
 import {
@@ -32,9 +32,12 @@ import {
   isSoftCloseMessage,
   isAdcodeNoise,
   isReEngagementMessage,
-  isPartnerConsultPause,
+  isReviewPause,
   getLastAssistantQuestion,
   detectsReservationIntent,
+  detectsAvailabilityConfirmRequest,
+  detectsOrganizerContactShare,
+  detectsWrongServiceNatureOnly,
   isReservationIntentOrConfirmation,
   replyMentionsPrice,
   containsHandoffPhrase,
@@ -50,9 +53,10 @@ import {
   qualificationSummary,
   peopleLabel,
 } from './reply-guard.js';
+
 import { assignLine, isReferralLine } from './lead-routing.js';
 import { normalizeText } from './language-service.js';
-import { INPUT_COST_PER_TOKEN, MS_72H, OUTPUT_COST_PER_TOKEN, SCORE_GALLERY_TRIGGER_THRESHOLD } from './constants.js';
+import { INPUT_COST_PER_TOKEN, MONTH_NAMES, MS_72H, OUTPUT_COST_PER_TOKEN, SCORE_GALLERY_TRIGGER_THRESHOLD } from './constants.js';
 import type { RecentMessage, LeadPain } from '../db/repositories/types.js';
 
 export {
@@ -65,6 +69,30 @@ export {
 };
 
 export type { ProcessMessageInput, ProcessMessageOutput };
+
+function withConversationState(
+  repos: ProcessMessageInput['repos'],
+  customerPhone: string,
+  output: ProcessMessageOutput,
+): ProcessMessageOutput {
+  return {
+    ...output,
+    conversationMode: repos.conversation.getMode(customerPhone),
+    salesPhase: repos.conversation.getSalesPhase(customerPhone),
+    softClosed: repos.conversation.getSoftClosedAt(customerPhone) != null,
+  };
+}
+
+/**
+ * Marks lead as waiting on human validation. Bot keeps replying (payment facts,
+ * clarifications). Does NOT set handed_off_at and does NOT open a live bridge —
+ * agent must still run /bridge to take exclusive control. Webhook notifies the
+ * assigned bridge line on further inbound while mode stays human_pending.
+ */
+function enterHumanPending(repos: ProcessMessageInput['repos'], customerPhone: string): void {
+  repos.conversation.setMode(customerPhone, 'human_pending');
+  repos.conversation.setSalesPhase(customerPhone, 'closing');
+}
 
 const MAX_INBOUND_CHARS = 1500;
 const SPANISH_MONTH_INDEX: Record<string, number> = {
@@ -109,6 +137,85 @@ function safetyPolicyReply(skills: Skills, lang: 'es' | 'en', message: string): 
   const intent = physicalRecoveryQuestion ? 'physical_recovery' : 'reservation_lead_time';
   const questions = getCommonQuestions(getActiveExperience(skills));
   return questions.find(question => question.lang === lang && question.intent === intent)?.answer ?? null;
+}
+
+function isInclusionsQuestion(message: string, lang: 'es' | 'en'): boolean {
+  const norm = normalizeForKeywordMatch(message);
+  if (lang === 'es') return /\bque incluye\b|\bque trae\b|\bque viene incluido\b/.test(norm);
+  return /\bwhat(?:'s| is) included\b|\bwhat does it include\b/.test(norm);
+}
+
+/** True when inclusions is the only (or primary) ask — not a multi-fact dump. */
+function isStandaloneInclusionsQuestion(message: string, lang: 'es' | 'en'): boolean {
+  if (!isInclusionsQuestion(message, lang)) return false;
+  const questionMarks = (message.match(/[?¿]/g) ?? []).length;
+  if (questionMarks >= 2) return false;
+  const norm = normalizeForKeywordMatch(message);
+  if (/\b(?:cuatro|varias|varios|tambien|and also|as well)\b/.test(norm)) return false;
+  if (/\b(?:edad|dura|duracion|mascota|pet|precio|fecha|cuanto)\b/.test(norm)
+    && !/\bque incluye\b|\bwhat(?:'s| is) included\b/.test(norm)) return false;
+  // Multi-topic list: "dura X, qué incluye, edad, mascotas"
+  if (/\b(?:dura|edad|mascota|pet).{0,80}\b(?:incluye|include)/.test(norm)
+    || /\b(?:incluye|include).{0,80}\b(?:dura|edad|mascota|pet)/.test(norm)) {
+    return false;
+  }
+  return true;
+}
+
+function isAvailabilityRecommendQuestion(message: string): boolean {
+  const norm = normalizeForKeywordMatch(message);
+  if (detectsAvailabilityConfirmRequest(message)) return false;
+  if (isPriceQuestion(message)) return false;
+  // Only force validation language when the customer asks for a recommendation
+  // (not when listing known dates from Business Context is appropriate).
+  return (
+    /\b(?:que|cual)\s+fecha\s+(?:me\s+)?recomiend/i.test(norm)
+    || /\brecomiend\w*\s+(?:una\s+)?fecha/i.test(norm)
+    || /\bfecha\s+(?:me\s+)?recomiend/i.test(norm)
+    || /\bfecha\s+(?:mejor|ideal|buena)\b/i.test(norm)
+    || /\bwhich\s+date\s+(?:do\s+you\s+)?recommend/i.test(norm)
+    || /\brecommend\s+a\s+date/i.test(norm)
+  );
+}
+
+/** Deterministic inclusions package — LLM must not omit core package facts. */
+function buildInclusionsReply(skills: Skills, lang: 'es' | 'en'): string {
+  return skills.fallbackReplies[lang].inclusionsPackageReply;
+}
+
+function buildAvailabilityRecommendReply(
+  skills: Skills,
+  lang: 'es' | 'en',
+  merged: MergedQualification,
+  message: string,
+): string {
+  const month = MONTH_NAMES.find(m => normalizeForKeywordMatch(message).includes(m));
+  const windowClause = month
+    ? (lang === 'es' ? ` para ${month}` : ` for ${month}`)
+    : (typeof merged.fecha === 'string' && merged.fecha
+      ? (lang === 'es' ? ` para ${merged.fecha}` : ` for ${merged.fecha}`)
+      : '');
+  const peopleClause = typeof merged.personas === 'number'
+    ? (lang === 'es' ? ` para ${merged.personas} personas` : ` for ${merged.personas} people`)
+    : '';
+  return skills.fallbackReplies[lang].availabilityRecommendReply
+    .replace('{{windowClause}}', windowClause)
+    .replace('{{peopleClause}}', peopleClause);
+}
+
+function replyMissingCoreInclusion(normReply: string): boolean {
+  return !/\balojamiento|lodging\b/.test(normReply)
+    || !/\b3 comidas|3 meals|comidas completas\b/.test(normReply)
+    || !/\bequipo|equipment|casco|botas\b/.test(normReply)
+    || !/\bguia|acompanamiento|guide\b/.test(normReply);
+}
+
+function ensureRequestedInclusionCoverage(reply: string, message: string, skills: Skills, lang: 'es' | 'en'): string {
+  if (!isInclusionsQuestion(message, lang)) return reply;
+  if (isStandaloneInclusionsQuestion(message, lang)) return buildInclusionsReply(skills, lang);
+  // Multi-fact answers: append i18n pad if core package facts are missing.
+  if (!replyMissingCoreInclusion(normalizeForKeywordMatch(reply))) return reply;
+  return `${reply.trim()} ${skills.fallbackReplies[lang].inclusionsPadSuffix}`;
 }
 
 function extractFutureMonthConstraint(text: string): string | null {
@@ -356,27 +463,21 @@ function computePriceFollowUp(personas: unknown, planId: string | undefined | nu
     : `In your case, ${label}: $${formatCop(quote.planTotal)} COP all-inclusive.`;
 }
 
-function computePartnerPriceLine(personas: unknown, planId: string | undefined | null, lang: string, skills: Skills): string | undefined {
-  const { individualPrice, couplePrice, duration } = getPlanPricing(planId, skills);
-  if (individualPrice == null || couplePrice == null) return undefined;
-  const quote = calculatePriceQuote(getActiveExperience(skills), { planId, people: personas });
-  if (!quote) {
-    return lang === 'es'
-      ? `Plan ${duration}. Individual: $${formatCop(individualPrice)} COP. Pareja: $${formatCop(couplePrice)} COP.`
-      : `Plan ${duration}. Individual: $${formatCop(individualPrice)} COP. Couple: $${formatCop(couplePrice)} COP.`;
-  }
-  return lang === 'es'
-    ? `Para ${quote.people} ${quote.people === 1 ? 'persona' : 'personas'} queda en $${formatCop(quote.planTotal)} COP total.`
-    : `For ${quote.people} ${quote.people === 1 ? 'person' : 'people'}, it is $${formatCop(quote.planTotal)} COP total.`;
-}
-
 function isPriceQuestion(text: string): boolean {
   const norm = normalizeForKeywordMatch(text);
+  // Capacity / group-size questions are not price questions.
+  if (/\b(?:permite|capacidad|maximo|maximum|tamano|group size|cupo maximo)\b/.test(norm)
+    && !/\b(?:precio|precios|vale|valor|costo|cuesta|price|cost|cuanto|how much)\b/.test(norm)) {
+    return false;
+  }
   if (norm.includes('how much')) return true;
   const tokens = new Set(norm.split(/[^a-z0-9]+/).filter(Boolean));
   if (['precio', 'precios', 'vale', 'valor', 'costo', 'cuesta', 'cuestan', 'price', 'prices', 'cost', 'costs'].some(t => tokens.has(t))) return true;
-  if (tokens.has('cuanto') && !/\bcuanto\s+(dura|tiempo)\b/.test(norm)) return true;
-  if (tokens.has('total') && (tokens.has('exacto') || tokens.has('exact') || tokens.has('paquete') || tokens.has('package'))) return true;
+  if (tokens.has('cuanto') && !/\bcuanto\s+(dura|tiempo|personas|people)\b/.test(norm)) return true;
+  if (tokens.has('total') && (
+    tokens.has('exacto') || tokens.has('exact') || tokens.has('paquete') || tokens.has('package')
+    || tokens.has('cuanto') || /\bpara\s+(?:los\s+)?\d+\b/.test(norm)
+  )) return true;
   return /\b(?:cual es el|what is the|whats the) total\b/.test(norm);
 }
 
@@ -554,19 +655,6 @@ function buildDeterministicQuote(message: string, merged: MergedQualification, l
   return quote ? formatDeterministicQuoteReply(quote, skills, lang) : null;
 }
 
-function buildPartnerConsultSummary(q: MergedQualification, lang: 'es' | 'en', skills: Skills): string {
-  const name = String(q.nombre ?? '').trim();
-  const priceLine = computePartnerPriceLine(q.personas, q.plan as string | undefined, lang, skills)
-    ?? (lang === 'es'
-      ? 'El valor final lo validamos segun cantidad de personas.'
-      : 'We validate the final price based on the group size.');
-  return skills.fallbackReplies[lang].partnerConsultSummary
-    .replace('{{name}}', name)
-    .replace('{{experienceSummary}}', getShortDescription(getActiveExperience(skills)))
-    .replace('{{priceLine}}', priceLine)
-    .trim();
-}
-
 function instagramUrl(skills: Skills): string {
   return skills.andeanScapes.business.socialLinks?.instagram ?? '';
 }
@@ -710,6 +798,11 @@ function skipRepeated(candidate: string, recentMessages: RecentMessage[], merged
 }
 
 export async function processMessage(input: ProcessMessageInput): Promise<ProcessMessageOutput> {
+  const output = await processMessageCore(input);
+  return withConversationState(input.repos, input.customerPhone, output);
+}
+
+async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMessageOutput> {
   const { repos, customerPhone, message, messageId, storeInbound = true } = input;
 
   // Persist the customer's inbound message for audit/transcript. No-op when the
@@ -834,6 +927,36 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     };
   }
 
+  if (!hasSafetyOverride && detectsWrongServiceNatureOnly(message)) {
+    if (!softClosedAt) repos.conversation.setSoftClosed(customerPhone);
+    return {
+      reply: skills.fallbackReplies[lang].wrongServiceNatureOnly,
+      shouldSendReply: true,
+      leadScore: repos.conversation.getLeadScore(customerPhone),
+      usedAi: false,
+      shouldAlertOwner: false,
+      shouldSendOwnerImage: false,
+      shouldSendGalleryImages: false,
+      shouldSendImage: false,
+      priceJustGiven: false,
+    };
+  }
+
+  if (!hasSafetyOverride && detectsOrganizerContactShare(message)) {
+    return {
+      reply: skills.fallbackReplies[lang].organizerContactReceived,
+      shouldSendReply: true,
+      leadScore: Math.max(repos.conversation.getLeadScore(customerPhone), skills.salesStrategy.hotLeadThreshold),
+      usedAi: false,
+      shouldAlertOwner: true,
+      ownerAlertType: 'organizer_contact',
+      shouldSendOwnerImage: false,
+      shouldSendGalleryImages: false,
+      shouldSendImage: false,
+      priceJustGiven: false,
+    };
+  }
+
   const ambiguousPartyComparison = isAmbiguousPartyComparison(message);
   const bookingFields = extractBookingFields(message);
   if (futureWindow) {
@@ -906,7 +1029,51 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   }
 
   const lastAssistantQuestion = getLastAssistantQuestion(repos, customerPhone);
+  const conversationMode = repos.conversation.getMode(customerPhone);
   const galleryRequested = isGalleryRequest(message) || isGalleryConfirmation(message, lastAssistantQuestion);
+
+  const largeGroupPeople = typeof dbQualification.personas === 'number' ? dbQualification.personas : null;
+  const largeGroupNeedsEscalate = largeGroupPeople != null
+    && largeGroupPeople > skills.salesStrategy.maxGroupSizePerDate
+    && !isReviewPause(message)
+    && (introducedLargeGroup || isPriceQuestion(message) || detectsAvailabilityConfirmRequest(message));
+  if (!hasSafetyOverride && largeGroupNeedsEscalate) {
+    enterHumanPending(repos, customerPhone);
+    const escalateScore = Math.max(currentScore, skills.salesStrategy.urgentLeadThreshold);
+    repos.conversation.upsert(customerPhone, { lead_score: escalateScore });
+    return {
+      reply: skills.fallbackReplies[lang].largeGroupEscalate.replace('{{people}}', String(largeGroupPeople)),
+      shouldSendReply: true,
+      leadScore: escalateScore,
+      usedAi: false,
+      shouldAlertOwner: true,
+      ownerAlertType: 'large_group',
+      shouldSendOwnerImage: false,
+      shouldSendGalleryImages: false,
+      shouldSendImage: false,
+      priceJustGiven: false,
+    };
+  }
+
+  if (!hasSafetyOverride && conversationMode === 'human_pending' && isPaymentMethodsQuestion(message)) {
+    const facts = getPublicPaymentFacts(skills);
+    const reply = skills.fallbackReplies[lang].humanPendingPaymentAck
+      .replaceAll('{{methods}}', formatMethods(facts.methodNames, lang))
+      .replaceAll('{{deposit}}', String(facts.depositPercent))
+      .replaceAll('{{date}}', displayDate(dbQualification.fecha, lang));
+    return {
+      reply,
+      shouldSendReply: true,
+      leadScore: currentScore,
+      usedAi: false,
+      shouldAlertOwner: true,
+      ownerAlertType: 'reservation_handoff',
+      shouldSendOwnerImage: false,
+      shouldSendGalleryImages: false,
+      shouldSendImage: false,
+      priceJustGiven: false,
+    };
+  }
 
   let isReEngagement = false;
   // Replying after a follow-up pain question counts as re-engagement — but only
@@ -937,10 +1104,6 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     && isReservationIntentOrConfirmation(message, lastAssistantQuestion);
 
   const preLimitReservationIntent = !!preLimitPriceRow && isReservationIntentOrConfirmation(message, lastAssistantQuestion);
-
-  if (!hasSafetyOverride && preLimitPriceRow && isPartnerConsultPause(message)) {
-    return { reply: buildPartnerConsultSummary(dbQualification, lang, skills), shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: !galleryAlreadyNudged && shouldAutoSendGallery(currentScore, false), shouldSendImage: false, priceJustGiven: false };
-  }
 
   const limits = checkTimeWindow(repos, customerPhone);
   if (limits.isLimited) {
@@ -978,6 +1141,10 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
       return { reply: '', shouldSendReply: false, leadScore: currentScore, usedAi: false, shouldAlertOwner: true, ownerAlertType: 'limit_loop', shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
     }
     return { reply: fb.messageLimitReached, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: true, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
+  }
+
+  if (!hasSafetyOverride && preLimitPriceRow && isReviewPause(message)) {
+    return { reply: skills.fallbackReplies[lang].reviewPauseAcknowledgement, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
   }
 
   const budget = checkBudget(repos, customerPhone);
@@ -1224,7 +1391,10 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     }
   } else if (replyMentionsPrice(replyText)) {
     // Group size alone is not enough — sell package value first, ask one depth question.
-    replyText = buildPriceGateTeaser(skills, lang, typeof merged.plan === 'string' ? merged.plan : undefined);
+    const teaser = buildPriceGateTeaser(skills, lang, typeof merged.plan === 'string' ? merged.plan : undefined);
+    replyText = recentMessages.some(message => message.role === 'assistant' && message.content === teaser)
+      ? skipRepeated(nextQualificationQuestion(merged, skills.fallbackReplies[lang]), recentMessages, merged, skills.fallbackReplies[lang])
+      : teaser;
     llmTurn.img = false;
   }
 
@@ -1238,10 +1408,18 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     replyText = safetyOverrideReply;
     llmTurn.img = false;
   } else if (ambiguousPartyComparison) {
-    const knownPlan = getCollectedFields(repos, customerPhone).plan;
+    const knownPlan = getCollectedFields(repos, customerPhone).plan ?? merged.plan;
     replyText = buildPartyComparisonReply(skills, lang, typeof knownPlan === 'string' ? knownPlan : null);
     llmTurn.img = false;
+  } else if (isStandaloneInclusionsQuestion(message, lang)) {
+    replyText = buildInclusionsReply(skills, lang);
+    llmTurn.img = false;
+  } else if (isAvailabilityRecommendQuestion(message)) {
+    replyText = buildAvailabilityRecommendReply(skills, lang, merged, message);
+    llmTurn.img = false;
   }
+
+  replyText = ensureRequestedInclusionCoverage(replyText, message, skills, lang);
 
   replyText = scrubInternalLeakTokens(replyText, skills.fallbackReplies[lang].internalDatePending);
 
@@ -1288,17 +1466,23 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   const llmReadyToBook = llmTurn.action === 'handoff' || llmTurn.lead.intent === 'ready_to_book';
 
   const paymentQ = isPaymentMethodsQuestion(message);
-  const closeIntent = reservationIntent || recentReservation || llmReadyToBook;
+  const availabilityConfirm = detectsAvailabilityConfirmRequest(message);
+  const closeIntent = reservationIntent || recentReservation || llmReadyToBook || availabilityConfirm;
   const closeStage = inferCloseStage(recentMessages);
   const paymentFacts = getPublicPaymentFacts(skills);
+  const hasCoreBooking = merged.personas != null && merged.fecha != null;
+  const wantsNextStep = /\b(?:qu[eé]\s+sigue|what(?:'s|\s+is)\s+next|s[ií]\s+me\s+interesa)\b/i.test(message);
 
-  // ── Payment methods question: public facts + owner handoff alert ────
-  // Explicit payment-detail request is high commercial intent even if
-  // qualification is incomplete. Always alert owner (reservation_handoff
-  // cooldown), but keep bot mode — agent must still /bridge to take over.
-  // Never expose phone numbers / payment links here (template is public-only).
-  if (!hasSafetyOverride && paymentQ && pricePresented) {
-    replyText = buildCloseReply(skills, lang, merged, 'payment_methods', paymentFacts);
+  // ── Payment methods question: public facts + owner alert ────
+  // High commercial intent. Sets human_pending (bot still answers; agent must
+  // /bridge for exclusive control). Never expose phone numbers / payment links.
+  if (!hasSafetyOverride && paymentQ && (pricePresented || conversationMode === 'human_pending')) {
+    replyText = conversationMode === 'human_pending'
+      ? skills.fallbackReplies[lang].humanPendingPaymentAck
+        .replaceAll('{{methods}}', formatMethods(paymentFacts.methodNames, lang))
+        .replaceAll('{{deposit}}', String(paymentFacts.depositPercent))
+        .replaceAll('{{date}}', displayDate(merged.fecha, lang))
+      : buildCloseReply(skills, lang, merged, 'payment_methods', paymentFacts);
     needsHumanEffective = true;
     shouldSendGallery = false;
     llmTurn.img = false;
@@ -1313,15 +1497,18 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     }, '[BOT] payment methods reply sent');
   }
 
-  // ── Reservation / close intent: analyzer-gated bridge ──────────────────
-  // Primary path: the LLM analyzer decides whether to alert/bridge the owner.
-  // Many fields or deterministic regex patterns alone do NOT trigger bridge.
-  // Fallback path: when the analyzer is UNAVAILABLE (HTTP/timeout/invalid JSON
-  // or budget-skipped), never silently drop a booking-ready lead — bridge when
-  // qualification is complete, price was shown, and reservation intent is
-  // explicit (the pre-analyzer deterministic guarantee).
+  // ── Reservation / close intent → human_pending ──────────────────
+  // - Full qual + price + (analyzer ready OR analyzer down + close intent)
+  // - Availability confirm only when core booking + plan (or price already shown)
+  // Does not mute bot; agent /bridge still required for exclusive control.
   const deterministicBridgeFallback = analyzerUnavailable && closeIntent;
-  if (!hasSafetyOverride && qComplete && pricePresented && (shouldBridgeByScore || deterministicBridgeFallback)) {
+  const strongAvailabilityConfirm = availabilityConfirm
+    && hasCoreBooking
+    && (merged.plan != null || pricePresented || qComplete);
+  const canEnterHumanPending =
+    (qComplete && pricePresented && (shouldBridgeByScore || deterministicBridgeFallback))
+    || strongAvailabilityConfirm;
+  if (!hasSafetyOverride && canEnterHumanPending) {
     if (closeStage === 'pending_sent') {
       replyText = buildCloseAck(skills, lang, merged);
     } else {
@@ -1339,7 +1526,8 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
       intent: analysis?.intent,
       readiness: analysis?.reservationReadiness,
       fallback: deterministicBridgeFallback,
-    }, '[BOT] reservation bridge triggered');
+      availabilityConfirm: strongAvailabilityConfirm,
+    }, '[BOT] reservation human_pending triggered');
   } else if (!hasSafetyOverride && qComplete && pricePresented && closeIntent) {
     logger.warn({
       phone: customerPhone,
@@ -1423,7 +1611,30 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   // ── When closing was triggered deterministically, lock phase so follow-ups
   // ── are permanently excluded for this lead.
   if (needsHumanEffective) {
+    enterHumanPending(repos, customerPhone);
+  } else if (
+    !hasSafetyOverride
+    && qComplete
+    && !pricePresented
+    && !closeIntent
+    && !paymentQ
+    && !isPriceQuestion(message)
+    && !isGalleryRequest(message)
+    && !llmTurn.img
+    && !wantsNextStep
+  ) {
+    // Fully qualified lead: summarize known facts and move forward — no re-ask loop.
+    replyText = skills.fallbackReplies[lang].qualifiedNextStep
+      .replaceAll('{{name}}', displayName(merged.nombre, lang))
+      .replaceAll('{{summary}}', qualificationSummary(merged, lang, skills.fallbackReplies[lang]));
+    llmTurn.img = false;
     repos.conversation.setSalesPhase(customerPhone, 'closing');
+  } else if (!hasSafetyOverride && !needsHumanEffective && hasCoreBooking && wantsNextStep && !isGalleryRequest(message)) {
+    const dateClause = merged.fecha
+      ? (lang === 'es' ? ` para ${displayDate(merged.fecha, lang)}` : ` for ${displayDate(merged.fecha, lang)}`)
+      : '';
+    replyText = skills.fallbackReplies[lang].afterPriceNextStep.replace('{{dateClause}}', dateClause);
+    llmTurn.img = false;
   }
   // ────────────────────────────────────────────────────────────────────────
 

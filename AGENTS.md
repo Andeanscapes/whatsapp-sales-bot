@@ -43,7 +43,7 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
 
 1. Init a Node 24 + TypeScript project in this directory (NOT in a subdirectory).
 2. `package.json`: type `module`, scripts (`build`, `start`, `dev`, `typecheck`, `lint`, `test`, `simulate`), deps: `fastify`, `better-sqlite3`, `zod`, `pino`, `dotenv`.
-3. `tsconfig.json`: strict, `target=ES2024`, `module=NodeNext`, `outDir=dist`, `rootDir=src`.
+3. `tsconfig.json`: strict, `target=ES2024`, `module=NodeNext`, `outDir=dist`, `rootDir=src`. Vitest/esbuild transform overrides to ES2022 only (Vitest 2 does not recognize ES2024 yet); production `tsc` still emits ES2024.
 4. `src/config/env.ts`: zod schema for ALL env vars from the plan (sections 9, 6.3). Export typed `env` object loaded at startup.
 5. `src/server.ts`: create Fastify, register pino, register health route, start on `127.0.0.1:PORT`.
 6. `src/routes/health.route.ts`: `GET /health` returns `{ok: true, uptime: process.uptime()}`.

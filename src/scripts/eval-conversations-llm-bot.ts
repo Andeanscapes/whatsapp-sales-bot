@@ -2,8 +2,10 @@ import { readdirSync, readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { env } from '../config/env.js';
-import { loadSkills, refreshSkills } from '../services/skill-loader.js';
-import { createRunContext, runTurn } from '../tests/conversation-eval/runner.js';
+import { getSkills, loadSkills, refreshSkills } from '../services/skill-loader.js';
+import { getActiveExperience } from '../services/product-registry.js';
+import { PRICING_NOT_AVAILABLE } from '../services/dynamic-data-service.js';
+import { applyScenarioSeeds, createRunContext, runTurn } from '../tests/conversation-eval/runner.js';
 import { runFollowUpScenario } from '../tests/conversation-eval/follow-up-runner.js';
 import { evaluateScenario } from '../tests/conversation-eval/evaluate-scenario.js';
 import { buildReport, printReport, writeReport } from '../tests/conversation-eval/report.js';
@@ -72,6 +74,17 @@ async function main(): Promise<void> {
       const progress = progressLabel(scenarioIndex + 1, scenarios.length);
       console.log(`${progress} starting ${scenario.id} run ${run + 1}/${runCount}`);
       const ctx = createRunContext({ phoneSuffix: scenarioIndex * 10 + run });
+      const restoreSeeds = applyScenarioSeeds(ctx, scenario);
+      const experience = getActiveExperience(getSkills());
+      const originalPricingItems = experience.pricing.items;
+      const originalPricingRules = experience.pricing.botRules;
+      if (scenario.mockPricing) {
+        experience.pricing.items = [
+          { id: `${scenario.mockPricing.planId}_individual`, planId: scenario.mockPricing.planId, label: 'Individual', pricePerPerson: scenario.mockPricing.individual, publiclyShow: true },
+          { id: `${scenario.mockPricing.planId}_couple`, planId: scenario.mockPricing.planId, label: 'Pareja', couplePrice: scenario.mockPricing.couple, publiclyShow: true },
+        ];
+        experience.pricing.botRules = experience.pricing.botRules.filter(rule => rule !== PRICING_NOT_AVAILABLE);
+      }
       try {
         if (scenario.runner === 'follow_up') {
           ctx.turns.push(...await runFollowUpScenario(ctx, scenario));
@@ -93,6 +106,9 @@ async function main(): Promise<void> {
         runResults.push(buildResult(scenario, evaluation, turns, { total: 1, passed: evaluation.hardFail ? 0 : 1 }));
         totalCostUsd += ctx.repos.aiUsage.getDailyCost(todayStart);
       } finally {
+        experience.pricing.items = originalPricingItems;
+        experience.pricing.botRules = originalPricingRules;
+        restoreSeeds();
         ctx.destroy();
       }
     }

@@ -1,0 +1,86 @@
+{
+  "id": "qualified-lead-no-requalification-after-name",
+  "source": "prod-summary-2026-07-21#claudia-four-people",
+  "tags": [
+    "state",
+    "qualification",
+    "conversion",
+    "regression"
+  ],
+  "lang": "es",
+  "liveRuns": 1,
+  "criteria": [
+    {
+      "id": "summarizes-all-known",
+      "rule": "reply_must_match",
+      "patterns": [
+        "4 personas",
+        "21.{0,15}22 de agosto|21-22 de agosto|22 de agosto",
+        "carro",
+        "Claudia"
+      ],
+      "turn": 4,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "no-reask-date",
+      "rule": "known_field_not_reasked",
+      "field": "date",
+      "suppliedTurn": 2,
+      "turn": 4,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "no-reask-people",
+      "rule": "known_field_not_reasked",
+      "field": "people",
+      "suppliedTurn": 1,
+      "turn": 4,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "moves-to-close",
+      "rule": "reply_must_match",
+      "patterns": [
+        "precio|valor|disponibilidad|separar|reserv"
+      ],
+      "turn": 4,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Somos 4 personas",
+      "seedQualification": {
+        "people": 4,
+        "plan": "2d1n_mining"
+      },
+      "mockReply": "Perfecto. ¿Qué fecha tienen en mente?"
+    },
+    {
+      "user": "21 y 22 de agosto",
+      "seedQualification": {
+        "date": "21-22 de agosto"
+      },
+      "mockReply": "Perfecto. ¿Cómo llegarían?"
+    },
+    {
+      "user": "En carro propio",
+      "seedQualification": {
+        "transport": "own"
+      },
+      "mockReply": "Perfecto. ¿Con quién tengo el gusto?"
+    },
+    {
+      "user": "Claudia Roncancio",
+      "seedQualification": {
+        "name": "Claudia Roncancio"
+      },
+      "mockReply": "Claudia, tengo 4 personas, 21-22 de agosto y carro propio. El siguiente paso es validar disponibilidad y compartirte el valor exacto para reservar."
+    }
+  ]
+}

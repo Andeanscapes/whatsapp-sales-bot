@@ -117,12 +117,48 @@ export function isReEngagementMessage(text: string): boolean {
 
 export function isPartnerConsultPause(text: string): boolean {
   const norm = normalizeText(text);
-  return /\b(?:consulto|consultarlo|consultar[eé]|validar|valido|validarlo|revisar|reviso|revisarlo|mirar|miro|mirarlo|hablar|hablo|hablarlo|lo pienso|pensar|pensarlo|pensar[eé]|dejame|dame tiempo|sin afan|chequear|chequeo|lo chequeo|comentar|comento|lo comento|consultar|lo consulto|se lo digo|preguntar|pregunto|le pregunto|mostrar|muestro|le muestro|ense[ñn]ar|le ense[ñn]o|le paso)\b[\s\S]{0,80}\b(?:pareja|esposa|esposo|novia|novio|familia|acompanante|acompa[ñn]ante|partner|wife|husband|girlfriend|boyfriend|family|ella|el|con ella|con el|mi gente|mis papas|mis viejos|mis padres|ellos|ellos|with her|with him|my folks|my partner|my parents|my family)\b/i.test(norm)
-    || /\b(?:pareja|esposa|esposo|novia|novio|familia|acompanante|acompa[ñn]ante|partner|wife|husband|girlfriend|boyfriend|family|ella|el|con ella|con el|mi gente|mis papas|mis viejos|mis padres|ellos|they|with her|with him|my folks|my partner|my parents|my family)\b[\s\S]{0,80}\b(?:consulto|consultarlo|consultar[eé]|validar|valido|validarlo|revisar|reviso|revisarlo|mirar|miro|mirarlo|hablar|hablo|hablarlo|lo pienso|pensar|pensarlo|pensar[eé]|chequear|chequeo|lo chequeo|comentar|comento|lo comento|consultar|lo consulto|se lo digo|preguntar|pregunto|le pregunto|mostrar|muestro|le muestro|ense[ñn]ar|le ense[ñn]o)\b/i.test(norm);
+  const review = String.raw`(?:consulto|consultarlo|consultar[eé]|validar|valido|validarlo|revisar|reviso|revisarlo|mirar|miro|mirarlo|hablar|hablo|hablarlo|lo pienso|pensar|pensarlo|pensar[eé]|dejame|dame tiempo|sin afan|chequear|chequeo|lo chequeo|comentar|comento|lo comento|se lo digo|preguntar|pregunto|le pregunto|mostrar|muestro|le muestro|ense[ñn]ar|le ense[ñn]o|le paso|review|check|discuss|talk|think(?: it over)?|ask|show|run it by)`;
+  const group = String.raw`(?:pareja|esposa|esposo|novia|novio|familia|hij[oa]s?|niñ[oa]s?|acompanante|acompa[ñn]ante|partner|wife|husband|girlfriend|boyfriend|family|children|kids|ella|el|con ella|con el|mi gente|mis papas|mis viejos|mis padres|ellos|they|with her|with him|my folks|my partner|my parents|my family)`;
+  return new RegExp(String.raw`\b${review}\b[\s\S]{0,80}\b${group}\b`, 'i').test(norm)
+    || new RegExp(String.raw`\b${group}\b[\s\S]{0,80}\b${review}\b`, 'i').test(norm);
+}
+
+/** Customer needs time to coordinate with their group, but has not declined. */
+export function isReviewPause(text: string): boolean {
+  return isPartnerConsultPause(text)
+    || /\b(?:dejame|déjame)\s+(?:revisar|validar|confirmar)\b[\s\S]{0,80}\b(?:semana|grupo|familia|hij[oa]s?|children|kids)\b/i.test(text);
+}
+
+/** A clear customer-owned follow-up promise must never receive an automated nudge. */
+export function isCustomerFollowUpPromise(text: string): boolean {
+  const norm = normalizeText(text);
+  return /\b(?:te avisare|yo te escribo|te escribimos|yo te confirmo|te confirmo cuando|cuando (?:decida|decidamos|tenga|tengamos|hable|hablemos)\b|when (?:i|we) decide|(?:i|we) (?:ll|will) let you know|i(?:'| wi)?ll confirm)\b/i.test(norm);
+}
+
+export function detectsAvailabilityConfirmRequest(text: string): boolean {
+  const norm = normalizeText(text);
+  return /(?:por favor\s+)?confirm(?:a|ar|e|emos)?\s+(?:la\s+)?disponibilidad/i.test(norm)
+    || /(?:valida|validar|revisa|revisar)\s+(?:la\s+)?disponibilidad/i.test(norm)
+    || /please\s+confirm\s+availability/i.test(norm)
+    || /confirm\s+availability/i.test(norm);
+}
+
+export function detectsOrganizerContactShare(text: string): boolean {
+  return /(?:wa\.me\/|api\.whatsapp\.com\/send|whatsapp\.com\/send)/i.test(text)
+    || /\b(?:whatsapp|wa)\b.{0,40}\b(?:organizador|organizer|contacto|contact)\b/i.test(text)
+    || /\b(?:organizador|organizer|contacto|contact)\b.{0,40}\b(?:whatsapp|wa\.me)\b/i.test(text);
+}
+
+export function detectsWrongServiceNatureOnly(text: string): boolean {
+  const norm = normalizeText(text);
+  const wantsNature = /\b(?:solo\s+busco|only\s+(?:want|looking)|busco\s+solo|naturaleza|paisaje|nature|landscape|scenery)\b/i.test(norm);
+  const rejectsMine = /\b(?:no\s+quiero\s+entrar|no\s+me\s+interesa\s+la\s+mina|sin\s+mina|no\s+mina|not\s+(?:the\s+)?mine|no\s+mining|don't\s+want\s+(?:the\s+)?mine|do\s+not\s+want\s+(?:the\s+)?mine)\b/i.test(norm);
+  return wantsNature && rejectsMine;
 }
 
 export function detectsReservationIntent(text: string): boolean {
   const norm = normalizeText(text);
+  if (detectsAvailabilityConfirmRequest(text)) return true;
   const patterns = [
     /quiero (reservar|pagar|agendar|separar|apartar)/,
     /me gustaria (reservar|pagar|agendar|separar|apartar)(?: ya)?/,
@@ -234,7 +270,7 @@ export function stripHandoffPhrases(reply: string): string {
 export function isPaymentMethodsQuestion(text: string): boolean {
   const norm = normalizeText(text);
   return (
-    /\b(metodos? de pago|medios? de pago|formas? de pago|como se paga|como pago|con que pago|nequi|mercado pago|anticipo|deposito|abono)\b/i.test(norm)
+    /\b(metodos? de pago|medios? de pago|formas? de pago|como se paga|como pago|como puedo pagar|con que pago|nequi|mercado pago|anticipo|deposito|abono|pagar para separar)\b/i.test(norm)
     || /\b(payment methods?|how (can|do) i pay|how to pay|deposit|down payment|nequi|mercado pago)\b/i.test(norm)
   );
 }
@@ -316,7 +352,7 @@ export function qualificationSummary(q: MergedQualification, lang: 'es' | 'en', 
     if (human) parts.push(human);
   }
   if (q.transporte === 'public_bus') parts.push(lang === 'es' ? 'con bus por su cuenta' : 'with public bus on their own');
-  else if (q.transporte != null) parts.push(lang === 'es' ? 'con transporte propio' : 'with your own transport');
+  else if (q.transporte != null) parts.push(lang === 'es' ? 'con carro propio' : 'with your own car');
   if (q.mascota != null) parts.push(lang === 'es' ? 'con mascota' : 'with pet');
   return parts.length > 0 ? parts.join(', ') : (lang === 'es' ? 'tus datos' : 'your details');
 }

@@ -470,6 +470,19 @@ describe('notifyAssignedLineIfDormant', () => {
     expect(mockSendTelegram).not.toHaveBeenCalled();
   });
 
+  it('notifies assigned bridge agent when mode is human_pending without short-circuiting bot', async () => {
+    repos.conversation.upsert(PHONE, { language: 'es' });
+    repos.conversation.setAssignment(PHONE, { assignedLineId: 'line1_bridge', assignedAgentChat: '111' });
+    repos.conversation.setMode(PHONE, 'human_pending');
+
+    const result = await notifyAssignedLineIfDormant(repos, msg('Sigo esperando confirmacion'));
+
+    expect(result).toBe(false);
+    expect(mockSendTelegram).toHaveBeenCalledTimes(1);
+    expect(mockSendTelegram.mock.calls[0][0]).toBe('111');
+    expect(mockSendTelegram.mock.calls[0][1]).toContain('/bridge');
+  });
+
   it('does not notify when opt-out', async () => {
     repos.conversation.setAssignment(PHONE, { assignedLineId: 'line1_bridge', assignedAgentChat: '111' });
     repos.optOut.setOptOut(PHONE);

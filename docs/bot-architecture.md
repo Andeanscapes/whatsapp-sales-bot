@@ -312,6 +312,8 @@ Bridge/handoff nuance:
 
 - Alerts assign an owner line, but bot usually continues.
 - Human bridge starts only when agent runs `/chat` or `/bridge`.
+- `conversation_mode='bot'` means normal automated replies.
+- `conversation_mode='human_pending'` means close/reservation escalated: bot still replies (payment public facts, clarifications), follow-ups are suppressed (`sales_phase=closing`), assigned bridge agent is notified on further inbound, but exclusive control still requires `/bridge`. Does **not** set `handed_off_at`.
 - `conversation_mode='bridge_active'` means bot stays silent and forwards inbound customer messages to Telegram agent.
 - `conversation_mode='referred'` means lead is sent to another line and gets handed-off style replies.
 - Stale bridge sessions expire after 12 hours and bot resumes.

@@ -23,6 +23,7 @@ export function buildFollowUpPrompt(input: {
   lang: 'es' | 'en';
   phase: string | null;
   stage: 'first_nudge' | 'second_nudge';
+  reviewReminder?: boolean;
 }): string {
   return [
     readFollowUpPrompt(),
@@ -31,6 +32,7 @@ export function buildFollowUpPrompt(input: {
     `Language: ${input.lang}`,
     `Phase: ${input.phase ?? 'unknown'}`,
     `Stage: ${input.stage}`,
+    ...(input.reviewReminder ? ['Mode: review_reminder'] : []),
   ].join('\n');
 }
 

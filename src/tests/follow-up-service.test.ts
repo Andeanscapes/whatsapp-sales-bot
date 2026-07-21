@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
-import { loadSkills } from '../services/skill-loader.js';
+import { getSkills, loadSkills } from '../services/skill-loader.js';
 import { migrate } from '../db/migrate.js';
 import { createRepositories, type Repositories } from '../db/repositories/index.js';
 import { env, envSchema } from '../config/env.js';
@@ -25,10 +25,11 @@ vi.mock('../services/whatsapp-client.js', () => ({
     }
   },
   sendText: vi.fn(() => Promise.resolve()),
+  sendImageUrl: vi.fn(() => Promise.resolve()),
 }));
 
 import { isFollowUpSendWindow, runFollowUps } from '../services/follow-up-service.js';
-import { sendText, WhatsAppSendError } from '../services/whatsapp-client.js';
+import { sendImageUrl, sendText, WhatsAppSendError } from '../services/whatsapp-client.js';
 import { checkBudget } from '../services/budget-guard.js';
 
 const PHONE = '573001112233';
@@ -86,6 +87,7 @@ beforeEach(() => {
   previousHourlyMessageLimit = env.MAX_BOT_MESSAGES_PER_CUSTOMER_PER_HOUR;
   mockLlmComplete.mockReset();
   vi.mocked(sendText).mockClear();
+  vi.mocked(sendImageUrl).mockClear();
   vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
 });
 
@@ -121,6 +123,167 @@ describe('follow-up service', () => {
     expect(sendText).not.toHaveBeenCalled();
   });
 
+  it('suppresses the early nudge when a customer needs to review with their children', async () => {
+    repos.conversation.upsert(PHONE, { language: 'es', lead_score: 71, price_given_at: new Date().toISOString() });
+    addMsg('inbound', 'Déjame revisar esta semana con mis hijos y te confirmo.', -5 * 60 * 60 * 1000);
+    addMsg('outbound', 'Perfecto, tómense su tiempo.', -4 * 60 * 60 * 1000);
+
+    await runFollowUps(repos);
+
+    expect(mockLlmComplete).not.toHaveBeenCalled();
+    expect(sendText).not.toHaveBeenCalled();
+    expect(repos.followUpEvent.getLatestByPhone(PHONE)).toMatchObject({
+      stage: 'first_nudge', status: 'suppressed', decisionReason: 'review_pause',
+    });
+  });
+
+  it.each([
+    "I will review it with my family and we'll let you know.",
+    'I will review it with my family and we will let you know.',
+  ])('never follows up after the customer promises "%s"', async (message) => {
+    repos.conversation.upsert(PHONE, { language: 'en', lead_score: 71, price_given_at: new Date().toISOString() });
+    addMsg('inbound', message, -5 * 60 * 60 * 1000);
+    addMsg('outbound', 'Take your time.', -4 * 60 * 60 * 1000);
+
+    await runFollowUps(repos);
+
+    expect(mockLlmComplete).not.toHaveBeenCalled();
+    expect(sendText).not.toHaveBeenCalled();
+    expect(repos.followUpEvent.getLatestByPhone(PHONE)).toMatchObject({
+      stage: 'first_nudge', status: 'suppressed', decisionReason: 'customer_follow_up_promise',
+    });
+  });
+
+  it('sends one final grounded reminder for a high-interest review pause', async () => {
+    env.TIME_FINAL_NUDGE_HOURS = 3;
+    repos.conversation.upsert(PHONE, { language: 'es', lead_score: 71, price_given_at: new Date().toISOString() });
+    addMsg('inbound', 'Déjame revisar esta semana con mis hijos y te confirmo.', -5 * 60 * 60 * 1000);
+    const anchor = repos.message.getLastInboundAt(PHONE);
+    addMsg('outbound', 'Perfecto, tómense su tiempo.', -4 * 60 * 60 * 1000);
+    repos.followUpEvent.insert({
+      customerPhone: PHONE, sequenceNumber: 1, stage: 'first_nudge', anchorInboundAt: anchor,
+      sentAt: null, repliedAt: null, scoreBefore: 71, scoreAfter: null, detectedPain: null,
+      claimedAt: new Date().toISOString(), decisionReason: 'review_pause', status: 'suppressed',
+    });
+    mockLlmComplete.mockResolvedValueOnce(reply('¿Ya pudieron revisar el plan?'));
+
+    await runFollowUps(repos);
+
+    expect(sendText).toHaveBeenCalledTimes(1);
+    expect(String(vi.mocked(sendText).mock.calls[0]?.[1])).not.toMatch(/[?¿]|precio|reserv/i);
+    expect(String(vi.mocked(sendText).mock.calls[0]?.[1])).toContain('Mientras lo revisan');
+    expect(mockLlmComplete.mock.calls[0]?.[0].systemPrompt).toContain('Mode: review_reminder');
+    expect(repos.followUpEvent.getLatestByPhone(PHONE)).toMatchObject({ stage: 'second_nudge', status: 'sent' });
+  });
+
+  it('replaces a review reminder that mentions availability with grounded copy', async () => {
+    env.TIME_FINAL_NUDGE_HOURS = 3;
+    repos.conversation.upsert(PHONE, { language: 'es', lead_score: 71, price_given_at: new Date().toISOString() });
+    addMsg('inbound', 'Déjame revisar esta semana con mis hijos.', -5 * 60 * 60 * 1000);
+    const anchor = repos.message.getLastInboundAt(PHONE);
+    addMsg('outbound', 'Perfecto.', -4 * 60 * 60 * 1000);
+    repos.followUpEvent.insert({
+      customerPhone: PHONE, sequenceNumber: 1, stage: 'first_nudge', anchorInboundAt: anchor,
+      sentAt: null, repliedAt: null, scoreBefore: 71, scoreAfter: null, detectedPain: null,
+      claimedAt: new Date().toISOString(), decisionReason: 'review_pause', status: 'suppressed',
+    });
+    mockLlmComplete.mockResolvedValueOnce(reply('Aprovechen: aún hay cupos disponibles para reservar.'));
+
+    await runFollowUps(repos);
+
+    expect(String(vi.mocked(sendText).mock.calls[0]?.[1])).toContain('Mientras lo revisan');
+  });
+
+  it('stops review gallery sends at the hourly message limit', async () => {
+    env.TIME_FINAL_NUDGE_HOURS = 3;
+    env.MAX_BOT_MESSAGES_PER_CUSTOMER_PER_HOUR = 2;
+    const skills = getSkills();
+    const previousMedia = skills.dynamicMedia;
+    skills.dynamicMedia = {
+      ownerImage: null,
+      planImages: [],
+      galleryImages: [
+        { url: 'https://cdn.example.com/gallery-1.jpg', caption: '' },
+        { url: 'https://cdn.example.com/gallery-2.jpg', caption: '' },
+        { url: 'https://cdn.example.com/gallery-3.jpg', caption: '' },
+      ],
+    };
+    repos.conversation.upsert(PHONE, { language: 'es', lead_score: 71, price_given_at: new Date().toISOString() });
+    addMsg('inbound', 'Déjame revisar esta semana con mis hijos.', -5 * 60 * 60 * 1000);
+    const anchor = repos.message.getLastInboundAt(PHONE);
+    addMsg('outbound', 'Perfecto.', -4 * 60 * 60 * 1000);
+    repos.followUpEvent.insert({
+      customerPhone: PHONE, sequenceNumber: 1, stage: 'first_nudge', anchorInboundAt: anchor,
+      sentAt: null, repliedAt: null, scoreBefore: 71, scoreAfter: null, detectedPain: null,
+      claimedAt: new Date().toISOString(), decisionReason: 'review_pause', status: 'suppressed',
+    });
+    mockLlmComplete.mockResolvedValueOnce(reply('Un recordatorio breve sobre la experiencia.'));
+
+    try {
+      await runFollowUps(repos);
+
+      expect(sendText).toHaveBeenCalledTimes(1);
+      expect(sendImageUrl).toHaveBeenCalledTimes(1);
+    } finally {
+      skills.dynamicMedia = previousMedia;
+    }
+  });
+
+  it('stops review gallery sends after an accepted image cannot be persisted', async () => {
+    env.TIME_FINAL_NUDGE_HOURS = 3;
+    const skills = getSkills();
+    const previousMedia = skills.dynamicMedia;
+    skills.dynamicMedia = {
+      ownerImage: null,
+      planImages: [],
+      galleryImages: [
+        { url: 'https://cdn.example.com/gallery-1.jpg', caption: '' },
+        { url: 'https://cdn.example.com/gallery-2.jpg', caption: '' },
+      ],
+    };
+    repos.conversation.upsert(PHONE, { language: 'es', lead_score: 71, price_given_at: new Date().toISOString() });
+    addMsg('inbound', 'Déjame revisar esta semana con mis hijos.', -5 * 60 * 60 * 1000);
+    const anchor = repos.message.getLastInboundAt(PHONE);
+    addMsg('outbound', 'Perfecto.', -4 * 60 * 60 * 1000);
+    repos.followUpEvent.insert({
+      customerPhone: PHONE, sequenceNumber: 1, stage: 'first_nudge', anchorInboundAt: anchor,
+      sentAt: null, repliedAt: null, scoreBefore: 71, scoreAfter: null, detectedPain: null,
+      claimedAt: new Date().toISOString(), decisionReason: 'review_pause', status: 'suppressed',
+    });
+    mockLlmComplete.mockResolvedValueOnce(reply('Un recordatorio breve sobre la experiencia.'));
+    const recordSend = vi.spyOn(repos.mediaSend, 'recordSend').mockImplementationOnce(() => {
+      throw new Error('sqlite write failed');
+    });
+
+    try {
+      await runFollowUps(repos);
+
+      expect(sendImageUrl).toHaveBeenCalledTimes(1);
+    } finally {
+      recordSend.mockRestore();
+      skills.dynamicMedia = previousMedia;
+    }
+  });
+
+  it('keeps a final review reminder silent for a low-score lead', async () => {
+    env.TIME_FINAL_NUDGE_HOURS = 3;
+    repos.conversation.upsert(PHONE, { language: 'es', lead_score: 20, price_given_at: new Date().toISOString() });
+    addMsg('inbound', 'Déjame revisar esta semana con mis hijos.', -5 * 60 * 60 * 1000);
+    const anchor = repos.message.getLastInboundAt(PHONE);
+    addMsg('outbound', 'Perfecto.', -4 * 60 * 60 * 1000);
+    repos.followUpEvent.insert({
+      customerPhone: PHONE, sequenceNumber: 1, stage: 'first_nudge', anchorInboundAt: anchor,
+      sentAt: null, repliedAt: null, scoreBefore: 20, scoreAfter: null, detectedPain: null,
+      claimedAt: new Date().toISOString(), decisionReason: 'review_pause', status: 'suppressed',
+    });
+
+    await runFollowUps(repos);
+
+    expect(mockLlmComplete).not.toHaveBeenCalled();
+    expect(sendText).not.toHaveBeenCalled();
+    expect(repos.followUpEvent.getLatestByPhone(PHONE)).toMatchObject({ stage: 'second_nudge', status: 'suppressed' });
+  });
+
   it('claims a stage before dispatch so concurrent runs send once', async () => {
     seedSilentLead();
     mockLlmComplete.mockResolvedValue(reply('¿Qué detalle te gustaría aclarar?'));
@@ -131,16 +294,50 @@ describe('follow-up service', () => {
     expect(repos.followUpEvent.getLatestByPhone(PHONE)?.status).toBe('sent');
   });
 
-  it('does not send an unsafe reservation claim', async () => {
+  it('replaces an unsafe reservation claim with trusted copy', async () => {
     seedSilentLead();
     mockLlmComplete.mockResolvedValueOnce(reply('Tu reserva quedó confirmada para esa fecha.'));
 
     await runFollowUps(repos);
     await runFollowUps(repos);
 
-    expect(sendText).not.toHaveBeenCalled();
+    expect(sendText).toHaveBeenCalledWith(PHONE, getSkills().fallbackReplies.es.followUpSafeNudge);
     expect(mockLlmComplete).toHaveBeenCalledTimes(1);
-    expect(repos.conversation.getByPhone(PHONE)?.follow_up_sent_at).toBeNull();
+    expect(String(vi.mocked(sendText).mock.calls[0]?.[1])).not.toContain('confirmada');
+  });
+
+  it('replaces a blocked commercial draft with trusted follow-up copy', async () => {
+    seedSilentLead();
+    mockLlmComplete.mockResolvedValueOnce(reply('Solo para confirmar, ¿quieren conocer el valor exacto del plan de 2 días?'));
+
+    await runFollowUps(repos);
+
+    expect(sendText).toHaveBeenCalledWith(PHONE, getSkills().fallbackReplies.es.followUpSafeNudge);
+    expect(repos.followUpEvent.getLatestByPhone(PHONE)?.status).toBe('sent');
+  });
+
+  it.each([
+    'Would you like to book today?',
+    'The price is 500 USD.',
+    'Pay a deposit to reserve your place.',
+  ])('replaces an English commercial draft: %s', async draft => {
+    seedSilentLead();
+    mockLlmComplete.mockResolvedValueOnce(reply(draft));
+
+    await runFollowUps(repos);
+
+    expect(sendText).toHaveBeenCalledWith(PHONE, getSkills().fallbackReplies.es.followUpSafeNudge);
+  });
+
+  it('keeps pricing follow-ups contextual when the LLM draft is generic', async () => {
+    repos.conversation.upsert(PHONE, { language: 'es', sales_phase: 'pricing' });
+    addMsg('inbound', 'Cuánto cuesta para pareja?', -5 * 60 * 60 * 1000);
+    addMsg('outbound', 'El total es $1,000,000 COP.', -4 * 60 * 60 * 1000);
+    mockLlmComplete.mockResolvedValueOnce(reply('¿Necesitan algún detalle adicional?'));
+
+    await runFollowUps(repos);
+
+    expect(sendText).toHaveBeenCalledWith(PHONE, getSkills().fallbackReplies.es.followUpPricing);
   });
 
   it('stays silent when the bot is paused', async () => {
@@ -595,32 +792,34 @@ describe('follow-up service', () => {
     expect(String(sent)).toMatch(/noviembre/i);
   });
 
-  it('does not send hard-blocked commercial drafts', async () => {
+  it('replaces hard-blocked commercial drafts', async () => {
     seedSilentLead();
     mockLlmComplete.mockResolvedValueOnce(reply('¿Quieres reservar el plan 2D hoy?'));
 
     await runFollowUps(repos);
 
-    expect(sendText).not.toHaveBeenCalled();
-    expect(repos.conversation.getByPhone(PHONE)?.follow_up_sent_at).toBeNull();
+    expect(sendText).toHaveBeenCalledWith(PHONE, getSkills().fallbackReplies.es.followUpSafeNudge);
+    expect(String(vi.mocked(sendText).mock.calls[0]?.[1])).not.toMatch(/reservar|2D/i);
   });
 
-  it('does not send leaked follow-up task language and invented anecdotes', async () => {
+  it('replaces leaked follow-up task language and invented anecdotes', async () => {
     seedSilentLead();
     mockLlmComplete.mockResolvedValueOnce(reply('Claro, acá va el hook para reconectar con este lead: un par de viajeros encontraron una esmeralda el otro día.'));
 
     await runFollowUps(repos);
 
-    expect(sendText).not.toHaveBeenCalled();
+    expect(sendText).toHaveBeenCalledWith(PHONE, getSkills().fallbackReplies.es.followUpSafeNudge);
+    expect(String(vi.mocked(sendText).mock.calls[0]?.[1])).not.toMatch(/hook|viajeros|esmeralda/i);
   });
 
-  it('does not send English task language and invented traveler anecdotes', async () => {
+  it('replaces English task language and invented traveler anecdotes', async () => {
     seedSilentLead();
     mockLlmComplete.mockResolvedValueOnce(reply('Here is a hook to reconnect with this lead: two travelers found an emerald last week.'));
 
     await runFollowUps(repos);
 
-    expect(sendText).not.toHaveBeenCalled();
+    expect(sendText).toHaveBeenCalledWith(PHONE, getSkills().fallbackReplies.es.followUpSafeNudge);
+    expect(String(vi.mocked(sendText).mock.calls[0]?.[1])).not.toMatch(/hook|travelers|emerald/i);
   });
 
   it('retries a transient LLM failure for the same inbound anchor', async () => {
@@ -731,7 +930,7 @@ describe('follow-up service', () => {
     expect(repos.followUpEvent.getLatestByPhone(PHONE)?.status).toBe('sent');
   });
 
-  it('records LLM usage even when the generated draft is rejected', async () => {
+  it('records LLM usage when the generated draft is replaced', async () => {
     seedSilentLead();
     mockLlmComplete.mockResolvedValue(reply('Here is a hook to reconnect with this lead.'));
 
@@ -739,7 +938,7 @@ describe('follow-up service', () => {
 
     const usage = repos.aiUsage.getUsageByPurpose(PHONE, new Date(0).toISOString(), null);
     expect(usage.follow_up.calls).toBe(1);
-    expect(sendText).not.toHaveBeenCalled();
+    expect(sendText).toHaveBeenCalledWith(PHONE, getSkills().fallbackReplies.es.followUpSafeNudge);
   });
 
   it('does not retry when WhatsApp accepted the message but local persistence failed', async () => {

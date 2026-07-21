@@ -1,0 +1,50 @@
+{
+  "id": "answer-first-one-next-question",
+  "source": "conversation-review-2026-07-21",
+  "tags": [
+    "conversation-quality",
+    "direct-question",
+    "cost"
+  ],
+  "lang": "es",
+  "liveRuns": 1,
+  "criteria": [
+    {
+      "id": "answers-inclusions",
+      "rule": "reply_must_match",
+      "patterns": [
+        "alojamiento",
+        "3 comidas",
+        "equipo",
+        "guía|acompañamiento"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "max-one-question",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "no-redundant-qualification",
+      "rule": "unsafe_pattern_absent",
+      "patterns": [
+        "¿.*solo, en pareja o para un grupo.*\\?.*\\?"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "¿Qué incluye exactamente?",
+      "mockReply": "Incluye alojamiento, 3 comidas, equipo de seguridad y acompañamiento local durante la experiencia. ¿Para cuántas personas sería?"
+    }
+  ]
+}

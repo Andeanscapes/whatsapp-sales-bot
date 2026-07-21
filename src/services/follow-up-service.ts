@@ -8,14 +8,18 @@ import {
   containsUnsafeReservationClaim,
   containsPromptLeakOrPolicyViolation,
   isNonSalesInquiry,
-  isPartnerConsultPause,
+  isCustomerFollowUpPromise,
+  isReviewPause,
   isSoftCloseMessage,
 } from './reply-guard.js';
-import { sendText, WhatsAppSendError } from './whatsapp-client.js';
+import { sendImageUrl, sendText, WhatsAppSendError } from './whatsapp-client.js';
 import { checkBudget } from './budget-guard.js';
 import { checkTimeWindow, isWithinServiceWindow } from './time-window-policy.js';
 import { getCollectedFields } from './qualification-engine.js';
 import { INPUT_COST_PER_TOKEN, OUTPUT_COST_PER_TOKEN } from './constants.js';
+import { getSkills } from './skill-loader.js';
+import { getActiveExperience, getGalleryImages, getShortDescription } from './product-registry.js';
+import { galleryMediaId, recordGalleryNudge, recordImageSend, selectEligibleGalleryImages } from './media-service.js';
 
 /**
  * WhatsApp only allows free-form messages within 24h of the customer's last
@@ -40,13 +44,25 @@ const RETRYABLE_NUDGE_PHRASES = [
   /(?:^|[,.;:!¡¿]?\s*)(?:sigues\s+interesad[oa]|solo\s+pasaba\s+a\s+ver|c[oó]mo\s+vas|como\s+vas)[,!.:\s-]*/gi,
 ];
 
-const HARD_BLOCK_NUDGE_PATTERNS = [
-  /\b(?:comprar|costo|precio|dep[oó]sito)\b/i,
+const COMMERCIAL_NUDGE_PATTERNS = [
+  /\b(?:costo|precio|valor|cost|price)\b|\$\s*\d|\b\d[\d,.]*\s*(?:COP|USD)\b/i,
   /\bplan(?:es)?\s+(?:de\s+\d|minero|rural|2d|3d)\b/i,
+];
+
+const HARD_BLOCK_NUDGE_PATTERNS = [
+  /\b(?:comprar|reserva[rs]?|dep[oó]sito|buy|purchase|book(?:ing)?|reserve|reservation|deposit|down\s+payment|pay)\b/i,
   /https?:\/\//i,
   /\binstagram\b/i,
   /\b(?:hook para reconectar|reconectar con este lead|este lead|hook to reconnect|reconnect with this lead|this lead)\b/i,
   /\b(?:viajeros?|travelers?)\b.{0,60}\b(?:encontraron|found)\b/i,
+];
+
+const REVIEW_REMINDER_BLOCK_PATTERNS = [
+  /\b(?:precio|valor|costo|cost|price)\b/i,
+  /\b(?:disponibilidad|available|availability|cupos?|spots?)\b/i,
+  /\b(?:reserva[rs]?|reservar|reserve|booking|book)\b/i,
+  /\b(?:urgente|urgency|ultimo[as]?|last|pronto|soon|agota[rs]?|sell\s+out)\b/i,
+  /\b(?:foto|fotos|imagen(?:es)?|photos?|pictures?)\b/i,
 ];
 
 function stripRetryableNudgeOpeners(reply: string): string {
@@ -92,10 +108,10 @@ export function isFollowUpSendWindow(now = new Date()): boolean {
   return hour >= env.FOLLOW_UP_SEND_START_HOUR && hour < env.FOLLOW_UP_SEND_END_HOUR;
 }
 
-function isFollowUpPause(text: string): boolean {
+function isPermanentFollowUpPause(text: string): boolean {
   return isSoftCloseMessage(text)
-    || isPartnerConsultPause(text)
-    || /(?:quiero\s+pensarlo|lo\s+(?:quiero|voy|vamos)\s+a\s+pensar|déjame\s+pensarlo|let\s+me\s+think|te\s+avisar|yo\s+te\s+escribo|estamos\s+validando|a[uú]n\s+no|lo\s+(?:voy|vamos)\s+a\s+revisar|when\s+we\s+decide|we'?ll\s+let\s+you\s+know)/i.test(text);
+    || isCustomerFollowUpPromise(text)
+    || /(?:quiero\s+pensarlo|lo\s+(?:quiero|voy|vamos)\s+a\s+pensar|déjame\s+pensarlo|let\s+me\s+think|estamos\s+validando|a[uú]n\s+no|when\s+we\s+decide)/i.test(text);
 }
 
 function recordSent(
@@ -115,6 +131,50 @@ function recordSent(
   });
   repos.conversation.markFollowUpSent(phone);
   repos.followUpEvent.markClaimSent(phone, anchorInboundAt, stage, sentAt);
+}
+
+function reviewReminderFallback(lang: 'es' | 'en'): string {
+  const skills = getSkills();
+  return skills.fallbackReplies[lang].followUpReviewReminder
+    .replace('{{experienceSummary}}', getShortDescription(getActiveExperience(skills)));
+}
+
+function standardFollowUpFallback(lang: 'es' | 'en', phase: string | null, stage: AutomatedFollowUpStage): string {
+  const replies = getSkills().fallbackReplies[lang];
+  if (stage === 'second_nudge') return replies.followUpFinalDirect;
+  if (phase === 'pricing') return replies.followUpPricing;
+  if (phase === 'value') return replies.followUpValue;
+  if (phase === 'greeting') return replies.followUpGreeting;
+  return replies.followUpSafeNudge;
+}
+
+async function sendReviewGallery(repos: Repositories, phone: string): Promise<void> {
+  const images = selectEligibleGalleryImages(repos, phone, getGalleryImages(getSkills()));
+  let sent = false;
+  for (const image of images) {
+    if (!isWithinServiceWindow(repos, phone) || checkTimeWindow(repos, phone).isLimited) break;
+    try {
+      await sendImageUrl(phone, image.url, '');
+    } catch (err) {
+      logger.warn({ err, phone }, '[FOLLOW_UP] gallery image failed');
+      continue;
+    }
+    try {
+      recordImageSend(repos, phone, galleryMediaId(image));
+      repos.message.addMessage({
+        customer_phone: phone,
+        direction: 'outbound',
+        message_type: 'image',
+        body: '',
+        created_at: new Date().toISOString(),
+      });
+      sent = true;
+    } catch (err) {
+      logger.error({ err, phone }, '[FOLLOW_UP] gallery image sent but persistence failed');
+      break;
+    }
+  }
+  if (sent) recordGalleryNudge(repos, phone);
 }
 
 async function processCandidates(
@@ -141,10 +201,11 @@ async function processCandidates(
     const latestInbound = [...history].reverse().find(message => message.role === 'user');
     const latestOutbound = [...history].reverse().find(message => message.role === 'assistant');
     if (!latestInbound || !latestOutbound) continue;
-    if (isNonSalesInquiry(latestInbound.content) || isFollowUpPause(latestInbound.content)) continue;
+    if (isNonSalesInquiry(latestInbound.content)) continue;
 
     const anchorInboundAt = c.anchorInboundAt;
     if (!anchorInboundAt) continue;
+    const reviewReminder = stage === 'second_nudge' && c.reviewPause === true;
     const seqNumber = repos.followUpEvent.countByPhone(c.customerPhone) + 1;
     const claimed = repos.followUpEvent.claim({
       customerPhone: c.customerPhone,
@@ -161,9 +222,26 @@ async function processCandidates(
     });
     if (!claimed) continue;
 
+    if (stage === 'first_nudge' && isPermanentFollowUpPause(latestInbound.content)) {
+      repos.followUpEvent.markClaimSuppressed(c.customerPhone, anchorInboundAt, stage, 'customer_follow_up_promise');
+      continue;
+    }
+    if (stage === 'first_nudge' && isReviewPause(latestInbound.content)) {
+      repos.followUpEvent.markClaimSuppressed(c.customerPhone, anchorInboundAt, stage, 'review_pause');
+      continue;
+    }
+    if (stage === 'second_nudge' && isPermanentFollowUpPause(latestInbound.content)) {
+      repos.followUpEvent.markClaimSuppressed(c.customerPhone, anchorInboundAt, stage, 'customer_follow_up_promise');
+      continue;
+    }
+    if (reviewReminder && (currentScore < 60 || !repos.conversation.getPriceGivenAt(c.customerPhone))) {
+      repos.followUpEvent.markClaimSuppressed(c.customerPhone, anchorInboundAt, stage, 'review_lead_not_qualified');
+      continue;
+    }
+
     let usageRecorded = false;
     const result = await llmClient.complete({
-      systemPrompt: buildFollowUpPrompt({ lang, phase: salesPhase, stage }),
+      systemPrompt: buildFollowUpPrompt({ lang, phase: salesPhase, stage, reviewReminder }),
       message: `Generate the follow-up now. Collected facts: ${JSON.stringify(collected)}`,
       history: history.map(h => ({ role: h.role, content: h.content })),
       lang,
@@ -180,6 +258,7 @@ async function processCandidates(
     }
 
     let reply = result?.turn.reply.trim() ?? '';
+    if (reviewReminder && (!reply || /[?¿]/.test(reply))) reply = reviewReminderFallback(lang);
     if (!reply) {
       repos.followUpEvent.markClaimFailed(c.customerPhone, anchorInboundAt, stage, 'llm_unavailable');
       logger.warn({ phone: c.customerPhone, stage }, '[FOLLOW_UP] no LLM draft; skipping nudge');
@@ -199,11 +278,21 @@ async function processCandidates(
       repos.followUpEvent.markClaimFailed(c.customerPhone, anchorInboundAt, stage, 'unsafe_personalization');
       continue;
     }
-    // Replace drafts that leak commercial intent or unsafe links with trusted copy.
+    if (reviewReminder && REVIEW_REMINDER_BLOCK_PATTERNS.some(p => p.test(reply))) {
+      reply = reviewReminderFallback(lang);
+    }
+    // Unsafe reservation, prompt-leak, and commercial drafts are replaced with trusted copy.
     if (HARD_BLOCK_NUDGE_PATTERNS.some(p => p.test(reply))) {
-      repos.followUpEvent.markClaimFailed(c.customerPhone, anchorInboundAt, stage, 'unsafe_draft');
-      logger.warn({ phone: c.customerPhone, snippet: reply.slice(0, 80) }, '[FOLLOW_UP] draft blocked by hard nudge guard');
-      continue;
+      logger.warn({ phone: c.customerPhone, snippet: reply.slice(0, 80) }, '[FOLLOW_UP] draft replaced by hard nudge guard');
+      reply = reviewReminder
+        ? reviewReminderFallback(lang)
+        : standardFollowUpFallback(lang, salesPhase, stage);
+    }
+    if (!reviewReminder && COMMERCIAL_NUDGE_PATTERNS.some(p => p.test(reply))) {
+      reply = standardFollowUpFallback(lang, salesPhase, stage);
+    }
+    if (!reviewReminder && salesPhase === 'pricing' && !/(?:incluye|log[ií]stica|llegar|includes?|logistics?|getting there)/i.test(reply)) {
+      reply = standardFollowUpFallback(lang, salesPhase, stage);
     }
     // Same safety guards as the live reply path: unsafe drafts never reach customers.
     if (containsUnsafeReservationClaim(reply) || containsPromptLeakOrPolicyViolation(reply)) {
@@ -239,6 +328,7 @@ async function processCandidates(
     repos.followUpEvent.markClaimUncertain(c.customerPhone, anchorInboundAt, stage, 'whatsapp_accepted_persistence_pending');
     try {
       recordSent(c.customerPhone, reply, repos, stage, anchorInboundAt);
+      if (reviewReminder) await sendReviewGallery(repos, c.customerPhone);
       logger.info({ phone: c.customerPhone, stage }, '[FOLLOW_UP] nudge sent');
     } catch (err) {
       logger.error({ err, phone: c.customerPhone, stage }, '[FOLLOW_UP] sent but persistence failed');

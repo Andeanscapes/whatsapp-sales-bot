@@ -1,6 +1,17 @@
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
+  // Vitest/esbuild does not recognize tsconfig target ES2024 yet.
+  esbuild: {
+    target: 'es2022',
+    tsconfigRaw: {
+      compilerOptions: {
+        target: 'ES2022',
+        module: 'ESNext',
+        moduleResolution: 'bundler',
+      },
+    },
+  },
   test: {
     globals: true,
     exclude: ['src/tests/conversation-eval/**', '.opencode/**', 'node_modules/**', 'dist/**'],

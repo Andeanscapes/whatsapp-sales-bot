@@ -305,7 +305,18 @@ export class SqliteConversationRepo implements ConversationRepository {
   getSecondFollowUpCandidates(anchorBeforeIso: string, serviceWindowStartIso: string, limit: number): FollowUpCandidate[] {
     const rows = this.db.prepare(`
       SELECT c.customer_phone, c.language,
-        (SELECT MAX(m.created_at) FROM messages m WHERE m.customer_phone = c.customer_phone AND m.direction = 'inbound') AS anchor_inbound_at
+        (SELECT MAX(m.created_at) FROM messages m WHERE m.customer_phone = c.customer_phone AND m.direction = 'inbound') AS anchor_inbound_at,
+        EXISTS (
+          SELECT 1 FROM follow_up_events fe
+          WHERE fe.customer_phone = c.customer_phone
+            AND fe.stage = 'first_nudge'
+            AND fe.status = 'suppressed'
+            AND fe.decision_reason = 'review_pause'
+            AND fe.anchor_inbound_at = (
+              SELECT MAX(m.created_at) FROM messages m
+              WHERE m.customer_phone = c.customer_phone AND m.direction = 'inbound'
+            )
+        ) AS review_pause
       FROM conversations c
       WHERE c.opt_out_at IS NULL
         AND c.handed_off_at IS NULL
@@ -317,7 +328,7 @@ export class SqliteConversationRepo implements ConversationRepository {
           SELECT 1 FROM follow_up_events fe
           WHERE fe.customer_phone = c.customer_phone
             AND fe.stage = 'first_nudge'
-            AND fe.status = 'sent'
+            AND (fe.status = 'sent' OR (fe.status = 'suppressed' AND fe.decision_reason = 'review_pause'))
             AND fe.anchor_inbound_at = (
               SELECT MAX(m.created_at) FROM messages m
               WHERE m.customer_phone = c.customer_phone AND m.direction = 'inbound'
@@ -348,8 +359,8 @@ export class SqliteConversationRepo implements ConversationRepository {
         ) >= ?
       ORDER BY c.last_seen_at ASC
       LIMIT ?
-    `).all(anchorBeforeIso, serviceWindowStartIso, limit) as Array<{ customer_phone: string; language: 'es' | 'en' | null; anchor_inbound_at: string }>;
-    return rows.map(r => ({ customerPhone: r.customer_phone, language: r.language, anchorInboundAt: r.anchor_inbound_at }));
+    `).all(anchorBeforeIso, serviceWindowStartIso, limit) as Array<{ customer_phone: string; language: 'es' | 'en' | null; anchor_inbound_at: string; review_pause: number }>;
+    return rows.map(r => ({ customerPhone: r.customer_phone, language: r.language, anchorInboundAt: r.anchor_inbound_at, reviewPause: r.review_pause === 1 }));
   }
 
   markFollowUpSent(phone: string): void {
@@ -432,6 +443,14 @@ export class SqliteFollowUpEventRepo implements FollowUpEventRepository {
       SET sent_at = ?, status = 'sent'
       WHERE customer_phone = ? AND anchor_inbound_at = ? AND stage = ? AND status IN ('pending', 'uncertain')
     `).run(sentAt, phone, anchorInboundAt, stage);
+  }
+
+  markClaimSuppressed(phone: string, anchorInboundAt: string, stage: FollowUpStage, reason: string): void {
+    this.db.prepare(`
+      UPDATE follow_up_events
+      SET decision_reason = ?, status = 'suppressed'
+      WHERE customer_phone = ? AND anchor_inbound_at = ? AND stage = ? AND status = 'pending'
+    `).run(reason, phone, anchorInboundAt, stage);
   }
 
   markClaimFailed(phone: string, anchorInboundAt: string, stage: FollowUpStage, reason: string): void {

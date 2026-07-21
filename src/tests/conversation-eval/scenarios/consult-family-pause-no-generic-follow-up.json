@@ -1,0 +1,35 @@
+{
+  "id": "consult-family-pause-no-generic-follow-up",
+  "source": "prod-summary-2026-07-20#family-october",
+  "tags": [
+    "follow-up",
+    "pause",
+    "conversion",
+    "regression"
+  ],
+  "lang": "es",
+  "runner": "follow_up",
+  "liveRuns": 1,
+  "followUpMockReply": "No debe enviarse todavía.",
+  "criteria": [
+    {
+      "id": "suppressed",
+      "rule": "output_flag_equals",
+      "flag": "shouldSendReply",
+      "expected": false,
+      "turn": 3,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Sí me interesa, pero debo revisarlo con mis hijos esta semana",
+      "mockReply": "Perfecto. Tómate el tiempo para revisarlo con ellos."
+    },
+    {
+      "user": "Yo te confirmo cuando hable con ellos",
+      "mockReply": "Claro, quedo atento."
+    }
+  ]
+}

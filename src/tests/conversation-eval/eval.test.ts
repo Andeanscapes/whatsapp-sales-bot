@@ -6,7 +6,7 @@ import { getSkills, loadSkills } from '../../services/skill-loader.js';
 import { getActiveExperience } from '../../services/product-registry.js';
 import { PRICING_NOT_AVAILABLE } from '../../services/dynamic-data-service.js';
 import type { AnalyzerInput, LeadAnalysis } from '../../services/lead-analyzer.js';
-import { createRunContext, defaultMockResult, runTurn, type MockLlmFunction } from './runner.js';
+import { applyScenarioSeeds, createRunContext, defaultMockResult, runTurn, type MockLlmFunction } from './runner.js';
 import { runFollowUpScenario } from './follow-up-runner.js';
 import { evaluateScenario } from './evaluate-scenario.js';
 import { buildReport, printReport, writeReport } from './report.js';
@@ -70,6 +70,7 @@ describe('Conversation Quality Eval V2', () => {
       }
 
       const ctx = createRunContext({ phoneSuffix: index });
+      const restoreSeeds = applyScenarioSeeds(ctx, scenario);
       const experience = getActiveExperience(getSkills());
       const originalPricingItems = experience.pricing.items;
       const originalPricingRules = experience.pricing.botRules;
@@ -110,6 +111,7 @@ describe('Conversation Quality Eval V2', () => {
       } finally {
         experience.pricing.items = originalPricingItems;
         experience.pricing.botRules = originalPricingRules;
+        restoreSeeds();
         ctx.destroy();
       }
     });

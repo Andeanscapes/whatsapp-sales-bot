@@ -77,11 +77,22 @@ function evaluateCriterion(criterion: Criterion, turns: TurnRecord[]): Criterion
     return criterionResult(criterion, matched.length === 0, matched.length === 0 ? 'no forbidden patterns' : `matched: ${matched.join(', ')}`);
   }
 
-  if (criterion.rule === 'output_flag_equals') {
+  if (criterion.rule === 'output_flag_equals' || criterion.rule === 'output_flag_not_equals') {
     const turn = turns[(criterion.turn ?? turns.length) - 1];
     const output = turn?.processOutput as ProcessMessageOutput | undefined;
-    const actual = output?.[criterion.flag!];
-    return criterionResult(criterion, actual === criterion.expected, `${criterion.flag}=${String(actual)}`);
+    const flagKey = criterion.flag === 'sendOwnerImage' ? 'shouldSendOwnerImage' : criterion.flag!;
+    const actual = output?.[flagKey as keyof ProcessMessageOutput];
+    const passed = criterion.rule === 'output_flag_equals'
+      ? actual === criterion.expected
+      : actual !== criterion.expected;
+    return criterionResult(criterion, passed, `${flagKey}=${String(actual)}`);
+  }
+
+  if (criterion.rule === 'max_question_marks') {
+    const max = criterion.max ?? 1;
+    // Count closing `?` only — Spanish openers `¿` are not separate questions.
+    const count = (replyText.match(/\?/g) ?? []).length;
+    return criterionResult(criterion, count <= max, `questionMarks=${count} max=${max}`);
   }
 
   if (criterion.rule === 'known_field_not_reasked') {

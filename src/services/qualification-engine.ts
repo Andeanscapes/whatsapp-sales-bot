@@ -31,7 +31,9 @@ export function isAmbiguousPartyComparison(text: string): boolean {
   return new RegExp(String.raw`${soloSide}.{0,40}${connector}.{0,40}${coupleSide}`, 'i').test(norm)
     || new RegExp(String.raw`${coupleSide}.{0,40}${connector}.{0,40}${soloSide}`, 'i').test(norm)
     || /precios?\s+para\s+(?:una\s+)?persona\s+o\s+(?:para\s+)?pareja/i.test(norm)
-    || /(?:una\s+)?persona\s+o\s+(?:para\s+)?pareja/i.test(norm);
+    || /(?:una\s+)?persona\s+o\s+(?:para\s+)?pareja/i.test(norm)
+    || /(?:precio|precios|vale|valor).{0,40}(?:una\s+persona|individual|solo).{0,40}(?:pareja|dos\s+personas)/i.test(norm)
+    || /(?:precio|precios|vale|valor).{0,40}(?:pareja|dos\s+personas).{0,40}(?:una\s+persona|individual|solo)/i.test(norm);
 }
 
 export const TRANSPORT_OWN_PATTERNS = [
@@ -184,22 +186,29 @@ export function extractBookingFields(text: string): Record<string, unknown> {
     fields.collected_date = monthInText;
   }
 
-  const peopleMatch = text.match(/(\d+)\s*(?:people|person|persons|personas|pax)/i);
+  const normalized = normalizeText(text);
+  const hasAdultCount = /\b\d+\s*(?:adulto(?:s)?|adulta(?:s)?|adult|adults)\b/i.test(normalized);
+  const childCount = String.raw`(?:\d+|un[oa]?|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|one|two|three|four|five|six|seven|eight|nine|ten)`;
+  const hasChildCount = new RegExp(String.raw`\b${childCount}\s*(?:ninos?|ninas?|child(?:ren)?|kids)\b`, 'i').test(normalized);
+  const mixedAdultsAndChildren = hasAdultCount && hasChildCount;
+  const peopleMatch = mixedAdultsAndChildren
+    ? null
+    : text.match(/(\d+)\s*(?:people|person|persons|personas|pax|adulto(?:s)?|adulta(?:s)?|adult|adults)/i);
   if (peopleMatch) fields.collected_people = parseInt(peopleMatch[1], 10);
 
   const simpleNumberMatch = text.match(/\b(?:somos|van|vamos|seriamos|serian|somos como|van como)\s+(\d+)\b/i);
-  if (simpleNumberMatch && !fields.collected_people) {
+  if (simpleNumberMatch && !fields.collected_people && !mixedAdultsAndChildren) {
     fields.collected_people = parseInt(simpleNumberMatch[1], 10);
   }
 
   const couplePattern = /\b(?:couple|pareja|dos personas|2 personas|mi esposo y yo|mi esposa y yo|mi novio y yo|mi novia y yo|mi pareja y yo|mi hija y yo|mi hijo y yo|mi (?:mam[aá]|madre|made) y yo|vamos dos|somos dos|somos 2|vamos 2)\b/i;
   const soloPattern = /\b(?:sola|solo|voy sola|voy solo|ir[ií]a sola|ir[ií]a solo|yo sola|yo solo|una persona|1 persona|just me|only me|me alone|solo traveler)\b/i;
   const ambiguousParty = isAmbiguousPartyComparison(text);
-  if (couplePattern.test(text) && !fields.collected_people && !ambiguousParty) {
+  if (couplePattern.test(text) && !fields.collected_people && !ambiguousParty && !mixedAdultsAndChildren) {
     fields.collected_people = 2;
   }
 
-  if (soloPattern.test(text) && !fields.collected_people && !ambiguousParty) {
+  if (soloPattern.test(text) && !fields.collected_people && !ambiguousParty && !mixedAdultsAndChildren) {
     fields.collected_people = 1;
   }
 
@@ -325,10 +334,12 @@ export function contextAwareExtract(message: string, repos: Repositories, phone:
   }
 
   if (lastQuestion && !fields.collected_transport_need) {
-    const askedTransport = /transporte propio|necesitan desde|vas (?:con|en)|own transport|pickup|Bogot[aá]|llegar desde|how (?:are you|will you) (?:getting|coming)/i.test(lastQuestion);
+    const askedTransport = /transporte propio|necesitan desde|vas (?:con|en)|por su cuenta|own transport|pickup|Bogot[aá]|llegar desde|how (?:are you|will you) (?:getting|coming)/i.test(lastQuestion);
     if (askedTransport) {
       const hasOwn = TRANSPORT_OWN_PATTERNS.some(p => p.test(norm)) || TRANSPORT_OWN_CONTEXT_PATTERNS.some(p => p.test(norm));
-      if (hasOwn) fields.collected_transport_need = 'own';
+      const shortYes = /^(?:s[ií]|sip|yes|yeah|yep|claro|dale|ok|okay|de una|por supuesto)\b/i.test(norm)
+        && !/\bno\b/i.test(norm);
+      if (hasOwn || shortYes) fields.collected_transport_need = 'own';
     }
   }
 

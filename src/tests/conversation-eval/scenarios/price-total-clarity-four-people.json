@@ -1,0 +1,60 @@
+{
+  "id": "price-total-clarity-four-people",
+  "source": "prod-summary-2026-07-20#family-four-price-confusion",
+  "tags": [
+    "pricing",
+    "clarity",
+    "regression"
+  ],
+  "lang": "es",
+  "liveRuns": 1,
+  "mockPricing": {
+    "planId": "2d1n_mining",
+    "individual": 550000,
+    "couple": 1000000
+  },
+  "seedQualification": {
+    "people": 4,
+    "plan": "2d1n_mining",
+    "transport": "own"
+  },
+  "criteria": [
+    {
+      "id": "states-total-clearly",
+      "rule": "reply_must_match",
+      "patterns": [
+        "(?:total|valor).{0,40}\\$?2[\\.,]?000[\\.,]?000|\\$?2[\\.,]?000[\\.,]?000"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "says-for-four",
+      "rule": "reply_must_match",
+      "patterns": [
+        "para los 4|4 adultos|4 personas"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "no-pair-math-confusion",
+      "rule": "unsafe_pattern_absent",
+      "patterns": [
+        "pareja.*x 2",
+        "1,000,000 COP \\(pareja\\) x 2"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "No me queda claro: ¿cuánto es el total para los 4?",
+      "mockReply": "El total para los 4 adultos es $2.000.000 COP por el plan 2D/1N. Ese valor cubre el paquete completo para las 4 personas; el transporte desde Bogotá no está incluido si llegan en carro propio."
+    }
+  ]
+}

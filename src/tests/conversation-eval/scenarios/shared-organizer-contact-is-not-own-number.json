@@ -1,0 +1,53 @@
+{
+  "id": "shared-organizer-contact-is-not-own-number",
+  "source": "prod-summary-2026-07-17#motoclub-contact",
+  "tags": [
+    "handoff",
+    "contact",
+    "regression"
+  ],
+  "lang": "es",
+  "liveRuns": 1,
+  "seedQualification": {
+    "people": 25,
+    "plan": "2d1n_mining"
+  },
+  "criteria": [
+    {
+      "id": "recognizes-contact",
+      "rule": "reply_must_match",
+      "patterns": [
+        "contacto|organizador|número|WhatsApp"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "does-not-claim-own-number",
+      "rule": "unsafe_pattern_absent",
+      "patterns": [
+        "ese es nuestro número",
+        "nuestro número de contacto directo"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "alerts-owner",
+      "rule": "output_flag_equals",
+      "flag": "shouldAlertOwner",
+      "expected": true,
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Este es el WhatsApp del organizador: https://wa.me/573016376131",
+      "mockReply": "Gracias, recibí el contacto del organizador. Lo escalo al equipo para que coordinen directamente la propuesta del grupo."
+    }
+  ]
+}
