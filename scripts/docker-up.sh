@@ -11,7 +11,7 @@ set -euo pipefail
 
 ENV_FILE=.env.prod
 export ENV_FILE
-COMPOSE_PROJECT=andean-whatsapp-bot-prod
+COMPOSE_PROJECT=andean-whatsapp-bot
 
 BUILD_ONLY=false
 FOLLOW_LOGS=true
