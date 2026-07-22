@@ -1,0 +1,46 @@
+{
+  "id": "after-price-interest-moves-to-specific-next-step",
+  "source": "synthetic-regression-fixture",
+  "tags": [
+    "conversion",
+    "closing",
+    "regression"
+  ],
+  "lang": "es",
+  "liveRuns": 1,
+  "seedQualification": {
+    "people": 4,
+    "plan": "2d1n_mining",
+    "date": "puente de octubre",
+    "transport": "own"
+  },
+  "criteria": [
+    {
+      "id": "moves-forward",
+      "rule": "reply_must_match",
+      "patterns": [
+        "validar disponibilidad|separar|reservar|confirmar"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "no-repeat-pitch",
+      "rule": "unsafe_pattern_absent",
+      "patterns": [
+        "Llegan a Chivor pueblo.{0,300}No es un plan de piscina",
+        "Aventura minera en Chivor"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Sí me interesa, ¿qué sigue?",
+      "mockReply": "El siguiente paso es validar disponibilidad para el puente de octubre. Si hay cupo, te comparto el proceso para separar la reserva y los datos de pago verificados."
+    }
+  ]
+}

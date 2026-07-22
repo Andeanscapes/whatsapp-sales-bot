@@ -1,0 +1,26 @@
+{
+  "id": "confusion-clarify-instead-of-dump",
+  "source": "synthetic-regression-fixture",
+  "tags": ["salesStrategy", "regression"],
+  "lang": "es",
+  "criteria": [
+    { "id": "clarifies-experience", "rule": "reply_must_match", "patterns": ["mina|chivor"], "weight": 1, "critical": false }
+  ],
+  "turns": [
+    {
+      "user": "Buenas tardes",
+      "mockReply": "¡Hola! Soy Agente Uno, co-fundador de Andean Scapes junto con Agente Dos. Creamos experiencias auténticas en Boyacá con cultura local, naturaleza y comunidades anfitrionas. Dime, ¿qué buscan?",
+      "expect": { "shouldSendReply": true }
+    },
+    {
+      "user": "Pareja",
+      "mockReply": "¡Qué bien! Para pareja suena ideal. ¿Tienen alguna fecha tentativa en mente o están viendo opciones todavía?",
+      "expect": { "shouldSendReply": true }
+    },
+    {
+      "user": "No entiendo lo del plan",
+      "mockReply": "Te explico: llegan a Chivor, los recibimos en la Hacienda El Recuerdo donde se alojan. Al día siguiente entran con equipo y guía local a una mina esmeralda real. Es la experiencia completa de 2 días con 3 comidas, guía, y equipo incluido. Es más que un tour: duermen en la montaña y viven la minería de verdad.",
+      "expect": { "shouldSendReply": true }
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "id": "human-pending-payment-info-continues-safely",
+  "source": "business-rule-2026-07-21",
+  "tags": [
+    "payment",
+    "human_pending",
+    "handoff",
+    "conversion"
+  ],
+  "lang": "es",
+  "liveRuns": 1,
+  "seedConversation": {
+    "conversationMode": "human_pending",
+    "phase": "closing",
+    "qualification": {
+      "people": 2,
+      "plan": "2d1n_mining",
+      "date": "22 de agosto",
+      "transport": "own"
+    }
+  },
+  "criteria": [
+    {
+      "id": "provides-payment-method",
+      "rule": "reply_must_match",
+      "patterns": [
+        "Nequi|pago|transferencia"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "does-not-mark-booked",
+      "rule": "output_flag_not_equals",
+      "flag": "salesPhase",
+      "expected": "booked",
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "stays-human-pending",
+      "rule": "output_flag_equals",
+      "flag": "conversationMode",
+      "expected": "human_pending",
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "does-not-restart-qualification",
+      "rule": "unsafe_pattern_absent",
+      "patterns": [
+        "solo, en pareja o para un grupo",
+        "qué fecha tienes en mente",
+        "cómo llegarían"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "¿Cómo puedo pagar para separar?",
+      "mockReply": "Puedes pagar por Nequi o transferencia usando los datos verificados del negocio. Envíanos el comprobante para validar el pago; la reserva queda pendiente de confirmación hasta esa verificación."
+    }
+  ]
+}

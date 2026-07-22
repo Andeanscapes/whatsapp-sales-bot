@@ -1,0 +1,89 @@
+{
+  "id": "reservation-confirm-exact-date-human-pending",
+  "source": "synthetic-regression-fixture",
+  "tags": [
+    "reservation",
+    "handoff",
+    "state",
+    "conversion",
+    "regression"
+  ],
+  "lang": "es",
+  "liveRuns": 1,
+  "criteria": [
+    {
+      "id": "references-known-date",
+      "rule": "reply_must_match",
+      "patterns": [
+        "22 de agosto|agosto 22"
+      ],
+      "turn": 4,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "does-not-reask-date",
+      "rule": "known_field_not_reasked",
+      "field": "date",
+      "suppliedTurn": 3,
+      "turn": 4,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "moves-human-pending",
+      "rule": "output_flag_equals",
+      "flag": "conversationMode",
+      "expected": "human_pending",
+      "turn": 4,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "alerts-owner",
+      "rule": "output_flag_equals",
+      "flag": "shouldAlertOwner",
+      "expected": true,
+      "turn": 4,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "confirmation-oriented",
+      "rule": "reply_must_match",
+      "patterns": [
+        "validar|confirmar|separar|reserv"
+      ],
+      "turn": 4,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Hola, quiero conocer la experiencia en Chivor",
+      "mockReply": "¡Hola! ¿La experiencia sería para ti solo, en pareja o para un grupo?"
+    },
+    {
+      "user": "Para 2 adultos",
+      "seedQualification": {
+        "people": 2,
+        "plan": "2d1n_mining"
+      },
+      "mockReply": "Perfecto. ¿Tienen una fecha tentativa?"
+    },
+    {
+      "user": "El sábado 22 de agosto",
+      "seedQualification": {
+        "date": "sábado 22 de agosto",
+        "people": 2,
+        "plan": "2d1n_mining"
+      },
+      "mockReply": "Perfecto, anoto sábado 22 de agosto. ¿Llegan por su cuenta?"
+    },
+    {
+      "user": "Sí, por favor confirmar disponibilidad",
+      "mockReply": "Perfecto: 2 personas para el sábado 22 de agosto. Voy a validar el cupo con el equipo. Mientras tanto, si deseas separar, te explico el proceso de pago."
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "id": "price-dumped-before-qualification",
+  "source": "synthetic-regression-fixture",
+  "tags": ["salesStrategy", "regression"],
+  "lang": "es",
+  "criteria": [
+    { "id": "price-after-qualification", "rule": "price_after_min_fields", "minFields": 2, "weight": 1, "critical": true }
+  ],
+  "turns": [
+    {
+      "user": "Hola, quiero precios y fechas para la experiencia en mina",
+      "mockReply": "¡Hola! La experiencia en mina se adapta muy bien para pareja. Antes de entrar en valor, ¿la experiencia sería para ustedes dos?",
+      "expect": { "shouldSendReply": true }
+    },
+    {
+      "user": "Pareja",
+      "mockReply": "Qué bien, para pareja es perfecto. ¿Tienen alguna fecha tentativa en mente o están viendo opciones todavía?",
+      "expect": { "shouldSendReply": true }
+    },
+    {
+      "user": "Precio?",
+      "mockReply": "Dame un momento y te detallo el precio. ¿Tienen transporte propio o necesitan desde Bogotá? Eso también influye.",
+      "expect": {
+        "shouldSendReply": true,
+        "priceJustGiven": false
+      }
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "follow-up-thin-context-grounding",
+  "source": "synthetic-regression-fixture",
+  "tags": ["follow-up", "greeting", "grounding", "regression"],
+  "lang": "es",
+  "runner": "follow_up",
+  "liveRuns": 3,
+  "followUpSeed": { "phase": "greeting" },
+  "followUpMockReply": "Si te sirve, puedo contarte cómo es un momento dentro de la mina. ¿Qué te daría más curiosidad?",
+  "criteria": [
+    { "id": "follow-up-generated", "rule": "output_flag_equals", "flag": "shouldSendReply", "expected": true, "turn": 2, "weight": 1, "critical": true },
+    { "id": "no-invented-date-or-calendar", "rule": "unsafe_pattern_absent", "patterns": ["enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre", "calendario", "cupo"], "turn": 2, "weight": 1, "critical": true },
+    { "id": "does-not-repeat-party-question", "rule": "unsafe_pattern_absent", "patterns": ["solo, en pareja o para un grupo"], "turn": 2, "weight": 1, "critical": true }
+  ],
+  "turns": [
+    { "user": "Hola, quiero conocer la experiencia en Chivor", "mockReply": "¿La experiencia sería para ti solo, en pareja o para un grupo?" }
+  ]
+}
