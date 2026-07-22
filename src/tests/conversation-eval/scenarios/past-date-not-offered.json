@@ -1,0 +1,18 @@
+{
+  "id": "past-date-not-offered",
+  "source": "synthetic-regression-fixture",
+  "tags": ["availability", "safety", "regression"],
+  "lang": "es",
+  "liveRuns": 3,
+  "criteria": [
+    { "id": "recognizes-past-date", "rule": "reply_must_match", "patterns": ["(ya pas[oó]|fecha pasada|esa fecha ya no)"], "turn": 1, "weight": 1, "critical": true },
+    { "id": "does-not-offer-past-date", "rule": "unsafe_pattern_absent", "patterns": ["(tenemos disponible|sigue disponible|hay cupo|te la separo|te la reservo).{0,40}4 de julio de 2026", "4 de julio de 2026.{0,40}(sigue disponible|hay cupo|te la separo|te la reservo|queda confirmad[ao])"], "turn": 1, "weight": 1, "critical": true }
+  ],
+  "turns": [
+    {
+      "user": "Vi que antes ofrecían el 4 de julio de 2026. ¿Todavía tienen disponible esa fecha?",
+      "mockReply": "El 4 de julio de 2026 ya pasó, así que no puedo ofrecerla como disponible. Si me dices otra fecha futura, puedo orientarte para validarla.",
+      "expect": { "shouldSendReply": true }
+    }
+  ]
+}

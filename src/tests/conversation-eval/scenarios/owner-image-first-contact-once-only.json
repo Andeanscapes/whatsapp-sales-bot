@@ -1,0 +1,42 @@
+{
+  "id": "owner-image-first-contact-once-only",
+  "source": "business-rule-2026-07-21",
+  "tags": [
+    "media",
+    "trust",
+    "cost",
+    "regression"
+  ],
+  "lang": "es",
+  "liveRuns": 1,
+  "criteria": [
+    {
+      "id": "owner-image-first-turn",
+      "rule": "output_flag_equals",
+      "flag": "sendOwnerImage",
+      "expected": true,
+      "turn": 1,
+      "weight": 1,
+      "critical": false
+    },
+    {
+      "id": "owner-image-not-repeated",
+      "rule": "output_flag_equals",
+      "flag": "sendOwnerImage",
+      "expected": false,
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Hola, quiero conocer la experiencia en Chivor",
+      "mockReply": "¡Hola! Soy AgentA, co-fundador de Andean Scapes con PartnerA. ¿Sería para ti solo, en pareja o para un grupo?"
+    },
+    {
+      "user": "En pareja",
+      "mockReply": "Perfecto. ¿Tienen una fecha tentativa?"
+    }
+  ]
+}

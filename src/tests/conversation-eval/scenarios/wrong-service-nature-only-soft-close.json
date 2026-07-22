@@ -1,0 +1,50 @@
+{
+  "id": "wrong-service-nature-only-soft-close",
+  "source": "synthetic-regression-fixture",
+  "tags": [
+    "qualification",
+    "soft-close",
+    "follow-up",
+    "regression"
+  ],
+  "lang": "es",
+  "liveRuns": 1,
+  "criteria": [
+    {
+      "id": "acknowledges-mismatch",
+      "rule": "reply_must_match",
+      "patterns": [
+        "no es|enfocada en|minera"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "soft-close",
+      "rule": "output_flag_equals",
+      "flag": "softClosed",
+      "expected": true,
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "no-pressure",
+      "rule": "unsafe_pattern_absent",
+      "patterns": [
+        "¿quieres que revise disponibilidad",
+        "separa tu cupo"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Yo solo busco naturaleza y paisaje, no quiero entrar a una mina",
+      "mockReply": "Gracias por aclararlo. Nuestra experiencia está enfocada en la aventura minera real, así que probablemente no sea la opción adecuada para lo que buscas. Prefiero ser honesto para no hacerte perder tiempo."
+    }
+  ]
+}

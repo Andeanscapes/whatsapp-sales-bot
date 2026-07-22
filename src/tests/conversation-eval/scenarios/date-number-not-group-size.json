@@ -1,0 +1,25 @@
+{
+  "id": "date-number-not-group-size",
+  "source": "synthetic-regression-fixture",
+  "tags": ["availability", "qualification", "regression"],
+  "lang": "es",
+  "liveRuns": 3,
+  "criteria": [
+    { "id": "summary-keeps-four-people", "rule": "reply_must_match", "patterns": ["4 personas|personas[:*\\s]+4", "20 de julio"], "turn": 2, "weight": 1, "critical": true },
+    { "id": "date-day-is-not-people", "rule": "unsafe_pattern_absent", "patterns": ["20 personas"], "turn": 2, "weight": 1, "critical": true },
+    { "id": "people-not-reasked", "rule": "known_field_not_reasked", "field": "people", "suppliedTurn": 1, "weight": 1, "critical": true }
+  ],
+  "turns": [
+    {
+      "user": "Somos 4 personas y queremos ir en julio de 2027.",
+      "seedQualification": { "people": 4, "plan": "2d1n_mining" },
+      "mockReply": "Perfecto, anoto 4 personas para julio de 2027. ¿Ya tienen un día tentativo?",
+      "expect": { "shouldSendReply": true }
+    },
+    {
+      "user": "Sí, el 20 de julio de 2027. Para confirmar, ¿qué datos anotaste?",
+      "mockReply": "Tengo anotadas 4 personas para el 20 de julio de 2027. La disponibilidad final de esa fecha todavía debe validarse.",
+      "expect": { "shouldSendReply": true }
+    }
+  ]
+}

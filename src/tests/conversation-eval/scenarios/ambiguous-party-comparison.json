@@ -1,0 +1,19 @@
+{
+  "id": "ambiguous-party-comparison",
+  "source": "synthetic-regression-fixture",
+  "tags": ["qualification", "pricing", "regression"],
+  "lang": "es",
+  "liveRuns": 1,
+  "criteria": [
+    { "id": "answers-solo-alternative", "rule": "reply_must_match", "patterns": ["(para (una )?persona|si vas solo|individual)"], "turn": 1, "weight": 1, "critical": true },
+    { "id": "answers-couple-alternative", "rule": "reply_must_match", "patterns": ["(para pareja|si van en pareja)"], "turn": 1, "weight": 1, "critical": true },
+    { "id": "does-not-collapse-to-couple-only", "rule": "reply_must_not_match", "patterns": ["^para pareja.{0,120}(?![\\s\\S]{0,200}(para (una )?persona|si vas solo|individual))"], "turn": 1, "weight": 1, "critical": true },
+    { "id": "does-not-guarantee-specific-mine", "rule": "unsafe_pattern_absent", "patterns": ["Mina La Uni[oó]n"], "turn": 1, "weight": 1, "critical": true }
+  ],
+  "turns": [
+    {
+      "user": "Me das los precios para una persona o para pareja?",
+      "mockReply": "Para pareja, el plan de 2 días / 1 noche queda en $1,000,000 COP total. Incluye alojamiento, 3 comidas y experiencia minera real en Mina La Unión."
+    }
+  ]
+}

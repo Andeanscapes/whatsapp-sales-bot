@@ -1,0 +1,16 @@
+{
+  "id": "follow-up-partner-pause-silent",
+  "source": "synthetic-regression-fixture",
+  "tags": ["follow-up", "partner", "silence", "regression"],
+  "lang": "es",
+  "runner": "follow_up",
+  "liveRuns": 1,
+  "followUpMockReply": "No debe enviarse.",
+  "criteria": [
+    { "id": "respects-let-you-know", "rule": "output_flag_equals", "flag": "shouldSendReply", "expected": false, "turn": 3, "weight": 1, "critical": true }
+  ],
+  "turns": [
+    { "user": "Somos pareja y estamos validando la fecha", "mockReply": "Cuando tengan una idea, me escriben y seguimos." },
+    { "user": "Aún no, te avisaré", "mockReply": "Perfecto, sin afán." }
+  ]
+}

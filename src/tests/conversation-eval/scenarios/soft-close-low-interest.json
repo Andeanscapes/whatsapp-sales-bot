@@ -1,0 +1,25 @@
+{
+  "id": "soft-close-low-interest-lead",
+  "tags": ["salesStrategy", "closeStrategy"],
+  "lang": "es",
+  "criteria": [
+    { "id": "soft-close-without-pressure", "rule": "reply_must_not_match", "patterns": ["reserva ya", "paga ahora", "ultimos cupos"], "weight": 1, "critical": true }
+  ],
+  "turns": [
+    {
+      "user": "Hola buenas",
+      "mockReply": "¡Hola! Soy AgentA, co-founder de Andean Scapes. ¿En qué te puedo ayudar?",
+      "expect": { "shouldSendReply": true }
+    },
+    {
+      "user": "Voy a pensarlo y te aviso",
+      "mockReply": "Claro, tómate tu tiempo. Si te surgen dudas sobre la experiencia minera en Chivor o los planes disponibles, aquí estoy. Puedes seguirme en Instagram @andean_scapes también.",
+      "expect": { "shouldSendReply": true }
+    },
+    {
+      "user": "Gracias",
+      "mockReply": "¡Gracias a ti! Cuando quieras retomar, escríbeme sin problema.",
+      "expect": { "shouldSendReply": true }
+    }
+  ]
+}

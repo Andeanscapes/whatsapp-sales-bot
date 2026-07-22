@@ -1,0 +1,50 @@
+{
+  "id": "direct-question-reservation-lead-time",
+  "source": "synthetic-regression-fixture",
+  "tags": [
+    "direct-question",
+    "reservation",
+    "regression"
+  ],
+  "lang": "es",
+  "liveRuns": 1,
+  "criteria": [
+    {
+      "id": "answers-first",
+      "rule": "reply_must_match",
+      "patterns": [
+        "anticipación|antes|días"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "no-product-dump",
+      "rule": "unsafe_pattern_absent",
+      "patterns": [
+        "Aventura minera en Chivor.{0,180}Pet-friendly",
+        "Para pareja, 2 Dias / 1 Noche"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "one-next-step",
+      "rule": "reply_must_match",
+      "patterns": [
+        "fecha|fin de semana|día"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": false
+    }
+  ],
+  "turns": [
+    {
+      "user": "¿Con cuánto tiempo de anticipación se reserva?",
+      "mockReply": "Idealmente reserva con anticipación, especialmente para fines de semana. ¿Qué fecha estás considerando?"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "version": 2,
+  "mode": "live",
+  "gitSha": "v2-structural-baseline",
+  "generatedAt": "2026-07-16T00:00:00.000Z",
+  "suite": { "average": 100, "min": 100, "count": 15, "hardFails": 0 },
+  "scenarios": [
+    { "id": "big-group-over-10-price-caveats", "score": 100, "hardFail": false, "notes": [], "criteria": [], "turnResults": [] },
+    { "id": "confusion-clarify-instead-of-dump", "score": 100, "hardFail": false, "notes": [], "criteria": [], "turnResults": [] },
+    { "id": "english-lead-qualification", "score": 100, "hardFail": false, "notes": [], "criteria": [], "turnResults": [] },
+    { "id": "gallery-capped-per-conversation", "score": 100, "hardFail": false, "notes": [], "criteria": [], "turnResults": [] },
+    { "id": "incomplete-qualification-no-reservation-confirm", "score": 100, "hardFail": false, "notes": [], "criteria": [], "turnResults": [] },
+    { "id": "internal-token-leak-tentative-unknown", "score": 100, "hardFail": false, "notes": [], "criteria": [], "turnResults": [] },
+    { "id": "opt-out-mid-conversation", "score": 100, "hardFail": false, "notes": [], "criteria": [], "turnResults": [] },
+    { "id": "pair-moto-transport-path", "score": 100, "hardFail": false, "notes": [], "criteria": [], "turnResults": [] },
+    { "id": "price-dumped-before-qualification", "score": 100, "hardFail": false, "notes": [], "criteria": [], "turnResults": [] },
+    { "id": "reask-date-after-given", "score": 100, "hardFail": false, "notes": [], "criteria": [], "turnResults": [] },
+    { "id": "reask-name-after-given", "score": 100, "hardFail": false, "notes": [], "criteria": [], "turnResults": [] },
+    { "id": "reask-people-after-given", "score": 100, "hardFail": false, "notes": [], "criteria": [], "turnResults": [] },
+    { "id": "reserve-intent-triggers-alert", "score": 100, "hardFail": false, "notes": [], "criteria": [], "turnResults": [] },
+    { "id": "soft-close-low-interest-lead", "score": 100, "hardFail": false, "notes": [], "criteria": [], "turnResults": [] },
+    { "id": "wrong-name-partner-as-customer", "score": 100, "hardFail": false, "notes": [], "criteria": [], "turnResults": [] }
+  ]
+}
