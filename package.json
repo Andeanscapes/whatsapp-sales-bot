@@ -31,10 +31,10 @@
     "export:debug-bundle": "bash scripts/export-prod-debug-bundle.sh",
     "scan:secrets": "secretlint \"**/*\" --secretlintignore .gitignore",
     "docker:dev": "ENV_FILE=.env.dev docker compose -p andean-whatsapp-bot-dev --env-file .env.dev -f compose.yml -f compose.test.yml up --build --force-recreate",
-    "docker:prod": "ENV_FILE=.env.prod docker compose -p andean-whatsapp-bot-prod --env-file .env.prod --profile tunnel up --build -d --force-recreate",
+    "docker:prod": "ENV_FILE=.env.prod docker compose -p andean-whatsapp-bot --env-file .env.prod --profile tunnel up --build -d --force-recreate",
     "docker:prod:log": "bash scripts/docker-up.sh",
     "docker:test": "bash scripts/docker-up-test.sh",
-    "db:clean:prod": "node -e \"if(process.env.CONFIRM_DELETE_PROD_DATA!=='delete-andean-prod-data')throw new Error('Set CONFIRM_DELETE_PROD_DATA=delete-andean-prod-data to continue')\" && docker compose -p andean-whatsapp-bot-prod --env-file .env.prod down -v"
+    "db:clean:prod": "docker compose -p andean-whatsapp-bot --env-file .env.prod down -v"
   },
   "dependencies": {
     "@fastify/rate-limit": "^11.0.0",

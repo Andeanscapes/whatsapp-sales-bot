@@ -14,7 +14,7 @@ const NAME_GIVEN_PATTERN = /(?:me llamo|mi nombre es|hola soy|hello i'?m|my name
 const FIELD_ASK_PATTERNS = {
   name: /\b(c[óo]mo te llamas|cu[aá]l (es )?tu nombre|what'?s your name|what is your name|con qui[eé]n tengo)\b/i,
   people: /\b(cu[aá]ntas personas|how many people|para cu[aá]ntos|ser[ií]an|vienes?\s*solo|is the experience for you alone)\b/i,
-  date: /\b(tienen .{0,30} fecha|(?:alguna|cual|qué|que|c[uú]al) fecha|fecha tentativa|fecha en mente|para cu[aá]ndo|fecha preferida|en mente.*fecha)\b/i,
+  date: /\b(tienen .{0,30} fecha|(?:alguna|cual|qué|que|c[uú]al) fecha|fecha en mente|para cu[aá]ndo|fecha preferida|en mente.*fecha)\b/i,
   transport: /\b(?:llegar[ií]an|llegan|llegar)\s+(?:por su cuenta|en carro|en moto)|(?:necesitan|necesitas).{0,20}(?:transporte|transport)\b/i,
 };
 const BIG_GROUP_PATTERN = /\b(\d{2,})\s*(?:personas|people|pax)\b|\b(?:m[ií]nimo|aprox\.?|aproximadamente|mas de|m[aá]s de|al menos)\s*(\d{2,})\b/i;
