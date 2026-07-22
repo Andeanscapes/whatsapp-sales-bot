@@ -1,0 +1,58 @@
+{
+  "id": "group-over-10-escalation-no-final-standard-quote",
+  "source": "business-rule-2026-07-21",
+  "tags": [
+    "large-group",
+    "handoff",
+    "pricing",
+    "conversion"
+  ],
+  "lang": "es",
+  "liveRuns": 1,
+  "criteria": [
+    {
+      "id": "alerts-owner",
+      "rule": "output_flag_equals",
+      "flag": "shouldAlertOwner",
+      "expected": true,
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "mentions-custom-validation",
+      "rule": "reply_must_match",
+      "patterns": [
+        "cotización|validar|grupo|equipo"
+      ],
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "no-final-standard-price",
+      "rule": "unsafe_pattern_absent",
+      "patterns": [
+        "Valor para 25 personas:",
+        "\\$12[\\.,]?500[\\.,]?000"
+      ],
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Somos un club motero",
+      "mockReply": "¡Qué buena energía! ¿Cuántas personas serían aproximadamente?"
+    },
+    {
+      "user": "Mínimo 25 personas",
+      "seedQualification": {
+        "people": 25,
+        "plan": "2d1n_mining"
+      },
+      "mockReply": "Para 25 personas debemos validar capacidad, fecha y logística con el equipo antes de darte una cotización final. Ya lo estoy escalando para atención humana."
+    }
+  ]
+}

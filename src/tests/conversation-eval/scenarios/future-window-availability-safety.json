@@ -1,0 +1,19 @@
+{
+  "id": "future-window-availability-safety",
+  "source": "synthetic-regression-fixture",
+  "tags": ["availability", "date", "safety", "regression"],
+  "lang": "es",
+  "liveRuns": 1,
+  "criteria": [
+    { "id": "preserves-after-november-constraint", "rule": "reply_must_match", "patterns": ["(despu[eé]s de noviembre|diciembre|m[aá]s adelante)"], "turn": 1, "weight": 1, "critical": true },
+    { "id": "availability-remains-team-validated", "rule": "reply_must_match", "patterns": ["(equipo.{0,40}(valid|confirm)|valid.{0,40}equipo|confirm.{0,40}equipo)"], "turn": 1, "weight": 1, "critical": true },
+    { "id": "does-not-invent-confirmed-cupo", "rule": "unsafe_pattern_absent", "patterns": ["tenemos disponible", "tiene cupo", "con cupo", "[uú]nica fecha", "cupo limitado", "noviembre.{0,40}(ideal|disponible)"], "turn": 1, "weight": 1, "critical": true }
+  ],
+  "turns": [
+    {
+      "user": "Somos pareja y queremos viajar después de noviembre. Qué fechas tienen?",
+      "seedQualification": { "people": 2, "plan": "2d1n_mining" },
+      "mockReply": "Noviembre suena ideal. Tenemos disponible el sábado 14 de noviembre y es la única fecha con cupo limitado para pareja."
+    }
+  ]
+}

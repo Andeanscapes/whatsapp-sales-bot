@@ -1,0 +1,24 @@
+{
+  "id": "review-pause-family-no-repeat",
+  "source": "synthetic-regression-fixture",
+  "tags": ["qualification", "review-pause", "pricing", "regression"],
+  "lang": "es",
+  "turns": [
+    {
+      "user": "Es para un grupo de 4 adultos, sería para octubre más o menos",
+      "mockReply": "Para un grupo de cuatro, el plan de 2 días / 1 noche les permite conocer la mina con guía local."
+    },
+    {
+      "user": "Déjame revisar esta semana con el grupo y te confirmo",
+      "mockReply": "Respuesta que no debe enviarse.",
+      "seedPriceGiven": true,
+      "seedLeadScore": 71,
+      "seedQualification": { "people": 4, "date": "octubre", "transport": "own", "plan": "2d1n_mining" }
+    }
+  ],
+  "criteria": [
+    { "id": "review-acknowledgement", "rule": "reply_must_match", "patterns": ["revisarlo con calma|review it calmly"], "turn": 2, "weight": 1, "critical": true },
+    { "id": "no-repeated-price", "rule": "unsafe_pattern_absent", "patterns": ["\\$\\s?\\d", "total paquete"], "turn": 2, "weight": 1, "critical": true },
+    { "id": "no-immediate-gallery", "rule": "output_flag_equals", "flag": "shouldSendGalleryImages", "expected": false, "turn": 2, "weight": 1, "critical": true }
+  ]
+}

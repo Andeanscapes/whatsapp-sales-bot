@@ -1,0 +1,20 @@
+{
+  "id": "explicit-multi-question-answering",
+  "source": "synthetic-regression-fixture",
+  "tags": ["facts", "regression"],
+  "lang": "es",
+  "liveRuns": 3,
+  "criteria": [
+    { "id": "answers-duration", "rule": "reply_must_match", "patterns": ["2 d[ií]as.{0,20}1 noche|2D.?1N"], "turn": 1, "weight": 1, "critical": true },
+    { "id": "answers-minimum-age", "rule": "reply_must_match", "patterns": ["edad m[ií]nima.{0,20}5|desde los 5"], "turn": 1, "weight": 1, "critical": true },
+    { "id": "answers-pet-policy", "rule": "reply_must_match", "patterns": ["pet.?friendly|mascotas?.{0,20}(permitid|bienvenid|pueden)"], "turn": 1, "weight": 1, "critical": true },
+    { "id": "answers-inclusions", "rule": "reply_must_match", "patterns": ["alojamiento", "3 comidas", "(equipo|casco|botas)", "(gu[ií]a|acompañamiento)"], "turn": 1, "weight": 1, "critical": true }
+  ],
+  "turns": [
+    {
+      "user": "Necesito una respuesta puntual a cuatro cosas: ¿cuánto dura el plan minero, qué incluye, cuál es la edad mínima y aceptan mascotas?",
+      "mockReply": "El plan minero dura 2 días y 1 noche. Incluye alojamiento, 3 comidas, equipo de seguridad y guía local; la edad mínima es 5 años y somos pet-friendly, así que las mascotas son bienvenidas.",
+      "expect": { "shouldSendReply": true }
+    }
+  ]
+}

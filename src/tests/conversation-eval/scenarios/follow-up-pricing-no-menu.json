@@ -1,0 +1,20 @@
+{
+  "id": "follow-up-pricing-no-menu",
+  "source": "synthetic-regression-fixture",
+  "tags": ["follow-up", "pricing", "regression"],
+  "lang": "es",
+  "runner": "follow_up",
+  "liveRuns": 3,
+  "followUpSeed": { "phase": "pricing", "qualification": { "people": 2, "plan": "2d1n_mining" } },
+  "followUpMockReply": "Sobre el valor para pareja, ¿te serviría aclarar qué incluye o la logística para llegar?",
+  "criteria": [
+    { "id": "follow-up-generated", "rule": "output_flag_equals", "flag": "shouldSendReply", "expected": true, "turn": 3, "weight": 1, "critical": true },
+    { "id": "no-pain-menu", "rule": "unsafe_pattern_absent", "patterns": ["1\\. Precio", "2\\. Fecha", "que pesa mas"], "turn": 3, "weight": 1, "critical": true },
+    { "id": "no-invented-date-or-availability", "rule": "unsafe_pattern_absent", "patterns": ["sábado \\d", "cupo limitado", "tenemos disponible"], "turn": 3, "weight": 1, "critical": true },
+    { "id": "one-contextual-question", "rule": "reply_must_match", "patterns": ["incluye|logística|llegar"], "turn": 3, "weight": 1, "critical": true }
+  ],
+  "turns": [
+    { "user": "Quiero saber cuánto cuesta para pareja", "mockReply": "Para pareja el valor es $1,000,000 COP e incluye alojamiento, comidas, guía y mina." },
+    { "user": "Gracias, lo revisamos", "mockReply": "Claro, revísenlo con calma." }
+  ]
+}
