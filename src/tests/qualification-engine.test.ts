@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 import { loadSkills } from '../services/skill-loader.js';
 import { migrate } from '../db/migrate.js';
 import { createRepositories, type Repositories } from '../db/repositories/index.js';
-import { extractBookingFields, isCorrectionMessage, contextAwareExtract, detectPlan, resolveLanguage } from '../services/qualification-engine.js';
+import { extractBookingFields, isAmbiguousPartyComparison, isCorrectionMessage, contextAwareExtract, detectPlan, isExplicitDateDeferral, isUncertainDateAnswer, isQualificationComplete, resolveLanguage } from '../services/qualification-engine.js';
 import { detectExplicitLanguageSwitch } from '../services/language-service.js';
 
 describe('extractBookingFields — people detection', () => {
@@ -29,6 +29,76 @@ describe('extractBookingFields — people detection', () => {
     'somos 3',
   ])('detects 3 people from "%s"', (text) => {
     expect(extractBookingFields(text).collected_people).toBe(3);
+  });
+
+  it.each([
+    'Es para la familia 4 adultos',
+    'Seríamos 4 adultas',
+    'We are 4 adults',
+  ])('detects four adults from "%s"', (text) => {
+    expect(extractBookingFields(text).collected_people).toBe(4);
+  });
+
+  it.each([
+    'Somos 4 adultos y 2 niños',
+    'Somos 2 niños y 4 adultos',
+    'We are 4 adults and 2 children',
+    'We are 2 children and 4 adults',
+    'Somos 4 adultos y un niño',
+    'Somos 4 adultos y dos niñas',
+    'We are 4 adults and one child',
+  ])('does not guess a total for mixed adult and child counts from "%s"', (text) => {
+    expect(extractBookingFields(text).collected_people).toBeUndefined();
+  });
+
+  it.each([
+    'solo o pareja',
+    'una persona o pareja',
+    'solo o quizás pareja',
+    'Me das los precios para una persona o para pareja?',
+  ])('does not settle an ambiguous party comparison from "%s"', (text) => {
+    expect(isAmbiguousPartyComparison(text)).toBe(true);
+    expect(extractBookingFields(text).collected_people).toBeUndefined();
+  });
+
+  it.each([
+    'solo me interesa la experiencia en pareja',
+    'solo quiero info para pareja',
+  ])('does not treat non-comparison solo+pareja as ambiguous: "%s"', (text) => {
+    expect(isAmbiguousPartyComparison(text)).toBe(false);
+  });
+});
+
+describe('isQualificationComplete', () => {
+  it('does not treat a deferred date as confirmed', () => {
+    expect(isQualificationComplete({
+      nombre: 'Laura', plan: '2d1n_mining', personas: 2, fecha: 'tentative_unknown', transporte: 'own', mascota: null,
+    })).toBe(false);
+  });
+});
+
+describe('isExplicitDateDeferral', () => {
+  it.each([
+    'Ya te dije que no se la fecha',
+    'Todavia no tenemos fecha',
+    'We do not have a date yet',
+  ])('detects "%s"', (text) => {
+    expect(isExplicitDateDeferral(text)).toBe(true);
+  });
+});
+
+describe('isUncertainDateAnswer', () => {
+  it.each([
+    'no lo se',
+    'todavía no',
+    'not sure',
+    'Ya te dije que no se la fecha',
+  ])('detects "%s"', (text) => {
+    expect(isUncertainDateAnswer(text)).toBe(true);
+  });
+
+  it('strict deferral does not fire on bare uncertainty without date context', () => {
+    expect(isExplicitDateDeferral('todavía no')).toBe(false);
   });
 });
 
@@ -99,6 +169,11 @@ describe('contextAwareExtract — people reply parsing', () => {
   it('does not capture numbers when no relevant question was asked', () => {
     const result = contextAwareExtract('somos 5', repos, PHONE, {});
     expect(result.collected_people).toBeUndefined();
+  });
+
+  it('captures an explicit date deferral without relying on the previous question', () => {
+    const result = contextAwareExtract('Ya te dije que no se la fecha', repos, PHONE, {});
+    expect(result.collected_date).toBe('tentative_unknown');
   });
 
   it('ignores numbers outside 1-20 range', () => {

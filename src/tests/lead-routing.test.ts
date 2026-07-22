@@ -8,8 +8,8 @@ import { assignLine, getRoutingConfig, pickSalesLineFromConfig, resetRoutingConf
 
 const config: RoutingConfig = {
   salesLines: [
-    { id: 'bridge', type: 'bridge', label: 'Bridge', weight: 30, telegramChatId: '1', agentName: 'Heinner' },
-    { id: 'zaret_phone', type: 'referral', label: 'Zaret', weight: 70, telegramChatId: '2', agentName: 'Zaret', displayNumber: '+57000' },
+    { id: 'bridge', type: 'bridge', label: 'Bridge', weight: 30, telegramChatId: '1', agentName: 'AgentA' },
+    { id: 'agentb_phone', type: 'referral', label: 'AgentB', weight: 70, telegramChatId: '2', agentName: 'AgentB', displayNumber: '+57000' },
   ],
 };
 
@@ -33,8 +33,8 @@ describe('lead routing', () => {
     const previous = env.LEAD_ROUTING_JSON;
     env.LEAD_ROUTING_JSON = JSON.stringify({
       salesLines: [
-        { id: 'dup', type: 'bridge', label: 'Bridge', weight: 30, telegramChatId: '1', agentName: 'Heinner' },
-        { id: 'dup', type: 'referral', label: 'Zaret', weight: 70, telegramChatId: '2', agentName: 'Zaret', displayNumber: '+57000' },
+        { id: 'dup', type: 'bridge', label: 'Bridge', weight: 30, telegramChatId: '1', agentName: 'AgentA' },
+        { id: 'dup', type: 'referral', label: 'AgentB', weight: 70, telegramChatId: '2', agentName: 'AgentB', displayNumber: '+57000' },
       ],
     });
     resetRoutingConfigCache();
@@ -49,8 +49,8 @@ describe('lead routing', () => {
     const previous = env.LEAD_ROUTING_JSON;
     env.LEAD_ROUTING_JSON = JSON.stringify({
       salesLines: [
-        { id: 'bridge', type: 'bridge', label: 'Bridge', weight: 30, telegramChatId: 'same', agentName: 'Heinner' },
-        { id: 'zaret_phone', type: 'referral', label: 'Zaret', weight: 70, telegramChatId: 'same', agentName: 'Zaret', displayNumber: '+57000' },
+        { id: 'bridge', type: 'bridge', label: 'Bridge', weight: 30, telegramChatId: 'same', agentName: 'AgentA' },
+        { id: 'agentb_phone', type: 'referral', label: 'AgentB', weight: 70, telegramChatId: 'same', agentName: 'AgentB', displayNumber: '+57000' },
       ],
     });
     resetRoutingConfigCache();
@@ -168,7 +168,7 @@ describe('BRIDGE_FLOW env override', () => {
 
     const routing = getRoutingConfig();
     const bridgeLine = routing?.salesLines.find(l => l.id === 'bridge');
-    const referralLine = routing?.salesLines.find(l => l.id === 'zaret_phone');
+    const referralLine = routing?.salesLines.find(l => l.id === 'agentb_phone');
 
     expect(bridgeLine?.weight).toBe(30);
     expect(referralLine?.weight).toBe(70);
@@ -266,7 +266,7 @@ describe('BRIDGE_FLOW env override', () => {
 
     const routing = getRoutingConfig();
     const bridgeLine = routing?.salesLines.find(l => l.id === 'bridge');
-    const referralLine = routing?.salesLines.find(l => l.id === 'zaret_phone');
+    const referralLine = routing?.salesLines.find(l => l.id === 'agentb_phone');
 
     expect(bridgeLine?.weight).toBe(30);
     expect(referralLine?.weight).toBe(70);

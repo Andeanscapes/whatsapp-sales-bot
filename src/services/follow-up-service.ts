@@ -1,19 +1,25 @@
-import type { Repositories } from '../db/repositories/index.js';
+import type { FollowUpCandidate, Repositories } from '../db/repositories/index.js';
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
-import { getSkills } from './skill-loader.js';
-import { buildSystemPrompt } from './deepseek-client.js';
+import { buildFollowUpPrompt } from './deepseek-client.js';
 import { llmClient } from './response-engine.js';
 import {
   stripHandoffPhrases,
   containsUnsafeReservationClaim,
   containsPromptLeakOrPolicyViolation,
+  isNonSalesInquiry,
+  isCustomerFollowUpPromise,
+  isReviewPause,
+  isSoftCloseMessage,
 } from './reply-guard.js';
-import { sendText } from './whatsapp-client.js';
+import { sendImageUrl, sendText, WhatsAppSendError } from './whatsapp-client.js';
 import { checkBudget } from './budget-guard.js';
-import { isWithinServiceWindow } from './time-window-policy.js';
+import { checkTimeWindow, isWithinServiceWindow } from './time-window-policy.js';
 import { getCollectedFields } from './qualification-engine.js';
 import { INPUT_COST_PER_TOKEN, OUTPUT_COST_PER_TOKEN } from './constants.js';
+import { getSkills } from './skill-loader.js';
+import { getActiveExperience, getGalleryImages, getShortDescription } from './product-registry.js';
+import { galleryMediaId, recordGalleryNudge, recordImageSend, selectEligibleGalleryImages } from './media-service.js';
 
 /**
  * WhatsApp only allows free-form messages within 24h of the customer's last
@@ -23,34 +29,7 @@ const MAX_FOLLOW_HOURS = 19;
 const POLL_MS = 60_000;
 /** Per tick, cap candidates so a backlog never blocks other bot/Telegram work. */
 const FOLLOW_UP_BATCH = 5;
-/**
- * Max wasted LLM drafts per lead before we give up on the first nudge.
- * Bounds cost when DeepSeek keeps returning empty / unusable drafts within the
- * service window. Reset once the lead is marked (sent or attempt-exhausted).
- */
-const MAX_FIRST_NUDGE_DRAFT_ATTEMPTS = 3;
-const firstNudgeDraftAttempts = new Map<string, number>();
-
-const FOLLOW_UP_TASK =
-  'RE-ENGAGEMENT TASK: Reconnect with someone who stopped replying. Your goal is NOT to sell — it is to spark genuine curiosity with something UNIQUE to THIS conversation.\n' +
-  '\n' +
-  'HOW TO WIN:\n' +
-  '- Hook must be CONCRETE and UNIQUE from this conversation history ONLY: their name, their date, their group size, their exact words, their situation.\n' +
-  '- Examples of GOOD hooks: "Juana, ¿te acordas que hablamos de octubre? Justo vi algo de esa epoca...", "Pensando en tu viaje de octubre, ¿ya sabes como vas a llegar?"\n' +
-  '- Create a curiosity gap: one short question tied to something they already shared. Not yes/no.\n' +
-  '- Max ~200 chars. 1-2 sentences. 1 emoji max if natural. Tone: a friend texting, NOT a salesperson.\n' +
-  '- Language: same as the customer used in history.\n' +
-  '\n' +
-  'BANNED PHRASES (will be cleaned or rejected):\n' +
-  '- "pensé en ti" / "pense en ti" / "pensé en ustedes"\n' +
-  '- "me acordé de ti" / "me acorde de ti" / "me acordé de ustedes"\n' +
-  '- "vi algo y pensé en ti" / "se me vino una idea" / "se me vino una imagen" (as generic openers without concrete history)\n' +
-  '- "sigues interesado" / "solo pasaba a ver" / "cómo vas" / "hola de nuevo" / "como vas"\n' +
-  '- Zero mentions of product, price, company, "reservar", "plan", deposit, IG, social media, links.\n' +
-  '\n' +
-  'SAFETY: Never confirm dates, availability, spots, payments. Never include links or IG handles. Never invent companions or names not in history.\n' +
-  '\n' +
-  'CRITICAL: Never assume or invent the customer\'s companion or their name. If they said "para 2 personas" but never gave a name, do NOT guess who the other person is. Only reference facts the customer explicitly shared.';
+type AutomatedFollowUpStage = 'first_nudge' | 'second_nudge';
 
 /**
  * Cliché phrases to remove. Matched anywhere (leading or mid-sentence) so a
@@ -65,11 +44,25 @@ const RETRYABLE_NUDGE_PHRASES = [
   /(?:^|[,.;:!¡¿]?\s*)(?:sigues\s+interesad[oa]|solo\s+pasaba\s+a\s+ver|c[oó]mo\s+vas|como\s+vas)[,!.:\s-]*/gi,
 ];
 
-const HARD_BLOCK_NUDGE_PATTERNS = [
-  /\b(?:reservar|comprar|costo|precio|dep[oó]sito)\b/i,
+const COMMERCIAL_NUDGE_PATTERNS = [
+  /\b(?:costo|precio|valor|cost|price)\b|\$\s*\d|\b\d[\d,.]*\s*(?:COP|USD)\b/i,
   /\bplan(?:es)?\s+(?:de\s+\d|minero|rural|2d|3d)\b/i,
+];
+
+const HARD_BLOCK_NUDGE_PATTERNS = [
+  /\b(?:comprar|reserva[rs]?|dep[oó]sito|buy|purchase|book(?:ing)?|reserve|reservation|deposit|down\s+payment|pay)\b/i,
   /https?:\/\//i,
   /\binstagram\b/i,
+  /\b(?:hook para reconectar|reconectar con este lead|este lead|hook to reconnect|reconnect with this lead|this lead)\b/i,
+  /\b(?:viajeros?|travelers?)\b.{0,60}\b(?:encontraron|found)\b/i,
+];
+
+const REVIEW_REMINDER_BLOCK_PATTERNS = [
+  /\b(?:precio|valor|costo|cost|price)\b/i,
+  /\b(?:disponibilidad|available|availability|cupos?|spots?)\b/i,
+  /\b(?:reserva[rs]?|reservar|reserve|booking|book)\b/i,
+  /\b(?:urgente|urgency|ultimo[as]?|last|pronto|soon|agota[rs]?|sell\s+out)\b/i,
+  /\b(?:foto|fotos|imagen(?:es)?|photos?|pictures?)\b/i,
 ];
 
 function stripRetryableNudgeOpeners(reply: string): string {
@@ -80,22 +73,6 @@ function stripRetryableNudgeOpeners(reply: string): string {
   // Capitalize first letter if stripping left a lowercase lead.
   if (cleaned) cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
   return cleaned;
-}
-
-/**
- * Records a wasted draft attempt for a lead. When the cap is hit we mark the
- * follow-up as sent so the worker stops retrying and burning LLM budget.
- * Returns true when the lead should be given up on.
- */
-function registerWastedDraft(repos: Repositories, phone: string): boolean {
-  const next = (firstNudgeDraftAttempts.get(phone) ?? 0) + 1;
-  if (next >= MAX_FIRST_NUDGE_DRAFT_ATTEMPTS) {
-    firstNudgeDraftAttempts.delete(phone);
-    repos.conversation.markFollowUpSent(phone);
-    return true;
-  }
-  firstNudgeDraftAttempts.set(phone, next);
-  return false;
 }
 
 function escapeRegex(value: string): string {
@@ -112,22 +89,39 @@ function stripOwnerReIntro(reply: string): string {
   return reply.replace(introPattern, '').trim();
 }
 
+function startsWithOwnerOrPartnerName(reply: string): boolean {
+  const protectedNames = [env.OWNER_NAME, env.PARTNER_NAME]
+    .flatMap(name => [name, name.split(/\s+/)[0]])
+    .filter(name => name.length > 1)
+    .map(escapeRegex);
+  return protectedNames.some(name => new RegExp(`^${name}(?:[,!:.\\s]|$)`, 'i').test(reply));
+}
+
 function configuredHours(): number {
-  if (env.TIME_FOLLOW_HOURS <= 0) return 0;
   return Math.min(env.TIME_FOLLOW_HOURS, MAX_FOLLOW_HOURS);
 }
 
-async function sendAndRecord(
+export function isFollowUpSendWindow(now = new Date()): boolean {
+  const hour = Number(new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Bogota', hour: 'numeric', hourCycle: 'h23',
+  }).format(now));
+  return hour >= env.FOLLOW_UP_SEND_START_HOUR && hour < env.FOLLOW_UP_SEND_END_HOUR;
+}
+
+function isPermanentFollowUpPause(text: string): boolean {
+  return isSoftCloseMessage(text)
+    || isCustomerFollowUpPromise(text)
+    || /(?:quiero\s+pensarlo|lo\s+(?:quiero|voy|vamos)\s+a\s+pensar|déjame\s+pensarlo|let\s+me\s+think|estamos\s+validando|a[uú]n\s+no|when\s+we\s+decide)/i.test(text);
+}
+
+function recordSent(
   phone: string,
   reply: string,
   repos: Repositories,
-  sequenceNumber: number,
-  stage: 'first_nudge' | 'pain_question',
-  scoreBefore: number,
-  result: { tokens: { prompt: number; completion: number } } | null,
-): Promise<void> {
+  stage: AutomatedFollowUpStage,
+  anchorInboundAt: string,
+): void {
   const sentAt = new Date().toISOString();
-  await sendText(phone, reply);
   repos.message.addMessage({
     customer_phone: phone,
     direction: 'outbound',
@@ -136,68 +130,65 @@ async function sendAndRecord(
     created_at: sentAt,
   });
   repos.conversation.markFollowUpSent(phone);
-  repos.followUpEvent.insert({
-    customerPhone: phone,
-    sequenceNumber,
-    stage,
-    sentAt,
-    repliedAt: null,
-    scoreBefore,
-    scoreAfter: null,
-    detectedPain: null,
-    status: 'sent',
-  });
-  if (result) {
-    const cost = result.tokens.prompt * INPUT_COST_PER_TOKEN + result.tokens.completion * OUTPUT_COST_PER_TOKEN;
-    repos.aiUsage.recordUsage({ phone, model: env.DEEPSEEK_MODEL, promptTokens: result.tokens.prompt, completionTokens: result.tokens.completion, cachedTokens: 0, estimatedCost: cost, purpose: 'follow_up', success: true });
-  }
+  repos.followUpEvent.markClaimSent(phone, anchorInboundAt, stage, sentAt);
 }
 
-async function runFollowUps(repos: Repositories): Promise<void> {
-  const hours = configuredHours();
-  if (hours <= 0 || !env.AI_ENABLED) return;
-  // Same global guard as the live reply path: a paused bot stays silent.
-  if (repos.isPaused()) return;
+function reviewReminderFallback(lang: 'es' | 'en'): string {
+  const skills = getSkills();
+  return skills.fallbackReplies[lang].followUpReviewReminder
+    .replace('{{experienceSummary}}', getShortDescription(getActiveExperience(skills)));
+}
 
-  const now = Date.now();
-  const serviceWindowStart = new Date(now - 23 * 60 * 60 * 1000).toISOString();
+function standardFollowUpFallback(lang: 'es' | 'en', phase: string | null, stage: AutomatedFollowUpStage): string {
+  const replies = getSkills().fallbackReplies[lang];
+  if (stage === 'second_nudge') return replies.followUpFinalDirect;
+  if (phase === 'pricing') return replies.followUpPricing;
+  if (phase === 'value') return replies.followUpValue;
+  if (phase === 'greeting') return replies.followUpGreeting;
+  return replies.followUpSafeNudge;
+}
 
-  // ── Stage 2: pain question — send to leads who replied the first nudge ───
-  const painDelayHours = env.TIME_PAIN_FOLLOW_HOURS ?? 1;
-  const firstNudgeRepliedBefore = new Date(now - painDelayHours * 60 * 60 * 1000).toISOString();
-  const painCandidates = repos.conversation.getPainQuestionCandidates(serviceWindowStart, FOLLOW_UP_BATCH, firstNudgeRepliedBefore);
-  for (const c of painCandidates) {
-    if (repos.optOut.isOptedOut(c.customerPhone)) continue;
-    if (!isWithinServiceWindow(repos, c.customerPhone)) continue;
-
-    const skills = getSkills();
-    const lang = c.language ?? 'es';
-    const currentScore = repos.conversation.getLeadScore(c.customerPhone);
-    const latest = repos.followUpEvent.getLatestByPhone(c.customerPhone);
-    if (!latest) continue;
-
-    const painQuestion = skills.fallbackReplies[lang].followUpPainQuestion;
-    const seqNumber = latest.sequenceNumber + 1;
+async function sendReviewGallery(repos: Repositories, phone: string): Promise<void> {
+  const images = selectEligibleGalleryImages(repos, phone, getGalleryImages(getSkills()));
+  let sent = false;
+  for (const image of images) {
+    if (!isWithinServiceWindow(repos, phone) || checkTimeWindow(repos, phone).isLimited) break;
     try {
-      await sendAndRecord(c.customerPhone, painQuestion, repos, seqNumber, 'pain_question', currentScore, null);
-      logger.info({ phone: c.customerPhone }, '[FOLLOW_UP] pain question sent');
+      await sendImageUrl(phone, image.url, '');
     } catch (err) {
-      logger.warn({ err, phone: c.customerPhone }, '[FOLLOW_UP] pain question send failed');
+      logger.warn({ err, phone }, '[FOLLOW_UP] gallery image failed');
+      continue;
+    }
+    try {
+      recordImageSend(repos, phone, galleryMediaId(image));
+      repos.message.addMessage({
+        customer_phone: phone,
+        direction: 'outbound',
+        message_type: 'image',
+        body: '',
+        created_at: new Date().toISOString(),
+      });
+      sent = true;
+    } catch (err) {
+      logger.error({ err, phone }, '[FOLLOW_UP] gallery image sent but persistence failed');
+      break;
     }
   }
-  // ────────────────────────────────────────────────────────────────────────
+  if (sent) recordGalleryNudge(repos, phone);
+}
 
-  // ── Stage 1: first nudge — send to silent leads ──────────────────────────
-  const cutoff = new Date(now - hours * 60 * 60 * 1000).toISOString();
-  const candidates = repos.conversation.getFollowUpCandidates(cutoff, serviceWindowStart, FOLLOW_UP_BATCH);
-
+async function processCandidates(
+  repos: Repositories,
+  candidates: FollowUpCandidate[],
+  stage: AutomatedFollowUpStage,
+): Promise<void> {
   for (const c of candidates) {
     // Re-check guards at send time (candidate query is a coarse pre-filter).
     if (repos.optOut.isOptedOut(c.customerPhone)) continue;
     if (!isWithinServiceWindow(repos, c.customerPhone)) continue;
+    if (checkTimeWindow(repos, c.customerPhone).isLimited) continue;
     if (!checkBudget(repos, c.customerPhone).aiAllowed) continue;
 
-    const skills = getSkills();
     const lang = c.language ?? 'es';
     const currentScore = repos.conversation.getLeadScore(c.customerPhone);
     const collected = getCollectedFields(repos, c.customerPhone);
@@ -206,22 +197,71 @@ async function runFollowUps(repos: Repositories): Promise<void> {
     // Never follow up on leads already in closing / pending validation.
     if (salesPhase === 'closing') continue;
 
-    // Reuse the production system prompt so follow-ups stay grounded in skill facts.
-    const systemPrompt = buildSystemPrompt(skills, lang, collected, salesPhase ?? undefined);
-    const history = repos.message.getRecentMessages(c.customerPhone, 24);
+    const history = repos.message.getRecentMessages(c.customerPhone, 8);
+    const latestInbound = [...history].reverse().find(message => message.role === 'user');
+    const latestOutbound = [...history].reverse().find(message => message.role === 'assistant');
+    if (!latestInbound || !latestOutbound) continue;
+    if (isNonSalesInquiry(latestInbound.content)) continue;
 
+    const anchorInboundAt = c.anchorInboundAt;
+    if (!anchorInboundAt) continue;
+    const reviewReminder = stage === 'second_nudge' && c.reviewPause === true;
+    const seqNumber = repos.followUpEvent.countByPhone(c.customerPhone) + 1;
+    const claimed = repos.followUpEvent.claim({
+      customerPhone: c.customerPhone,
+      sequenceNumber: seqNumber,
+      stage,
+      anchorInboundAt,
+      decisionReason: null,
+      sentAt: null,
+      repliedAt: null,
+      scoreBefore: currentScore,
+      scoreAfter: null,
+      detectedPain: null,
+      status: 'pending',
+    });
+    if (!claimed) continue;
+
+    if (stage === 'first_nudge' && isPermanentFollowUpPause(latestInbound.content)) {
+      repos.followUpEvent.markClaimSuppressed(c.customerPhone, anchorInboundAt, stage, 'customer_follow_up_promise');
+      continue;
+    }
+    if (stage === 'first_nudge' && isReviewPause(latestInbound.content)) {
+      repos.followUpEvent.markClaimSuppressed(c.customerPhone, anchorInboundAt, stage, 'review_pause');
+      continue;
+    }
+    if (stage === 'second_nudge' && isPermanentFollowUpPause(latestInbound.content)) {
+      repos.followUpEvent.markClaimSuppressed(c.customerPhone, anchorInboundAt, stage, 'customer_follow_up_promise');
+      continue;
+    }
+    if (reviewReminder && (currentScore < 60 || !repos.conversation.getPriceGivenAt(c.customerPhone))) {
+      repos.followUpEvent.markClaimSuppressed(c.customerPhone, anchorInboundAt, stage, 'review_lead_not_qualified');
+      continue;
+    }
+
+    let usageRecorded = false;
     const result = await llmClient.complete({
-      systemPrompt,
-      systemPromptSuffix: FOLLOW_UP_TASK,
-      message: 'Genera el mejor seguimiento para este lead ahora.',
+      systemPrompt: buildFollowUpPrompt({ lang, phase: salesPhase, stage, reviewReminder }),
+      message: `Generate the follow-up now. Collected facts: ${JSON.stringify(collected)}`,
       history: history.map(h => ({ role: h.role, content: h.content })),
       lang,
+      onAttempt: attempt => {
+        usageRecorded = true;
+        const cost = attempt.tokens.prompt * INPUT_COST_PER_TOKEN + attempt.tokens.completion * OUTPUT_COST_PER_TOKEN;
+        repos.aiUsage.recordUsage({ phone: c.customerPhone, model: env.DEEPSEEK_MODEL, promptTokens: attempt.tokens.prompt, completionTokens: attempt.tokens.completion, cachedTokens: 0, estimatedCost: cost, purpose: 'follow_up', success: attempt.success, errorType: attempt.success ? null : 'completion_failed' });
+      },
     });
 
+    if (result && !usageRecorded) {
+      const cost = result.tokens.prompt * INPUT_COST_PER_TOKEN + result.tokens.completion * OUTPUT_COST_PER_TOKEN;
+      repos.aiUsage.recordUsage({ phone: c.customerPhone, model: env.DEEPSEEK_MODEL, promptTokens: result.tokens.prompt, completionTokens: result.tokens.completion, cachedTokens: 0, estimatedCost: cost, purpose: 'follow_up', success: true });
+    }
+
     let reply = result?.turn.reply.trim() ?? '';
+    if (reviewReminder && (!reply || /[?¿]/.test(reply))) reply = reviewReminderFallback(lang);
     if (!reply) {
-      const gaveUp = registerWastedDraft(repos, c.customerPhone);
-      logger.warn({ phone: c.customerPhone, gaveUp }, '[FOLLOW_UP] empty draft; retry within window until attempt cap');
+      repos.followUpEvent.markClaimFailed(c.customerPhone, anchorInboundAt, stage, 'llm_unavailable');
+      logger.warn({ phone: c.customerPhone, stage }, '[FOLLOW_UP] no LLM draft; skipping nudge');
       continue;
     }
 
@@ -231,34 +271,84 @@ async function runFollowUps(repos: Repositories): Promise<void> {
     reply = stripOwnerReIntro(reply);
     reply = stripRetryableNudgeOpeners(reply);
     if (!reply) {
-      const gaveUp = registerWastedDraft(repos, c.customerPhone);
-      logger.warn({ phone: c.customerPhone, gaveUp }, '[FOLLOW_UP] retryable draft stripped empty; retry within window until attempt cap');
+      repos.followUpEvent.markClaimFailed(c.customerPhone, anchorInboundAt, stage, 'empty_after_sanitization');
       continue;
     }
-    // Reject drafts that leak commercial intent or unsafe links. These are not
-    // style issues, so mark attempted to avoid unsafe retry loops.
+    if (startsWithOwnerOrPartnerName(reply)) {
+      repos.followUpEvent.markClaimFailed(c.customerPhone, anchorInboundAt, stage, 'unsafe_personalization');
+      continue;
+    }
+    if (reviewReminder && REVIEW_REMINDER_BLOCK_PATTERNS.some(p => p.test(reply))) {
+      reply = reviewReminderFallback(lang);
+    }
+    // Unsafe reservation, prompt-leak, and commercial drafts are replaced with trusted copy.
     if (HARD_BLOCK_NUDGE_PATTERNS.some(p => p.test(reply))) {
-      logger.warn({ phone: c.customerPhone, snippet: reply.slice(0, 80) }, '[FOLLOW_UP] draft blocked by hard nudge guard; skipping send');
-      repos.conversation.markFollowUpSent(c.customerPhone);
-      continue;
+      logger.warn({ phone: c.customerPhone, replyLen: reply.length }, '[FOLLOW_UP] draft replaced by hard nudge guard');
+      reply = reviewReminder
+        ? reviewReminderFallback(lang)
+        : standardFollowUpFallback(lang, salesPhase, stage);
     }
-    // Same safety guards the live reply path enforces: never let a follow-up
-    // promise a reservation or leak the prompt/policy.
+    if (!reviewReminder && COMMERCIAL_NUDGE_PATTERNS.some(p => p.test(reply))) {
+      reply = standardFollowUpFallback(lang, salesPhase, stage);
+    }
+    if (!reviewReminder && salesPhase === 'pricing' && !/(?:incluye|log[ií]stica|llegar|includes?|logistics?|getting there)/i.test(reply)) {
+      reply = standardFollowUpFallback(lang, salesPhase, stage);
+    }
+    // Same safety guards as the live reply path: unsafe drafts never reach customers.
     if (containsUnsafeReservationClaim(reply) || containsPromptLeakOrPolicyViolation(reply)) {
-      logger.warn({ phone: c.customerPhone }, '[FOLLOW_UP] draft blocked by safety guard; skipping send');
-      repos.conversation.markFollowUpSent(c.customerPhone);
+      repos.followUpEvent.markClaimFailed(c.customerPhone, anchorInboundAt, stage, 'reply_guard_blocked');
       continue;
     }
 
-    const seqNumber = repos.followUpEvent.countByPhone(c.customerPhone) + 1;
+    // Candidate selection happened before the LLM call. Recheck immediately
+    // before dispatch so a newly active or closed conversation wins the race.
+    if (repos.isPaused()) { repos.followUpEvent.markClaimFailed(c.customerPhone, anchorInboundAt, stage, 'bot_paused'); continue; }
+    if (repos.optOut.isOptedOut(c.customerPhone)) { repos.followUpEvent.markClaimFailed(c.customerPhone, anchorInboundAt, stage, 'opted_out'); continue; }
+    if (repos.conversation.getBookedAt(c.customerPhone)) { repos.followUpEvent.markClaimFailed(c.customerPhone, anchorInboundAt, stage, 'booked'); continue; }
+    if (repos.conversation.getHandedOffAt(c.customerPhone)) { repos.followUpEvent.markClaimFailed(c.customerPhone, anchorInboundAt, stage, 'handed_off'); continue; }
+    if (repos.conversation.getMode(c.customerPhone) !== 'bot') { repos.followUpEvent.markClaimFailed(c.customerPhone, anchorInboundAt, stage, 'bridged'); continue; }
+    if (repos.message.getLastMessageDirection(c.customerPhone) !== 'outbound') { repos.followUpEvent.markClaimFailed(c.customerPhone, anchorInboundAt, stage, 'customer_replied'); continue; }
+    if (repos.conversation.getSoftClosedAt(c.customerPhone)) { repos.followUpEvent.markClaimFailed(c.customerPhone, anchorInboundAt, stage, 'soft_closed'); continue; }
+    if (!isWithinServiceWindow(repos, c.customerPhone)) { repos.followUpEvent.markClaimFailed(c.customerPhone, anchorInboundAt, stage, 'service_window_closed'); continue; }
+    if (checkTimeWindow(repos, c.customerPhone).isLimited) { repos.followUpEvent.markClaimFailed(c.customerPhone, anchorInboundAt, stage, 'message_limit_reached'); continue; }
+    if (!isFollowUpSendWindow()) { repos.followUpEvent.markClaimFailed(c.customerPhone, anchorInboundAt, stage, 'send_window_closed'); continue; }
+
     try {
-      await sendAndRecord(c.customerPhone, reply, repos, seqNumber, 'first_nudge', currentScore, result);
-      firstNudgeDraftAttempts.delete(c.customerPhone);
-      logger.info({ phone: c.customerPhone }, '[FOLLOW_UP] first nudge sent');
+      await sendText(c.customerPhone, reply);
     } catch (err) {
-      logger.warn({ err, phone: c.customerPhone }, '[FOLLOW_UP] send failed');
+      if (err instanceof WhatsAppSendError && !err.deliveryUncertain) {
+        repos.followUpEvent.markClaimFailed(c.customerPhone, anchorInboundAt, stage, err.retryable ? 'whatsapp_retryable' : 'whatsapp_rejected');
+      } else {
+        repos.followUpEvent.markClaimUncertain(c.customerPhone, anchorInboundAt, stage, 'whatsapp_delivery_uncertain');
+      }
+      logger.warn({ err, phone: c.customerPhone, stage }, '[FOLLOW_UP] send failed');
+      continue;
+    }
+
+    repos.followUpEvent.markClaimUncertain(c.customerPhone, anchorInboundAt, stage, 'whatsapp_accepted_persistence_pending');
+    try {
+      recordSent(c.customerPhone, reply, repos, stage, anchorInboundAt);
+      if (reviewReminder) await sendReviewGallery(repos, c.customerPhone);
+      logger.info({ phone: c.customerPhone, stage }, '[FOLLOW_UP] nudge sent');
+    } catch (err) {
+      logger.error({ err, phone: c.customerPhone, stage }, '[FOLLOW_UP] sent but persistence failed');
     }
   }
+}
+
+async function runFollowUps(repos: Repositories): Promise<void> {
+  if (!env.AI_ENABLED || !isFollowUpSendWindow()) return;
+  if (repos.isPaused()) return;
+
+  const now = Date.now();
+  const serviceWindowStart = new Date(now - 24 * 60 * 60 * 1000).toISOString();
+  const secondCutoff = new Date(now - env.TIME_FINAL_NUDGE_HOURS * 60 * 60 * 1000).toISOString();
+  const secondCandidates = repos.conversation.getSecondFollowUpCandidates(secondCutoff, serviceWindowStart, FOLLOW_UP_BATCH);
+  await processCandidates(repos, secondCandidates, 'second_nudge');
+
+  const firstCutoff = new Date(now - configuredHours() * 60 * 60 * 1000).toISOString();
+  const firstCandidates = repos.conversation.getFollowUpCandidates(firstCutoff, serviceWindowStart, FOLLOW_UP_BATCH);
+  await processCandidates(repos, firstCandidates, 'first_nudge');
 }
 
 export function startFollowUpScheduler(repos: Repositories): ReturnType<typeof setInterval> | undefined {
@@ -267,11 +357,6 @@ export function startFollowUpScheduler(repos: Repositories): ReturnType<typeof s
     void runFollowUps(repos).catch(err => logger.warn({ err }, '[FOLLOW_UP] worker failed'));
   }, POLL_MS);
   return interval;
-}
-
-/** Test-only: clears the in-memory wasted-draft attempt counters. */
-export function resetFollowUpDraftAttempts(): void {
-  firstNudgeDraftAttempts.clear();
 }
 
 export { runFollowUps };

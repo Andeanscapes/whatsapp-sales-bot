@@ -13,6 +13,29 @@ function readSystemPrompt(): string {
   );
 }
 
+function readFollowUpPrompt(): string {
+  return substituteTokens(
+    readFileSync(join(__dirname, '..', 'prompts', 'deepseek-follow-up.prompt.md'), 'utf-8')
+  );
+}
+
+export function buildFollowUpPrompt(input: {
+  lang: 'es' | 'en';
+  phase: string | null;
+  stage: 'first_nudge' | 'second_nudge';
+  reviewReminder?: boolean;
+}): string {
+  return [
+    readFollowUpPrompt(),
+    '',
+    'FOLLOW-UP SETTINGS:',
+    `Language: ${input.lang}`,
+    `Phase: ${input.phase ?? 'unknown'}`,
+    `Stage: ${input.stage}`,
+    ...(input.reviewReminder ? ['Mode: review_reminder'] : []),
+  ].join('\n');
+}
+
 export function buildSystemPrompt(skills: Skills, lang?: string, collectedFields?: Record<string, unknown>, salesPhase?: string): string {
   const base = readSystemPrompt();
   const exp = getActiveExperience(skills);
@@ -126,6 +149,8 @@ export function buildSystemPrompt(skills: Skills, lang?: string, collectedFields
     climateText ? `Climate: ${climateText}` : null,
     roadInfo ? `Road info: ${roadInfo}` : null,
     difficultyText ? `Difficulty: ${difficultyText}` : null,
+    `Mine assignment: ${exp.mineDetails.notes}`,
+    `Emerald finding policy: ${exp.emeraldPolicy.notes}`,
     idealFor ? `Ideal for: ${idealFor}` : null,
     notIdealFor ? `NOT ideal for: ${notIdealFor}` : null,
     '---',

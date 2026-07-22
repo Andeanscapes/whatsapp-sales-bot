@@ -22,6 +22,20 @@ export const NAME_PATTERNS = [
 
 export const NAME_BLACKLIST = /^(?:hola|buenas|hello|hi|hey|ok|si|no|yes|ya|gracias|thanks|quiero|cual|como|cuanto|donde|cuando|que|qué|cual|cuál|precio|itinerario|agenda|actividades|what|how|where|when|porque|por qu[eé]|me|te|se|el|la|los|las|es|own|solo|sola|bien|listo)$/i;
 
+/** True when customer compares solo vs couple without settling one size. */
+export function isAmbiguousPartyComparison(text: string): boolean {
+  const norm = normalizeText(text);
+  const soloSide = String.raw`(?:solo|sola|una\s+persona|1\s+persona|individual|just\s+me|alone|solo\s+traveler)`;
+  const coupleSide = String.raw`(?:pareja|couple|dos\s+personas|2\s+personas)`;
+  const connector = String.raw`(?:\bo\b|\bo\s+quiz[aá]s\b|\bor\b|\bvs\.?\b|\bversus\b)`;
+  return new RegExp(String.raw`${soloSide}.{0,40}${connector}.{0,40}${coupleSide}`, 'i').test(norm)
+    || new RegExp(String.raw`${coupleSide}.{0,40}${connector}.{0,40}${soloSide}`, 'i').test(norm)
+    || /precios?\s+para\s+(?:una\s+)?persona\s+o\s+(?:para\s+)?pareja/i.test(norm)
+    || /(?:una\s+)?persona\s+o\s+(?:para\s+)?pareja/i.test(norm)
+    || /(?:precio|precios|vale|valor).{0,40}(?:una\s+persona|individual|solo).{0,40}(?:pareja|dos\s+personas)/i.test(norm)
+    || /(?:precio|precios|vale|valor).{0,40}(?:pareja|dos\s+personas).{0,40}(?:una\s+persona|individual|solo)/i.test(norm);
+}
+
 export const TRANSPORT_OWN_PATTERNS = [
   /\b(?:veh[ií]culo propio|carro propio|mi carro|mi coche|mi auto|mi camioneta|en mi carro|voy en carro|voy con carro|llevo carro|tengo mi carro|moto|moto propia|vamos en (?:carro|moto|auto)|tenemos (?:carro|moto|auto|veh[ií]culo)|transporte propio|transporte si|si tenemos)\b/i,
   /\b(?:propio transporte|transporte propio|coche propio|no necesitamos transporte|nosotros manejamos|manejamos|si propio|yo manejo|manejo|si[,.]?\s*mi\s+(?:carro|auto|coche|camioneta)|s[ií][,.]?\s*(?:mi\s+)?(?:carro|auto|coche|camioneta|propio))\b/i,
@@ -92,8 +106,25 @@ export function getLastAssistantQuestion(repos: Repositories, phone: string): st
   return repos.message.getLastOutboundBody(phone);
 }
 
+export function isConfirmedDate(value: unknown): boolean {
+  return typeof value === 'string'
+    && value !== 'tentative_unknown'
+    && !value.startsWith('_');
+}
+
+export function isExplicitDateDeferral(text: string): boolean {
+  const norm = normalizeText(text);
+  return /\b(?:no (?:tenemos|tengo|se|sabemos) (?:la )?fecha|todav[ií]a no (?:tenemos|tengo|se|sabemos) (?:la )?fecha|a[uú]n no (?:tenemos|tengo|se|sabemos) (?:la )?fecha|no date yet|we do not have (?:a )?date yet|i do not know (?:the )?date yet)\b/i.test(norm);
+}
+
+/** Broad uncertainty answer — only meaningful right after the bot asked for a date. */
+export function isUncertainDateAnswer(text: string): boolean {
+  const norm = normalizeText(text);
+  return isExplicitDateDeferral(norm) || /no (lo )?s[eé]|not sure|no estoy segur|todav[ií]a no/i.test(norm);
+}
+
 export function isQualificationComplete(q: MergedQualification): boolean {
-  return q.nombre != null && q.plan != null && q.personas != null && q.fecha != null && q.transporte != null;
+  return q.nombre != null && q.plan != null && q.personas != null && isConfirmedDate(q.fecha) && q.transporte != null;
 }
 
 export function nextQualificationQuestion(q: MergedQualification, fb: FallbackReplies['es']): string {
@@ -172,20 +203,29 @@ export function extractBookingFields(text: string): Record<string, unknown> {
     fields.collected_date = monthInText;
   }
 
-  const peopleMatch = text.match(/(\d+)\s*(?:people|person|persons|personas|pax)/i);
+  const normalized = normalizeText(text);
+  const hasAdultCount = /\b\d+\s*(?:adulto(?:s)?|adulta(?:s)?|adult|adults)\b/i.test(normalized);
+  const childCount = String.raw`(?:\d+|un[oa]?|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|one|two|three|four|five|six|seven|eight|nine|ten)`;
+  const hasChildCount = new RegExp(String.raw`\b${childCount}\s*(?:ninos?|ninas?|child(?:ren)?|kids)\b`, 'i').test(normalized);
+  const mixedAdultsAndChildren = hasAdultCount && hasChildCount;
+  const peopleMatch = mixedAdultsAndChildren
+    ? null
+    : text.match(/(\d+)\s*(?:people|person|persons|personas|pax|adulto(?:s)?|adulta(?:s)?|adult|adults)/i);
   if (peopleMatch) fields.collected_people = parseInt(peopleMatch[1], 10);
 
   const simpleNumberMatch = text.match(/\b(?:somos|van|vamos|seriamos|serian|somos como|van como)\s+(\d+)\b/i);
-  if (simpleNumberMatch && !fields.collected_people) {
+  if (simpleNumberMatch && !fields.collected_people && !mixedAdultsAndChildren) {
     fields.collected_people = parseInt(simpleNumberMatch[1], 10);
   }
 
   const couplePattern = /\b(?:couple|pareja|dos personas|2 personas|mi esposo y yo|mi esposa y yo|mi novio y yo|mi novia y yo|mi pareja y yo|mi hija y yo|mi hijo y yo|mi (?:mam[aá]|madre|made) y yo|vamos dos|somos dos|somos 2|vamos 2)\b/i;
-  if (couplePattern.test(text) && !fields.collected_people) {
+  const soloPattern = /\b(?:sola|solo|voy sola|voy solo|ir[ií]a sola|ir[ií]a solo|yo sola|yo solo|una persona|1 persona|just me|only me|me alone|solo traveler)\b/i;
+  const ambiguousParty = isAmbiguousPartyComparison(text);
+  if (couplePattern.test(text) && !fields.collected_people && !ambiguousParty && !mixedAdultsAndChildren) {
     fields.collected_people = 2;
   }
 
-  if (/\b(?:sola|solo|voy sola|voy solo|ir[ií]a sola|ir[ií]a solo|yo sola|yo solo|una persona|1 persona|just me|only me|me alone|solo traveler)\b/i.test(text) && !fields.collected_people) {
+  if (soloPattern.test(text) && !fields.collected_people && !ambiguousParty && !mixedAdultsAndChildren) {
     fields.collected_people = 1;
   }
 
@@ -311,10 +351,12 @@ export function contextAwareExtract(message: string, repos: Repositories, phone:
   }
 
   if (lastQuestion && !fields.collected_transport_need) {
-    const askedTransport = /transporte propio|necesitan desde|vas (?:con|en)|own transport|pickup|Bogot[aá]|llegar desde|how (?:are you|will you) (?:getting|coming)/i.test(lastQuestion);
+    const askedTransport = /transporte propio|necesitan desde|vas (?:con|en)|por su cuenta|own transport|pickup|Bogot[aá]|llegar desde|how (?:are you|will you) (?:getting|coming)/i.test(lastQuestion);
     if (askedTransport) {
       const hasOwn = TRANSPORT_OWN_PATTERNS.some(p => p.test(norm)) || TRANSPORT_OWN_CONTEXT_PATTERNS.some(p => p.test(norm));
-      if (hasOwn) fields.collected_transport_need = 'own';
+      const shortYes = /^(?:s[ií]|sip|yes|yeah|yep|claro|dale|ok|okay|de una|por supuesto)\b/i.test(norm)
+        && !/\bno\b/i.test(norm);
+      if (hasOwn || shortYes) fields.collected_transport_need = 'own';
     }
   }
 
@@ -330,12 +372,16 @@ export function contextAwareExtract(message: string, repos: Repositories, phone:
     delete fields._relative_date_token;
   }
 
+  if (!fields.collected_date && isExplicitDateDeferral(norm)) {
+    fields.collected_date = 'tentative_unknown';
+  }
+
   if (!fields.collected_date && lastQuestion) {
     const askedDate = /fecha tentativa|what date|qu[eé] fecha/i.test(lastQuestion);
     if (askedDate) {
       const monthFound = MONTH_NAMES.find(m => norm.toLowerCase().includes(m));
       if (monthFound) fields.collected_date = monthFound;
-      if (/no (lo )?s[eé]|not sure|no estoy segur|todav[ií]a no/i.test(norm)) {
+      if (isUncertainDateAnswer(norm)) {
         fields.collected_date = 'tentative_unknown';
       }
     }

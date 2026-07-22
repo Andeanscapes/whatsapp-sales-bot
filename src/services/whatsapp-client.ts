@@ -5,6 +5,17 @@ const WHATSAPP_FETCH_TIMEOUT_MS = 10_000;
 /** Binary media transfers (download/upload) need more headroom than JSON message calls. */
 const WHATSAPP_MEDIA_TIMEOUT_MS = 30_000;
 
+export class WhatsAppSendError extends Error {
+  constructor(
+    message: string,
+    readonly deliveryUncertain: boolean,
+    readonly retryable = false,
+  ) {
+    super(message);
+    this.name = 'WhatsAppSendError';
+  }
+}
+
 /** WhatsApp Cloud API image limit is 5MB; cap inbound downloads to protect memory. */
 export const MAX_MEDIA_BYTES = 5 * 1024 * 1024;
 /** WhatsApp Cloud API video limit is 16MB. */
@@ -44,25 +55,30 @@ async function readCappedBuffer(res: Response, maxBytes: number): Promise<Buffer
 
 export async function sendText(to: string, text: string): Promise<void> {
   const url = `https://graph.facebook.com/${env.WHATSAPP_GRAPH_API_VERSION}/${env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
-  logger.info({ to, textLen: text.length, preview: text.slice(0, 80) }, '[WHATSAPP] sending text');
-  const response = await fetch(url, {
-    method: 'POST',
-    signal: AbortSignal.timeout(WHATSAPP_FETCH_TIMEOUT_MS),
-    headers: {
-      'Authorization': `Bearer ${env.WHATSAPP_ACCESS_TOKEN}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      to,
-      type: 'text',
-      text: { body: text, preview_url: true },
-    }),
-  });
+  logger.info({ to, textLen: text.length }, '[WHATSAPP] sending text');
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      signal: AbortSignal.timeout(WHATSAPP_FETCH_TIMEOUT_MS),
+      headers: {
+        'Authorization': `Bearer ${env.WHATSAPP_ACCESS_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to,
+        type: 'text',
+        text: { body: text, preview_url: true },
+      }),
+    });
+  } catch (error) {
+    throw new WhatsAppSendError(error instanceof Error ? error.message : 'WhatsApp transport failed', true);
+  }
   if (!response.ok) {
-    const body = await response.text().catch(() => '<unreadable>');
-    logger.warn({ status: response.status, body: body.slice(0, 500), to, phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID }, '[WHATSAPP] text send failed');
-    throw new Error(`WhatsApp API error: HTTP ${response.status} – ${body.slice(0, 120)}`);
+    logger.warn({ status: response.status, to, phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID }, '[WHATSAPP] text send failed');
+    const retryable = response.status === 429 || response.status >= 500;
+    throw new WhatsAppSendError(`WhatsApp API error: HTTP ${response.status}`, false, retryable);
   }
   logger.info({ to }, '[WHATSAPP] text sent ok');
 }
@@ -83,9 +99,8 @@ export async function downloadMedia(mediaId: string): Promise<DownloadedMedia> {
     headers: { 'Authorization': `Bearer ${env.WHATSAPP_ACCESS_TOKEN}` },
   });
   if (!metaRes.ok) {
-    const body = await metaRes.text().catch(() => '<unreadable>');
-    logger.warn({ status: metaRes.status, body: body.slice(0, 500) }, '[WHATSAPP] media metadata fetch failed');
-    throw new Error(`WhatsApp media metadata error: HTTP ${metaRes.status} – ${body.slice(0, 120)}`);
+    logger.warn({ status: metaRes.status }, '[WHATSAPP] media metadata fetch failed');
+    throw new Error(`WhatsApp media metadata error: HTTP ${metaRes.status}`);
   }
   const meta = (await metaRes.json()) as { url?: string; mime_type?: string };
   if (!meta.url) throw new Error('WhatsApp media metadata missing url');
@@ -127,9 +142,8 @@ export async function sendImageUrl(to: string, imageUrl: string, caption: string
     }),
   });
   if (!response.ok) {
-    const body = await response.text().catch(() => '<unreadable>');
-    logger.warn({ status: response.status, body: body.slice(0, 500) }, '[WHATSAPP] image send failed');
-    throw new Error(`WhatsApp API error: HTTP ${response.status} – ${body.slice(0, 120)}`);
+    logger.warn({ status: response.status }, '[WHATSAPP] image send failed');
+    throw new Error(`WhatsApp API error: HTTP ${response.status}`);
   }
   logger.info({ to }, '[WHATSAPP] image sent ok');
 }

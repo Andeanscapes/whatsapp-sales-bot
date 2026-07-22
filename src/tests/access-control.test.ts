@@ -8,8 +8,8 @@ import { resetRoutingConfigCache, type RoutingConfig } from '../services/lead-ro
 
 const config: RoutingConfig = {
   salesLines: [
-    { id: 'line1_bridge', type: 'bridge', label: 'Booking', weight: 30, telegramChatId: '111', agentName: 'Heinner' },
-    { id: 'line2_referral', type: 'referral', label: 'Booking', weight: 70, telegramChatId: '222', agentName: 'Zaret', displayNumber: '+57000' },
+    { id: 'line1_bridge', type: 'bridge', label: 'Booking', weight: 30, telegramChatId: '111', agentName: 'AgentA' },
+    { id: 'line2_referral', type: 'referral', label: 'Booking', weight: 70, telegramChatId: '222', agentName: 'AgentB', displayNumber: '+57000' },
   ],
 };
 

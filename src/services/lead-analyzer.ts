@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import { z } from 'zod';
 import { logger } from '../config/logger.js';
 import { requestDeepSeekCompletion } from './llm/deepseek-completion.js';
+import type { LlmAttempt } from './llm/llm-client.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -52,6 +53,7 @@ export interface AnalyzerInput {
   isPainQuestionReply: boolean;
   lastAssistantQuestion: string | null;
   lang: 'es' | 'en';
+  onAttempt?: (attempt: LlmAttempt) => void;
 }
 
 function buildAnalyzerPayload(input: AnalyzerInput): string {
@@ -97,11 +99,17 @@ export async function analyzeLead(input: AnalyzerInput): Promise<LeadAnalysis | 
     timeoutMs: ANALYZER_TIMEOUT_MS,
     logTag: '[LEAD_ANALYZER]',
   });
-  if (!completion) return null;
+  if (!completion) {
+    input.onAttempt?.({ tokens: { prompt: 0, completion: 0 }, success: false });
+    return null;
+  }
+
+  const tokens = { prompt: completion.promptTokens, completion: completion.completionTokens };
 
   const jsonMatch = completion.content.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
-    logger.warn({ preview: completion.content.slice(0, 200) }, '[LEAD_ANALYZER] no JSON found');
+    logger.warn({ contentLen: completion.content.length }, '[LEAD_ANALYZER] no JSON found');
+    input.onAttempt?.({ tokens, success: false });
     return null;
   }
 
@@ -109,15 +117,19 @@ export async function analyzeLead(input: AnalyzerInput): Promise<LeadAnalysis | 
   try {
     parsed = JSON.parse(jsonMatch[0]);
   } catch {
-    logger.warn({ preview: jsonMatch[0].slice(0, 200) }, '[LEAD_ANALYZER] JSON parse failed');
+    logger.warn({ contentLen: jsonMatch[0].length }, '[LEAD_ANALYZER] JSON parse failed');
+    input.onAttempt?.({ tokens, success: false });
     return null;
   }
 
   const validated = leadAnalysisSchema.safeParse(parsed);
   if (!validated.success) {
     logger.warn({ error: validated.error.message.slice(0, 200) }, '[LEAD_ANALYZER] validation failed');
+    input.onAttempt?.({ tokens, success: false });
     return null;
   }
+
+  input.onAttempt?.({ tokens, success: true });
 
   const result = validated.data;
   logger.info({

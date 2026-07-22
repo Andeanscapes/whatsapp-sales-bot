@@ -404,6 +404,42 @@
         },
         {
           "lang": "es",
+          "intent": "mine_assignment",
+          "question": "¿La experiencia siempre es en Mina La Union?",
+          "answer": "El tour puede realizarse en cualquiera de las minas con las que tenemos convenio. No se asegura una mina en particular. Son minas de carbon convertidas en experiencia esmeraldera, con agua, lodo, humedad, equipo y guia local."
+        },
+        {
+          "lang": "en",
+          "intent": "mine_assignment",
+          "question": "Is the experience always at La Union Mine?",
+          "answer": "The tour may take place at any of the partner mines we work with. We do not guarantee a particular mine. They are coal mines adapted for the emerald-region experience, with water, mud, humidity, safety gear, and a local guide."
+        },
+        {
+          "lang": "es",
+          "intent": "reservation_lead_time",
+          "question": "¿Con cuánta anticipación se reserva?",
+          "answer": "No manejamos un plazo fijo: depende de la fecha y de la logistica del grupo. Si nos escribes con anticipacion, el equipo puede validar disponibilidad real antes de confirmar cualquier cupo."
+        },
+        {
+          "lang": "en",
+          "intent": "reservation_lead_time",
+          "question": "How far in advance should I book?",
+          "answer": "We do not use a fixed lead time: it depends on the date and group logistics. If you contact us in advance, the team can validate real availability before confirming any spot."
+        },
+        {
+          "lang": "es",
+          "intent": "physical_recovery",
+          "question": "¿Puedo hacer la experiencia si me estoy recuperando de una fractura?",
+          "answer": "Si estas en recuperacion de una fractura o tienes movilidad limitada, te recomendamos validarlo primero con tu medico. La experiencia tiene caminatas, terreno rural, lodo y zonas humedas; no vale la pena arriesgar tu recuperacion."
+        },
+        {
+          "lang": "en",
+          "intent": "physical_recovery",
+          "question": "Can I do the experience while recovering from a fracture?",
+          "answer": "If you are recovering from a fracture or have limited mobility, we recommend checking with your doctor first. The experience includes walks, rural terrain, mud, and wet areas; it is not worth risking your recovery."
+        },
+        {
+          "lang": "es",
           "intent": "availability",
           "question": "¿Hay fechas disponibles?",
           "answer": "Fechas planeadas que tenemos en el radar (el equipo debe validar disponibilidad real): Julio: sábado 4 y sábado 18. Agosto: sábado 1 y sábado 15. Septiembre: sábado 5 y sábado 19. Si te sirve alguna de estas (u otra fecha), podemos pedirle al equipo que la revise. No tenemos confirmación final sin el equipo — pero él puede validar cualquier fecha que te interese."
