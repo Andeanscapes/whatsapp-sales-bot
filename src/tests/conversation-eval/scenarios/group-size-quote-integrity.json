@@ -1,0 +1,19 @@
+{
+  "id": "group-size-quote-integrity",
+  "source": "synthetic-regression-fixture",
+  "tags": ["pricing", "regression"],
+  "lang": "es",
+  "liveRuns": 3,
+  "mockPricing": { "planId": "2d1n_mining", "individual": 550000, "couple": 1000000 },
+  "criteria": [
+    { "id": "four-person-quote-is-exact", "rule": "group_quote_integrity", "people": 4, "planId": "2d1n_mining", "expectedTotal": 2000000, "turn": 1, "weight": 1, "critical": true }
+  ],
+  "turns": [
+    {
+      "user": "Somos 4 personas, queremos el plan de 2 días y 1 noche, vamos en carro propio. ¿Cuál es el total exacto para las 4 personas?",
+      "seedQualification": { "name": "Cliente Demo", "people": 4, "date": "septiembre de 2026", "transport": "own", "plan": "2d1n_mining" },
+      "mockReply": "Para 2 personas, el plan queda en $1,000,000 COP total.",
+      "expect": { "shouldSendReply": true }
+    }
+  ]
+}

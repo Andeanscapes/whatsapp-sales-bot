@@ -1,0 +1,40 @@
+{
+  "id": "reask-date-after-given",
+  "source": "synthetic-regression-fixture",
+  "tags": ["qualification", "regression"],
+  "lang": "es",
+  "liveRuns": 3,
+  "criteria": [
+    { "id": "date-not-reasked", "rule": "known_field_not_reasked", "field": "date", "suppliedTurn": 2, "weight": 1, "critical": true }
+  ],
+  "turns": [
+    {
+      "user": "Hola, quiero conocer la experiencia en Chivor",
+      "mockReply": "¡Hola! Soy Agente Uno, co-fundador de Andean Scapes junto con Agente Dos. Creamos experiencias auténticas en Boyacá. ¿La experiencia sería para ti solo, en pareja o para un grupo?",
+      "expect": { "shouldSendReply": true, "usedAi": true }
+    },
+    {
+      "user": "Seríamos 2 adultos. Tenemos planeado para agosto finales",
+      "mockReply": "¡Qué chimba, una aventura en grupo! Me encanta. Agosto es buena época. ¿Llegarían en carro propio o necesitan apoyo con el transporte?",
+      "expect": { "shouldSendReply": true, "usedAi": true }
+    },
+    {
+      "user": "Sí, en carro propio. Nos gustaría el sábado 22 de agosto",
+      "mockReply": "Perfecto, anoto sábado 22 de agosto y carro propio. Con esa fecha ya puedo orientar mejor el plan de 2 días / 1 noche para ustedes dos.",
+      "expect": {
+        "shouldSendReply": true,
+        "usedAi": true,
+        "replyMustNotMatch": ["fecha tentativa", "alguna fecha"]
+      }
+    },
+    {
+      "user": "Llegaríamos entonces a Chivor el sábado 22 de agosto",
+      "mockReply": "Listo, entonces queda claro: llegarían a Chivor el sábado 22 de agosto en carro propio. El siguiente paso sería validar disponibilidad real para esa fecha antes de confirmar cualquier cupo.",
+      "expect": {
+        "shouldSendReply": true,
+        "usedAi": true,
+        "replyMustNotMatch": ["fecha tentativa", "alguna fecha"]
+      }
+    }
+  ]
+}

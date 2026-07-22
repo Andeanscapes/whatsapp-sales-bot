@@ -1,0 +1,20 @@
+{
+  "id": "pricing-question-not-overridden",
+  "source": "synthetic-regression-fixture",
+  "tags": ["pricing", "intent", "regression"],
+  "lang": "es",
+  "liveRuns": 1,
+  "criteria": [
+    { "id": "answers-reservation-lead-time", "rule": "reply_must_match", "patterns": ["(anticipaci[oó]n|con tiempo|validar.{0,40}equipo|equipo.{0,40}validar)"], "turn": 1, "weight": 1, "critical": true },
+    { "id": "does-not-repeat-pricing-template", "rule": "reply_must_not_match", "patterns": ["valor para 2 personas", "total paquete"], "turn": 1, "weight": 1, "critical": true },
+    { "id": "does-not-send-gallery-for-reservation-question", "rule": "output_flag_equals", "flag": "shouldSendGalleryImages", "expected": false, "turn": 1, "weight": 1, "critical": true }
+  ],
+  "turns": [
+    {
+      "user": "Con cuánta anticipación se reserva?",
+      "seedPriceGiven": true,
+      "seedQualification": { "people": 2, "date": "finales de octubre", "transport": "own", "plan": "2d1n_mining" },
+      "mockReply": "Para pareja, el plan de 2 días / 1 noche incluye alojamiento, 3 comidas, mina y charla. Valor para 2 personas: $1,000,000 COP. Total paquete: $1,000,000 COP. ¿Tienen alguna fecha tentativa en mente?"
+    }
+  ]
+}

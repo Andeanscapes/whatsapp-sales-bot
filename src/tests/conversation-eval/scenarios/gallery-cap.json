@@ -1,0 +1,31 @@
+{
+  "id": "gallery-capped-per-conversation",
+  "tags": ["mediaGuards", "regression"],
+  "lang": "es",
+  "criteria": [
+    { "id": "gallery-not-repeated", "rule": "output_flag_equals", "flag": "shouldSendGalleryImages", "expected": false, "turn": 4, "weight": 1, "critical": true }
+  ],
+  "turns": [
+    {
+      "user": "Hola, quiero info de Chivor",
+      "mockReply": "¡Hola! Soy AgentA, co-founder de Andean Scapes. Tenemos la experiencia minera de 2 días/1 noche en Chivor con alojamiento en la Hacienda El Recuerdo. ¿Cómo te llamas?",
+      "expect": { "shouldSendReply": true }
+    },
+    {
+      "user": "Carlos",
+      "mockReply": "Perfecto Carlos. ¿Cuántas personas serían?",
+      "expect": { "shouldSendReply": true }
+    },
+    {
+      "user": "Somos 2 y queremos ver fotos del lugar",
+      "mockReply": "Claro Carlos, aquí algunas fotos para que te hagas una idea de la experiencia.",
+      "expect": { "shouldSendReply": true }
+    },
+    {
+      "user": "Muéstrame más fotos",
+      "mockReply": "Esas son las principales. Si te interesa, podemos revisar disponibilidad para la fecha que tengas en mente.",
+      "seedGalleryNudge": true,
+      "expect": { "shouldSendReply": true }
+    }
+  ]
+}

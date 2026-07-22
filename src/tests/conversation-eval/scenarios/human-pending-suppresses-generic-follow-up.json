@@ -1,0 +1,34 @@
+{
+  "id": "human-pending-suppresses-generic-follow-up",
+  "source": "business-rule-2026-07-21",
+  "tags": [
+    "follow-up",
+    "human_pending",
+    "conversion"
+  ],
+  "lang": "es",
+  "runner": "follow_up",
+  "liveRuns": 1,
+  "followUpSeed": {
+    "conversationMode": "human_pending",
+    "phase": "closing"
+  },
+  "followUpMockReply": "No debe enviarse.",
+  "criteria": [
+    {
+      "id": "suppressed",
+      "rule": "output_flag_equals",
+      "flag": "shouldSendReply",
+      "expected": false,
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Por favor confirma la disponibilidad",
+      "mockReply": "Voy a validarla con el equipo y te confirmamos."
+    }
+  ]
+}

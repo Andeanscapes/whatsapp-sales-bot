@@ -1,0 +1,36 @@
+{
+  "id": "big-group-over-10-price-caveats",
+  "source": "synthetic-regression-fixture",
+  "tags": ["salesStrategy", "regression"],
+  "lang": "es",
+  "liveRuns": 3,
+  "criteria": [
+    { "id": "large-group-date-validation", "rule": "big_group_date_validation", "threshold": 10, "weight": 1, "critical": true },
+    { "id": "large-group-price-review", "rule": "big_group_price_review", "threshold": 10, "weight": 1, "critical": true }
+  ],
+  "turns": [
+    {
+      "user": "Hola, quiero conocer la experiencia en Chivor",
+      "mockReply": "¡Hola! Soy Agente Uno, co-fundador de Andean Scapes con Agente Dos. Creamos experiencias auténticas en Boyacá. ¿La experiencia sería para ti solo, en pareja o para un grupo?",
+      "expect": { "shouldSendReply": true, "usedAi": true }
+    },
+    {
+      "user": "Hola buenas tardes, hablas con el Grupo Motero Ejemplo, me gustaría saber qué tipo de aventuras nos podrías ofrecer al grupo",
+      "mockReply": "¡Qué buena energía! Un club motero suena perfecto para esta experiencia. No es un tour turístico convencional —es una aventura real en una mina esmeraldera de Chivor, con lodo, historia y guías locales.",
+      "expect": { "shouldSendReply": true, "usedAi": true }
+    },
+    {
+      "user": "Aproximadamente por mínimo 25 personas",
+      "mockReply": "¡25 moteros! Eso sí que es una rodada con historia. ¿Tienen una fecha tentativa o quieren revisar opciones?",
+      "expect": { "shouldSendReply": true, "usedAi": true }
+    },
+    {
+      "user": "Sería para el mes de agosto por lo cual no hay ninguna fecha establecida",
+      "mockReply": "Agosto suena bien. ¿Tienen preferencia por algun fin de semana o les sirve flexible?",
+      "expect": {
+        "shouldSendReply": true,
+        "usedAi": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "id": "consult-family-pause-no-generic-follow-up",
+  "source": "synthetic-regression-fixture",
+  "tags": [
+    "follow-up",
+    "pause",
+    "conversion",
+    "regression"
+  ],
+  "lang": "es",
+  "runner": "follow_up",
+  "liveRuns": 1,
+  "followUpMockReply": "No debe enviarse todavía.",
+  "criteria": [
+    {
+      "id": "suppressed",
+      "rule": "output_flag_equals",
+      "flag": "shouldSendReply",
+      "expected": false,
+      "turn": 3,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Sí me interesa, pero debo revisarlo con el grupo esta semana",
+      "mockReply": "Perfecto. Tómate el tiempo para revisarlo con el grupo."
+    },
+    {
+      "user": "Yo te confirmo cuando hable con ellos",
+      "mockReply": "Claro, quedo atento."
+    }
+  ]
+}

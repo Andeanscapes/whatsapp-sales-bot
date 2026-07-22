@@ -1,0 +1,29 @@
+{
+  "id": "reask-people-after-given",
+  "source": "synthetic-regression-fixture",
+  "tags": ["qualification", "regression"],
+  "lang": "es",
+  "criteria": [
+    { "id": "people-not-reasked", "rule": "known_field_not_reasked", "field": "people", "suppliedTurn": 3, "weight": 1, "critical": true }
+  ],
+  "turns": [
+    {
+      "user": "Hola, quiero precios y fechas",
+      "mockReply": "¡Hola! Soy Agente Uno, co-founder de Andean Scapes junto con Agente Dos. Creamos experiencias únicas en Boyacá. ¿Cómo te llamas?",
+      "expect": { "shouldSendReply": true }
+    },
+    {
+      "user": "Cliente Demo",
+      "mockReply": "Perfecto Cliente Demo. ¿Cuántas personas serían?",
+      "expect": { "shouldSendReply": true, "replyMustNotMatch": ["cómo te llamas"] }
+    },
+    {
+      "user": "Pues no estoy segura, podría ser para 3",
+      "mockReply": "Entendido, Cliente Demo. Vamos con 3 personas entonces. ¿Para qué fecha lo tienen pensado?",
+      "expect": {
+        "shouldSendReply": true,
+        "replyMustNotMatch": ["cuántas personas", "cuantas personas", "how many people"]
+      }
+    }
+  ]
+}
