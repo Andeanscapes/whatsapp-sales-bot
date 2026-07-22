@@ -114,8 +114,8 @@ describe('dynamic data validation', () => {
       updated: '2026-05-30T00:00:00Z',
       media: {
         ownerImage: {
-          url: 'https://cdn.andeanscapes.com/whatsapp_bot/emerald_mining_chivor/heinneryalexandra.jpg',
-          caption: 'Heinner y Alexandra — Andean Scapes',
+          url: 'https://cdn.andeanscapes.com/whatsapp_bot/emerald_mining_chivor/agentaandpartnera.jpg',
+          caption: 'AgentA y PartnerA — Andean Scapes',
         },
         planImages: [{
           id: 'emerald_mining_preview_1',
@@ -132,7 +132,7 @@ describe('dynamic data validation', () => {
       experiences: {},
     });
 
-    expect(parsed.media?.ownerImage?.url).toContain('heinneryalexandra.jpg');
+    expect(parsed.media?.ownerImage?.url).toContain('agentaandpartnera.jpg');
     expect(parsed.media?.planImages).toHaveLength(1);
     expect(parsed.media?.galleryImages).toHaveLength(1);
   });

@@ -22,8 +22,7 @@ async function runStartupDiagnostics(): Promise<void> {
       const waData = await waRes.json() as Record<string, unknown>;
       logger.info({ phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID, displayPhoneNumber: waData.display_phone_number, verifiedName: waData.verified_name, codeVerificationStatus: waData.code_verification_status }, '[DIAG] WhatsApp phone number valid');
     } else {
-      const waBody = await waRes.text().catch(() => '');
-      logger.error({ status: waRes.status, phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID, body: waBody.slice(0, 300) }, '[DIAG] WhatsApp phone number lookup FAILED');
+      logger.error({ status: waRes.status, phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID }, '[DIAG] WhatsApp phone number lookup FAILED');
     }
   } catch (err) {
       logger.error({ err, phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID }, '[DIAG] WhatsApp API unreachable');
@@ -40,8 +39,7 @@ async function runStartupDiagnostics(): Promise<void> {
       const phones = phonesData.data ?? [];
       logger.info({ businessAccountId: env.WHATSAPP_BUSINESS_ACCOUNT_ID, phones, configuredPhoneFound: phones.some(phone => phone.id === env.WHATSAPP_PHONE_NUMBER_ID) }, '[DIAG] WhatsApp WABA phone list');
     } else {
-      const phonesBody = await phonesRes.text().catch(() => '');
-      logger.error({ status: phonesRes.status, businessAccountId: env.WHATSAPP_BUSINESS_ACCOUNT_ID, body: phonesBody.slice(0, 300) }, '[DIAG] WhatsApp WABA phone list FAILED');
+      logger.error({ status: phonesRes.status, businessAccountId: env.WHATSAPP_BUSINESS_ACCOUNT_ID }, '[DIAG] WhatsApp WABA phone list FAILED');
     }
   } catch (err) {
     logger.error({ err, businessAccountId: env.WHATSAPP_BUSINESS_ACCOUNT_ID }, '[DIAG] WhatsApp WABA lookup unreachable');

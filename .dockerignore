@@ -6,6 +6,11 @@
 node_modules
 dist
 data
+exports
+artifacts
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
 coverage
 .DS_Store
 npm-debug.log*

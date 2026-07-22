@@ -1,4 +1,4 @@
-import { logger } from '../config/logger.js';
+import { logger, sanitizeSensitiveText, sanitizeUrl } from '../config/logger.js';
 import type { Repositories } from '../db/repositories/index.js';
 
 let reposRef: Repositories | null = null;
@@ -17,8 +17,27 @@ function maskSensitiveContext(context: Record<string, unknown>): Record<string, 
       const str = String(value ?? '');
       return [key, str.length <= 6 ? str : `${str.slice(0, 3)}***${str.slice(-3)}`];
     }
+    if (lowerKey.includes('url')) {
+      return [key, sanitizeUrl(value)];
+    }
+    if (typeof value === 'string') {
+      return [key, sanitizeSensitiveText(value)];
+    }
     return [key, value];
   }));
+}
+
+function sanitizeError(err: unknown): { logValue: Error | string; message: string; stack?: string } {
+  if (!(err instanceof Error)) {
+    const message = sanitizeSensitiveText(err);
+    return { logValue: message, message };
+  }
+
+  const message = sanitizeSensitiveText(err.message);
+  const safeError = new Error(message);
+  safeError.name = err.name;
+  safeError.stack = err.stack ? sanitizeSensitiveText(err.stack) : undefined;
+  return { logValue: safeError, message, stack: safeError.stack };
 }
 
 export function logSystemError(
@@ -27,15 +46,14 @@ export function logSystemError(
   err: unknown,
   context?: Record<string, unknown>,
 ): void {
-  const message = err instanceof Error ? err.message : String(err);
-  const stack = err instanceof Error ? err.stack : undefined;
+  const safeError = sanitizeError(err);
   const safeContext = context ? maskSensitiveContext(context) : undefined;
 
-  logger.error({ err, type, severity, context: safeContext }, `[ERROR_LOG] ${type}`);
+  logger.error({ err: safeError.logValue, type, severity, context: safeContext }, `[ERROR_LOG] ${type}`);
 
   if (reposRef) {
     try {
-      reposRef.systemErrors.insert(type, severity, message, stack, safeContext);
+      reposRef.systemErrors.insert(type, severity, safeError.message, safeError.stack, safeContext);
     } catch {
       // DB write itself failed — nothing more we can do
     }

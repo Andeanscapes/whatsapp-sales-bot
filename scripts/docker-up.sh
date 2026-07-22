@@ -11,6 +11,7 @@ set -euo pipefail
 
 ENV_FILE=.env.prod
 export ENV_FILE
+COMPOSE_PROJECT=andean-whatsapp-bot-prod
 
 BUILD_ONLY=false
 FOLLOW_LOGS=true
@@ -24,11 +25,10 @@ for arg in "$@"; do
 done
 
 echo "=== Stopping existing containers ==="
-docker rm -f andean-whatsapp-bot andean-whatsapp-tunnel 2>/dev/null || true
-docker compose --env-file "$ENV_FILE" down --remove-orphans 2>/dev/null || true
+docker compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" down --remove-orphans 2>/dev/null || true
 
 echo "=== Building Docker image ==="
-docker compose --env-file "$ENV_FILE" build
+docker compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" build
 
 if $BUILD_ONLY; then
   echo "=== Build complete (not starting) ==="
@@ -36,7 +36,7 @@ if $BUILD_ONLY; then
 fi
 
 echo "=== Starting prod containers ==="
-docker compose --env-file "$ENV_FILE" --profile tunnel up -d --build --force-recreate
+docker compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" --profile tunnel up -d --build --force-recreate
 
 echo "=== Checking health ==="
 sleep 2
@@ -46,5 +46,5 @@ echo "=== Done ==="
 
 if $FOLLOW_LOGS; then
   echo "=== Following app logs (Ctrl+C to stop watching; containers keep running) ==="
-  docker compose --env-file "$ENV_FILE" logs -f app
+  docker compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" logs -f app
 fi

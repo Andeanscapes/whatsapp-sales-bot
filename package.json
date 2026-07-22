@@ -30,11 +30,11 @@
     "export:transcripts": "bash scripts/export-prod-transcripts.sh",
     "export:debug-bundle": "bash scripts/export-prod-debug-bundle.sh",
     "scan:secrets": "secretlint \"**/*\" --secretlintignore .gitignore",
-    "docker:dev": "ENV_FILE=.env.dev docker compose --env-file .env.dev up --build --force-recreate",
-    "docker:prod": "ENV_FILE=.env.prod docker compose --env-file .env.prod --profile tunnel up --build -d --force-recreate",
+    "docker:dev": "ENV_FILE=.env.dev docker compose -p andean-whatsapp-bot-dev --env-file .env.dev -f compose.yml -f compose.test.yml up --build --force-recreate",
+    "docker:prod": "ENV_FILE=.env.prod docker compose -p andean-whatsapp-bot-prod --env-file .env.prod --profile tunnel up --build -d --force-recreate",
     "docker:prod:log": "bash scripts/docker-up.sh",
     "docker:test": "bash scripts/docker-up-test.sh",
-    "db:clean:prod": "docker compose --env-file .env.prod down -v"
+    "db:clean:prod": "node -e \"if(process.env.CONFIRM_DELETE_PROD_DATA!=='delete-andean-prod-data')throw new Error('Set CONFIRM_DELETE_PROD_DATA=delete-andean-prod-data to continue')\" && docker compose -p andean-whatsapp-bot-prod --env-file .env.prod down -v"
   },
   "dependencies": {
     "@fastify/rate-limit": "^11.0.0",
@@ -43,6 +43,9 @@
     "fastify": "^5.0.0",
     "pino": "^9.0.0",
     "zod": "^3.23.0"
+  },
+  "overrides": {
+    "esbuild": "0.28.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
@@ -54,6 +57,6 @@
     "tsx": "^4.0.0",
     "typescript": "^5.5.0",
     "typescript-eslint": "^8.59.2",
-    "vitest": "^2.0.0"
+    "vitest": "^3.2.6"
   }
 }

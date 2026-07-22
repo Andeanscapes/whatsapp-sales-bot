@@ -23,8 +23,36 @@ function truncateReply(value: unknown): string {
   return str.slice(0, 120) + '\u2026';
 }
 
-function sanitizeUrl(value: unknown): string {
-  return String(value ?? '').replace(/\/bot[^/]+\//g, '/bot[REDACTED]/');
+const sensitiveQueryParamPattern = /([?&](?:hub\.verify_token|verify_token|access_token|token|api[_-]?key|secret|password|signature)=)[^&#]*/gi;
+
+export function sanitizeUrl(value: unknown): string {
+  return String(value ?? '')
+    .replace(sensitiveQueryParamPattern, '$1[REDACTED]')
+    .replace(/\/bot[^/]+\//g, '/bot[REDACTED]/');
+}
+
+export function sanitizeSensitiveText(value: unknown): string {
+  return sanitizeUrl(value)
+    .replace(/(authorization\s*[:=]\s*)(?:bearer\s+)?[^\s,;]+/gi, '$1[REDACTED]')
+    .replace(/\b(bearer\s+)[A-Za-z0-9._~+/=-]+/gi, '$1[REDACTED]')
+    .replace(/\b(WHATSAPP_ACCESS_TOKEN|WHATSAPP_APP_SECRET|WHATSAPP_VERIFY_TOKEN|DEEPSEEK_API_KEY|TELEGRAM_BOT_TOKEN|ADMIN_SECRET)\s*[:=]\s*[^\s,;]+/gi, '$1=[REDACTED]');
+}
+
+function serializeRequest(value: unknown): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null) return {};
+  const request = value as Record<string, unknown>;
+  const raw = typeof request.raw === 'object' && request.raw !== null
+    ? request.raw as Record<string, unknown>
+    : request;
+
+  return {
+    id: request.id,
+    method: request.method ?? raw.method,
+    url: sanitizeUrl(request.url ?? raw.url),
+    host: request.hostname ?? raw.host,
+    remoteAddress: request.ip ?? raw.remoteAddress,
+    remotePort: raw.remotePort,
+  };
 }
 
 const redactPaths = [
@@ -64,6 +92,7 @@ export const logger = pino({
     censor: '[REDACTED]',
   },
   serializers: {
+    req: serializeRequest,
     phone: maskPhone,
     from: maskPhone,
     to: maskPhone,

@@ -8,7 +8,7 @@ import { statsHandler } from '../commands/stats.command.js';
 
 const config: RoutingConfig = {
   salesLines: [
-    { id: 'line1_bridge', type: 'bridge', label: 'BK', weight: 50, telegramChatId: '111', agentName: 'Heinner' },
+    { id: 'line1_bridge', type: 'bridge', label: 'BK', weight: 50, telegramChatId: '111', agentName: 'AgentA' },
   ],
 };
 
@@ -80,7 +80,7 @@ describe('/stats command', () => {
     const out = await statsHandler({ repos, args: ['todo'], chatId: 111 });
 
     expect(out).toContain('Reservas: 2');
-    expect(out).toMatch(/BK \(Heinner\):.*2 reservas/);
+    expect(out).toMatch(/BK \(AgentA\):.*2 reservas/);
   });
 
   it('for ayer, excludes bookings confirmed today', async () => {
@@ -92,7 +92,7 @@ describe('/stats command', () => {
     const out = await statsHandler({ repos, args: ['ayer'], chatId: 111 });
 
     expect(out).toContain('Reservas: 1');
-    expect(out).toMatch(/BK \(Heinner\):.*1 reservas/);
+    expect(out).toMatch(/BK \(AgentA\):.*1 reservas/);
   });
 
   it('for hoy, excludes bookings confirmed yesterday', async () => {
@@ -104,7 +104,7 @@ describe('/stats command', () => {
     const out = await statsHandler({ repos, args: ['hoy'], chatId: 111 });
 
     expect(out).toContain('Reservas: 1');
-    expect(out).toMatch(/BK \(Heinner\):.*1 reservas/);
+    expect(out).toMatch(/BK \(AgentA\):.*1 reservas/);
   });
 
   it('keeps cumulative totals all-time while bounding new conversations by period', async () => {

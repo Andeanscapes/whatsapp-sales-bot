@@ -20,7 +20,7 @@ const FIELD_ASK_PATTERNS = {
 const BIG_GROUP_PATTERN = /\b(\d{2,})\s*(?:personas|people|pax)\b|\b(?:m[ií]nimo|aprox\.?|aproximadamente|mas de|m[aá]s de|al menos)\s*(\d{2,})\b/i;
 const BIG_GROUP_DATE_PATTERN = /\b(validar.*(?:fecha|disponibilidad|cupo)|con cuidado|grupo grande|cuidadosamente|revisar.*(?:fecha|disponibilidad|cupo))\b/i;
 const BIG_GROUP_PRICE_PATTERN = /\b(revis.*precio|referencial|validamos.*valor|precio.*cantidad|valor.*segun.*cantidad|precio.*revisable|ajustar.*precio|precio.*referencia)\b/i;
-const COFOUNDER_PATTERN = /(?:junto\s+(?:con|a)|\bco-?fundador(?:a)?\b[^.!?\n]{0,100}\bcon)\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)/;
+const COFOUNDER_PATTERN = /(?:junto\s+(?:con|a)|\bco-?fundador(?:a)?\b[^.!?\n]{0,100}\bcon)\s+([A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑáéíóúñ0-9]*)/;
 
 export interface ScenarioEvaluation {
   score: number;

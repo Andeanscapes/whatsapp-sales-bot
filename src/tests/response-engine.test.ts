@@ -2288,7 +2288,7 @@ describe('processMessage', () => {
     const cleanup = installPaymentData();
     const phone = '573001112264';
     repos.conversation.upsert(phone, {
-      collected_name: 'Claudia',
+      collected_name: 'CustomerA',
       collected_plan: '2d1n_mining',
       collected_people: 1,
       collected_date: 'agosto',
@@ -2374,7 +2374,7 @@ describe('processMessage', () => {
     const cleanup = installPaymentData();
     const phone = '573001112265';
     repos.conversation.upsert(phone, {
-      collected_name: 'Claudia',
+      collected_name: 'CustomerA',
       collected_plan: '2d1n_mining',
       collected_people: 1,
       collected_date: 'agosto',
@@ -2665,7 +2665,7 @@ describe('processMessage', () => {
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     mockLlmComplete.mockResolvedValueOnce(fromOld({
       response: {
-        reply: 'Hola! Soy Heinner, co-founder de Andean Scapes junto con Alexandra. Creamos experiencias autenticas en Boyaca con cultura local, naturaleza y comunidades anfitrionas. ¿como te llamas?',
+        reply: 'Hola! Soy AgentA, co-founder de Andean Scapes junto con PartnerA. Creamos experiencias autenticas en Boyaca con cultura local, naturaleza y comunidades anfitrionas. ¿como te llamas?',
         intent: 'general',
         lead_score_delta: 5,
         should_send_image: false,
@@ -2690,7 +2690,7 @@ describe('processMessage', () => {
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     mockLlmComplete.mockResolvedValueOnce(fromOld({
       response: {
-        reply: 'Hello! I am Heinner from Andean Scapes. What is your name?',
+        reply: 'Hello! I am AgentA from Andean Scapes. What is your name?',
         intent: 'general',
         lead_score_delta: 5,
         should_send_image: false,
@@ -3061,10 +3061,10 @@ describe('processMessage', () => {
     it('uses standard handoff before 8 PM Colombia', () => {
       const skills = getSkills();
       const fb = skills.fallbackReplies.es;
-      const q = { nombre: 'Claudia', personas: 2, fecha: 'agosto', transporte: 'own' };
+      const q = { nombre: 'CustomerA', personas: 2, fecha: 'agosto', transporte: 'own' };
       const before8pm = new Date('2026-06-15T19:59:00-05:00');
       const reply = safeReservationHandoff(q, fb, 'es', before8pm);
-      expect(reply).toContain('Claudia');
+      expect(reply).toContain('CustomerA');
       expect(reply).not.toContain('mañana en la mañana');
       expect(reply).not.toContain('tomorrow morning');
     });
@@ -3072,10 +3072,10 @@ describe('processMessage', () => {
     it('uses after-hours handoff at or after 8 PM Colombia', () => {
       const skills = getSkills();
       const fb = skills.fallbackReplies.es;
-      const q = { nombre: 'Claudia', personas: 2, fecha: 'agosto', transporte: 'own' };
+      const q = { nombre: 'CustomerA', personas: 2, fecha: 'agosto', transporte: 'own' };
       const at8pm = new Date('2026-06-15T20:00:00-05:00');
       const reply = safeReservationHandoff(q, fb, 'es', at8pm);
-      expect(reply).toContain('Claudia');
+      expect(reply).toContain('CustomerA');
       expect(reply).toContain('mañana en la mañana');
     });
 
@@ -4803,7 +4803,7 @@ describe('pain reply flow', () => {
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573009995002';
     repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: 'Antes de seguir, ¿como te llamas?', created_at: new Date(Date.now() - 120000).toISOString() });
-    repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'image', body: 'Heinner y Alexandra - Andean Scapes', created_at: new Date(Date.now() - 60000).toISOString() });
+    repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'image', body: 'AgentA y PartnerA - Andean Scapes', created_at: new Date(Date.now() - 60000).toISOString() });
     mockLlmComplete.mockResolvedValueOnce(fromOld({
       response: {
         reply: 'Te envio los datos de pago por Nequi ahora.',

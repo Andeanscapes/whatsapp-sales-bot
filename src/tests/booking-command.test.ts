@@ -20,8 +20,8 @@ const PHONE = '573001112233';
 
 const config: RoutingConfig = {
   salesLines: [
-    { id: 'line1_bridge', type: 'bridge', label: 'BK', weight: 50, telegramChatId: '111', agentName: 'Heinner' },
-    { id: 'line2_referral', type: 'referral', label: 'BK', weight: 50, telegramChatId: '222', agentName: 'Zaret', displayNumber: '+57000' },
+    { id: 'line1_bridge', type: 'bridge', label: 'BK', weight: 50, telegramChatId: '111', agentName: 'AgentA' },
+    { id: 'line2_referral', type: 'referral', label: 'BK', weight: 50, telegramChatId: '222', agentName: 'AgentB', displayNumber: '+57000' },
   ],
 };
 
@@ -68,7 +68,7 @@ describe('/booking command', () => {
 
     await bookingHandler({ repos, chatId: 111, args: [PHONE] });
 
-    expect(mockSendTelegram.mock.calls[0][1]).toContain('Heinner');
+    expect(mockSendTelegram.mock.calls[0][1]).toContain('AgentA');
   });
 
   it('rejects non-owning line', async () => {

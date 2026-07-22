@@ -1747,7 +1747,7 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   if (suppressGalleryForObjection) shouldSendGallery = false;
 
   if (isTruncatedReply(replyText)) {
-    logger.warn({ phone: customerPhone, replySnippet: replyText.slice(0, 40) }, '[LLM] reply may be truncated');
+    logger.warn({ phone: customerPhone, replyLen: replyText.length }, '[LLM] reply may be truncated');
   }
 
   return {
