@@ -8,7 +8,9 @@ import { spawnSync } from 'child_process';
 const require = createRequire(import.meta.url);
 
 function tryLoad() {
-  require('better-sqlite3');
+  const Database = require('better-sqlite3');
+  const db = new Database(':memory:');
+  db.close();
 }
 
 try {
