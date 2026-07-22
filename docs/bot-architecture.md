@@ -44,6 +44,7 @@ Key points:
 - Dynamic data is optional. If configured and unavailable at startup, static pricing/availability is stripped for safety.
 - `buildApp()` registers rate limit, error handler, `/health`, `/webhooks/whatsapp`, and `/`.
 - Telegram polling and follow-up scheduler start after Fastify is listening.
+- Docker binds Fastify to `0.0.0.0` only inside the Compose network; `compose.yml` publishes the port on host `127.0.0.1` only.
 
 ## High-Level Component Diagram
 

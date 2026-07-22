@@ -11,6 +11,8 @@ function boolFromEnv(v: unknown): boolean {
 
 const boolSchema = z.preprocess(boolFromEnv, z.boolean());
 
+const KNOWN_PLACEHOLDER_URLS = new Set(['https://bot.yourdomain.com']);
+
 export const envSchema = z.object({
   APP_VERSION: z.string().default('1.0'),
   NODE_ENV: z.enum(['production', 'development', 'test']).default('production'),
@@ -75,6 +77,15 @@ export const envSchema = z.object({
 }).refine(
   value => value.TIME_FINAL_NUDGE_HOURS > value.TIME_FOLLOW_HOURS,
   { message: 'TIME_FINAL_NUDGE_HOURS must be greater than TIME_FOLLOW_HOURS', path: ['TIME_FINAL_NUDGE_HOURS'] },
-);
+).superRefine((value, ctx) => {
+  if (value.NODE_ENV !== 'production') return;
+  try {
+    if (new URL(value.PUBLIC_BASE_URL).protocol !== 'https:' || KNOWN_PLACEHOLDER_URLS.has(value.PUBLIC_BASE_URL)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'PUBLIC_BASE_URL must be a configured HTTPS URL in production', path: ['PUBLIC_BASE_URL'] });
+    }
+  } catch {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'PUBLIC_BASE_URL must be a configured HTTPS URL in production', path: ['PUBLIC_BASE_URL'] });
+  }
+});
 
 export const env = envSchema.parse(process.env);

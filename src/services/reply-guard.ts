@@ -5,6 +5,7 @@ import type { LeadPain } from '../db/repositories/types.js';
 import type { MergedQualification } from './types.js';
 import {
   isCorrectionMessage,
+  isExplicitDateDeferral,
   isQualificationComplete,
   nextQualificationQuestion,
   getLastAssistantQuestion,
@@ -132,7 +133,8 @@ export function isReviewPause(text: string): boolean {
 /** A clear customer-owned follow-up promise must never receive an automated nudge. */
 export function isCustomerFollowUpPromise(text: string): boolean {
   const norm = normalizeText(text);
-  return /\b(?:te avisare|yo te escribo|te escribimos|yo te confirmo|te confirmo cuando|cuando (?:decida|decidamos|tenga|tengamos|hable|hablemos)\b|when (?:i|we) decide|(?:i|we) (?:ll|will) let you know|i(?:'| wi)?ll confirm)\b/i.test(norm);
+  return isExplicitDateDeferral(text)
+    || /\b(?:te avisare|yo te escribo|te escribimos|yo te confirmo|te confirmo cuando|cuando (?:decida|decidamos|tenga|tengamos|hable|hablemos)\b|when (?:i|we) decide|(?:i|we) (?:ll|will) let you know|i(?:'| wi)?ll confirm)\b/i.test(norm);
 }
 
 export function detectsAvailabilityConfirmRequest(text: string): boolean {

@@ -1020,7 +1020,7 @@ describe('processMessage', () => {
     mockLlmComplete.mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
-    const phone = '573001112247';
+    const phone = '573009995008';
 
     repos.conversation.upsert(phone, {
       collected_name: 'Pedro',
@@ -1044,6 +1044,198 @@ describe('processMessage', () => {
 
     const result = await processMessage({ repos, customerPhone: phone, message: 'me gustaria reservar ya' });
     expect(result.shouldSendReply).toBe(true);
+    expect(result.shouldAlertOwner).toBe(true);
+    expect(result.ownerAlertType).toBe('reservation_handoff');
+    expect(result.reply).toBe(getSkills().fallbackReplies.es.reservationDateNeeded);
+    expect(repos.conversation.getSalesPhase(phone)).toBe('closing');
+  });
+
+  it('asks for a tentative weekend once when a deferred-date lead wants to reserve', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573009995009';
+    repos.conversation.upsert(phone, {
+      collected_name: 'Laura',
+      collected_plan: '2d1n_mining',
+      collected_people: 2,
+      collected_date: 'tentative_unknown',
+      collected_transport_need: 'own',
+      price_given_at: new Date().toISOString(),
+    });
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: { reply: 'Perfecto, avancemos con la reserva.' },
+    }));
+
+    const result = await processMessage({ repos, customerPhone: phone, message: 'Quiero reservar, ¿como seguimos?' });
+
+    expect(result.reply).toBe(getSkills().fallbackReplies.es.reservationDateNeeded);
+    expect(result.shouldAlertOwner).toBe(true);
+    expect(repos.conversation.getSalesPhase(phone)).toBe('closing');
+
+    repos.message.addMessage({
+      customer_phone: phone,
+      direction: 'outbound',
+      message_type: 'text',
+      body: result.reply,
+      created_at: new Date().toISOString(),
+    });
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: { reply: 'No hay problema, cuando tengan claridad seguimos.' },
+    }));
+
+    const nextResult = await processMessage({ repos, customerPhone: phone, message: 'Todavia no' });
+
+    expect(nextResult.reply).not.toBe(getSkills().fallbackReplies.es.reservationDateNeeded);
+    expect(nextResult.shouldAlertOwner).toBe(false);
+  });
+
+  it('does not re-ask for a deferred date after a low-information message', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573009995014';
+    repos.conversation.upsert(phone, {
+      collected_people: 3,
+      collected_date: 'tentative_unknown',
+      collected_transport_need: 'own',
+      price_given_at: new Date().toISOString(),
+    });
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: { reply: '¿Ya tienen una fecha pensada?' },
+    }));
+
+    const result = await processMessage({ repos, customerPhone: phone, message: '?' });
+
+    expect(result.reply).toBe(getSkills().fallbackReplies.es.dateDeferredAcknowledgement);
+    expect(result.reply).not.toContain('¿');
+  });
+
+  it('does not force closing from a model-only booking signal without a confirmed date', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573009995010';
+    repos.conversation.upsert(phone, {
+      collected_people: 2,
+      price_given_at: new Date().toISOString(),
+    });
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: {
+        reply: 'Me alegra que te guste. Podemos seguir revisando el plan.',
+        needs_human: true,
+      },
+    }));
+
+    const result = await processMessage({ repos, customerPhone: phone, message: 'Me gusta el plan' });
+
+    expect(result.reply).not.toBe(getSkills().fallbackReplies.es.reservationDateNeeded);
+    expect(result.shouldAlertOwner).toBe(false);
+    expect(repos.conversation.getMode(phone)).toBe('bot');
+  });
+
+  it('offers the closest listed date when late-month availability has no matching date and skips gallery', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573009995011';
+    const exp = getActiveExperience(getSkills());
+    const originalAvailability = exp.availability;
+    exp.availability = {
+      lastUpdated: '2026-07-21',
+      timezone: 'America/Bogota',
+      availableDates: [
+        { date: '2026-08-15', status: 'limited', slotsApprox: 4 },
+        { date: '2027-08-28', status: 'available', slotsApprox: 8 },
+      ],
+      botRule: 'Availability must be validated before confirmation.',
+    };
+    repos.conversation.upsert(phone, {
+      collected_name: 'Laura',
+      collected_plan: '2d1n_mining',
+      collected_people: 2,
+      collected_date: 'tentative_unknown',
+      collected_transport_need: 'own',
+      price_given_at: new Date().toISOString(),
+      lead_score: 90,
+      conversation_mode: 'human_pending',
+      sales_phase: 'closing',
+    });
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: { reply: 'Para finales de agosto tenemos disponible el 15 de agosto.' },
+    }));
+    mockAnalyzeLead.mockResolvedValueOnce({
+      intent: 'ready_to_book', scoreDelta: 25, confidence: 1,
+      buyingSignals: ['fecha_reserva'], blockers: [],
+      afterPriceInterest: true, reservationReadiness: 'strong',
+      rationale: 'Quiere reservar', promptTokens: 50, completionTokens: 30,
+    });
+
+    try {
+      const result = await processMessage({ repos, customerPhone: phone, message: 'Finales de agosto 2026 que fechas tienen?' });
+
+      expect(result.reply).toContain('finales de agosto 2026 no veo una fecha publicada');
+      expect(result.reply).toContain('15 de agosto');
+      expect(result.reply).toContain('cupo limitado');
+      expect(result.shouldAlertOwner).toBe(true);
+      expect(result.shouldSendGalleryImages).toBe(false);
+    } finally {
+      exp.availability = originalAvailability;
+    }
+  });
+
+  it('keeps a real late-month date when one is listed and skips gallery', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573009995012';
+    const exp = getActiveExperience(getSkills());
+    const originalAvailability = exp.availability;
+    exp.availability = {
+      lastUpdated: '2026-07-21',
+      timezone: 'America/Bogota',
+      availableDates: [{ date: '2026-08-29', status: 'available', slotsApprox: 8 }],
+      botRule: 'Availability must be validated before confirmation.',
+    };
+    repos.conversation.upsert(phone, { collected_people: 2, price_given_at: new Date().toISOString(), lead_score: 90 });
+    const listedReply = 'Para finales de agosto tenemos disponible el sabado 29 de agosto.';
+    mockLlmComplete.mockResolvedValueOnce(fromOld({ response: { reply: listedReply } }));
+
+    try {
+      const result = await processMessage({ repos, customerPhone: phone, message: 'Finales de agosto que fechas tienen?' });
+
+      expect(result.reply).toBe(listedReply);
+      expect(result.shouldSendGalleryImages).toBe(false);
+    } finally {
+      exp.availability = originalAvailability;
+    }
+  });
+
+  it('uses the English late-month fallback without gallery', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573009995013';
+    const exp = getActiveExperience(getSkills());
+    const originalAvailability = exp.availability;
+    exp.availability = {
+      lastUpdated: '2026-07-21',
+      timezone: 'America/Bogota',
+      availableDates: [{ date: '2026-08-15', status: 'limited', slotsApprox: 4 }],
+      botRule: 'Availability must be validated before confirmation.',
+    };
+    repos.conversation.upsert(phone, { language: 'en', collected_people: 2, price_given_at: new Date().toISOString(), lead_score: 90 });
+    mockLlmComplete.mockResolvedValueOnce(fromOld({ response: { reply: 'August 15 is available in late August.' } }));
+
+    try {
+      const result = await processMessage({ repos, customerPhone: phone, message: 'What dates do you have in late August?' });
+
+      expect(result.reply).toContain('I do not see a published date for late August');
+      expect(result.reply).toContain('August 15');
+      expect(result.shouldSendGalleryImages).toBe(false);
+    } finally {
+      exp.availability = originalAvailability;
+    }
   });
 
   it('alerts owner when date completes a recent reservation intent after price', async () => {

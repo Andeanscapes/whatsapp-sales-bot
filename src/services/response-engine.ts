@@ -21,6 +21,7 @@ import {
   buildDbQualification,
   getCollectedFields,
   resolveLanguage,
+  isConfirmedDate,
   isQualificationComplete,
   nextQualificationQuestion,
   extractStandaloneName,
@@ -98,6 +99,10 @@ const MAX_INBOUND_CHARS = 1500;
 const SPANISH_MONTH_INDEX: Record<string, number> = {
   enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6,
   julio: 7, agosto: 8, septiembre: 9, octubre: 10, noviembre: 11, diciembre: 12,
+};
+const ENGLISH_MONTH_INDEX: Record<string, number> = {
+  january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
+  july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
 };
 
 function extractPastExplicitDate(text: string, now = new Date()): string | null {
@@ -201,6 +206,48 @@ function buildAvailabilityRecommendReply(
   return skills.fallbackReplies[lang].availabilityRecommendReply
     .replace('{{windowClause}}', windowClause)
     .replace('{{peopleClause}}', peopleClause);
+}
+
+function isAvailabilityLookupQuestion(message: string): boolean {
+  return /\b(?:fecha|fechas|disponib\w*|cupos?|date|dates|availability|available|spots?)\b/i.test(normalizeForKeywordMatch(message));
+}
+
+function buildLateMonthAvailabilityReply(skills: Skills, lang: 'es' | 'en', message: string): string | null {
+  const normalized = normalizeForKeywordMatch(message);
+  const match = normalized.match(/\b(?:finales\s+de|late|end\s+of)\s+(january|february|march|april|may|june|july|august|september|october|november|december|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\b/i);
+  if (!match) return null;
+
+  const monthName = match[1].toLowerCase();
+  const month = SPANISH_MONTH_INDEX[monthName] ?? ENGLISH_MONTH_INDEX[monthName];
+  if (!month) return null;
+
+  const exp = getActiveExperience(skills);
+  const monthDates = exp.availability.availableDates
+    .filter(item => item.status === 'available' || item.status === 'limited')
+    .map(item => ({ item, date: new Date(`${item.date}T12:00:00Z`) }))
+    .filter(({ date }) => date.getUTCMonth() + 1 === month);
+  const explicitYear = normalized.match(/\b(20\d{2})\b/)?.[1];
+  const targetYear = explicitYear ? Number(explicitYear) : Math.min(...monthDates.map(({ date }) => date.getUTCFullYear()));
+  const listed = monthDates.filter(({ date }) => date.getUTCFullYear() === targetYear);
+  if (listed.some(({ date }) => date.getUTCDate() >= 21)) return null;
+
+  const fb = skills.fallbackReplies[lang];
+  const localizedMonth = new Intl.DateTimeFormat(lang === 'es' ? 'es-CO' : 'en-US', {
+    month: 'long', timeZone: 'UTC',
+  }).format(new Date(Date.UTC(2000, month - 1, 1)));
+  const yearClause = explicitYear ? ` ${explicitYear}` : '';
+  const window = lang === 'es' ? `finales de ${localizedMonth}${yearClause}` : `late ${localizedMonth}${yearClause}`;
+  const closest = listed.sort((a, b) => b.date.getUTCDate() - a.date.getUTCDate())[0];
+  if (!closest) return fb.availabilityWindowNoMatch.replace('{{window}}', window);
+
+  const date = new Intl.DateTimeFormat(lang === 'es' ? 'es-CO' : 'en-US', {
+    weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC',
+  }).format(closest.date);
+  const statusClause = closest.item.status === 'limited' ? fb.availabilityLimitedClause : '';
+  return fb.availabilityWindowNoMatchClosest
+    .replace('{{window}}', window)
+    .replace('{{date}}', date)
+    .replace('{{statusClause}}', statusClause);
 }
 
 function replyMissingCoreInclusion(normReply: string): boolean {
@@ -797,6 +844,12 @@ function skipRepeated(candidate: string, recentMessages: RecentMessage[], merged
   return candidate;
 }
 
+function isLowInformationMessage(message: string): boolean {
+  const normalized = normalizeForKeywordMatch(message);
+  return /^[?¿]+$/.test(message.trim())
+    || /^(?:ok|okay|dale|listo|bueno|gracias|thanks|hola|hello|hi|hey)$/.test(normalized);
+}
+
 export async function processMessage(input: ProcessMessageInput): Promise<ProcessMessageOutput> {
   const output = await processMessageCore(input);
   return withConversationState(input.repos, input.customerPhone, output);
@@ -1258,6 +1311,7 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   const updatedCollected = reconstructFromHistory(repos, customerPhone, getCollectedFields(repos, customerPhone));
   if (activeDateWindow) delete updatedCollected.fecha;
   let merged = buildMergedQualification(updatedCollected, llmTurn);
+  const deferredDateLowInformation = merged.fecha === 'tentative_unknown' && isLowInformationMessage(message);
 
   // ── LLM-powered lead analysis (separate scoring call) ───────────────────
   // Gated behind the budget guard: the analyzer is a second DeepSeek call, so
@@ -1404,6 +1458,7 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     llmTurn.img = false;
   }
 
+  const lateMonthAvailabilityReply = buildLateMonthAvailabilityReply(skills, lang, message);
   if (safetyOverrideReply) {
     replyText = safetyOverrideReply;
     llmTurn.img = false;
@@ -1470,7 +1525,8 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   const closeIntent = reservationIntent || recentReservation || llmReadyToBook || availabilityConfirm;
   const closeStage = inferCloseStage(recentMessages);
   const paymentFacts = getPublicPaymentFacts(skills);
-  const hasCoreBooking = merged.personas != null && merged.fecha != null;
+  const hasConfirmedDate = isConfirmedDate(merged.fecha);
+  const hasCoreBooking = merged.personas != null && hasConfirmedDate;
   const wantsNextStep = /\b(?:qu[eé]\s+sigue|what(?:'s|\s+is)\s+next|s[ií]\s+me\s+interesa)\b/i.test(message);
 
   // ── Payment methods question: public facts + owner alert ────
@@ -1507,9 +1563,12 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     && (merged.plan != null || pricePresented || qComplete);
   const canEnterHumanPending =
     (qComplete && pricePresented && (shouldBridgeByScore || deterministicBridgeFallback))
-    || strongAvailabilityConfirm;
+    || strongAvailabilityConfirm
+    || (reservationIntent && pricePresented && !hasConfirmedDate);
   if (!hasSafetyOverride && canEnterHumanPending) {
-    if (closeStage === 'pending_sent') {
+    if (!hasConfirmedDate) {
+      replyText = skills.fallbackReplies[lang].reservationDateNeeded;
+    } else if (closeStage === 'pending_sent') {
       replyText = buildCloseAck(skills, lang, merged);
     } else {
       const kind: CloseKind = closeStage === 'closing_offered' ? 'pending_owner' : (paymentQ ? 'payment_methods' : 'closing');
@@ -1605,9 +1664,6 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     replyText = `${replyText.trim()}\n\n${caveat}`;
   }
 
-  const finalPriceJustGiven = replyMentionsPrice(replyText);
-  if (finalPriceJustGiven && !prePriceRow) repos.conversation.upsert(customerPhone, { price_given_at: new Date().toISOString() });
-
   // ── When closing was triggered deterministically, lock phase so follow-ups
   // ── are permanently excluded for this lead.
   if (needsHumanEffective) {
@@ -1620,6 +1676,7 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     && !paymentQ
     && !isPriceQuestion(message)
     && !isGalleryRequest(message)
+    && !lateMonthAvailabilityReply
     && !llmTurn.img
     && !wantsNextStep
   ) {
@@ -1629,7 +1686,7 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
       .replaceAll('{{summary}}', qualificationSummary(merged, lang, skills.fallbackReplies[lang]));
     llmTurn.img = false;
     repos.conversation.setSalesPhase(customerPhone, 'closing');
-  } else if (!hasSafetyOverride && !needsHumanEffective && hasCoreBooking && wantsNextStep && !isGalleryRequest(message)) {
+  } else if (!hasSafetyOverride && !needsHumanEffective && !lateMonthAvailabilityReply && hasCoreBooking && wantsNextStep && !isGalleryRequest(message)) {
     const dateClause = merged.fecha
       ? (lang === 'es' ? ` para ${displayDate(merged.fecha, lang)}` : ` for ${displayDate(merged.fecha, lang)}`)
       : '';
@@ -1638,17 +1695,29 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   }
   // ────────────────────────────────────────────────────────────────────────
 
-  const outputPriceJustGiven = !needsHumanEffective && finalPriceJustGiven;
-  const llmAlreadyGaveDetailedPrice = initialPriceJustGiven && replyText.length > 150;
-  const outputPriceFollowUpText = outputPriceJustGiven && !usedDeterministicQuote && !llmAlreadyGaveDetailedPrice
-    ? computePriceFollowUp(merged.personas, merged.plan as string | undefined, lang, skills)
-    : undefined;
-
   if (!hasSafetyOverride && merged.mascota && PET_KEYWORDS.test(message) && !/pet[- ]friendly|mascotas?|perros?|dogs?|pets?/i.test(replyText)) {
     replyText = lang === 'es'
       ? `Si, somos pet-friendly. Tu mascota es bienvenida. ${replyText}`
       : `Yes, we are pet-friendly. Your pet is welcome. ${replyText}`;
   }
+
+  if (!hasSafetyOverride && lateMonthAvailabilityReply) {
+    replyText = lateMonthAvailabilityReply;
+    llmTurn.img = false;
+  }
+
+  if (!hasSafetyOverride && deferredDateLowInformation) {
+    replyText = skills.fallbackReplies[lang].dateDeferredAcknowledgement;
+    llmTurn.img = false;
+  }
+
+  const finalPriceJustGiven = replyMentionsPrice(replyText);
+  if (finalPriceJustGiven && !prePriceRow) repos.conversation.upsert(customerPhone, { price_given_at: new Date().toISOString() });
+  const outputPriceJustGiven = !needsHumanEffective && finalPriceJustGiven;
+  const llmAlreadyGaveDetailedPrice = initialPriceJustGiven && replyText.length > 150;
+  const outputPriceFollowUpText = outputPriceJustGiven && !usedDeterministicQuote && !llmAlreadyGaveDetailedPrice
+    ? computePriceFollowUp(merged.personas, merged.plan as string | undefined, lang, skills)
+    : undefined;
 
   const shouldSendImage = !hasSafetyOverride && llmTurn.img;
   const shouldAlertOwner = needsHumanEffective || (hybrid.isHot && pricePresented) || unsafeReservationBlocked || deflectionDueToPolicyLeak;
@@ -1662,7 +1731,7 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     shouldSendGallery = false;
   }
 
-  if (!hasSafetyOverride && !needsHumanEffective && !unsafeReservationBlocked && pricePresented && !galleryAlreadyNudged && inferredPhase !== 'closing') {
+  if (!hasSafetyOverride && !needsHumanEffective && !unsafeReservationBlocked && conversationMode === 'bot' && !isAvailabilityLookupQuestion(message) && pricePresented && !galleryAlreadyNudged && inferredPhase !== 'closing') {
     const fieldCount = [merged.nombre, merged.plan, merged.personas, merged.fecha, merged.transporte]
       .filter(v => v != null).length;
     if (fieldCount >= 3 && shouldAutoSendGallery(finalScore, false)) {

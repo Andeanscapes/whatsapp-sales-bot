@@ -106,8 +106,25 @@ export function getLastAssistantQuestion(repos: Repositories, phone: string): st
   return repos.message.getLastOutboundBody(phone);
 }
 
+export function isConfirmedDate(value: unknown): boolean {
+  return typeof value === 'string'
+    && value !== 'tentative_unknown'
+    && !value.startsWith('_');
+}
+
+export function isExplicitDateDeferral(text: string): boolean {
+  const norm = normalizeText(text);
+  return /\b(?:no (?:tenemos|tengo|se|sabemos) (?:la )?fecha|todav[ií]a no (?:tenemos|tengo|se|sabemos) (?:la )?fecha|a[uú]n no (?:tenemos|tengo|se|sabemos) (?:la )?fecha|no date yet|we do not have (?:a )?date yet|i do not know (?:the )?date yet)\b/i.test(norm);
+}
+
+/** Broad uncertainty answer — only meaningful right after the bot asked for a date. */
+export function isUncertainDateAnswer(text: string): boolean {
+  const norm = normalizeText(text);
+  return isExplicitDateDeferral(norm) || /no (lo )?s[eé]|not sure|no estoy segur|todav[ií]a no/i.test(norm);
+}
+
 export function isQualificationComplete(q: MergedQualification): boolean {
-  return q.nombre != null && q.plan != null && q.personas != null && q.fecha != null && q.transporte != null;
+  return q.nombre != null && q.plan != null && q.personas != null && isConfirmedDate(q.fecha) && q.transporte != null;
 }
 
 export function nextQualificationQuestion(q: MergedQualification, fb: FallbackReplies['es']): string {
@@ -355,12 +372,16 @@ export function contextAwareExtract(message: string, repos: Repositories, phone:
     delete fields._relative_date_token;
   }
 
+  if (!fields.collected_date && isExplicitDateDeferral(norm)) {
+    fields.collected_date = 'tentative_unknown';
+  }
+
   if (!fields.collected_date && lastQuestion) {
     const askedDate = /fecha tentativa|what date|qu[eé] fecha/i.test(lastQuestion);
     if (askedDate) {
       const monthFound = MONTH_NAMES.find(m => norm.toLowerCase().includes(m));
       if (monthFound) fields.collected_date = monthFound;
-      if (/no (lo )?s[eé]|not sure|no estoy segur|todav[ií]a no/i.test(norm)) {
+      if (isUncertainDateAnswer(norm)) {
         fields.collected_date = 'tentative_unknown';
       }
     }

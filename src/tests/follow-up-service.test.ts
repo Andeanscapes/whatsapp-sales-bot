@@ -123,6 +123,16 @@ describe('follow-up service', () => {
     expect(sendText).not.toHaveBeenCalled();
   });
 
+  it('does not follow up once reservation intent moved the lead to closing', async () => {
+    seedSilentLead();
+    repos.conversation.setSalesPhase(PHONE, 'closing');
+
+    await runFollowUps(repos);
+
+    expect(mockLlmComplete).not.toHaveBeenCalled();
+    expect(sendText).not.toHaveBeenCalled();
+  });
+
   it('suppresses the early nudge when a customer needs to review with their children', async () => {
     repos.conversation.upsert(PHONE, { language: 'es', lead_score: 71, price_given_at: new Date().toISOString() });
     addMsg('inbound', 'Déjame revisar esta semana con mis hijos y te confirmo.', -5 * 60 * 60 * 1000);
@@ -144,6 +154,20 @@ describe('follow-up service', () => {
     repos.conversation.upsert(PHONE, { language: 'en', lead_score: 71, price_given_at: new Date().toISOString() });
     addMsg('inbound', message, -5 * 60 * 60 * 1000);
     addMsg('outbound', 'Take your time.', -4 * 60 * 60 * 1000);
+
+    await runFollowUps(repos);
+
+    expect(mockLlmComplete).not.toHaveBeenCalled();
+    expect(sendText).not.toHaveBeenCalled();
+    expect(repos.followUpEvent.getLatestByPhone(PHONE)).toMatchObject({
+      stage: 'first_nudge', status: 'suppressed', decisionReason: 'customer_follow_up_promise',
+    });
+  });
+
+  it('never follows up after an explicit date deferral', async () => {
+    repos.conversation.upsert(PHONE, { language: 'es', lead_score: 71, price_given_at: new Date().toISOString() });
+    addMsg('inbound', 'Ya te dije que no se la fecha.', -5 * 60 * 60 * 1000);
+    addMsg('outbound', 'Tranquilo, ya lo tengo anotado.', -4 * 60 * 60 * 1000);
 
     await runFollowUps(repos);
 
@@ -492,6 +516,26 @@ describe('follow-up service', () => {
       ...process.env,
       TIME_FOLLOW_HOURS: '4',
       TIME_FINAL_NUDGE_HOURS: '4',
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects the placeholder public URL in production', () => {
+    const result = envSchema.safeParse({
+      ...process.env,
+      NODE_ENV: 'production',
+      PUBLIC_BASE_URL: 'https://bot.yourdomain.com',
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a non-HTTPS public URL in production', () => {
+    const result = envSchema.safeParse({
+      ...process.env,
+      NODE_ENV: 'production',
+      PUBLIC_BASE_URL: 'http://bot.example.com',
     });
 
     expect(result.success).toBe(false);
