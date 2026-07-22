@@ -21,6 +21,7 @@ let repos: Repositories;
 let db: Database.Database;
 let previousRoutingJson: string;
 let previousTelegramChatId: string;
+let previousTelegramBotToken: string;
 
 registerCommands();
 
@@ -96,8 +97,10 @@ beforeEach(() => {
   repos = createRepositories(db);
   previousRoutingJson = env.LEAD_ROUTING_JSON;
   previousTelegramChatId = env.TELEGRAM_CHAT_ID;
+  previousTelegramBotToken = env.TELEGRAM_BOT_TOKEN;
   env.LEAD_ROUTING_JSON = JSON.stringify(config);
   env.TELEGRAM_CHAT_ID = '333';
+  env.TELEGRAM_BOT_TOKEN = 'telegram-test-token';
   resetRoutingConfigCache();
   vi.restoreAllMocks();
   // Telegram replies go out via global fetch; stub so dispatcher reply sends are no-ops.
@@ -107,6 +110,7 @@ beforeEach(() => {
 afterEach(() => {
   env.LEAD_ROUTING_JSON = previousRoutingJson;
   env.TELEGRAM_CHAT_ID = previousTelegramChatId;
+  env.TELEGRAM_BOT_TOKEN = previousTelegramBotToken;
   resetRoutingConfigCache();
   db.close();
 });
