@@ -40,6 +40,7 @@ const routing: RoutingConfig = {
 let db: Database.Database;
 let repos: Repositories;
 let previousRoutingJson: string;
+let previousTelegramChatId: string;
 
 function msg(text: string, id = 'wamid-1'): ExtractedMessage {
   return { from: PHONE, id, type: 'text', text, media: null, timestamp: '' };
@@ -69,7 +70,11 @@ beforeEach(() => {
   migrate(db);
   repos = createRepositories(db);
   previousRoutingJson = env.LEAD_ROUTING_JSON;
+  previousTelegramChatId = env.TELEGRAM_CHAT_ID;
   env.LEAD_ROUTING_JSON = JSON.stringify(routing);
+  // Owner chat must be non-empty: isOwnerChat('') is false by design, and CI
+  // does not load .env.dev so TELEGRAM_CHAT_ID defaults to ''.
+  env.TELEGRAM_CHAT_ID = 'owner-chat';
   resetRoutingConfigCache();
   mockSendTelegram.mockReset();
   mockSendTelegram.mockResolvedValue(undefined);
@@ -83,6 +88,7 @@ beforeEach(() => {
 
 afterEach(() => {
   env.LEAD_ROUTING_JSON = previousRoutingJson;
+  env.TELEGRAM_CHAT_ID = previousTelegramChatId;
   resetRoutingConfigCache();
   db.close();
 });
