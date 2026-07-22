@@ -1,6 +1,17 @@
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
+  // Vitest/esbuild does not recognize tsconfig target ES2024 yet.
+  esbuild: {
+    target: 'es2022',
+    tsconfigRaw: {
+      compilerOptions: {
+        target: 'ES2022',
+        module: 'ESNext',
+        moduleResolution: 'bundler',
+      },
+    },
+  },
   test: {
     globals: true,
     exclude: ['src/tests/conversation-eval/**', '.opencode/**', 'node_modules/**', 'dist/**'],
@@ -15,6 +26,7 @@ export default defineConfig({
       PARTNER_NAME: 'Test Partner',
       OWNER_PERSONAL_WHATSAPP_NUMBER: '573000000000',
       DEEPSEEK_API_KEY: 'test',
+      TELEGRAM_CHAT_ID: 'test-owner-chat',
     },
   },
 });

@@ -1,102 +1,54 @@
-import { readFileSync, existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { evalReportSchema, type EvalReport } from '../tests/conversation-eval/schema.js';
 
-function loadReport(path: string): EvalReport | null {
-  if (!existsSync(path)) {
-    console.error(`Baseline not found: ${path}`);
-    return null;
-  }
-  const raw = readFileSync(path, 'utf8');
-  try {
-    return evalReportSchema.parse(JSON.parse(raw));
-  } catch (e) {
-    console.error(`Invalid report format in ${path}:`, (e as Error).message);
-    return null;
-  }
+function option(name: string, fallback: string): string {
+  const index = process.argv.indexOf(name);
+  return index === -1 ? fallback : (process.argv[index + 1] ?? fallback);
+}
+
+function load(path: string): EvalReport {
+  if (!existsSync(path)) throw new Error(`Baseline not found: ${path}`);
+  return evalReportSchema.parse(JSON.parse(readFileSync(path, 'utf8')));
 }
 
 function main(): void {
-  const args = process.argv.slice(2);
+  const baselinePath = option('--baseline', 'src/tests/conversation-eval/baselines/master-deterministic.json');
+  const currentPath = option('--current', 'artifacts/conversation-eval.json');
+  const baseline = load(baselinePath);
+  const current = load(currentPath);
+  const minAverage = Number(option('--min-average', process.env.MIN_CONVERSATION_SCORE ?? '70'));
+  const maxDrop = Number(option('--max-drop', process.env.MAX_SCORE_DROP ?? '5'));
+  const baselineMap = new Map(baseline.scenarios.map(scenario => [scenario.id, scenario]));
+  const currentMap = new Map(current.scenarios.map(scenario => [scenario.id, scenario]));
+  let failed = current.suite.hardFails > 0;
 
-  const baselineArg = args.findIndex(a => a === '--baseline');
-  const currentArg = args.findIndex(a => a === '--current');
-  const minAvgArg = args.findIndex(a => a === '--min-average');
-  const maxDropArg = args.findIndex(a => a === '--max-drop');
-
-  const baselinePath = baselineArg !== -1 ? args[baselineArg + 1] : 'src/tests/conversation-eval/baselines/master-deterministic.json';
-  const currentPath = currentArg !== -1 ? args[currentArg + 1] : 'artifacts/conversation-eval.json';
-  const minAverage = Number(minAvgArg !== -1 ? args[minAvgArg + 1] : process.env.MIN_CONVERSATION_SCORE ?? 70);
-  const maxDrop = Number(maxDropArg !== -1 ? args[maxDropArg + 1] : process.env.MAX_SCORE_DROP ?? 5);
-
-  const baseline = loadReport(baselinePath);
-  const current = loadReport(currentPath);
-
-  if (!baseline || !current) {
-    process.exit(2);
-  }
-
-  let failed = false;
-
-  console.log('\n┌─────────────────────────────────────────────────────────────┐');
-  console.log('│  Conversation Eval Compare                                  │');
-  console.log('├─────────────────────────────────────────────────────────────┤');
-  console.log(`│  Baseline: ${baselinePath.padEnd(50).slice(0, 50)} │`);
-  console.log(`│  Current:  ${currentPath.padEnd(50).slice(0, 50)} │`);
-  console.log('├─────────────────────────────────────────────────────────────┤');
-
-  const baseMap = new Map(baseline.scenarios.map(s => [s.id, s]));
-  const currMap = new Map(current.scenarios.map(s => [s.id, s]));
-
-  const allIds = new Set([...baseMap.keys(), ...currMap.keys()]);
-  const deltas: number[] = [];
-
-  for (const id of [...allIds].sort()) {
-    const b = baseMap.get(id);
-    const c = currMap.get(id);
-
-    if (!b) {
-      console.log(`│  NEW    ${id.padEnd(45)} => ${String(c!.total).padStart(3)}`);
+  console.log('\nConversation Eval V2 Compare');
+  for (const id of [...new Set([...baselineMap.keys(), ...currentMap.keys()])].sort()) {
+    const before = baselineMap.get(id);
+    const after = currentMap.get(id);
+    if (!before) {
+      console.log(`NEW     ${id} ${after!.score}`);
+      if (after!.hardFail || after!.score < 100) failed = true;
       continue;
     }
-    if (!c) {
-      console.log(`│  REMOVED ${id.padEnd(45)} <= ${String(b.total).padStart(3)}  DELETED`);
+    if (!after) {
+      console.log(`REMOVED ${id}`);
       failed = true;
       continue;
     }
-
-    const delta = c.total - b.total;
-    deltas.push(Math.abs(delta));
-
-    const arrow = delta === 0 ? '  ' : delta > 0 ? '↑' : '↓';
-    const color = delta < 0 && Math.abs(delta) > maxDrop ? 'DOWN' : delta < 0 ? 'down' : delta > 0 ? 'up  ' : 'ok  ';
-
-    console.log(`│  ${color} ${arrow} ${id.padEnd(45)} ${String(b.total).padStart(3)} → ${String(c.total).padStart(3)}  ${delta > 0 ? '+' + delta : String(delta)}`);
-
-    if (delta < 0 && Math.abs(delta) > maxDrop) {
-      console.log(`│       WARNING: drop exceeds max-drop of ${maxDrop}`);
-      failed = true;
-    }
+    const state = after.hardFail ? 'FAIL' : after.score >= before.score ? 'PASS' : 'DOWN';
+    console.log(`${state.padEnd(7)} ${id} ${before.score} -> ${after.score}`);
+    if (after.hardFail || before.score - after.score > maxDrop) failed = true;
   }
 
-  console.log('├─────────────────────────────────────────────────────────────┤');
-  console.log(`│  Baseline avg: ${String(baseline.suite.average).padStart(3)} → Current avg: ${String(current.suite.average).padStart(3)}  delta: ${current.suite.average - baseline.suite.average > 0 ? '+' : ''}${current.suite.average - baseline.suite.average}`);
-  console.log(`│  Baseline fails: ${baseline.suite.hardFails} → Current fails: ${current.suite.hardFails}`);
-
-  if (current.suite.average < minAverage) {
-    console.log(`│  FAIL: average ${current.suite.average} below min ${minAverage}`);
-    console.log('└─────────────────────────────────────────────────────────────┘\n');
-    process.exit(1);
-  }
-
-  if (failed) {
-    console.log('│  FAIL: some scenarios dropped beyond max-drop');
-    console.log('└─────────────────────────────────────────────────────────────┘\n');
-    process.exit(1);
-  }
-
-  console.log('│  PASS');
-  console.log('└─────────────────────────────────────────────────────────────┘\n');
-  process.exit(0);
+  console.log(`Average ${baseline.suite.average} -> ${current.suite.average}; hard fails ${current.suite.hardFails}`);
+  if (current.suite.average < minAverage) failed = true;
+  if (failed) process.exit(1);
 }
 
-main();
+try {
+  main();
+} catch (error) {
+  console.error(error instanceof Error ? error.message : error);
+  process.exit(2);
+}

@@ -1,4 +1,4 @@
-import type { Repositories } from '../db/repositories/index.js';
+import type { ConversationMode, Repositories } from '../db/repositories/index.js';
 
 export interface MergedQualification {
   nombre?: unknown;
@@ -29,4 +29,7 @@ export interface ProcessMessageOutput {
   shouldSendGalleryImages: boolean;
   priceJustGiven: boolean;
   priceFollowUpText?: string;
+  conversationMode?: ConversationMode;
+  salesPhase?: string | null;
+  softClosed?: boolean;
 }

@@ -3,10 +3,13 @@ import { migrate } from '../../db/migrate.js';
 import { createRepositories } from '../../db/repositories/index.js';
 import { processMessage } from '../../services/response-engine.js';
 import type { ProcessMessageOutput, ProcessMessageInput } from '../../services/response-engine.js';
-import type { Repositories } from '../../db/repositories/index.js';
+import type { ConversationMode, Repositories } from '../../db/repositories/index.js';
 import type { LlmResult, LlmTurn } from '../../services/llm/llm-client.js';
 import type { LlmClientInput } from '../../services/llm/llm-client.js';
-import type { ScenarioTurn } from './schema.js';
+import type { Scenario, ScenarioTurn } from './schema.js';
+import { recordGalleryNudge } from '../../services/media-service.js';
+import { setDynamicService } from '../../services/skill-loader.js';
+import type { DynamicDataService } from '../../services/dynamic-data-service.js';
 
 export interface TurnRecord {
   turnNumber: number;
@@ -63,11 +66,65 @@ export function createRunContext(options: RunOptions): RunContext {
   };
 }
 
+function applyQualificationSeed(
+  repos: Repositories,
+  phone: string,
+  seed?: {
+    name?: string;
+    people?: number;
+    date?: string;
+    transport?: string;
+    plan?: string;
+  },
+): void {
+  if (!seed) return;
+  repos.conversation.upsert(phone, {
+    collected_name: seed.name,
+    collected_people: seed.people,
+    collected_date: seed.date,
+    collected_transport_need: seed.transport,
+    collected_plan: seed.plan,
+  });
+}
+
+export function applyScenarioSeeds(ctx: RunContext, scenario: Scenario): () => void {
+  applyQualificationSeed(ctx.repos, ctx.customerPhone, scenario.seedQualification);
+
+  const seed = scenario.seedConversation;
+  if (seed) {
+    applyQualificationSeed(ctx.repos, ctx.customerPhone, seed.qualification);
+    if (seed.phase) ctx.repos.conversation.setSalesPhase(ctx.customerPhone, seed.phase);
+    if (seed.conversationMode) ctx.repos.conversation.setMode(ctx.customerPhone, seed.conversationMode as ConversationMode);
+    if (seed.softClosed) ctx.repos.conversation.setSoftClosed(ctx.customerPhone);
+    if (seed.priceGiven) ctx.repos.conversation.setPriceGiven(ctx.customerPhone);
+  }
+
+  let restoreDynamic: (() => void) | undefined;
+  if (scenario.seedSystem?.dynamicSkillRequired && scenario.seedSystem.dynamicSkillAvailable === false) {
+    const stale = {
+      lastFetchOk: false,
+      getData: () => null,
+      forceRefresh: async () => undefined,
+      refreshIfStale: async () => undefined,
+    } as unknown as DynamicDataService;
+    setDynamicService(stale);
+    restoreDynamic = () => setDynamicService(null);
+  }
+
+  return () => {
+    restoreDynamic?.();
+  };
+}
+
 export async function runTurn(
   ctx: RunContext,
   turnDef: ScenarioTurn,
   turnNumber: number,
 ): Promise<TurnRecord> {
+  if (turnDef.seedPriceGiven) ctx.repos.conversation.setPriceGiven(ctx.customerPhone);
+  if (turnDef.seedGalleryNudge) recordGalleryNudge(ctx.repos, ctx.customerPhone);
+  if (turnDef.seedLeadScore !== undefined) ctx.repos.conversation.updateLeadScore(ctx.customerPhone, turnDef.seedLeadScore);
+  applyQualificationSeed(ctx.repos, ctx.customerPhone, turnDef.seedQualification);
   const input: ProcessMessageInput = {
     repos: ctx.repos,
     customerPhone: ctx.customerPhone,

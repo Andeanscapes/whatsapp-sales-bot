@@ -23,7 +23,7 @@ import { daysummaryHandler } from '../commands/daysummary.command.js';
 import { versionHandler } from '../commands/version.command.js';
 import { retryflowHandler } from '../commands/retryflow.command.js';
 import { returnbotHandler } from '../commands/returnbot.command.js';
-import { isAllowedTelegramChat, isOwnerChat } from './lead-routing.js';
+import { isAllowedTelegramChat, isBridgeTelegramChat, isOwnerChat } from './lead-routing.js';
 import { sendBridgeReply, sendBridgeMedia } from './bridge-service.js';
 import { bridgeMessages } from './bridge-messages.js';
 import { MAX_MEDIA_BYTES, MAX_VIDEO_BYTES, MAX_AUDIO_BYTES } from './whatsapp-client.js';
@@ -236,6 +236,7 @@ export async function processUpdate(update: TelegramUpdate, repos: Repositories)
 
   // A photo, video, video document, or voice note (no command) relays the agent's media to the bridged customer.
   if (hasPhoto || hasVideo || hasVoice || hasVideoDocument) {
+    if (!isBridgeTelegramChat(chatIdStr)) return;
     const session = repos.bridgeSession.getByAgentChat(chatIdStr);
     if (!session) {
       await sendTelegramMessage(msg.chat.id, bridgeMessages.imageNoActiveChat);
@@ -279,6 +280,7 @@ export async function processUpdate(update: TelegramUpdate, repos: Repositories)
   const text = msg.text ?? '';
   const parsed = parseCommand(text);
   if (!parsed) {
+    if (!isBridgeTelegramChat(chatIdStr)) return;
     const session = repos.bridgeSession.getByAgentChat(chatIdStr);
     if (!session) return;
 

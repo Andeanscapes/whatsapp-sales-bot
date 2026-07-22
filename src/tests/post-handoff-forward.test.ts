@@ -40,6 +40,7 @@ const routing: RoutingConfig = {
 let db: Database.Database;
 let repos: Repositories;
 let previousRoutingJson: string;
+let previousTelegramChatId: string;
 
 function msg(text: string, id = 'wamid-1'): ExtractedMessage {
   return { from: PHONE, id, type: 'text', text, media: null, timestamp: '' };
@@ -69,7 +70,11 @@ beforeEach(() => {
   migrate(db);
   repos = createRepositories(db);
   previousRoutingJson = env.LEAD_ROUTING_JSON;
+  previousTelegramChatId = env.TELEGRAM_CHAT_ID;
   env.LEAD_ROUTING_JSON = JSON.stringify(routing);
+  // Owner chat must be non-empty: isOwnerChat('') is false by design, and CI
+  // does not load .env.dev so TELEGRAM_CHAT_ID defaults to ''.
+  env.TELEGRAM_CHAT_ID = 'owner-chat';
   resetRoutingConfigCache();
   mockSendTelegram.mockReset();
   mockSendTelegram.mockResolvedValue(undefined);
@@ -83,6 +88,7 @@ beforeEach(() => {
 
 afterEach(() => {
   env.LEAD_ROUTING_JSON = previousRoutingJson;
+  env.TELEGRAM_CHAT_ID = previousTelegramChatId;
   resetRoutingConfigCache();
   db.close();
 });
@@ -244,6 +250,48 @@ describe('forwardPostHandoffMessage', () => {
 });
 
 describe('forwardBridgeMessage', () => {
+  it('forwards an owner bridge when lead routing is disabled', async () => {
+    env.LEAD_ROUTING_JSON = '';
+    resetRoutingConfigCache();
+    repos.conversation.upsert(PHONE, { language: 'es' });
+    repos.conversation.setMode(PHONE, 'bridge_active');
+    repos.bridgeSession.open(env.TELEGRAM_CHAT_ID, PHONE);
+
+    const forwarded = await forwardBridgeMessage(repos, msg('Hola owner', 'wamid-owner-bridge'));
+
+    expect(forwarded).toBe(true);
+    expect(mockSendTelegram).toHaveBeenCalledWith(env.TELEGRAM_CHAT_ID, expect.stringContaining('Hola owner'));
+    expect(repos.conversation.getMode(PHONE)).toBe('bridge_active');
+  });
+
+  it('closes a stale non-owner bridge when lead routing is disabled', async () => {
+    env.LEAD_ROUTING_JSON = '';
+    resetRoutingConfigCache();
+    repos.conversation.upsert(PHONE, { language: 'es' });
+    repos.conversation.setMode(PHONE, 'bridge_active');
+    repos.bridgeSession.open('removed-agent', PHONE);
+
+    const forwarded = await forwardBridgeMessage(repos, msg('Mensaje privado', 'wamid-stale-bridge'));
+
+    expect(forwarded).toBe(false);
+    expect(mockSendTelegram).not.toHaveBeenCalled();
+    expect(repos.bridgeSession.getByCustomer(PHONE)).toBeNull();
+    expect(repos.conversation.getMode(PHONE)).toBe('bot');
+  });
+
+  it('closes a bridge session whose line changed to referral', async () => {
+    repos.conversation.upsert(PHONE, { language: 'es' });
+    repos.conversation.setMode(PHONE, 'bridge_active');
+    repos.bridgeSession.open('222', PHONE);
+
+    const forwarded = await forwardBridgeMessage(repos, msg('Mensaje privado', 'wamid-referral-bridge'));
+
+    expect(forwarded).toBe(false);
+    expect(mockSendTelegram).not.toHaveBeenCalled();
+    expect(repos.bridgeSession.getByCustomer(PHONE)).toBeNull();
+    expect(repos.conversation.getMode(PHONE)).toBe('bot');
+  });
+
   it('reopens the bot path when active bridge Telegram delivery fails', async () => {
     repos.conversation.upsert(PHONE, { language: 'es' });
     repos.conversation.setAssignment(PHONE, { assignedLineId: 'line1_bridge', assignedAgentChat: '111' });
@@ -426,6 +474,19 @@ describe('notifyAssignedLineIfDormant', () => {
     await notifyAssignedLineIfDormant(repos, msg('Hola'));
 
     expect(mockSendTelegram).not.toHaveBeenCalled();
+  });
+
+  it('notifies assigned bridge agent when mode is human_pending without short-circuiting bot', async () => {
+    repos.conversation.upsert(PHONE, { language: 'es' });
+    repos.conversation.setAssignment(PHONE, { assignedLineId: 'line1_bridge', assignedAgentChat: '111' });
+    repos.conversation.setMode(PHONE, 'human_pending');
+
+    const result = await notifyAssignedLineIfDormant(repos, msg('Sigo esperando confirmacion'));
+
+    expect(result).toBe(false);
+    expect(mockSendTelegram).toHaveBeenCalledTimes(1);
+    expect(mockSendTelegram.mock.calls[0][0]).toBe('111');
+    expect(mockSendTelegram.mock.calls[0][1]).toContain('/bridge');
   });
 
   it('does not notify when opt-out', async () => {

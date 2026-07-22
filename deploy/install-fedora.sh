@@ -7,6 +7,7 @@ APP_DATA_DIR="$APP_DIR/app"
 DB_DIR=/var/lib/andean-whatsapp-bot
 LOG_DIR=/var/log/andean-whatsapp-bot
 ENV_FILE=/etc/andean-whatsapp-bot.env
+NODE_MAJOR=24
 
 echo "[1/7] Creating system user..."
 sudo useradd --system --create-home --home-dir "$APP_DIR" --shell /usr/sbin/nologin "$APP_USER" 2>/dev/null || echo "User already exists"
@@ -22,6 +23,11 @@ sudo chown -R "$APP_USER:$APP_USER" "$LOG_DIR"
 
 echo "[3/7] Installing system dependencies..."
 sudo dnf install -y nodejs git curl rsync
+INSTALLED_NODE_VERSION=$(node -v | sed 's/^v//')
+if [ "${INSTALLED_NODE_VERSION%%.*}" != "$NODE_MAJOR" ]; then
+  echo "Node $NODE_MAJOR.x is required. Found $INSTALLED_NODE_VERSION. Install a supported Node $NODE_MAJOR release before running this script."
+  exit 1
+fi
 
 echo "[4/7] Setting up env file..."
 if [ ! -f "$ENV_FILE" ]; then
