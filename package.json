@@ -3,21 +3,24 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=24.18.0 <25"
+  },
   "scripts": {
-    "build": "rm -rf dist && tsc && cp -r src/data dist/data && mkdir -p dist/db dist/prompts && cp src/db/schema.sql dist/db/schema.sql && cp src/prompts/deepseek-system.prompt.md dist/prompts/deepseek-system.prompt.md && cp src/prompts/lead-analyzer.prompt.md dist/prompts/lead-analyzer.prompt.md",
+    "build": "rm -rf dist && tsc && cp -r src/data dist/data && mkdir -p dist/db dist/prompts && cp src/db/schema.sql dist/db/schema.sql && cp src/prompts/deepseek-system.prompt.md dist/prompts/deepseek-system.prompt.md && cp src/prompts/deepseek-follow-up.prompt.md dist/prompts/deepseek-follow-up.prompt.md && cp src/prompts/lead-analyzer.prompt.md dist/prompts/lead-analyzer.prompt.md",
     "start": "node dist/server.js",
     "dev": "tsx watch src/server.ts",
     "dev:env": "ENV_FILE=.env.dev tsx watch src/server.ts",
     "native:rebuild": "npm rebuild better-sqlite3",
+    "native:ensure": "node scripts/ensure-native.mjs",
     "db:clean": "rm -f data/bot.sqlite data/bot.sqlite-wal data/bot.sqlite-shm",
     "start:clean": "npm run native:rebuild && npm run db:clean && npm run build && npm start",
     "dev:clean": "npm run native:rebuild && npm run db:clean && npm run dev",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
-    "test": "vitest run",
-    "eval:conversations": "vitest run --config vitest.conversation.config.ts",
-    "eval:conversations:llm-bot": "AI_ENABLED=true tsx src/scripts/eval-conversations-llm-bot.ts",
-    "eval:conversations:llm-judge": "CONV_LIVE=1 AI_ENABLED=true vitest run --config vitest.conversation.config.ts",
+    "test": "npm run native:ensure && vitest run",
+    "eval:conversations": "npm run native:ensure && vitest run --config vitest.conversation.config.ts",
+    "eval:conversations:llm-bot": "npm run native:ensure && AI_ENABLED=true tsx src/scripts/eval-conversations-llm-bot.ts",
     "eval:conversations:compare": "tsx src/scripts/compare-conversation-eval.ts",
     "start:tunnel": "cloudflared tunnel --url http://127.0.0.1:3000",
     "simulate": "AI_ENABLED=false tsx src/scripts/simulate-message.ts",
@@ -27,11 +30,11 @@
     "export:transcripts": "bash scripts/export-prod-transcripts.sh",
     "export:debug-bundle": "bash scripts/export-prod-debug-bundle.sh",
     "scan:secrets": "secretlint \"**/*\" --secretlintignore .gitignore",
-    "docker:dev": "ENV_FILE=.env.dev docker compose --env-file .env.dev up --build --force-recreate",
-    "docker:prod": "ENV_FILE=.env.prod docker compose --env-file .env.prod --profile tunnel up --build -d --force-recreate",
+    "docker:dev": "ENV_FILE=.env.dev docker compose -p andean-whatsapp-bot-dev --env-file .env.dev -f compose.yml -f compose.test.yml up --build --force-recreate",
+    "docker:prod": "ENV_FILE=.env.prod docker compose -p andean-whatsapp-bot-prod --env-file .env.prod --profile tunnel up --build -d --force-recreate",
     "docker:prod:log": "bash scripts/docker-up.sh",
     "docker:test": "bash scripts/docker-up-test.sh",
-    "db:clean:prod": "docker compose --env-file .env.prod down -v"
+    "db:clean:prod": "node -e \"if(process.env.CONFIRM_DELETE_PROD_DATA!=='delete-andean-prod-data')throw new Error('Set CONFIRM_DELETE_PROD_DATA=delete-andean-prod-data to continue')\" && docker compose -p andean-whatsapp-bot-prod --env-file .env.prod down -v"
   },
   "dependencies": {
     "@fastify/rate-limit": "^11.0.0",
@@ -41,16 +44,19 @@
     "pino": "^9.0.0",
     "zod": "^3.23.0"
   },
+  "overrides": {
+    "esbuild": "0.28.1"
+  },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
     "@secretlint/secretlint-rule-preset-recommend": "^9.0.0",
     "@types/better-sqlite3": "^7.6.0",
-    "@types/node": "^22.0.0",
+    "@types/node": "^24.13.3",
     "eslint": "^9.39.4",
     "secretlint": "^9.0.0",
     "tsx": "^4.0.0",
     "typescript": "^5.5.0",
     "typescript-eslint": "^8.59.2",
-    "vitest": "^2.0.0"
+    "vitest": "^3.2.6"
   }
 }

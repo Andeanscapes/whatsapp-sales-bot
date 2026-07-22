@@ -14,6 +14,7 @@ Restart=always
 RestartSec=10
 TimeoutStartSec=30
 TimeoutStopSec=30
+UMask=0077
 
 NoNewPrivileges=true
 PrivateTmp=true
@@ -22,6 +23,12 @@ ProtectHome=true
 ReadWritePaths=/var/lib/andean-whatsapp-bot /var/log/andean-whatsapp-bot
 CapabilityBoundingSet=
 LockPersonality=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 
 StandardOutput=journal
 StandardError=journal

@@ -12,8 +12,8 @@ const CUSTOMER = '573001112233';
 
 const config: RoutingConfig = {
   salesLines: [
-    { id: 'line1_bridge', type: 'bridge', label: 'Booking', weight: 50, telegramChatId: '111', agentName: 'Heinner' },
-    { id: 'line2_referral', type: 'referral', label: 'Booking', weight: 50, telegramChatId: '222', agentName: 'Zaret', displayNumber: '+57000' },
+    { id: 'line1_bridge', type: 'bridge', label: 'Booking', weight: 50, telegramChatId: '111', agentName: 'AgentA' },
+    { id: 'line2_referral', type: 'referral', label: 'Booking', weight: 50, telegramChatId: '222', agentName: 'AgentB', displayNumber: '+57000' },
   ],
 };
 
@@ -21,6 +21,7 @@ let repos: Repositories;
 let db: Database.Database;
 let previousRoutingJson: string;
 let previousTelegramChatId: string;
+let previousTelegramBotToken: string;
 
 registerCommands();
 
@@ -96,8 +97,10 @@ beforeEach(() => {
   repos = createRepositories(db);
   previousRoutingJson = env.LEAD_ROUTING_JSON;
   previousTelegramChatId = env.TELEGRAM_CHAT_ID;
+  previousTelegramBotToken = env.TELEGRAM_BOT_TOKEN;
   env.LEAD_ROUTING_JSON = JSON.stringify(config);
   env.TELEGRAM_CHAT_ID = '333';
+  env.TELEGRAM_BOT_TOKEN = 'telegram-test-token';
   resetRoutingConfigCache();
   vi.restoreAllMocks();
   // Telegram replies go out via global fetch; stub so dispatcher reply sends are no-ops.
@@ -107,6 +110,7 @@ beforeEach(() => {
 afterEach(() => {
   env.LEAD_ROUTING_JSON = previousRoutingJson;
   env.TELEGRAM_CHAT_ID = previousTelegramChatId;
+  env.TELEGRAM_BOT_TOKEN = previousTelegramBotToken;
   resetRoutingConfigCache();
   db.close();
 });
@@ -145,6 +149,42 @@ describe('telegram dispatcher authorization', () => {
 
     await processUpdate(update(333, '/resume'), repos);
     expect(repos.isPaused()).toBe(false);
+  });
+
+  it.each(['/summary hoy', '/daysummary hoy'])('blocks %s transcript export from an allowlisted non-owner chat', async command => {
+    const activitySpy = vi.spyOn(repos.transcripts, 'getDayActivity');
+
+    await processUpdate(update(111, command), repos);
+
+    expect(activitySpy).not.toHaveBeenCalled();
+    expect(vi.mocked(globalThis.fetch).mock.calls.some(([input]) => String(input).includes('/sendDocument'))).toBe(false);
+  });
+
+  it.each(['/summary hoy', '/daysummary hoy'])('allows owner chat to run %s transcript export', async command => {
+    const activitySpy = vi.spyOn(repos.transcripts, 'getDayActivity');
+
+    await processUpdate(update(333, command), repos);
+
+    expect(activitySpy).toHaveBeenCalledOnce();
+    expect(vi.mocked(globalThis.fetch).mock.calls.some(([input]) => String(input).includes('/sendDocument'))).toBe(true);
+  });
+
+  it('allows owner chat to force a bridge for an unassigned lead', async () => {
+    repos.conversation.upsert(CUSTOMER, { first_seen_at: new Date().toISOString() });
+
+    await processUpdate(update(333, `/bridge ${CUSTOMER}`), repos);
+
+    expect(repos.conversation.getMode(CUSTOMER)).toBe('bridge_active');
+    expect(repos.bridgeSession.getByCustomer(CUSTOMER)?.agentChatId).toBe('333');
+  });
+
+  it('does not let an allowlisted bridge agent force an unassigned lead', async () => {
+    repos.conversation.upsert(CUSTOMER, { first_seen_at: new Date().toISOString() });
+
+    await processUpdate(update(111, `/bridge ${CUSTOMER}`), repos);
+
+    expect(repos.conversation.getMode(CUSTOMER)).toBe('bot');
+    expect(repos.bridgeSession.getByCustomer(CUSTOMER)).toBeNull();
   });
 
   it('blocks /block from an allowlisted non-owner chat without mutating opt-out', async () => {

@@ -11,7 +11,7 @@ import { DeepSeekLlmClient } from './llm/deepseek-llm-client.js';
 import { analyzeLead, type LeadAnalysis } from './lead-analyzer.js';
 import type { LlmTurn } from './llm/llm-client.js';
 import type { MergedQualification, ProcessMessageInput, ProcessMessageOutput } from './types.js';
-import { getActiveExperience, getPlans, getPricingItems, getShortDescription, isPricingAvailable, getPublicPaymentFacts } from './product-registry.js';
+import { getActiveExperience, getCommonQuestions, getPlans, getPricingItems, isPricingAvailable, getPublicPaymentFacts } from './product-registry.js';
 import type { PublicPaymentFacts } from './product-registry.js';
 import { calculatePriceQuote, formatCop, type PriceQuote, type TransportNeed } from './pricing-calculator.js';
 import {
@@ -21,19 +21,24 @@ import {
   buildDbQualification,
   getCollectedFields,
   resolveLanguage,
+  isConfirmedDate,
   isQualificationComplete,
   nextQualificationQuestion,
   extractStandaloneName,
   detectPlan,
+  isAmbiguousPartyComparison,
   PET_KEYWORDS,
 } from './qualification-engine.js';
 import {
   isSoftCloseMessage,
   isAdcodeNoise,
   isReEngagementMessage,
-  isPartnerConsultPause,
+  isReviewPause,
   getLastAssistantQuestion,
   detectsReservationIntent,
+  detectsAvailabilityConfirmRequest,
+  detectsOrganizerContactShare,
+  detectsWrongServiceNatureOnly,
   isReservationIntentOrConfirmation,
   replyMentionsPrice,
   containsHandoffPhrase,
@@ -49,9 +54,10 @@ import {
   qualificationSummary,
   peopleLabel,
 } from './reply-guard.js';
+
 import { assignLine, isReferralLine } from './lead-routing.js';
 import { normalizeText } from './language-service.js';
-import { INPUT_COST_PER_TOKEN, MS_72H, OUTPUT_COST_PER_TOKEN, SCORE_GALLERY_TRIGGER_THRESHOLD } from './constants.js';
+import { INPUT_COST_PER_TOKEN, MONTH_NAMES, MS_72H, OUTPUT_COST_PER_TOKEN, SCORE_GALLERY_TRIGGER_THRESHOLD } from './constants.js';
 import type { RecentMessage, LeadPain } from '../db/repositories/types.js';
 
 export {
@@ -65,7 +71,222 @@ export {
 
 export type { ProcessMessageInput, ProcessMessageOutput };
 
+function withConversationState(
+  repos: ProcessMessageInput['repos'],
+  customerPhone: string,
+  output: ProcessMessageOutput,
+): ProcessMessageOutput {
+  return {
+    ...output,
+    conversationMode: repos.conversation.getMode(customerPhone),
+    salesPhase: repos.conversation.getSalesPhase(customerPhone),
+    softClosed: repos.conversation.getSoftClosedAt(customerPhone) != null,
+  };
+}
+
+/**
+ * Marks lead as waiting on human validation. Bot keeps replying (payment facts,
+ * clarifications). Does NOT set handed_off_at and does NOT open a live bridge —
+ * agent must still run /bridge to take exclusive control. Webhook notifies the
+ * assigned bridge line on further inbound while mode stays human_pending.
+ */
+function enterHumanPending(repos: ProcessMessageInput['repos'], customerPhone: string): void {
+  repos.conversation.setMode(customerPhone, 'human_pending');
+  repos.conversation.setSalesPhase(customerPhone, 'closing');
+}
+
 const MAX_INBOUND_CHARS = 1500;
+const SPANISH_MONTH_INDEX: Record<string, number> = {
+  enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6,
+  julio: 7, agosto: 8, septiembre: 9, octubre: 10, noviembre: 11, diciembre: 12,
+};
+const ENGLISH_MONTH_INDEX: Record<string, number> = {
+  january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
+  july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+};
+
+function extractPastExplicitDate(text: string, now = new Date()): string | null {
+  const match = text.match(/\b(\d{1,2})\s+de\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\s+de\s+(\d{4})\b/i);
+  if (!match) return null;
+  const day = Number(match[1]);
+  const month = SPANISH_MONTH_INDEX[match[2].toLowerCase()];
+  const year = Number(match[3]);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Bogota', year: 'numeric', month: 'numeric', day: 'numeric',
+  }).formatToParts(now);
+  const current = Object.fromEntries(parts.map(part => [part.type, Number(part.value)]));
+  const candidateValue = year * 10_000 + month * 100 + day;
+  const currentValue = current.year * 10_000 + current.month * 100 + current.day;
+  return candidateValue < currentValue ? match[0] : null;
+}
+
+function factualPolicyReply(skills: Skills, lang: 'es' | 'en', message: string): string | null {
+  if (isPhysicalRecoveryQuestion(message)) return null;
+  const emeraldQuestion = /(?:esmerald.{0,80}(?:encontr|hall|qued|llev|garant|segur)|(?:encontr|hall|qued|llev|garant|segur).{0,80}esmerald)/i.test(message);
+  const mineQuestion = /(?:mina.{0,80}(?:la uni[oó]n|activa|siempre)|(?:la uni[oó]n|activa|siempre).{0,80}mina)/i.test(message);
+  if (!emeraldQuestion && !mineQuestion) return null;
+  const questions = getCommonQuestions(getActiveExperience(skills));
+  const intents = [emeraldQuestion ? 'emerald' : null, mineQuestion ? 'mine_assignment' : null].filter((intent): intent is string => intent !== null);
+  const answers = intents.map(intent => questions.find(question => question.lang === lang && question.intent === intent)?.answer).filter((answer): answer is string => Boolean(answer));
+  return answers.length > 0 ? answers.join('\n\n') : null;
+}
+
+function isPhysicalRecoveryQuestion(message: string): boolean {
+  return /\b(?:fractura|fracture|movilidad limitada|limited mobility|riesgo de ca[ií]da|fall risk|recuper[aá]ndo(?:me)? de (?:una? )?(?:fractura|lesi[oó]n|cirug[ií]a)|recovering from (?:a )?(?:fracture|injury|surgery)|recuperaci[oó]n de (?:una? )?(?:fractura|lesi[oó]n|cirug[ií]a))\b/i.test(message);
+}
+
+function safetyPolicyReply(skills: Skills, lang: 'es' | 'en', message: string): string | null {
+  const reservationLeadTimeQuestion = /(?:con cu[aá]nt[oa].{0,50}(?:anticip|tiempo).{0,50}reserv|reserv.{0,50}(?:anticip|tiempo)|how far.{0,30}(?:ahead|advance).{0,30}book)/i.test(message);
+  const physicalRecoveryQuestion = isPhysicalRecoveryQuestion(message);
+  if (!reservationLeadTimeQuestion && !physicalRecoveryQuestion) return null;
+  const intent = physicalRecoveryQuestion ? 'physical_recovery' : 'reservation_lead_time';
+  const questions = getCommonQuestions(getActiveExperience(skills));
+  return questions.find(question => question.lang === lang && question.intent === intent)?.answer ?? null;
+}
+
+function isInclusionsQuestion(message: string, lang: 'es' | 'en'): boolean {
+  const norm = normalizeForKeywordMatch(message);
+  if (lang === 'es') return /\bque incluye\b|\bque trae\b|\bque viene incluido\b/.test(norm);
+  return /\bwhat(?:'s| is) included\b|\bwhat does it include\b/.test(norm);
+}
+
+/** True when inclusions is the only (or primary) ask — not a multi-fact dump. */
+function isStandaloneInclusionsQuestion(message: string, lang: 'es' | 'en'): boolean {
+  if (!isInclusionsQuestion(message, lang)) return false;
+  const questionMarks = (message.match(/[?¿]/g) ?? []).length;
+  if (questionMarks >= 2) return false;
+  const norm = normalizeForKeywordMatch(message);
+  if (/\b(?:cuatro|varias|varios|tambien|and also|as well)\b/.test(norm)) return false;
+  if (/\b(?:edad|dura|duracion|mascota|pet|precio|fecha|cuanto)\b/.test(norm)
+    && !/\bque incluye\b|\bwhat(?:'s| is) included\b/.test(norm)) return false;
+  // Multi-topic list: "dura X, qué incluye, edad, mascotas"
+  if (/\b(?:dura|edad|mascota|pet).{0,80}\b(?:incluye|include)/.test(norm)
+    || /\b(?:incluye|include).{0,80}\b(?:dura|edad|mascota|pet)/.test(norm)) {
+    return false;
+  }
+  return true;
+}
+
+function isAvailabilityRecommendQuestion(message: string): boolean {
+  const norm = normalizeForKeywordMatch(message);
+  if (detectsAvailabilityConfirmRequest(message)) return false;
+  if (isPriceQuestion(message)) return false;
+  // Only force validation language when the customer asks for a recommendation
+  // (not when listing known dates from Business Context is appropriate).
+  return (
+    /\b(?:que|cual)\s+fecha\s+(?:me\s+)?recomiend/i.test(norm)
+    || /\brecomiend\w*\s+(?:una\s+)?fecha/i.test(norm)
+    || /\bfecha\s+(?:me\s+)?recomiend/i.test(norm)
+    || /\bfecha\s+(?:mejor|ideal|buena)\b/i.test(norm)
+    || /\bwhich\s+date\s+(?:do\s+you\s+)?recommend/i.test(norm)
+    || /\brecommend\s+a\s+date/i.test(norm)
+  );
+}
+
+/** Deterministic inclusions package — LLM must not omit core package facts. */
+function buildInclusionsReply(skills: Skills, lang: 'es' | 'en'): string {
+  return skills.fallbackReplies[lang].inclusionsPackageReply;
+}
+
+function buildAvailabilityRecommendReply(
+  skills: Skills,
+  lang: 'es' | 'en',
+  merged: MergedQualification,
+  message: string,
+): string {
+  const month = MONTH_NAMES.find(m => normalizeForKeywordMatch(message).includes(m));
+  const windowClause = month
+    ? (lang === 'es' ? ` para ${month}` : ` for ${month}`)
+    : (typeof merged.fecha === 'string' && merged.fecha
+      ? (lang === 'es' ? ` para ${merged.fecha}` : ` for ${merged.fecha}`)
+      : '');
+  const peopleClause = typeof merged.personas === 'number'
+    ? (lang === 'es' ? ` para ${merged.personas} personas` : ` for ${merged.personas} people`)
+    : '';
+  return skills.fallbackReplies[lang].availabilityRecommendReply
+    .replace('{{windowClause}}', windowClause)
+    .replace('{{peopleClause}}', peopleClause);
+}
+
+function isAvailabilityLookupQuestion(message: string): boolean {
+  return /\b(?:fecha|fechas|disponib\w*|cupos?|date|dates|availability|available|spots?)\b/i.test(normalizeForKeywordMatch(message));
+}
+
+function buildLateMonthAvailabilityReply(skills: Skills, lang: 'es' | 'en', message: string): string | null {
+  const normalized = normalizeForKeywordMatch(message);
+  const match = normalized.match(/\b(?:finales\s+de|late|end\s+of)\s+(january|february|march|april|may|june|july|august|september|october|november|december|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\b/i);
+  if (!match) return null;
+
+  const monthName = match[1].toLowerCase();
+  const month = SPANISH_MONTH_INDEX[monthName] ?? ENGLISH_MONTH_INDEX[monthName];
+  if (!month) return null;
+
+  const exp = getActiveExperience(skills);
+  const monthDates = exp.availability.availableDates
+    .filter(item => item.status === 'available' || item.status === 'limited')
+    .map(item => ({ item, date: new Date(`${item.date}T12:00:00Z`) }))
+    .filter(({ date }) => date.getUTCMonth() + 1 === month);
+  const explicitYear = normalized.match(/\b(20\d{2})\b/)?.[1];
+  const targetYear = explicitYear ? Number(explicitYear) : Math.min(...monthDates.map(({ date }) => date.getUTCFullYear()));
+  const listed = monthDates.filter(({ date }) => date.getUTCFullYear() === targetYear);
+  if (listed.some(({ date }) => date.getUTCDate() >= 21)) return null;
+
+  const fb = skills.fallbackReplies[lang];
+  const localizedMonth = new Intl.DateTimeFormat(lang === 'es' ? 'es-CO' : 'en-US', {
+    month: 'long', timeZone: 'UTC',
+  }).format(new Date(Date.UTC(2000, month - 1, 1)));
+  const yearClause = explicitYear ? ` ${explicitYear}` : '';
+  const window = lang === 'es' ? `finales de ${localizedMonth}${yearClause}` : `late ${localizedMonth}${yearClause}`;
+  const closest = listed.sort((a, b) => b.date.getUTCDate() - a.date.getUTCDate())[0];
+  if (!closest) return fb.availabilityWindowNoMatch.replace('{{window}}', window);
+
+  const date = new Intl.DateTimeFormat(lang === 'es' ? 'es-CO' : 'en-US', {
+    weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC',
+  }).format(closest.date);
+  const statusClause = closest.item.status === 'limited' ? fb.availabilityLimitedClause : '';
+  return fb.availabilityWindowNoMatchClosest
+    .replace('{{window}}', window)
+    .replace('{{date}}', date)
+    .replace('{{statusClause}}', statusClause);
+}
+
+function replyMissingCoreInclusion(normReply: string): boolean {
+  return !/\balojamiento|lodging\b/.test(normReply)
+    || !/\b3 comidas|3 meals|comidas completas\b/.test(normReply)
+    || !/\bequipo|equipment|casco|botas\b/.test(normReply)
+    || !/\bguia|acompanamiento|guide\b/.test(normReply);
+}
+
+function ensureRequestedInclusionCoverage(reply: string, message: string, skills: Skills, lang: 'es' | 'en'): string {
+  if (!isInclusionsQuestion(message, lang)) return reply;
+  if (isStandaloneInclusionsQuestion(message, lang)) return buildInclusionsReply(skills, lang);
+  // Multi-fact answers: append i18n pad if core package facts are missing.
+  if (!replyMissingCoreInclusion(normalizeForKeywordMatch(reply))) return reply;
+  return `${reply.trim()} ${skills.fallbackReplies[lang].inclusionsPadSuffix}`;
+}
+
+function extractFutureMonthConstraint(text: string): string | null {
+  const match = text.match(/\b(?:despu[eé]s de|after)\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|january|february|march|april|may|june|july|august|september|october|november|december)\b/i);
+  return match ? match[0] : null;
+}
+
+function buildPartyComparisonReply(skills: Skills, lang: 'es' | 'en', planId?: string | null): string {
+  const exp = getActiveExperience(skills);
+  if (!isPricingAvailable(exp)) return skills.fallbackReplies[lang].partyComparisonUnavailable;
+  const plans = getPlans(exp);
+  const resolvedPlan = typeof planId === 'string' ? plans.find(plan => plan.id === planId) : undefined;
+  if (!resolvedPlan) {
+    return skills.fallbackReplies[lang].partyComparisonNeedsPlan
+      .replace('{{plans}}', plans.map(plan => `${plan.name} (${plan.duration})`).join(', '));
+  }
+  const solo = calculatePriceQuote(exp, { planId: resolvedPlan.id, people: 1, transportNeed: 'own' });
+  const couple = calculatePriceQuote(exp, { planId: resolvedPlan.id, people: 2, transportNeed: 'own' });
+  if (!solo || !couple) return skills.fallbackReplies[lang].partyComparisonUnavailable;
+  return skills.fallbackReplies[lang].partyComparisonQuote
+    .replace('{{soloTotal}}', formatCop(solo.planTotal))
+    .replace('{{coupleTotal}}', formatCop(couple.planTotal))
+    .replace('{{currency}}', solo.currency);
+}
 
 function shouldAutoSendGallery(currentScore: number, isExplicitRequest: boolean): boolean {
   if (isExplicitRequest) return true;
@@ -289,25 +510,22 @@ function computePriceFollowUp(personas: unknown, planId: string | undefined | nu
     : `In your case, ${label}: $${formatCop(quote.planTotal)} COP all-inclusive.`;
 }
 
-function computePartnerPriceLine(personas: unknown, planId: string | undefined | null, lang: string, skills: Skills): string | undefined {
-  const { individualPrice, couplePrice, duration } = getPlanPricing(planId, skills);
-  if (individualPrice == null || couplePrice == null) return undefined;
-  const quote = calculatePriceQuote(getActiveExperience(skills), { planId, people: personas });
-  if (!quote) {
-    return lang === 'es'
-      ? `Plan ${duration}. Individual: $${formatCop(individualPrice)} COP. Pareja: $${formatCop(couplePrice)} COP.`
-      : `Plan ${duration}. Individual: $${formatCop(individualPrice)} COP. Couple: $${formatCop(couplePrice)} COP.`;
-  }
-  return lang === 'es'
-    ? `Para ${quote.people} ${quote.people === 1 ? 'persona' : 'personas'} queda en $${formatCop(quote.planTotal)} COP total.`
-    : `For ${quote.people} ${quote.people === 1 ? 'person' : 'people'}, it is $${formatCop(quote.planTotal)} COP total.`;
-}
-
 function isPriceQuestion(text: string): boolean {
   const norm = normalizeForKeywordMatch(text);
+  // Capacity / group-size questions are not price questions.
+  if (/\b(?:permite|capacidad|maximo|maximum|tamano|group size|cupo maximo)\b/.test(norm)
+    && !/\b(?:precio|precios|vale|valor|costo|cuesta|price|cost|cuanto|how much)\b/.test(norm)) {
+    return false;
+  }
   if (norm.includes('how much')) return true;
   const tokens = new Set(norm.split(/[^a-z0-9]+/).filter(Boolean));
-  return ['precio', 'precios', 'cuanto', 'vale', 'valor', 'costo', 'cuesta', 'cuestan', 'price', 'prices', 'cost', 'costs'].some(t => tokens.has(t));
+  if (['precio', 'precios', 'vale', 'valor', 'costo', 'cuesta', 'cuestan', 'price', 'prices', 'cost', 'costs'].some(t => tokens.has(t))) return true;
+  if (tokens.has('cuanto') && !/\bcuanto\s+(dura|tiempo|personas|people)\b/.test(norm)) return true;
+  if (tokens.has('total') && (
+    tokens.has('exacto') || tokens.has('exact') || tokens.has('paquete') || tokens.has('package')
+    || tokens.has('cuanto') || /\bpara\s+(?:los\s+)?\d+\b/.test(norm)
+  )) return true;
+  return /\b(?:cual es el|what is the|whats the) total\b/.test(norm);
 }
 
 function wantsApiaryCattle(text: string): boolean {
@@ -484,19 +702,6 @@ function buildDeterministicQuote(message: string, merged: MergedQualification, l
   return quote ? formatDeterministicQuoteReply(quote, skills, lang) : null;
 }
 
-function buildPartnerConsultSummary(q: MergedQualification, lang: 'es' | 'en', skills: Skills): string {
-  const name = String(q.nombre ?? '').trim();
-  const priceLine = computePartnerPriceLine(q.personas, q.plan as string | undefined, lang, skills)
-    ?? (lang === 'es'
-      ? 'El valor final lo validamos segun cantidad de personas.'
-      : 'We validate the final price based on the group size.');
-  return skills.fallbackReplies[lang].partnerConsultSummary
-    .replace('{{name}}', name)
-    .replace('{{experienceSummary}}', getShortDescription(getActiveExperience(skills)))
-    .replace('{{priceLine}}', priceLine)
-    .trim();
-}
-
 function instagramUrl(skills: Skills): string {
   return skills.andeanScapes.business.socialLinks?.instagram ?? '';
 }
@@ -639,7 +844,18 @@ function skipRepeated(candidate: string, recentMessages: RecentMessage[], merged
   return candidate;
 }
 
+function isLowInformationMessage(message: string): boolean {
+  const normalized = normalizeForKeywordMatch(message);
+  return /^[?¿]+$/.test(message.trim())
+    || /^(?:ok|okay|dale|listo|bueno|gracias|thanks|hola|hello|hi|hey)$/.test(normalized);
+}
+
 export async function processMessage(input: ProcessMessageInput): Promise<ProcessMessageOutput> {
+  const output = await processMessageCore(input);
+  return withConversationState(input.repos, input.customerPhone, output);
+}
+
+async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMessageOutput> {
   const { repos, customerPhone, message, messageId, storeInbound = true } = input;
 
   // Persist the customer's inbound message for audit/transcript. No-op when the
@@ -727,35 +943,110 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   }
   // ────────────────────────────────────────────────────────────────────────
 
-  // ── First-nudge reply detection ─────────────────────────────────────────
-  // When customer replies to a first_nudge follow-up, mark it replied so
-  // the scheduler can send the pain-question on next tick.
-  if (
-    latestFollowUpEvent?.stage === 'first_nudge' &&
-    latestFollowUpEvent.status === 'sent'
-  ) {
+  // Mark replies to every automated nudge. Legacy pain-question events keep
+  // their separate pain classification path above.
+  const isAutomatedFollowUpReply = latestFollowUpEvent != null
+    && latestFollowUpEvent.stage !== 'pain_question'
+    && latestFollowUpEvent.status === 'sent';
+  if (isAutomatedFollowUpReply) {
     const scoreNow = repos.conversation.getLeadScore(customerPhone);
     repos.followUpEvent.markReplied(customerPhone, latestFollowUpEvent.sequenceNumber, scoreNow, null);
     repos.conversation.incrementFollowUpReplyCount(customerPhone);
   }
   // ────────────────────────────────────────────────────────────────────────
 
+  const futureWindow = extractFutureMonthConstraint(message);
+  const deferredSafetyReply = safetyPolicyReply(skills, lang, message);
+  const safetyOverrideReply = deferredSafetyReply
+    ?? (futureWindow ? skills.fallbackReplies[lang].futureDateValidation.replace('{{window}}', futureWindow) : null);
+  const hasSafetyOverride = safetyOverrideReply !== null;
+
+  const pastDate = extractPastExplicitDate(message);
+  if (pastDate && !hasSafetyOverride) {
+    return {
+      reply: skills.fallbackReplies[lang].pastDateReply.replace('{{date}}', pastDate),
+      shouldSendReply: true, leadScore: repos.conversation.getLeadScore(customerPhone), usedAi: false,
+      shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false,
+      shouldSendImage: false, priceJustGiven: false,
+    };
+  }
+
+  const policyReply = factualPolicyReply(skills, lang, message);
+  if (policyReply && !hasSafetyOverride) {
+    return {
+      reply: policyReply, shouldSendReply: true, leadScore: repos.conversation.getLeadScore(customerPhone), usedAi: false,
+      shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false,
+      shouldSendImage: false, priceJustGiven: false,
+    };
+  }
+
+  if (!hasSafetyOverride && detectsWrongServiceNatureOnly(message)) {
+    if (!softClosedAt) repos.conversation.setSoftClosed(customerPhone);
+    return {
+      reply: skills.fallbackReplies[lang].wrongServiceNatureOnly,
+      shouldSendReply: true,
+      leadScore: repos.conversation.getLeadScore(customerPhone),
+      usedAi: false,
+      shouldAlertOwner: false,
+      shouldSendOwnerImage: false,
+      shouldSendGalleryImages: false,
+      shouldSendImage: false,
+      priceJustGiven: false,
+    };
+  }
+
+  if (!hasSafetyOverride && detectsOrganizerContactShare(message)) {
+    return {
+      reply: skills.fallbackReplies[lang].organizerContactReceived,
+      shouldSendReply: true,
+      leadScore: Math.max(repos.conversation.getLeadScore(customerPhone), skills.salesStrategy.hotLeadThreshold),
+      usedAi: false,
+      shouldAlertOwner: true,
+      ownerAlertType: 'organizer_contact',
+      shouldSendOwnerImage: false,
+      shouldSendGalleryImages: false,
+      shouldSendImage: false,
+      priceJustGiven: false,
+    };
+  }
+
+  const ambiguousPartyComparison = isAmbiguousPartyComparison(message);
   const bookingFields = extractBookingFields(message);
+  if (futureWindow) {
+    delete bookingFields.collected_date;
+    delete bookingFields._relative_date_token;
+  }
   const contextFields = contextAwareExtract(message, repos, customerPhone, bookingFields);
-  repos.conversation.upsert(customerPhone, { language: lang, ...contextFields });
+  if (futureWindow) {
+    delete contextFields.collected_date;
+    delete contextFields._relative_date_token;
+  }
+  repos.conversation.upsert(customerPhone, {
+    language: lang,
+    ...contextFields,
+  });
+  if (futureWindow) {
+    repos.conversation.setCollectedDateWindow(customerPhone, futureWindow);
+  } else if (typeof contextFields.collected_date === 'string' && !contextFields.collected_date.startsWith('_')) {
+    repos.conversation.setCollectedDateWindow(customerPhone, null);
+  }
+  const activeDateWindow = futureWindow ?? repos.conversation.getCollectedDateWindow(customerPhone);
+  const introducedLargeGroup = typeof contextFields.collected_people === 'number'
+    && contextFields.collected_people > skills.salesStrategy.maxGroupSizePerDate;
 
   const rawCollected = getCollectedFields(repos, customerPhone);
   const richCollected = reconstructFromHistory(repos, customerPhone, rawCollected);
   const missingFromDb: Record<string, unknown> = {};
   if (!rawCollected.nombre && richCollected.nombre) missingFromDb.collected_name = richCollected.nombre;
   if (!rawCollected.personas && richCollected.personas) missingFromDb.collected_people = richCollected.personas;
-  if (!rawCollected.fecha && richCollected.fecha) missingFromDb.collected_date = richCollected.fecha;
+  if (!activeDateWindow && !rawCollected.fecha && richCollected.fecha) missingFromDb.collected_date = richCollected.fecha;
   if (!rawCollected.transporte && richCollected.transporte) missingFromDb.collected_transport_need = richCollected.transporte;
   if (!rawCollected.mascota && richCollected.mascota) missingFromDb.collected_pet = richCollected.mascota;
   if (richCollected.plan && richCollected.plan !== rawCollected.plan) missingFromDb.collected_plan = richCollected.plan;
   if (Object.keys(missingFromDb).length > 0) repos.conversation.upsert(customerPhone, missingFromDb);
 
   const collectedFields = reconstructFromHistory(repos, customerPhone, getCollectedFields(repos, customerPhone));
+  if (activeDateWindow) delete collectedFields.fecha;
   const dbQualification = buildDbQualification(collectedFields);
   const recentMessages = repos.message.getRecentMessages(customerPhone, 21).filter((_, i, arr) => i < arr.length - 1);
 
@@ -776,7 +1067,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   // spam the same gallery across decline/handoff/consult turns.
   const galleryAlreadyNudged = hasGalleryNudge(repos, customerPhone);
 
-  if (isSoftCloseMessage(message)) {
+  if (!hasSafetyOverride && isSoftCloseMessage(message)) {
     // Price objections with qualification data are recoverable: let the LLM
     // handle them instead of hard-closing with the IG soft-close.
     const hasQualData = dbQualification.personas != null || dbQualification.fecha != null || dbQualification.nombre != null;
@@ -791,7 +1082,51 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   }
 
   const lastAssistantQuestion = getLastAssistantQuestion(repos, customerPhone);
+  const conversationMode = repos.conversation.getMode(customerPhone);
   const galleryRequested = isGalleryRequest(message) || isGalleryConfirmation(message, lastAssistantQuestion);
+
+  const largeGroupPeople = typeof dbQualification.personas === 'number' ? dbQualification.personas : null;
+  const largeGroupNeedsEscalate = largeGroupPeople != null
+    && largeGroupPeople > skills.salesStrategy.maxGroupSizePerDate
+    && !isReviewPause(message)
+    && (introducedLargeGroup || isPriceQuestion(message) || detectsAvailabilityConfirmRequest(message));
+  if (!hasSafetyOverride && largeGroupNeedsEscalate) {
+    enterHumanPending(repos, customerPhone);
+    const escalateScore = Math.max(currentScore, skills.salesStrategy.urgentLeadThreshold);
+    repos.conversation.upsert(customerPhone, { lead_score: escalateScore });
+    return {
+      reply: skills.fallbackReplies[lang].largeGroupEscalate.replace('{{people}}', String(largeGroupPeople)),
+      shouldSendReply: true,
+      leadScore: escalateScore,
+      usedAi: false,
+      shouldAlertOwner: true,
+      ownerAlertType: 'large_group',
+      shouldSendOwnerImage: false,
+      shouldSendGalleryImages: false,
+      shouldSendImage: false,
+      priceJustGiven: false,
+    };
+  }
+
+  if (!hasSafetyOverride && conversationMode === 'human_pending' && isPaymentMethodsQuestion(message)) {
+    const facts = getPublicPaymentFacts(skills);
+    const reply = skills.fallbackReplies[lang].humanPendingPaymentAck
+      .replaceAll('{{methods}}', formatMethods(facts.methodNames, lang))
+      .replaceAll('{{deposit}}', String(facts.depositPercent))
+      .replaceAll('{{date}}', displayDate(dbQualification.fecha, lang));
+    return {
+      reply,
+      shouldSendReply: true,
+      leadScore: currentScore,
+      usedAi: false,
+      shouldAlertOwner: true,
+      ownerAlertType: 'reservation_handoff',
+      shouldSendOwnerImage: false,
+      shouldSendGalleryImages: false,
+      shouldSendImage: false,
+      priceJustGiven: false,
+    };
+  }
 
   let isReEngagement = false;
   // Replying after a follow-up pain question counts as re-engagement — but only
@@ -803,7 +1138,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     isReEngagement = true;
   }
   if (softClosedAt) {
-    if (isReEngagementMessage(message) || galleryRequested) {
+    if (hasSafetyOverride || isReEngagementMessage(message) || galleryRequested) {
       isReEngagement = true;
       repos.conversation.clearSoftClosed(customerPhone);
     } else {
@@ -813,7 +1148,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
 
   // Explicit customer request for photos bypasses the once-per-customer dedup:
   // if they ask again, we honor it. Only automatic nudges are deduped.
-  if (galleryRequested) {
+  if (!hasSafetyOverride && galleryRequested) {
     return { reply: skills.fallbackReplies[lang].galleryIntro, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: true, shouldSendImage: false, priceJustGiven: false };
   }
 
@@ -823,13 +1158,12 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
 
   const preLimitReservationIntent = !!preLimitPriceRow && isReservationIntentOrConfirmation(message, lastAssistantQuestion);
 
-  if (preLimitPriceRow && isPartnerConsultPause(message)) {
-    return { reply: buildPartnerConsultSummary(dbQualification, lang, skills), shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: !galleryAlreadyNudged && shouldAutoSendGallery(currentScore, false), shouldSendImage: false, priceJustGiven: false };
-  }
-
   const limits = checkTimeWindow(repos, customerPhone);
   if (limits.isLimited) {
     logger.warn({ phone: customerPhone, reason: limits.reason }, '[BOT] message limit reached');
+    if (safetyOverrideReply) {
+      return { reply: safetyOverrideReply, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: true, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
+    }
     // Alert-only under limit: never auto-mute. Only /bridge silences the bot.
     if (preLimitHandoffAllowed || preLimitReservationIntent) {
       const overrideScore = Math.max(currentScore, skills.salesStrategy.urgentLeadThreshold);
@@ -862,9 +1196,16 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     return { reply: fb.messageLimitReached, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: true, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
   }
 
+  if (!hasSafetyOverride && preLimitPriceRow && isReviewPause(message)) {
+    return { reply: skills.fallbackReplies[lang].reviewPauseAcknowledgement, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
+  }
+
   const budget = checkBudget(repos, customerPhone);
   if (!budget.aiAllowed) {
     logger.warn({ reason: budget.reason }, '[AI] budget blocked');
+    if (safetyOverrideReply) {
+      return { reply: safetyOverrideReply, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: true, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
+    }
     // A pain-question reply gets its grounded deterministic answer even when the
     // AI budget is exhausted, so the lead is not left with a generic holding message.
     const painFallback = isPainQuestionReply ? detectLeadPain(message) : null;
@@ -883,6 +1224,9 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   // Non-price messages (route, safety, inclusions) continue normally.
   if (!isDynamicDataFresh() && isPriceDateOrReservationMessage(message)) {
     logger.warn({ phone: customerPhone }, '[BOT] dynamic data unavailable — blocking price/date reply');
+    if (safetyOverrideReply) {
+      return { reply: safetyOverrideReply, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: true, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
+    }
     return {
       reply: skills.fallbackReplies[lang].dynamicDataUnavailable,
       shouldSendReply: true,
@@ -900,6 +1244,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
 
   const salesPhase = repos.conversation.getSalesPhase(customerPhone);
   const safeCollected = sanitizeCollectedFields(collectedFields, skills.fallbackReplies[lang].internalDatePending);
+  if (activeDateWindow) safeCollected.datePreference = activeDateWindow;
   const systemPrompt = buildSystemPrompt(skills, lang, safeCollected, salesPhase ?? undefined);
   const llmHistory = recentMessages.map(m => ({ role: m.role, content: m.content }));
   const llmMessage = message.length > MAX_INBOUND_CHARS ? message.slice(0, MAX_INBOUND_CHARS) : message;
@@ -920,7 +1265,19 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     : llmMessage;
   // ──────────────────────────────────────────────────────────────────────────
 
-  const llmResult = await llmClient.complete({ systemPrompt, systemPromptSuffix: painSuffix, message: enrichedMessage, history: llmHistory, lang });
+  let replyUsageRecorded = false;
+  const llmResult = await llmClient.complete({
+    systemPrompt,
+    systemPromptSuffix: painSuffix,
+    message: enrichedMessage,
+    history: llmHistory,
+    lang,
+    onAttempt: attempt => {
+      replyUsageRecorded = true;
+      const cost = attempt.tokens.prompt * INPUT_COST_PER_TOKEN + attempt.tokens.completion * OUTPUT_COST_PER_TOKEN;
+      repos.aiUsage.recordUsage({ phone: customerPhone, model: env.DEEPSEEK_MODEL, promptTokens: attempt.tokens.prompt, completionTokens: attempt.tokens.completion, cachedTokens: 0, estimatedCost: cost, purpose: 'reply', success: attempt.success, errorType: attempt.success ? null : 'completion_failed' });
+    },
+  });
 
   if (!llmResult) {
     logger.warn('[LLM] DeepSeek call failed, sending minimal fallback');
@@ -928,7 +1285,8 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     const painReply = painFallback ? getPainFallbackReply(painFallback, lang) : null;
     const fieldCount = [collectedFields?.nombre, collectedFields?.personas, collectedFields?.fecha].filter(v => v != null).length;
     const isNearClosing = fieldCount >= 3;
-    const fallbackText: string = painReply
+    const fallbackText: string = safetyOverrideReply
+      ?? painReply
       ?? (isNearClosing
         ? skills.fallbackReplies[lang].aiFailureQualified
         : (collectedFields?.nombre
@@ -942,12 +1300,18 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   }
 
   const llmTurn = llmResult.turn;
-  const estimatedCost = llmResult.tokens.prompt * INPUT_COST_PER_TOKEN + llmResult.tokens.completion * OUTPUT_COST_PER_TOKEN;
-  repos.aiUsage.recordUsage({ phone: customerPhone, model: env.DEEPSEEK_MODEL, promptTokens: llmResult.tokens.prompt, completionTokens: llmResult.tokens.completion, cachedTokens: 0, estimatedCost, purpose: 'reply', success: true });
+  if (!replyUsageRecorded) {
+    const estimatedCost = llmResult.tokens.prompt * INPUT_COST_PER_TOKEN + llmResult.tokens.completion * OUTPUT_COST_PER_TOKEN;
+    repos.aiUsage.recordUsage({ phone: customerPhone, model: env.DEEPSEEK_MODEL, promptTokens: llmResult.tokens.prompt, completionTokens: llmResult.tokens.completion, cachedTokens: 0, estimatedCost, purpose: 'reply', success: true });
+  }
+  if (activeDateWindow) llmTurn.collected_fields.date = null;
   persistCollectedFromLlmTurn(repos, customerPhone, llmTurn);
+  if (activeDateWindow) repos.conversation.clearCollectedDate(customerPhone);
 
   const updatedCollected = reconstructFromHistory(repos, customerPhone, getCollectedFields(repos, customerPhone));
+  if (activeDateWindow) delete updatedCollected.fecha;
   let merged = buildMergedQualification(updatedCollected, llmTurn);
+  const deferredDateLowInformation = merged.fecha === 'tentative_unknown' && isLowInformationMessage(message);
 
   // ── LLM-powered lead analysis (separate scoring call) ───────────────────
   // Gated behind the budget guard: the analyzer is a second DeepSeek call, so
@@ -958,6 +1322,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   const prePriceRow = repos.conversation.getPriceGivenAt(customerPhone);
   const analysisBudget = checkBudget(repos, customerPhone);
   let analysis: LeadAnalysis | null = null;
+  let analysisUsageRecorded = false;
   if (analysisBudget.aiAllowed) {
     analysis = await analyzeLead({
       latestMessage: message,
@@ -966,19 +1331,29 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
       salesPhase,
       collectedFields: safeCollected as Record<string, unknown>,
       priceGiven: !!prePriceRow,
-      isFollowUpReply: latestFollowUpEvent?.stage === 'first_nudge' && latestFollowUpEvent.status === 'sent',
+      isFollowUpReply: isAutomatedFollowUpReply,
       isPainQuestionReply,
       lastAssistantQuestion,
       lang,
+      onAttempt: attempt => {
+        analysisUsageRecorded = true;
+        const cost = attempt.tokens.prompt * INPUT_COST_PER_TOKEN + attempt.tokens.completion * OUTPUT_COST_PER_TOKEN;
+        repos.aiUsage.recordUsage({ phone: customerPhone, model: env.DEEPSEEK_MODEL, promptTokens: attempt.tokens.prompt, completionTokens: attempt.tokens.completion, cachedTokens: 0, estimatedCost: cost, purpose: 'lead_analysis', success: attempt.success, errorType: attempt.success ? null : 'analysis_failed' });
+      },
     });
+    if (!analysisUsageRecorded) {
+      const tokens = analysis
+        ? { prompt: analysis.promptTokens, completion: analysis.completionTokens }
+        : { prompt: 0, completion: 0 };
+      const cost = tokens.prompt * INPUT_COST_PER_TOKEN + tokens.completion * OUTPUT_COST_PER_TOKEN;
+      repos.aiUsage.recordUsage({ phone: customerPhone, model: env.DEEPSEEK_MODEL, promptTokens: tokens.prompt, completionTokens: tokens.completion, cachedTokens: 0, estimatedCost: cost, purpose: 'lead_analysis', success: analysis !== null, errorType: analysis ? null : 'analysis_failed' });
+    }
   } else {
     logger.warn({ phone: customerPhone, reason: analysisBudget.reason }, '[LEAD_ANALYZER] skipped — budget guard');
   }
 
   let llmLeadInput: LlmLeadInput;
   if (analysis) {
-    const analysisCost = analysis.promptTokens * INPUT_COST_PER_TOKEN + analysis.completionTokens * OUTPUT_COST_PER_TOKEN;
-    repos.aiUsage.recordUsage({ phone: customerPhone, model: env.DEEPSEEK_MODEL, promptTokens: analysis.promptTokens, completionTokens: analysis.completionTokens, cachedTokens: 0, estimatedCost: analysisCost, purpose: 'lead_analysis', success: true });
     llmLeadInput = {
       intent: analysis.intent,
       scoreDelta: analysis.scoreDelta,
@@ -1039,8 +1414,15 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
 
   const exp = getActiveExperience(skills);
   const pricingAvailable = isPricingAvailable(exp);
-  if (!pricingAvailable && replyMentionsPrice(replyText)) {
-    replyText = skills.fallbackReplies[lang].priceUnavailable;
+  if (
+    !pricingAvailable
+    && replyText.trim()
+    && !containsPromptLeakOrPolicyViolation(replyText)
+    && (isPriceQuestion(message) || replyMentionsPrice(replyText))
+  ) {
+    replyText = typeof merged.personas === 'number'
+      ? skills.fallbackReplies[lang].priceUnavailableKnownGroup.replace('{{people}}', String(merged.personas))
+      : skills.fallbackReplies[lang].priceUnavailable;
     llmTurn.img = false;
   }
   const inboundCount = recentMessages.filter(m => m.role === 'user').length + 1;
@@ -1063,7 +1445,10 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     }
   } else if (replyMentionsPrice(replyText)) {
     // Group size alone is not enough — sell package value first, ask one depth question.
-    replyText = buildPriceGateTeaser(skills, lang, typeof merged.plan === 'string' ? merged.plan : undefined);
+    const teaser = buildPriceGateTeaser(skills, lang, typeof merged.plan === 'string' ? merged.plan : undefined);
+    replyText = recentMessages.some(message => message.role === 'assistant' && message.content === teaser)
+      ? skipRepeated(nextQualificationQuestion(merged, skills.fallbackReplies[lang]), recentMessages, merged, skills.fallbackReplies[lang])
+      : teaser;
     llmTurn.img = false;
   }
 
@@ -1072,6 +1457,24 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     replyText = frameDeterministicQuote(replyText, deterministicQuote, skills.fallbackReplies[lang]);
     llmTurn.img = false;
   }
+
+  const lateMonthAvailabilityReply = buildLateMonthAvailabilityReply(skills, lang, message);
+  if (safetyOverrideReply) {
+    replyText = safetyOverrideReply;
+    llmTurn.img = false;
+  } else if (ambiguousPartyComparison) {
+    const knownPlan = getCollectedFields(repos, customerPhone).plan ?? merged.plan;
+    replyText = buildPartyComparisonReply(skills, lang, typeof knownPlan === 'string' ? knownPlan : null);
+    llmTurn.img = false;
+  } else if (isStandaloneInclusionsQuestion(message, lang)) {
+    replyText = buildInclusionsReply(skills, lang);
+    llmTurn.img = false;
+  } else if (isAvailabilityRecommendQuestion(message)) {
+    replyText = buildAvailabilityRecommendReply(skills, lang, merged, message);
+    llmTurn.img = false;
+  }
+
+  replyText = ensureRequestedInclusionCoverage(replyText, message, skills, lang);
 
   replyText = scrubInternalLeakTokens(replyText, skills.fallbackReplies[lang].internalDatePending);
 
@@ -1118,17 +1521,24 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   const llmReadyToBook = llmTurn.action === 'handoff' || llmTurn.lead.intent === 'ready_to_book';
 
   const paymentQ = isPaymentMethodsQuestion(message);
-  const closeIntent = reservationIntent || recentReservation || llmReadyToBook;
+  const availabilityConfirm = detectsAvailabilityConfirmRequest(message);
+  const closeIntent = reservationIntent || recentReservation || llmReadyToBook || availabilityConfirm;
   const closeStage = inferCloseStage(recentMessages);
   const paymentFacts = getPublicPaymentFacts(skills);
+  const hasConfirmedDate = isConfirmedDate(merged.fecha);
+  const hasCoreBooking = merged.personas != null && hasConfirmedDate;
+  const wantsNextStep = /\b(?:qu[eé]\s+sigue|what(?:'s|\s+is)\s+next|s[ií]\s+me\s+interesa)\b/i.test(message);
 
-  // ── Payment methods question: public facts + owner handoff alert ────
-  // Explicit payment-detail request is high commercial intent even if
-  // qualification is incomplete. Always alert owner (reservation_handoff
-  // cooldown), but keep bot mode — agent must still /bridge to take over.
-  // Never expose phone numbers / payment links here (template is public-only).
-  if (paymentQ && pricePresented) {
-    replyText = buildCloseReply(skills, lang, merged, 'payment_methods', paymentFacts);
+  // ── Payment methods question: public facts + owner alert ────
+  // High commercial intent. Sets human_pending (bot still answers; agent must
+  // /bridge for exclusive control). Never expose phone numbers / payment links.
+  if (!hasSafetyOverride && paymentQ && (pricePresented || conversationMode === 'human_pending')) {
+    replyText = conversationMode === 'human_pending'
+      ? skills.fallbackReplies[lang].humanPendingPaymentAck
+        .replaceAll('{{methods}}', formatMethods(paymentFacts.methodNames, lang))
+        .replaceAll('{{deposit}}', String(paymentFacts.depositPercent))
+        .replaceAll('{{date}}', displayDate(merged.fecha, lang))
+      : buildCloseReply(skills, lang, merged, 'payment_methods', paymentFacts);
     needsHumanEffective = true;
     shouldSendGallery = false;
     llmTurn.img = false;
@@ -1143,16 +1553,22 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     }, '[BOT] payment methods reply sent');
   }
 
-  // ── Reservation / close intent: analyzer-gated bridge ──────────────────
-  // Primary path: the LLM analyzer decides whether to alert/bridge the owner.
-  // Many fields or deterministic regex patterns alone do NOT trigger bridge.
-  // Fallback path: when the analyzer is UNAVAILABLE (HTTP/timeout/invalid JSON
-  // or budget-skipped), never silently drop a booking-ready lead — bridge when
-  // qualification is complete, price was shown, and reservation intent is
-  // explicit (the pre-analyzer deterministic guarantee).
+  // ── Reservation / close intent → human_pending ──────────────────
+  // - Full qual + price + (analyzer ready OR analyzer down + close intent)
+  // - Availability confirm only when core booking + plan (or price already shown)
+  // Does not mute bot; agent /bridge still required for exclusive control.
   const deterministicBridgeFallback = analyzerUnavailable && closeIntent;
-  if (qComplete && pricePresented && (shouldBridgeByScore || deterministicBridgeFallback)) {
-    if (closeStage === 'pending_sent') {
+  const strongAvailabilityConfirm = availabilityConfirm
+    && hasCoreBooking
+    && (merged.plan != null || pricePresented || qComplete);
+  const canEnterHumanPending =
+    (qComplete && pricePresented && (shouldBridgeByScore || deterministicBridgeFallback))
+    || strongAvailabilityConfirm
+    || (reservationIntent && pricePresented && !hasConfirmedDate);
+  if (!hasSafetyOverride && canEnterHumanPending) {
+    if (!hasConfirmedDate) {
+      replyText = skills.fallbackReplies[lang].reservationDateNeeded;
+    } else if (closeStage === 'pending_sent') {
       replyText = buildCloseAck(skills, lang, merged);
     } else {
       const kind: CloseKind = closeStage === 'closing_offered' ? 'pending_owner' : (paymentQ ? 'payment_methods' : 'closing');
@@ -1169,8 +1585,9 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
       intent: analysis?.intent,
       readiness: analysis?.reservationReadiness,
       fallback: deterministicBridgeFallback,
-    }, '[BOT] reservation bridge triggered');
-  } else if (qComplete && pricePresented && closeIntent) {
+      availabilityConfirm: strongAvailabilityConfirm,
+    }, '[BOT] reservation human_pending triggered');
+  } else if (!hasSafetyOverride && qComplete && pricePresented && closeIntent) {
     logger.warn({
       phone: customerPhone,
       qComplete,
@@ -1241,29 +1658,68 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     deflectionDueToPolicyLeak = true;
   }
 
-  const finalPriceJustGiven = replyMentionsPrice(replyText);
-  if (finalPriceJustGiven && !prePriceRow) repos.conversation.upsert(customerPhone, { price_given_at: new Date().toISOString() });
+  if (!hasSafetyOverride && introducedLargeGroup) {
+    const caveat = skills.fallbackReplies[lang].largeGroupReview
+      .replace('{{maxGroupSize}}', String(skills.salesStrategy.maxGroupSizePerDate));
+    replyText = `${replyText.trim()}\n\n${caveat}`;
+  }
 
   // ── When closing was triggered deterministically, lock phase so follow-ups
   // ── are permanently excluded for this lead.
   if (needsHumanEffective) {
+    enterHumanPending(repos, customerPhone);
+  } else if (
+    !hasSafetyOverride
+    && qComplete
+    && !pricePresented
+    && !closeIntent
+    && !paymentQ
+    && !isPriceQuestion(message)
+    && !isGalleryRequest(message)
+    && !lateMonthAvailabilityReply
+    && !llmTurn.img
+    && !wantsNextStep
+  ) {
+    // Fully qualified lead: summarize known facts and move forward — no re-ask loop.
+    replyText = skills.fallbackReplies[lang].qualifiedNextStep
+      .replaceAll('{{name}}', displayName(merged.nombre, lang))
+      .replaceAll('{{summary}}', qualificationSummary(merged, lang, skills.fallbackReplies[lang]));
+    llmTurn.img = false;
     repos.conversation.setSalesPhase(customerPhone, 'closing');
+  } else if (!hasSafetyOverride && !needsHumanEffective && !lateMonthAvailabilityReply && hasCoreBooking && wantsNextStep && !isGalleryRequest(message)) {
+    const dateClause = merged.fecha
+      ? (lang === 'es' ? ` para ${displayDate(merged.fecha, lang)}` : ` for ${displayDate(merged.fecha, lang)}`)
+      : '';
+    replyText = skills.fallbackReplies[lang].afterPriceNextStep.replace('{{dateClause}}', dateClause);
+    llmTurn.img = false;
   }
   // ────────────────────────────────────────────────────────────────────────
 
+  if (!hasSafetyOverride && merged.mascota && PET_KEYWORDS.test(message) && !/pet[- ]friendly|mascotas?|perros?|dogs?|pets?/i.test(replyText)) {
+    replyText = lang === 'es'
+      ? `Si, somos pet-friendly. Tu mascota es bienvenida. ${replyText}`
+      : `Yes, we are pet-friendly. Your pet is welcome. ${replyText}`;
+  }
+
+  if (!hasSafetyOverride && lateMonthAvailabilityReply) {
+    replyText = lateMonthAvailabilityReply;
+    llmTurn.img = false;
+  }
+
+  if (!hasSafetyOverride && deferredDateLowInformation) {
+    replyText = skills.fallbackReplies[lang].dateDeferredAcknowledgement;
+    llmTurn.img = false;
+  }
+
+  const finalPriceJustGiven = replyMentionsPrice(replyText);
+  if (finalPriceJustGiven && !prePriceRow) repos.conversation.upsert(customerPhone, { price_given_at: new Date().toISOString() });
   const outputPriceJustGiven = !needsHumanEffective && finalPriceJustGiven;
   const llmAlreadyGaveDetailedPrice = initialPriceJustGiven && replyText.length > 150;
   const outputPriceFollowUpText = outputPriceJustGiven && !usedDeterministicQuote && !llmAlreadyGaveDetailedPrice
     ? computePriceFollowUp(merged.personas, merged.plan as string | undefined, lang, skills)
     : undefined;
 
-  if (merged.mascota && PET_KEYWORDS.test(message) && !/pet[- ]friendly|mascotas?|perros?|dogs?|pets?/i.test(replyText)) {
-    replyText = lang === 'es'
-      ? `Si, somos pet-friendly. Tu mascota es bienvenida. ${replyText}`
-      : `Yes, we are pet-friendly. Your pet is welcome. ${replyText}`;
-  }
-
-  const shouldSendImage = llmTurn.img;
+  const shouldSendImage = !hasSafetyOverride && llmTurn.img;
   const shouldAlertOwner = needsHumanEffective || (hybrid.isHot && pricePresented) || unsafeReservationBlocked || deflectionDueToPolicyLeak;
   const ownerAlertType = needsHumanEffective ? 'reservation_handoff'
     : unsafeReservationBlocked ? 'unsafe_reservation_blocked'
@@ -1275,7 +1731,7 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
     shouldSendGallery = false;
   }
 
-  if (!needsHumanEffective && !unsafeReservationBlocked && pricePresented && !galleryAlreadyNudged && inferredPhase !== 'closing') {
+  if (!hasSafetyOverride && !needsHumanEffective && !unsafeReservationBlocked && conversationMode === 'bot' && !isAvailabilityLookupQuestion(message) && pricePresented && !galleryAlreadyNudged && inferredPhase !== 'closing') {
     const fieldCount = [merged.nombre, merged.plan, merged.personas, merged.fecha, merged.transporte]
       .filter(v => v != null).length;
     if (fieldCount >= 3 && shouldAutoSendGallery(finalScore, false)) {
@@ -1291,14 +1747,14 @@ export async function processMessage(input: ProcessMessageInput): Promise<Proces
   if (suppressGalleryForObjection) shouldSendGallery = false;
 
   if (isTruncatedReply(replyText)) {
-    logger.warn({ phone: customerPhone, replySnippet: replyText.slice(0, 40) }, '[LLM] reply may be truncated');
+    logger.warn({ phone: customerPhone, replyLen: replyText.length }, '[LLM] reply may be truncated');
   }
 
   return {
     reply: replyText, shouldSendReply: true,
     leadScore: finalScore, usedAi: true,
     shouldAlertOwner, ownerAlertType, shouldSendImage,
-    shouldSendOwnerImage: isFirstContact && !needsHumanEffective && !unsafeReservationBlocked && !repos.mediaSend.hasRecentSameImage(customerPhone, 'owner_intro', new Date(Date.now() - MS_72H).toISOString()),
+    shouldSendOwnerImage: !hasSafetyOverride && isFirstContact && !needsHumanEffective && !unsafeReservationBlocked && !repos.mediaSend.hasRecentSameImage(customerPhone, 'owner_intro', new Date(Date.now() - MS_72H).toISOString()),
     shouldSendGalleryImages: shouldSendGallery,
     priceJustGiven: outputPriceJustGiven, priceFollowUpText: outputPriceFollowUpText,
   };

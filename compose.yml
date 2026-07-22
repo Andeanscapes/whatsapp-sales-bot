@@ -3,7 +3,6 @@ name: andean-whatsapp-bot
 services:
   app:
     build: .
-    container_name: andean-whatsapp-bot
     ports:
       - "127.0.0.1:${PORT:-3000}:3000"
     # Select env file at run time via --env-file (.env.dev | .env.prod).
@@ -19,6 +18,8 @@ services:
       PORT: "3000"
       # Force DB onto the persistent bot-data volume regardless of env file value.
       SQLITE_PATH: /data/bot.sqlite
+      # Tunnel credential belongs only to cloudflared, never the app process.
+      CLOUDFLARE_TUNNEL_TOKEN: ""
     volumes:
       - bot-data:/data
     logging:
@@ -31,8 +32,9 @@ services:
 
   cloudflared:
     image: cloudflare/cloudflared:2026.5.2
-    container_name: andean-whatsapp-tunnel
-    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
     depends_on:
       - app
     logging:

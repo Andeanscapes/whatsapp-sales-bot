@@ -35,13 +35,13 @@ const PHONE = '573009998888';
 
 const config: RoutingConfig = {
   salesLines: [
-    { id: 'line2_referral', type: 'referral', label: 'Booking', weight: 100, telegramChatId: '222', agentName: 'Zaret', displayNumber: '+573001112233' },
+    { id: 'line2_referral', type: 'referral', label: 'Booking', weight: 100, telegramChatId: '222', agentName: 'AgentB', displayNumber: '+573001112233' },
   ],
 };
 
 const bridgeConfig: RoutingConfig = {
   salesLines: [
-    { id: 'line1_bridge', type: 'bridge', label: 'Booking', weight: 100, telegramChatId: '111', agentName: 'Heinner' },
+    { id: 'line1_bridge', type: 'bridge', label: 'Booking', weight: 100, telegramChatId: '111', agentName: 'AgentA' },
   ],
 };
 
@@ -125,7 +125,8 @@ describe('referral handoff routing', () => {
     expect(result.reply).toBeTruthy();
     expect(result.shouldAlertOwner).toBe(true);
     expect(result.ownerAlertType).toBe('reservation_handoff');
-    expect(repos.conversation.getMode(PHONE)).toBe('bot');
+    expect(repos.conversation.getMode(PHONE)).toBe('human_pending');
+    expect(repos.conversation.getHandedOffAt(PHONE)).toBeNull();
   });
 
   it('alerts owner on LLM booking signal instead of handoff', async () => {
@@ -151,7 +152,8 @@ describe('referral handoff routing', () => {
 
     expect(result.reply).toBeTruthy();
     expect(result.shouldAlertOwner).toBe(true);
-    expect(repos.conversation.getMode(PHONE)).toBe('bot');
+    expect(repos.conversation.getMode(PHONE)).toBe('human_pending');
+    expect(repos.conversation.getHandedOffAt(PHONE)).toBeNull();
   });
 
   it('alerts owner when "Si" confirms revision-de-reserva without handoff', async () => {
@@ -176,7 +178,8 @@ describe('referral handoff routing', () => {
 
     expect(result.reply).toBeTruthy();
     expect(result.shouldAlertOwner).toBe(true);
-    expect(repos.conversation.getMode(PHONE)).toBe('bot');
+    expect(repos.conversation.getMode(PHONE)).toBe('human_pending');
+    expect(repos.conversation.getHandedOffAt(PHONE)).toBeNull();
   });
 
   it('on a bridge line, alerts owner without handoff', async () => {
@@ -195,7 +198,8 @@ describe('referral handoff routing', () => {
     expect(result.reply).toBeTruthy();
     expect(result.shouldAlertOwner).toBe(true);
     expect(result.ownerAlertType).toBe('reservation_handoff');
-    expect(repos.conversation.getMode(PHONE)).toBe('bot');
+    expect(repos.conversation.getMode(PHONE)).toBe('human_pending');
+    expect(repos.conversation.getHandedOffAt(PHONE)).toBeNull();
   });
 
   it('does NOT hand off when the LLM signals booking but price was never presented', async () => {
@@ -211,7 +215,7 @@ describe('referral handoff routing', () => {
 
     const result = await processMessage({ repos, customerPhone: PHONE, message: 'Si' });
 
-    expect(result.reply).not.toContain('Zaret');
+    expect(result.reply).not.toContain('AgentB');
     expect(repos.conversation.getMode(PHONE)).toBe('bot');
   });
 });

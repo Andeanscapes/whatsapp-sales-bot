@@ -23,7 +23,7 @@ import { daysummaryHandler } from '../commands/daysummary.command.js';
 import { versionHandler } from '../commands/version.command.js';
 import { retryflowHandler } from '../commands/retryflow.command.js';
 import { returnbotHandler } from '../commands/returnbot.command.js';
-import { isAllowedTelegramChat, isOwnerChat } from './lead-routing.js';
+import { isAllowedTelegramChat, isBridgeTelegramChat, isOwnerChat } from './lead-routing.js';
 import { sendBridgeReply, sendBridgeMedia } from './bridge-service.js';
 import { bridgeMessages } from './bridge-messages.js';
 import { MAX_MEDIA_BYTES, MAX_VIDEO_BYTES, MAX_AUDIO_BYTES } from './whatsapp-client.js';
@@ -92,7 +92,7 @@ export async function sendTelegramMessage(
   const body: Record<string, unknown> = { chat_id: String(chatId), text };
   if (parseMode) body.parse_mode = parseMode;
 
-  logger.info({ chatId, textLen: text.length, preview: text.slice(0, 80) }, '[TELEGRAM] sending message');
+  logger.info({ chatId, textLen: text.length }, '[TELEGRAM] sending message');
   const response = await fetch(telegramApiUrl('/sendMessage'), {
     method: 'POST',
     signal: AbortSignal.timeout(ALERT_FETCH_TIMEOUT_MS),
@@ -100,9 +100,8 @@ export async function sendTelegramMessage(
     body: JSON.stringify(body),
   });
   if (!response.ok) {
-    const errBody = await response.text().catch(() => '');
-    logger.error({ chatId, status: response.status, body: errBody.slice(0, 300) }, '[TELEGRAM] sendMessage failed');
-    throw new Error(`Telegram sendMessage failed: ${response.status} ${errBody}`);
+    logger.error({ chatId, status: response.status }, '[TELEGRAM] sendMessage failed');
+    throw new Error(`Telegram sendMessage failed: ${response.status}`);
   }
   logger.info({ chatId }, '[TELEGRAM] message sent ok');
 }
@@ -127,9 +126,8 @@ export async function sendTelegramPhoto(
     body: form,
   });
   if (!response.ok) {
-    const errBody = await response.text().catch(() => '');
-    logger.error({ chatId, status: response.status, body: errBody.slice(0, 300) }, '[TELEGRAM] sendPhoto failed');
-    throw new Error(`Telegram sendPhoto failed: ${response.status} ${errBody}`);
+    logger.error({ chatId, status: response.status }, '[TELEGRAM] sendPhoto failed');
+    throw new Error(`Telegram sendPhoto failed: ${response.status}`);
   }
   logger.info({ chatId }, '[TELEGRAM] photo sent ok');
 }
@@ -150,8 +148,7 @@ export async function downloadTelegramFile(fileId: string, maxBytes: number = MA
     signal: AbortSignal.timeout(ALERT_FETCH_TIMEOUT_MS),
   });
   if (!metaRes.ok) {
-    const errBody = await metaRes.text().catch(() => '');
-    logger.error({ status: metaRes.status, body: errBody.slice(0, 200) }, '[TELEGRAM] getFile failed');
+    logger.error({ status: metaRes.status }, '[TELEGRAM] getFile failed');
     throw new Error(`Telegram getFile failed: ${metaRes.status}`);
   }
   const meta = (await metaRes.json()) as { ok: boolean; result?: { file_path?: string; file_size?: number } };
@@ -200,9 +197,8 @@ export async function sendTelegramVoice(
     body: form,
   });
   if (!response.ok) {
-    const errBody = await response.text().catch(() => '');
-    logger.error({ chatId, status: response.status, body: errBody.slice(0, 300) }, '[TELEGRAM] sendVoice failed');
-    throw new Error(`Telegram sendVoice failed: ${response.status} ${errBody}`);
+    logger.error({ chatId, status: response.status }, '[TELEGRAM] sendVoice failed');
+    throw new Error(`Telegram sendVoice failed: ${response.status}`);
   }
   logger.info({ chatId }, '[TELEGRAM] voice sent ok');
 }
@@ -236,6 +232,7 @@ export async function processUpdate(update: TelegramUpdate, repos: Repositories)
 
   // A photo, video, video document, or voice note (no command) relays the agent's media to the bridged customer.
   if (hasPhoto || hasVideo || hasVoice || hasVideoDocument) {
+    if (!isBridgeTelegramChat(chatIdStr)) return;
     const session = repos.bridgeSession.getByAgentChat(chatIdStr);
     if (!session) {
       await sendTelegramMessage(msg.chat.id, bridgeMessages.imageNoActiveChat);
@@ -279,6 +276,7 @@ export async function processUpdate(update: TelegramUpdate, repos: Repositories)
   const text = msg.text ?? '';
   const parsed = parseCommand(text);
   if (!parsed) {
+    if (!isBridgeTelegramChat(chatIdStr)) return;
     const session = repos.bridgeSession.getByAgentChat(chatIdStr);
     if (!session) return;
 
@@ -466,6 +464,7 @@ export function registerCommands(): void {
     name: 'summary',
     description: 'Resumen de conversaciones (texto + JSON)',
     usage: '<hoy|ayer|week|month|todo>',
+    ownerOnly: true,
     handler: daysummaryHandler,
   });
 
@@ -473,6 +472,7 @@ export function registerCommands(): void {
     name: 'daysummary',
     description: 'Alias de /summary',
     usage: '<hoy|ayer|week|month|todo>',
+    ownerOnly: true,
     handler: daysummaryHandler,
   });
 

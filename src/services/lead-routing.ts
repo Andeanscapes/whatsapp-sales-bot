@@ -156,6 +156,11 @@ export function isOwnerChat(chatId: string): boolean {
   return env.TELEGRAM_CHAT_ID.length > 0 && chatId === env.TELEGRAM_CHAT_ID;
 }
 
+export function isBridgeTelegramChat(chatId: string): boolean {
+  if (isOwnerChat(chatId)) return true;
+  return getLineByTelegramChat(chatId)?.type === 'bridge';
+}
+
 export function getLineById(lineId: string): SalesLine | null {
   const config = getRoutingConfig();
   return config?.salesLines.find(line => line.id === lineId) ?? null;

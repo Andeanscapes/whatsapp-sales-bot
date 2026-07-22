@@ -3,6 +3,7 @@ import Database from 'better-sqlite3';
 import { migrate } from '../db/migrate.js';
 import { createRepositories } from '../db/repositories/index.js';
 import { setErrorRepos, logSystemError, pruneOldErrors } from '../services/error-logger.js';
+import { sanitizeSensitiveText, sanitizeUrl } from '../config/logger.js';
 import type { Repositories } from '../db/repositories/index.js';
 
 describe('SystemErrorRepository', () => {
@@ -117,6 +118,24 @@ describe('logSystemError', () => {
     expect(row?.context_json).not.toContain('private customer text');
   });
 
+  it('sanitizes secrets in persisted error message, stack, and URL context', () => {
+    const token = 'private-verify-token';
+    const err = new Error(`request failed: /webhooks/whatsapp?hub.verify_token=${token}&hub.challenge=abc`);
+    err.stack = `Error: ${err.message}\nAuthorization: Bearer private-access-token`;
+
+    logSystemError('secret_test', 'error', err, {
+      requestUrl: `/webhooks/whatsapp?hub.verify_token=${token}&hub.challenge=abc`,
+      requestId: 'req-123',
+    });
+
+    const row = db.prepare('SELECT * FROM system_errors WHERE error_type = ?').get('secret_test') as Record<string, unknown> | undefined;
+    expect(row?.message).not.toContain(token);
+    expect(row?.stack).not.toContain('private-access-token');
+    expect(row?.context_json).not.toContain(token);
+    expect(row?.context_json).toContain('req-123');
+    expect(row?.message).toContain('[REDACTED]');
+  });
+
   it('handles non-Error thrown values', () => {
     logSystemError('string_error', 'warning', 'plain string error', undefined);
 
@@ -129,6 +148,18 @@ describe('logSystemError', () => {
   it('does not throw when repos is null', () => {
     setErrorRepos(null);
     expect(() => logSystemError('no_repo', 'error', new Error('test'))).not.toThrow();
+  });
+});
+
+describe('log sanitizers', () => {
+  it('redacts sensitive query parameters while preserving correlation parameters', () => {
+    const sanitized = sanitizeUrl('/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=secret-token&request_id=req-123');
+
+    expect(sanitized).toBe('/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=[REDACTED]&request_id=req-123');
+  });
+
+  it('redacts authorization values in error text', () => {
+    expect(sanitizeSensitiveText('failed Authorization: Bearer secret-token')).toBe('failed Authorization: [REDACTED]');
   });
 });
 

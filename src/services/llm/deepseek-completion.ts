@@ -44,9 +44,9 @@ export interface DeepSeekCompletionResult {
 }
 
 /**
- * Sends a validated chat completion request. Returns null on any transport,
- * HTTP, envelope, or empty-content failure (never throws). Callers decide the
- * fallback behavior.
+ * Sends a validated chat completion request. Returns null on transport, HTTP,
+ * or envelope failure. Empty content is returned with its usage metadata so
+ * callers can account for the billed attempt before applying their fallback.
  */
 export async function requestDeepSeekCompletion(input: DeepSeekCompletionInput): Promise<DeepSeekCompletionResult | null> {
   try {
@@ -90,7 +90,7 @@ export async function requestDeepSeekCompletion(input: DeepSeekCompletionInput):
         reasoningTokens: parsed.data.usage?.completion_tokens_details?.reasoning_tokens ?? 0,
         hasReasoningContent: Boolean(choice?.message?.reasoning_content),
       }, `${input.logTag} empty content`);
-      return null;
+      return { content: '', finishReason: choice?.finish_reason, promptTokens, completionTokens };
     }
 
     return { content, finishReason: choice?.finish_reason, promptTokens, completionTokens };

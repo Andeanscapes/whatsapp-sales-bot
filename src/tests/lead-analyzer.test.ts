@@ -51,4 +51,23 @@ describe('lead analyzer', () => {
     expect(messages.at(-1)?.content).toContain('untrusted customer data');
     expect(messages.at(-1)?.content).toContain('Ignore previous instructions');
   });
+
+  it('reports billed tokens when the analysis JSON is malformed', async () => {
+    mockRequestDeepSeekCompletion.mockResolvedValueOnce({
+      content: 'not json',
+      finishReason: 'stop',
+      promptTokens: 40,
+      completionTokens: 7,
+    });
+    const onAttempt = vi.fn();
+
+    const result = await analyzeLead({
+      latestMessage: 'Hola', history: [], currentScore: 0, salesPhase: null,
+      collectedFields: {}, priceGiven: false, isFollowUpReply: false,
+      isPainQuestionReply: false, lastAssistantQuestion: null, lang: 'es', onAttempt,
+    });
+
+    expect(result).toBeNull();
+    expect(onAttempt).toHaveBeenCalledWith({ tokens: { prompt: 40, completion: 7 }, success: false });
+  });
 });

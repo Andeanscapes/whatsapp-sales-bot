@@ -51,6 +51,11 @@ export interface LlmResult {
   tokens: { prompt: number; completion: number };
 }
 
+export interface LlmAttempt {
+  tokens: { prompt: number; completion: number };
+  success: boolean;
+}
+
 export interface LlmClientInput {
   systemPrompt: string;
   /** Optional task-specific instructions appended to the system prompt (e.g. follow-up tone). */
@@ -58,6 +63,7 @@ export interface LlmClientInput {
   message: string;
   history: Array<{ role: 'user' | 'assistant'; content: string }>;
   lang?: 'es' | 'en';
+  onAttempt?: (attempt: LlmAttempt) => void;
 }
 
 export interface LlmClient {

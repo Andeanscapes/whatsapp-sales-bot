@@ -43,8 +43,8 @@ describe('broadcastToAllLines', () => {
   it('notifies every configured line once', async () => {
     useRouting({
       salesLines: [
-        { id: 'a', type: 'bridge', label: 'A', weight: 50, telegramChatId: '111', agentName: 'Heinner' },
-        { id: 'b', type: 'referral', label: 'B', weight: 50, telegramChatId: '222', agentName: 'Zaret', displayNumber: '+57000' },
+        { id: 'a', type: 'bridge', label: 'A', weight: 50, telegramChatId: '111', agentName: 'AgentA' },
+        { id: 'b', type: 'referral', label: 'B', weight: 50, telegramChatId: '222', agentName: 'AgentB', displayNumber: '+57000' },
       ],
     });
 
@@ -58,8 +58,8 @@ describe('broadcastToAllLines', () => {
   it('isolates a failing line and still notifies the others', async () => {
     useRouting({
       salesLines: [
-        { id: 'a', type: 'bridge', label: 'A', weight: 50, telegramChatId: '111', agentName: 'Heinner' },
-        { id: 'b', type: 'referral', label: 'B', weight: 50, telegramChatId: '222', agentName: 'Zaret', displayNumber: '+57000' },
+        { id: 'a', type: 'bridge', label: 'A', weight: 50, telegramChatId: '111', agentName: 'AgentA' },
+        { id: 'b', type: 'referral', label: 'B', weight: 50, telegramChatId: '222', agentName: 'AgentB', displayNumber: '+57000' },
       ],
     });
     mockSendTelegram.mockImplementation(async (chatId) => {

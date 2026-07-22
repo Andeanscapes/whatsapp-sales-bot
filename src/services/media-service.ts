@@ -48,6 +48,23 @@ export function selectGalleryImages(images: InternalGalleryImage[]): InternalGal
   return shuffled.slice(0, limit);
 }
 
+export function galleryMediaId(image: InternalGalleryImage): string {
+  return `gallery_${new URL(image.url).pathname}`;
+}
+
+export function selectEligibleGalleryImages(
+  repos: Repositories,
+  phone: string,
+  images: InternalGalleryImage[],
+  limit = 3,
+): InternalGalleryImage[] {
+  if (!env.SEND_IMAGES_ENABLED) return [];
+  const cutoff = new Date(Date.now() - MS_72H).toISOString();
+  const eligible = images.filter(image => !repos.mediaSend.hasRecentSameImage(phone, galleryMediaId(image), cutoff));
+  return selectGalleryImages(eligible)
+    .slice(0, limit);
+}
+
 function pickBest<T extends { planId?: string; url: string; caption: string }>(images: T[], planId: string | null | undefined): T | undefined {
   if (!images.length) return undefined;
   if (planId) {
