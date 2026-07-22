@@ -41,6 +41,15 @@ describe('conversation criteria', () => {
     expect(result.hardFail).toBe(true);
   });
 
+  it('does not treat a date acknowledgement as a re-ask', () => {
+    const result = evaluateScenario(
+      scenario([{ id: 'date', rule: 'known_field_not_reasked', field: 'date', suppliedTurn: 1, weight: 1, critical: true }]),
+      [turn('Sería para finales de agosto', 'Qué bien, pareja con fecha tentativa. Agosto es una época bonita para ir.', 1)],
+    );
+    expect(result.score).toBe(100);
+    expect(result.hardFail).toBe(false);
+  });
+
   it('fails when a required known field turn is missing', () => {
     const result = evaluateScenario(
       scenario([{ id: 'date', rule: 'known_field_not_reasked', field: 'date', suppliedTurn: 2, weight: 1, critical: true }]),
