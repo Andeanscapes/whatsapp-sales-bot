@@ -15,6 +15,7 @@ set -euo pipefail
 
 ENV_FILE=.env.dev
 export ENV_FILE
+COMPOSE_PROJECT=andean-whatsapp-bot-test
 
 COMPOSE_FILES="-f compose.yml -f compose.test.yml"
 
@@ -33,13 +34,13 @@ done
 
 echo "=== Stopping existing test containers ==="
 if $CLEAN; then
-  docker compose --env-file "$ENV_FILE" $COMPOSE_FILES down --remove-orphans --volumes 2>/dev/null || true
+  docker compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" $COMPOSE_FILES down --remove-orphans --volumes 2>/dev/null || true
 else
-  docker compose --env-file "$ENV_FILE" $COMPOSE_FILES down --remove-orphans 2>/dev/null || true
+  docker compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" $COMPOSE_FILES down --remove-orphans 2>/dev/null || true
 fi
 
 echo "=== Building Docker image ==="
-docker compose --env-file "$ENV_FILE" $COMPOSE_FILES build
+docker compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" $COMPOSE_FILES build
 
 if $BUILD_ONLY; then
   echo "=== Build complete (not starting) ==="
@@ -47,7 +48,7 @@ if $BUILD_ONLY; then
 fi
 
 echo "=== Starting test containers (no log retention, force recreate) ==="
-docker compose --env-file "$ENV_FILE" $COMPOSE_FILES up -d --build --force-recreate
+docker compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" $COMPOSE_FILES up -d --build --force-recreate
 
 echo "=== Checking health ==="
 sleep 2
@@ -57,5 +58,5 @@ echo "=== Done ==="
 
 if $FOLLOW_LOGS; then
   echo "=== Following app logs (Ctrl+C to stop; containers keep running) ==="
-  docker compose --env-file "$ENV_FILE" $COMPOSE_FILES logs -f app
+  docker compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" $COMPOSE_FILES logs -f app
 fi

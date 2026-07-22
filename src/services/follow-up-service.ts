@@ -283,7 +283,7 @@ async function processCandidates(
     }
     // Unsafe reservation, prompt-leak, and commercial drafts are replaced with trusted copy.
     if (HARD_BLOCK_NUDGE_PATTERNS.some(p => p.test(reply))) {
-      logger.warn({ phone: c.customerPhone, snippet: reply.slice(0, 80) }, '[FOLLOW_UP] draft replaced by hard nudge guard');
+      logger.warn({ phone: c.customerPhone, replyLen: reply.length }, '[FOLLOW_UP] draft replaced by hard nudge guard');
       reply = reviewReminder
         ? reviewReminderFallback(lang)
         : standardFollowUpFallback(lang, salesPhase, stage);

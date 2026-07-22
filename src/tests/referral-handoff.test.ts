@@ -35,13 +35,13 @@ const PHONE = '573009998888';
 
 const config: RoutingConfig = {
   salesLines: [
-    { id: 'line2_referral', type: 'referral', label: 'Booking', weight: 100, telegramChatId: '222', agentName: 'Zaret', displayNumber: '+573001112233' },
+    { id: 'line2_referral', type: 'referral', label: 'Booking', weight: 100, telegramChatId: '222', agentName: 'AgentB', displayNumber: '+573001112233' },
   ],
 };
 
 const bridgeConfig: RoutingConfig = {
   salesLines: [
-    { id: 'line1_bridge', type: 'bridge', label: 'Booking', weight: 100, telegramChatId: '111', agentName: 'Heinner' },
+    { id: 'line1_bridge', type: 'bridge', label: 'Booking', weight: 100, telegramChatId: '111', agentName: 'AgentA' },
   ],
 };
 
@@ -215,7 +215,7 @@ describe('referral handoff routing', () => {
 
     const result = await processMessage({ repos, customerPhone: PHONE, message: 'Si' });
 
-    expect(result.reply).not.toContain('Zaret');
+    expect(result.reply).not.toContain('AgentB');
     expect(repos.conversation.getMode(PHONE)).toBe('bot');
   });
 });

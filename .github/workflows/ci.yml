@@ -5,10 +5,19 @@ on:
     branches: [master, develop]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
+      NODE_ENV: test
       OWNER_NAME: TestOwner
       PARTNER_NAME: TestPartner
       WHATSAPP_VERIFY_TOKEN: test
@@ -21,11 +30,13 @@ jobs:
       AI_ENABLED: "false"
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 24.18.0
           cache: npm
-      - run: npm install
+      - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
@@ -35,10 +46,12 @@ jobs:
 
   conversation-eval:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     # DETERMINISTIC gate. Mock LLM. Zero tokens. Blocking.
     # Runs after pushes and on PRs that do not target master.
     if: github.event_name == 'push' || github.base_ref != 'master'
     env:
+      NODE_ENV: test
       OWNER_NAME: TestOwner
       PARTNER_NAME: TestPartner
       WHATSAPP_VERIFY_TOKEN: test
@@ -53,11 +66,13 @@ jobs:
       MAX_SCORE_DROP: "5"
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 24.18.0
           cache: npm
-      - run: npm install
+      - run: npm ci
       - run: npm run eval:conversations
       - run: npm run eval:conversations:compare -- --baseline src/tests/conversation-eval/baselines/master-deterministic.json --current artifacts/conversation-eval.json --min-average $MIN_CONVERSATION_SCORE --max-drop $MAX_SCORE_DROP
       - uses: actions/upload-artifact@v4
@@ -68,6 +83,8 @@ jobs:
 
   conversation-eval-llm:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: llm-evaluation
     # REAL DeepSeek eval. PRs into master only. Burns tokens.
     # Blocking with drop-tolerance: fails only if the average drops more than
     # MAX_SCORE_DROP vs the committed master LLM baseline, or falls below the
@@ -75,6 +92,7 @@ jobs:
     # so the gate tolerates run-to-run variance instead of a hard >=80 check.
     if: github.event_name == 'pull_request' && github.base_ref == 'master' && github.event.pull_request.head.repo.full_name == github.repository
     env:
+      NODE_ENV: test
       OWNER_NAME: TestOwner
       PARTNER_NAME: TestPartner
       WHATSAPP_VERIFY_TOKEN: test
@@ -89,11 +107,13 @@ jobs:
       MAX_SCORE_DROP: "8"
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 24.18.0
           cache: npm
-      - run: npm install
+      - run: npm ci
       - run: npm run eval:conversations:llm-bot
       - run: npm run eval:conversations:compare -- --baseline src/tests/conversation-eval/baselines/master-llm-bot.json --current artifacts/conversation-eval-llm-bot.json --min-average $MIN_CONVERSATION_SCORE --max-drop $MAX_SCORE_DROP
       - uses: actions/upload-artifact@v4
@@ -101,6 +121,7 @@ jobs:
         with:
           name: conversation-eval-llm-report
           path: artifacts/conversation-eval-llm-bot.json
+          retention-days: 7
 
   # To compare feature branch vs develop (deterministic, local):
   # 1. git checkout develop && npm run eval:conversations && cp artifacts/conversation-eval.json /tmp/dev-eval.json

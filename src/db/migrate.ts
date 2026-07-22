@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { readFileSync, mkdirSync } from 'fs';
+import { chmodSync, existsSync, readFileSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 
 function addColumnIfMissing(db: Database.Database, table: string, column: string, definition: string): void {
@@ -149,9 +149,19 @@ export function migrate(db: Database.Database): void {
 }
 
 export function createAndMigrate(dbPath: string): Database.Database {
-  mkdirSync(dirname(dbPath), { recursive: true });
+  if (dbPath !== ':memory:') {
+    mkdirSync(dirname(dbPath), { recursive: true, mode: 0o700 });
+    chmodSync(dirname(dbPath), 0o700);
+  }
   const db = new Database(dbPath);
   migrate(db);
   db.pragma('journal_mode = WAL');
+  if (dbPath !== ':memory:') {
+    chmodSync(dbPath, 0o600);
+    for (const suffix of ['-wal', '-shm']) {
+      const runtimePath = `${dbPath}${suffix}`;
+      if (existsSync(runtimePath)) chmodSync(runtimePath, 0o600);
+    }
+  }
   return db;
 }

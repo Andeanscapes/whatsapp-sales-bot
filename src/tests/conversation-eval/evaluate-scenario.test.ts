@@ -60,8 +60,8 @@ describe('conversation criteria', () => {
 
   it('does not treat a co-founder intro as customer addressing', () => {
     const input = scenario([{ id: 'name', rule: 'partner_name_not_customer_name', weight: 1, critical: true }]);
-    expect(evaluateScenario(input, [turn('Hola', 'Soy Heinner, co-fundador de Andean Scapes junto con Alexandra.')]).score).toBe(100);
-    expect(evaluateScenario(input, [turn('Hola', 'Soy Heinner, co-fundador de Andean Scapes junto con Alexandra.', 1), turn('Precio', 'Alexandra, te cuento.', 2)]).score).toBe(0);
+    expect(evaluateScenario(input, [turn('Hola', 'Soy AgentA, co-fundador de Andean Scapes junto con PartnerA.')]).score).toBe(100);
+    expect(evaluateScenario(input, [turn('Hola', 'Soy AgentA, co-fundador de Andean Scapes junto con PartnerA.', 1), turn('Precio', 'PartnerA, te cuento.', 2)]).score).toBe(0);
   });
 
   it('passes an exact group quote from the product registry', () => {

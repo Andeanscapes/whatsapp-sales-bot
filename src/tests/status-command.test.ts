@@ -8,8 +8,8 @@ import { statusHandler } from '../commands/status.command.js';
 
 const config: RoutingConfig = {
   salesLines: [
-    { id: 'line1_bridge', type: 'bridge', label: 'BK', weight: 50, telegramChatId: '111', agentName: 'Heinner' },
-    { id: 'line2_referral', type: 'referral', label: 'BK', weight: 50, telegramChatId: '222', agentName: 'Zaret', displayNumber: '+57000' },
+    { id: 'line1_bridge', type: 'bridge', label: 'BK', weight: 50, telegramChatId: '111', agentName: 'AgentA' },
+    { id: 'line2_referral', type: 'referral', label: 'BK', weight: 50, telegramChatId: '222', agentName: 'AgentB', displayNumber: '+57000' },
   ],
 };
 
@@ -76,8 +76,8 @@ describe('/status', () => {
 
     const out = await statusHandler({ repos, args: [], chatId: 111 });
 
-    expect(out).toContain('Heinner');
-    expect(out).toContain('Zaret');
+    expect(out).toContain('AgentA');
+    expect(out).toContain('AgentB');
   });
 
   it('reflects confirmed bookings in daily total and per-line counts', async () => {
@@ -89,6 +89,6 @@ describe('/status', () => {
 
     expect(out).toContain('Reservas hoy: 1');
     // Per-line section shows the booking count for the owning line.
-    expect(out).toMatch(/Heinner:.*1 reservas/);
+    expect(out).toMatch(/AgentA:.*1 reservas/);
   });
 });

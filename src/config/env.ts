@@ -12,13 +12,24 @@ function boolFromEnv(v: unknown): boolean {
 const boolSchema = z.preprocess(boolFromEnv, z.boolean());
 
 const KNOWN_PLACEHOLDER_URLS = new Set(['https://bot.yourdomain.com']);
+const PRODUCTION_SECRET_KEYS = [
+  'WHATSAPP_VERIFY_TOKEN',
+  'WHATSAPP_ACCESS_TOKEN',
+  'WHATSAPP_APP_SECRET',
+  'DEEPSEEK_API_KEY',
+] as const;
+
+const deepseekBaseUrlSchema = z.string().url().refine(value => {
+  const url = new URL(value);
+  return url.protocol === 'https:' && url.hostname === 'api.deepseek.com';
+}, 'DEEPSEEK_BASE_URL must use https://api.deepseek.com');
 
 export const envSchema = z.object({
   APP_VERSION: z.string().default('1.0'),
   NODE_ENV: z.enum(['production', 'development', 'test']).default('production'),
   PORT: z.coerce.number().catch(3000),
   HOST: z.string().default('127.0.0.1'),
-  STARTUP_DIAGNOSTICS_ENABLED: boolSchema.default(true),
+  STARTUP_DIAGNOSTICS_ENABLED: boolSchema.default(false),
   PUBLIC_BASE_URL: z.string().default('https://bot.yourdomain.com'),
   PUBLIC_TOUR_URL: z.string().default('https://your-public-site.com/experiences/emerald-mining-tour'),
 
@@ -47,7 +58,7 @@ export const envSchema = z.object({
   BRIDGE_SCORE_THRESHOLD: z.coerce.number().refine(n => n >= 0 && n <= 100, 'must be 0-100').catch(75),
   AI_ENABLED: boolSchema.default(true),
   DEEPSEEK_API_KEY: z.string().min(1),
-  DEEPSEEK_BASE_URL: z.string().default('https://api.deepseek.com'),
+  DEEPSEEK_BASE_URL: deepseekBaseUrlSchema.default('https://api.deepseek.com'),
   DEEPSEEK_MODEL: z.string().default('deepseek-v4-flash'),
   DEEPSEEK_MAX_OUTPUT_TOKENS: z.coerce.number().catch(450),
   DEEPSEEK_TEMPERATURE: z.coerce.number().catch(0.35),
@@ -79,6 +90,11 @@ export const envSchema = z.object({
   { message: 'TIME_FINAL_NUDGE_HOURS must be greater than TIME_FOLLOW_HOURS', path: ['TIME_FINAL_NUDGE_HOURS'] },
 ).superRefine((value, ctx) => {
   if (value.NODE_ENV !== 'production') return;
+  for (const key of PRODUCTION_SECRET_KEYS) {
+    if (/^(change-me|test)$/i.test(value[key])) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${key} must not use a placeholder in production`, path: [key] });
+    }
+  }
   try {
     if (new URL(value.PUBLIC_BASE_URL).protocol !== 'https:' || KNOWN_PLACEHOLDER_URLS.has(value.PUBLIC_BASE_URL)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'PUBLIC_BASE_URL must be a configured HTTPS URL in production', path: ['PUBLIC_BASE_URL'] });

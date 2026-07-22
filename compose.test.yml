@@ -1,8 +1,8 @@
 services:
   app:
-    # json-file driver = no disk retention (logs lost when container stops)
+    # Test logs are disposable and must not persist customer-like fixture text.
     logging:
-      driver: json-file
+      driver: none
     # No auto-restart in test mode
     restart: "no"
     environment:

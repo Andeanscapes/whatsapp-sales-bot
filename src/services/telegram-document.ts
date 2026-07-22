@@ -28,9 +28,8 @@ export async function sendTelegramDocument(
     body: form,
   });
   if (!response.ok) {
-    const errBody = await response.text().catch(() => '');
-    logger.error({ chatId, status: response.status, body: errBody.slice(0, 300) }, '[TELEGRAM] sendDocument failed');
-    throw new Error(`Telegram sendDocument failed: ${response.status} ${errBody}`);
+    logger.error({ chatId, status: response.status }, '[TELEGRAM] sendDocument failed');
+    throw new Error(`Telegram sendDocument failed: ${response.status}`);
   }
   logger.info({ chatId }, '[TELEGRAM] document sent ok');
   return true;

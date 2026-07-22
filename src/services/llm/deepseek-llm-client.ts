@@ -78,13 +78,13 @@ export class DeepSeekLlmClient implements LlmClient {
     const tokens = { prompt: result.promptTokens, completion: result.completionTokens };
 
     if (result.content.length < 2) {
-      logger.warn({ preview: result.content.slice(0, 200) }, '[LLM] content too short');
+      logger.warn({ contentLen: result.content.length }, '[LLM] content too short');
       return { turn: null, tokens };
     }
 
     const turn = parsePlainTextContent(result.content);
     if (!turn) {
-      logger.warn({ preview: result.content.slice(0, 200) }, '[LLM] failed to parse content');
+      logger.warn({ contentLen: result.content.length }, '[LLM] failed to parse content');
       return { turn: null, tokens };
     }
 

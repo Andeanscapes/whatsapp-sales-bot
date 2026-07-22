@@ -12,8 +12,8 @@ const CUSTOMER = '573001112233';
 
 const config: RoutingConfig = {
   salesLines: [
-    { id: 'line1_bridge', type: 'bridge', label: 'Booking', weight: 50, telegramChatId: '111', agentName: 'Heinner' },
-    { id: 'line2_referral', type: 'referral', label: 'Booking', weight: 50, telegramChatId: '222', agentName: 'Zaret', displayNumber: '+57000' },
+    { id: 'line1_bridge', type: 'bridge', label: 'Booking', weight: 50, telegramChatId: '111', agentName: 'AgentA' },
+    { id: 'line2_referral', type: 'referral', label: 'Booking', weight: 50, telegramChatId: '222', agentName: 'AgentB', displayNumber: '+57000' },
   ],
 };
 
@@ -145,6 +145,24 @@ describe('telegram dispatcher authorization', () => {
 
     await processUpdate(update(333, '/resume'), repos);
     expect(repos.isPaused()).toBe(false);
+  });
+
+  it.each(['/summary hoy', '/daysummary hoy'])('blocks %s transcript export from an allowlisted non-owner chat', async command => {
+    const activitySpy = vi.spyOn(repos.transcripts, 'getDayActivity');
+
+    await processUpdate(update(111, command), repos);
+
+    expect(activitySpy).not.toHaveBeenCalled();
+    expect(vi.mocked(globalThis.fetch).mock.calls.some(([input]) => String(input).includes('/sendDocument'))).toBe(false);
+  });
+
+  it.each(['/summary hoy', '/daysummary hoy'])('allows owner chat to run %s transcript export', async command => {
+    const activitySpy = vi.spyOn(repos.transcripts, 'getDayActivity');
+
+    await processUpdate(update(333, command), repos);
+
+    expect(activitySpy).toHaveBeenCalledOnce();
+    expect(vi.mocked(globalThis.fetch).mock.calls.some(([input]) => String(input).includes('/sendDocument'))).toBe(true);
   });
 
   it('allows owner chat to force a bridge for an unassigned lead', async () => {

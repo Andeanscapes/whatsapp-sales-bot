@@ -8,7 +8,7 @@ import { reportHandler } from '../commands/report.command.js';
 
 const config: RoutingConfig = {
   salesLines: [
-    { id: 'line1_bridge', type: 'bridge', label: 'BK', weight: 50, telegramChatId: '111', agentName: 'Heinner' },
+    { id: 'line1_bridge', type: 'bridge', label: 'BK', weight: 50, telegramChatId: '111', agentName: 'AgentA' },
   ],
 };
 

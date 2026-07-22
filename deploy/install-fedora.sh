@@ -31,9 +31,11 @@ fi
 
 echo "[4/7] Setting up env file..."
 if [ ! -f "$ENV_FILE" ]; then
-  echo "Create $ENV_FILE with production values and set permissions to 600"
-  echo "Example: sudo cp /path/to/.env.production $ENV_FILE && sudo chmod 600 $ENV_FILE"
+  echo "Missing $ENV_FILE. Create it with production values before installing."
+  exit 1
 fi
+sudo chown root:root "$ENV_FILE"
+sudo chmod 600 "$ENV_FILE"
 
 echo "[5/7] Deploying app..."
 sudo rsync -a --delete \

@@ -108,7 +108,7 @@ export async function analyzeLead(input: AnalyzerInput): Promise<LeadAnalysis | 
 
   const jsonMatch = completion.content.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
-    logger.warn({ preview: completion.content.slice(0, 200) }, '[LEAD_ANALYZER] no JSON found');
+    logger.warn({ contentLen: completion.content.length }, '[LEAD_ANALYZER] no JSON found');
     input.onAttempt?.({ tokens, success: false });
     return null;
   }
@@ -117,7 +117,7 @@ export async function analyzeLead(input: AnalyzerInput): Promise<LeadAnalysis | 
   try {
     parsed = JSON.parse(jsonMatch[0]);
   } catch {
-    logger.warn({ preview: jsonMatch[0].slice(0, 200) }, '[LEAD_ANALYZER] JSON parse failed');
+    logger.warn({ contentLen: jsonMatch[0].length }, '[LEAD_ANALYZER] JSON parse failed');
     input.onAttempt?.({ tokens, success: false });
     return null;
   }

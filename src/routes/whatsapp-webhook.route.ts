@@ -416,7 +416,7 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
     if (!messages) return;
 
     for (const msg of messages) {
-      logger.info({ from: msg.from, type: msg.type, msgId: msg.id, preview: msg.type === 'text' ? msg.text.slice(0, 80) : '(non-text)' }, '[WEBHOOK] incoming WhatsApp message');
+      logger.info({ from: msg.from, type: msg.type, msgId: msg.id, textLen: msg.type === 'text' ? msg.text.length : undefined }, '[WEBHOOK] incoming WhatsApp message');
       if (repos.dedupe.isProcessed(msg.id)) continue;
 
       repos.dedupe.markProcessed(msg.id);
