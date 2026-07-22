@@ -147,6 +147,24 @@ describe('telegram dispatcher authorization', () => {
     expect(repos.isPaused()).toBe(false);
   });
 
+  it('allows owner chat to force a bridge for an unassigned lead', async () => {
+    repos.conversation.upsert(CUSTOMER, { first_seen_at: new Date().toISOString() });
+
+    await processUpdate(update(333, `/bridge ${CUSTOMER}`), repos);
+
+    expect(repos.conversation.getMode(CUSTOMER)).toBe('bridge_active');
+    expect(repos.bridgeSession.getByCustomer(CUSTOMER)?.agentChatId).toBe('333');
+  });
+
+  it('does not let an allowlisted bridge agent force an unassigned lead', async () => {
+    repos.conversation.upsert(CUSTOMER, { first_seen_at: new Date().toISOString() });
+
+    await processUpdate(update(111, `/bridge ${CUSTOMER}`), repos);
+
+    expect(repos.conversation.getMode(CUSTOMER)).toBe('bot');
+    expect(repos.bridgeSession.getByCustomer(CUSTOMER)).toBeNull();
+  });
+
   it('blocks /block from an allowlisted non-owner chat without mutating opt-out', async () => {
     repos.conversation.upsert(CUSTOMER, { first_seen_at: new Date().toISOString() });
 

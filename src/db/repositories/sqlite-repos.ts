@@ -42,7 +42,7 @@ import { env } from '../../config/env.js';
 
 const ALLOWED_CONVERSATION_COLUMNS = new Set([
   'language', 'lead_score', 'last_seen_at', 'opt_out_at', 'handed_off_at',
-  'collected_name', 'collected_date', 'collected_people',
+  'collected_name', 'collected_date', 'collected_date_window', 'collected_people',
   'collected_transport_need', 'collected_lodging_need',
   'collected_pet', 'collected_plan',
   'free_entry_detected', 'ad_referral_json',
@@ -154,12 +154,13 @@ export class SqliteConversationRepo implements ConversationRepository {
 
   getCollectedFields(phone: string): Record<string, unknown> {
     const row = this.db.prepare(
-      'SELECT collected_name, collected_date, collected_people, collected_transport_need, collected_lodging_need, collected_pet, collected_plan, language FROM conversations WHERE customer_phone = ?'
+      'SELECT collected_name, collected_date, collected_date_window, collected_people, collected_transport_need, collected_lodging_need, collected_pet, collected_plan, language FROM conversations WHERE customer_phone = ?'
     ).get(phone) as Record<string, unknown> | undefined;
     if (!row) return {};
     const fields: Record<string, unknown> = {};
     if (row.collected_name) fields.nombre = row.collected_name;
     if (row.collected_date) fields.fecha = row.collected_date;
+    if (row.collected_date_window) fields._date_window = row.collected_date_window;
     if (row.collected_people) fields.personas = row.collected_people;
     if (row.collected_transport_need) fields.transporte = row.collected_transport_need;
     if (row.collected_lodging_need) fields.hospedaje = row.collected_lodging_need;
@@ -167,6 +168,24 @@ export class SqliteConversationRepo implements ConversationRepository {
     if (row.collected_plan) fields.plan = row.collected_plan;
     if (row.language) fields.idioma = row.language;
     return fields;
+  }
+
+  clearCollectedDate(phone: string): void {
+    this.db.prepare('UPDATE conversations SET collected_date = NULL WHERE customer_phone = ?').run(phone);
+  }
+
+  getCollectedDateWindow(phone: string): string | null {
+    const row = this.db.prepare(
+      'SELECT collected_date_window FROM conversations WHERE customer_phone = ?'
+    ).get(phone) as { collected_date_window: string | null } | undefined;
+    return row?.collected_date_window ?? null;
+  }
+
+  setCollectedDateWindow(phone: string, window: string | null): void {
+    const sql = window
+      ? 'UPDATE conversations SET collected_date_window = ?, collected_date = NULL WHERE customer_phone = ?'
+      : 'UPDATE conversations SET collected_date_window = NULL WHERE customer_phone = ?';
+    this.db.prepare(sql).run(...(window ? [window, phone] : [phone]));
   }
 
   getCollectedPlan(phone: string): string | null {
@@ -244,7 +263,8 @@ export class SqliteConversationRepo implements ConversationRepository {
 
   getFollowUpCandidates(cutoffIso: string, serviceWindowStartIso: string, limit: number): FollowUpCandidate[] {
     const rows = this.db.prepare(`
-      SELECT c.customer_phone, c.language
+      SELECT c.customer_phone, c.language,
+        (SELECT MAX(m.created_at) FROM messages m WHERE m.customer_phone = c.customer_phone AND m.direction = 'inbound') AS anchor_inbound_at
       FROM conversations c
       WHERE c.opt_out_at IS NULL
         AND c.handed_off_at IS NULL
@@ -253,6 +273,16 @@ export class SqliteConversationRepo implements ConversationRepository {
         AND c.follow_up_sent_at IS NULL
         AND COALESCE(c.conversation_mode, 'bot') = 'bot'
         AND COALESCE(c.sales_phase, '') != 'closing'
+        AND NOT EXISTS (
+          SELECT 1 FROM follow_up_events fe
+          WHERE fe.customer_phone = c.customer_phone
+            AND fe.anchor_inbound_at = (
+              SELECT MAX(m.created_at) FROM messages m
+              WHERE m.customer_phone = c.customer_phone AND m.direction = 'inbound'
+            )
+            AND fe.stage = 'first_nudge'
+            AND fe.status IN ('sent', 'replied', 'suppressed', 'uncertain')
+        )
         AND (
           SELECT m.direction FROM messages m
           WHERE m.customer_phone = c.customer_phone
@@ -268,43 +298,69 @@ export class SqliteConversationRepo implements ConversationRepository {
         ) >= ?
       ORDER BY c.last_seen_at ASC
       LIMIT ?
-    `).all(cutoffIso, serviceWindowStartIso, limit) as Array<{ customer_phone: string; language: 'es' | 'en' | null }>;
-    return rows.map(r => ({ customerPhone: r.customer_phone, language: r.language }));
+    `).all(cutoffIso, serviceWindowStartIso, limit) as Array<{ customer_phone: string; language: 'es' | 'en' | null; anchor_inbound_at: string }>;
+    return rows.map(r => ({ customerPhone: r.customer_phone, language: r.language, anchorInboundAt: r.anchor_inbound_at }));
   }
 
-  getPainQuestionCandidates(serviceWindowStartIso: string, limit: number, firstNudgeRepliedBefore: string): FollowUpCandidate[] {
-    // Returns leads where:
-    //  - first_nudge was sent AND replied (status='replied')
-    //  - first_nudge reply is old enough (>= TIME_PAIN_FOLLOW_HOURS ago)
-    //  - no pain_question event exists yet for them
-    //  - last customer inbound is within 24h service window
-    //  - not opted out, not handed off
+  getSecondFollowUpCandidates(anchorBeforeIso: string, serviceWindowStartIso: string, limit: number): FollowUpCandidate[] {
     const rows = this.db.prepare(`
-      SELECT DISTINCT c.customer_phone, c.language
+      SELECT c.customer_phone, c.language,
+        (SELECT MAX(m.created_at) FROM messages m WHERE m.customer_phone = c.customer_phone AND m.direction = 'inbound') AS anchor_inbound_at,
+        EXISTS (
+          SELECT 1 FROM follow_up_events fe
+          WHERE fe.customer_phone = c.customer_phone
+            AND fe.stage = 'first_nudge'
+            AND fe.status = 'suppressed'
+            AND fe.decision_reason = 'review_pause'
+            AND fe.anchor_inbound_at = (
+              SELECT MAX(m.created_at) FROM messages m
+              WHERE m.customer_phone = c.customer_phone AND m.direction = 'inbound'
+            )
+        ) AS review_pause
       FROM conversations c
-      INNER JOIN follow_up_events fe
-        ON fe.customer_phone = c.customer_phone
-        AND fe.stage = 'first_nudge'
-        AND fe.status = 'replied'
-        AND fe.replied_at <= ?
       WHERE c.opt_out_at IS NULL
         AND c.handed_off_at IS NULL
         AND c.soft_closed_at IS NULL
         AND c.converted_at IS NULL
         AND COALESCE(c.conversation_mode, 'bot') = 'bot'
         AND COALESCE(c.sales_phase, '') != 'closing'
+        AND EXISTS (
+          SELECT 1 FROM follow_up_events fe
+          WHERE fe.customer_phone = c.customer_phone
+            AND fe.stage = 'first_nudge'
+            AND (fe.status = 'sent' OR (fe.status = 'suppressed' AND fe.decision_reason = 'review_pause'))
+            AND fe.anchor_inbound_at = (
+              SELECT MAX(m.created_at) FROM messages m
+              WHERE m.customer_phone = c.customer_phone AND m.direction = 'inbound'
+            )
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM follow_up_events fe
+          WHERE fe.customer_phone = c.customer_phone
+            AND fe.stage = 'second_nudge'
+            AND fe.anchor_inbound_at = (
+              SELECT MAX(m.created_at) FROM messages m
+              WHERE m.customer_phone = c.customer_phone AND m.direction = 'inbound'
+            )
+            AND fe.status IN ('sent', 'replied', 'suppressed', 'uncertain')
+        )
+        AND (
+          SELECT m.direction FROM messages m
+          WHERE m.customer_phone = c.customer_phone
+          ORDER BY m.created_at DESC, m.id DESC LIMIT 1
+        ) = 'outbound'
+        AND (
+          SELECT MAX(m.created_at) FROM messages m
+          WHERE m.customer_phone = c.customer_phone AND m.direction = 'inbound'
+        ) <= ?
         AND (
           SELECT MAX(m.created_at) FROM messages m
           WHERE m.customer_phone = c.customer_phone AND m.direction = 'inbound'
         ) >= ?
-        AND NOT EXISTS (
-          SELECT 1 FROM follow_up_events fe2
-          WHERE fe2.customer_phone = c.customer_phone
-          AND fe2.stage = 'pain_question'
-        )
+      ORDER BY c.last_seen_at ASC
       LIMIT ?
-    `).all(firstNudgeRepliedBefore, serviceWindowStartIso, limit) as Array<{ customer_phone: string; language: 'es' | 'en' | null }>;
-    return rows.map(r => ({ customerPhone: r.customer_phone, language: r.language }));
+    `).all(anchorBeforeIso, serviceWindowStartIso, limit) as Array<{ customer_phone: string; language: 'es' | 'en' | null; anchor_inbound_at: string; review_pause: number }>;
+    return rows.map(r => ({ customerPhone: r.customer_phone, language: r.language, anchorInboundAt: r.anchor_inbound_at, reviewPause: r.review_pause === 1 }));
   }
 
   markFollowUpSent(phone: string): void {
@@ -341,12 +397,15 @@ export class SqliteFollowUpEventRepo implements FollowUpEventRepository {
   insert(event: Omit<FollowUpEvent, 'id'>): void {
     this.db.prepare(`
       INSERT INTO follow_up_events
-        (customer_phone, sequence_number, stage, sent_at, replied_at, score_before, score_after, detected_pain, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (customer_phone, sequence_number, stage, anchor_inbound_at, claimed_at, decision_reason, sent_at, replied_at, score_before, score_after, detected_pain, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       event.customerPhone,
       event.sequenceNumber,
       event.stage,
+      event.anchorInboundAt,
+      event.claimedAt,
+      event.decisionReason,
       event.sentAt,
       event.repliedAt,
       event.scoreBefore,
@@ -356,6 +415,60 @@ export class SqliteFollowUpEventRepo implements FollowUpEventRepository {
     );
   }
 
+  claim(event: Omit<FollowUpEvent, 'id'>): boolean {
+    const claimedAt = new Date().toISOString();
+    const staleBefore = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const reclaimed = this.db.prepare(`
+      UPDATE follow_up_events
+      SET claimed_at = ?, decision_reason = NULL, status = 'pending'
+      WHERE customer_phone = ? AND anchor_inbound_at = ? AND stage = ?
+        AND (
+          (status = 'failed' AND decision_reason IN ('llm_unavailable', 'whatsapp_retryable') AND claimed_at <= ?)
+          OR (status = 'pending' AND (claimed_at IS NULL OR claimed_at <= ?))
+        )
+    `).run(claimedAt, event.customerPhone, event.anchorInboundAt, event.stage, staleBefore, staleBefore);
+    if (reclaimed.changes > 0) return true;
+    try {
+      this.insert({ ...event, claimedAt });
+      return true;
+    } catch (err) {
+      if (err instanceof Error && /UNIQUE constraint failed/.test(err.message)) return false;
+      throw err;
+    }
+  }
+
+  markClaimSent(phone: string, anchorInboundAt: string, stage: FollowUpStage, sentAt: string): void {
+    this.db.prepare(`
+      UPDATE follow_up_events
+      SET sent_at = ?, status = 'sent'
+      WHERE customer_phone = ? AND anchor_inbound_at = ? AND stage = ? AND status IN ('pending', 'uncertain')
+    `).run(sentAt, phone, anchorInboundAt, stage);
+  }
+
+  markClaimSuppressed(phone: string, anchorInboundAt: string, stage: FollowUpStage, reason: string): void {
+    this.db.prepare(`
+      UPDATE follow_up_events
+      SET decision_reason = ?, status = 'suppressed'
+      WHERE customer_phone = ? AND anchor_inbound_at = ? AND stage = ? AND status = 'pending'
+    `).run(reason, phone, anchorInboundAt, stage);
+  }
+
+  markClaimFailed(phone: string, anchorInboundAt: string, stage: FollowUpStage, reason: string): void {
+    this.db.prepare(`
+      UPDATE follow_up_events
+      SET decision_reason = ?, status = 'failed'
+      WHERE customer_phone = ? AND anchor_inbound_at = ? AND stage = ? AND status = 'pending'
+    `).run(reason, phone, anchorInboundAt, stage);
+  }
+
+  markClaimUncertain(phone: string, anchorInboundAt: string, stage: FollowUpStage, reason: string): void {
+    this.db.prepare(`
+      UPDATE follow_up_events
+      SET decision_reason = ?, status = 'uncertain'
+      WHERE customer_phone = ? AND anchor_inbound_at = ? AND stage = ? AND status = 'pending'
+    `).run(reason, phone, anchorInboundAt, stage);
+  }
+
   getLatestByPhone(phone: string): FollowUpEvent | null {
     const row = this.db.prepare(`
       SELECT * FROM follow_up_events
@@ -363,7 +476,7 @@ export class SqliteFollowUpEventRepo implements FollowUpEventRepository {
       ORDER BY sequence_number DESC, id DESC
       LIMIT 1
     `).get(phone) as {
-      id: number; customer_phone: string; sequence_number: number; stage: FollowUpStage;
+      id: number; customer_phone: string; sequence_number: number; stage: FollowUpStage; anchor_inbound_at: string | null; claimed_at: string | null; decision_reason: string | null;
       sent_at: string | null; replied_at: string | null; score_before: number;
       score_after: number | null; detected_pain: LeadPain | null; status: FollowUpStatus;
     } | undefined;
@@ -373,6 +486,9 @@ export class SqliteFollowUpEventRepo implements FollowUpEventRepository {
       customerPhone: row.customer_phone,
       sequenceNumber: row.sequence_number,
       stage: row.stage,
+      anchorInboundAt: row.anchor_inbound_at,
+      claimedAt: row.claimed_at,
+      decisionReason: row.decision_reason,
       sentAt: row.sent_at,
       repliedAt: row.replied_at,
       scoreBefore: row.score_before,
@@ -1050,6 +1166,8 @@ export class SqliteTranscriptRepo implements TranscriptRepository {
       collected_plan: string | null;
       lead_intent: string | null;
       sales_phase: string | null;
+      handed_off_at: string | null;
+      converted_at: string | null;
       message_count: number;
       inbound_count: number;
       outbound_count: number;
@@ -1072,6 +1190,8 @@ export class SqliteTranscriptRepo implements TranscriptRepository {
         c.collected_plan,
         c.lead_intent,
         c.sales_phase,
+        c.handed_off_at,
+        c.converted_at,
         COUNT(m.id) AS message_count,
         SUM(CASE WHEN m.direction = 'inbound' THEN 1 ELSE 0 END) AS inbound_count,
         SUM(CASE WHEN m.direction = 'outbound' THEN 1 ELSE 0 END) AS outbound_count,
@@ -1116,11 +1236,49 @@ export class SqliteTranscriptRepo implements TranscriptRepository {
         AND (? IS NULL OR created_at < ?)
       ORDER BY created_at ASC, id ASC
     `);
+    const followUpRows = this.db.prepare(`
+      SELECT id, customer_phone, sequence_number, stage, sent_at, replied_at, score_before, score_after, detected_pain, status
+      FROM follow_up_events
+      WHERE customer_phone IN (SELECT value FROM json_each(@phonesJson))
+        AND sent_at >= @since
+        AND (@until IS NULL OR sent_at < @until)
+      ORDER BY sent_at ASC, id ASC
+    `).all({
+      phonesJson: JSON.stringify(activeConvs.map(conv => conv.customer_phone)),
+      since: sinceIso,
+      until: untilIso,
+    }) as Array<{
+      id: number; customer_phone: string; sequence_number: number; stage: FollowUpStage;
+      sent_at: string | null; replied_at: string | null; score_before: number;
+      score_after: number | null; detected_pain: LeadPain | null; status: FollowUpStatus;
+    }>;
+    const followUpsByPhone = new Map<string, FollowUpEvent[]>();
+    for (const event of followUpRows) {
+      const mapped = {
+        id: event.id,
+        customerPhone: event.customer_phone,
+        sequenceNumber: event.sequence_number,
+        stage: event.stage,
+        sentAt: event.sent_at,
+        repliedAt: event.replied_at,
+        scoreBefore: event.score_before,
+        scoreAfter: event.score_after,
+        detectedPain: event.detected_pain,
+        status: event.status,
+      };
+      const events = followUpsByPhone.get(event.customer_phone) ?? [];
+      events.push(mapped);
+      followUpsByPhone.set(event.customer_phone, events);
+    }
 
     let totalMessages = 0;
     let totalInbound = 0;
     let totalOutbound = 0;
     let totalAiCost = 0;
+    let followUpsSent = 0;
+    let followUpsReplied = 0;
+    let followUpHandoffs = 0;
+    let followUpBookings = 0;
 
     const conversations: DayConversationSummary[] = activeConvs.map(conv => {
       const msgRows = messagesStmt.all(
@@ -1134,6 +1292,12 @@ export class SqliteTranscriptRepo implements TranscriptRepository {
         text: m.body ?? '',
         appVersion: m.app_version ?? null,
       }));
+      const mappedFollowUps = followUpsByPhone.get(conv.customer_phone) ?? [];
+      followUpsSent += mappedFollowUps.length;
+      followUpsReplied += mappedFollowUps.filter(event => event.status === 'replied').length;
+      const firstFollowUpAt = mappedFollowUps[0]?.sentAt;
+      if (firstFollowUpAt && conv.handed_off_at && conv.handed_off_at >= firstFollowUpAt) followUpHandoffs++;
+      if (firstFollowUpAt && conv.converted_at && conv.converted_at >= firstFollowUpAt) followUpBookings++;
 
       totalMessages += conv.message_count;
       totalInbound += conv.inbound_count;
@@ -1160,6 +1324,7 @@ export class SqliteTranscriptRepo implements TranscriptRepository {
         aiCompletionTokens: conv.ai_completion_tokens,
         aiCalls: conv.ai_calls,
         aiUsageBreakdown: this.computeBreakdownForPhone(conv.customer_phone, sinceIso, untilIso),
+        followUps: mappedFollowUps,
         messages,
       };
     });
@@ -1173,6 +1338,10 @@ export class SqliteTranscriptRepo implements TranscriptRepository {
         totalInbound,
         totalOutbound,
         totalAiCostUsd: Math.round(totalAiCost * 10000) / 10000,
+        followUpsSent,
+        followUpsReplied,
+        followUpHandoffs,
+        followUpBookings,
       },
       conversations,
     };

@@ -110,6 +110,28 @@ describe('getDayActivity', () => {
     expect(result.totals.totalAiCostUsd).toBe(0.0025);
   });
 
+  it('reports follow-up outcomes and post-follow-up booking attribution', () => {
+    const at = todayH(10);
+    insertConversation('+111', todayMidnight(), 50, 'Alice');
+    insertMessage('+111', 'inbound', 'Hola', at);
+    repos.followUpEvent.insert({
+      customerPhone: '+111', sequenceNumber: 1, stage: 'first_nudge', sentAt: at,
+      repliedAt: todayH(11), scoreBefore: 50, scoreAfter: 65, detectedPain: 'price', status: 'replied',
+    });
+    repos.conversation.upsert('+111', {
+      handed_off_at: todayH(12),
+      converted_at: todayH(12),
+    });
+
+    const result = repos.transcripts.getDayActivity(todayMidnight(), null);
+
+    expect(result.totals.followUpsSent).toBe(1);
+    expect(result.totals.followUpsReplied).toBe(1);
+    expect(result.totals.followUpHandoffs).toBe(1);
+    expect(result.totals.followUpBookings).toBe(1);
+    expect(result.conversations[0].followUps[0]?.detectedPain).toBe('price');
+  });
+
   it('returns empty result when no messages in period', () => {
     insertConversation('+111', '2020-01-01T00:00:00.000Z', 50, 'Alice');
     insertMessage('+111', 'inbound', 'Hola antigua', '2020-01-01T10:00:00.000Z');

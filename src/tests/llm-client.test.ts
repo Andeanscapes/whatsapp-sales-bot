@@ -175,10 +175,13 @@ describe('DeepSeekLlmClient', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const client = new DeepSeekLlmClient(true);
-    const result = await client.complete(llmInput);
+    const onAttempt = vi.fn();
+    const result = await client.complete({ ...llmInput, onAttempt });
 
     expect(result?.turn.reply).toBe(plainReply);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(onAttempt).toHaveBeenNthCalledWith(1, { tokens: { prompt: 10, completion: 5 }, success: false });
+    expect(onAttempt).toHaveBeenNthCalledWith(2, { tokens: { prompt: 10, completion: 5 }, success: true });
     const body0 = requestBody(fetchMock, 0);
     const body1 = requestBody(fetchMock, 1);
     expect(body0.response_format).toBeUndefined();

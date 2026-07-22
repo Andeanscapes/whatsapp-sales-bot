@@ -11,7 +11,9 @@ function boolFromEnv(v: unknown): boolean {
 
 const boolSchema = z.preprocess(boolFromEnv, z.boolean());
 
-const envSchema = z.object({
+const KNOWN_PLACEHOLDER_URLS = new Set(['https://bot.yourdomain.com']);
+
+export const envSchema = z.object({
   APP_VERSION: z.string().default('1.0'),
   NODE_ENV: z.enum(['production', 'development', 'test']).default('production'),
   PORT: z.coerce.number().catch(3000),
@@ -43,8 +45,6 @@ const envSchema = z.object({
   REPORT_EXCLUDED_PHONES: z.string().default(''),
   BRIDGE_FLOW: z.coerce.number().refine(n => n >= 0 && n <= 100, 'must be 0-100').catch(-1),
   BRIDGE_SCORE_THRESHOLD: z.coerce.number().refine(n => n >= 0 && n <= 100, 'must be 0-100').catch(75),
-  TIME_PAIN_FOLLOW_HOURS: z.coerce.number().refine(n => n >= 0 && n <= 23, 'must be 0-23').catch(1),
-
   AI_ENABLED: boolSchema.default(true),
   DEEPSEEK_API_KEY: z.string().min(1),
   DEEPSEEK_BASE_URL: z.string().default('https://api.deepseek.com'),
@@ -63,7 +63,10 @@ const envSchema = z.object({
   MAX_BOT_MESSAGES_PER_CUSTOMER_PER_HOUR: z.coerce.number().catch(50),
   MAX_BOT_MESSAGES_PER_CUSTOMER_PER_DAY: z.coerce.number().catch(120),
   ALLOW_CUSTOMER_REENGAGEMENT_TEMPLATES: boolSchema.default(false),
-  TIME_FOLLOW_HOURS: z.coerce.number().catch(3),
+  TIME_FOLLOW_HOURS: z.coerce.number().min(1 / 60).max(19).catch(4),
+  TIME_FINAL_NUDGE_HOURS: z.coerce.number().min(1 / 60).max(23).catch(22),
+  FOLLOW_UP_SEND_START_HOUR: z.coerce.number().int().min(0).max(23).catch(8),
+  FOLLOW_UP_SEND_END_HOUR: z.coerce.number().int().min(1).max(24).catch(20),
 
   SQLITE_PATH: z.string().default('./data/bot.sqlite'),
 
@@ -71,6 +74,18 @@ const envSchema = z.object({
   DYNAMIC_SKILL_REFRESH_MS: z.coerce.number().catch(5000),
 
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+}).refine(
+  value => value.TIME_FINAL_NUDGE_HOURS > value.TIME_FOLLOW_HOURS,
+  { message: 'TIME_FINAL_NUDGE_HOURS must be greater than TIME_FOLLOW_HOURS', path: ['TIME_FINAL_NUDGE_HOURS'] },
+).superRefine((value, ctx) => {
+  if (value.NODE_ENV !== 'production') return;
+  try {
+    if (new URL(value.PUBLIC_BASE_URL).protocol !== 'https:' || KNOWN_PLACEHOLDER_URLS.has(value.PUBLIC_BASE_URL)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'PUBLIC_BASE_URL must be a configured HTTPS URL in production', path: ['PUBLIC_BASE_URL'] });
+    }
+  } catch {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'PUBLIC_BASE_URL must be a configured HTTPS URL in production', path: ['PUBLIC_BASE_URL'] });
+  }
 });
 
 export const env = envSchema.parse(process.env);

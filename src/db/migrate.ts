@@ -2,6 +2,13 @@ import Database from 'better-sqlite3';
 import { readFileSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 
+function addColumnIfMissing(db: Database.Database, table: string, column: string, definition: string): void {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  if (!columns.some(existing => existing.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
 export function migrate(db: Database.Database): void {
   const schemaPath = new URL('./schema.sql', import.meta.url);
   const schema = readFileSync(schemaPath, 'utf-8');
@@ -101,6 +108,9 @@ export function migrate(db: Database.Database): void {
     customer_phone TEXT NOT NULL,
     sequence_number INTEGER NOT NULL,
     stage TEXT NOT NULL,
+    anchor_inbound_at TEXT,
+    claimed_at TEXT,
+    decision_reason TEXT,
     sent_at TEXT,
     replied_at TEXT,
     score_before INTEGER DEFAULT 0,
@@ -108,6 +118,13 @@ export function migrate(db: Database.Database): void {
     detected_pain TEXT,
     status TEXT NOT NULL DEFAULT 'sent'
   )`);
+  addColumnIfMissing(db, 'follow_up_events', 'anchor_inbound_at', 'TEXT');
+  addColumnIfMissing(db, 'follow_up_events', 'decision_reason', 'TEXT');
+  addColumnIfMissing(db, 'follow_up_events', 'claimed_at', 'TEXT');
+  addColumnIfMissing(db, 'conversations', 'collected_date_window', 'TEXT');
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_follow_up_events_customer_anchor_stage
+    ON follow_up_events(customer_phone, anchor_inbound_at, stage)
+    WHERE anchor_inbound_at IS NOT NULL`);
   db.exec(`CREATE TABLE IF NOT EXISTS bridge_sessions (
     agent_chat_id TEXT PRIMARY KEY,
     customer_phone TEXT NOT NULL,

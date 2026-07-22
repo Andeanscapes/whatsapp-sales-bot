@@ -44,6 +44,7 @@ Key points:
 - Dynamic data is optional. If configured and unavailable at startup, static pricing/availability is stripped for safety.
 - `buildApp()` registers rate limit, error handler, `/health`, `/webhooks/whatsapp`, and `/`.
 - Telegram polling and follow-up scheduler start after Fastify is listening.
+- Docker binds Fastify to `0.0.0.0` only inside the Compose network; `compose.yml` publishes the port on host `127.0.0.1` only.
 
 ## High-Level Component Diagram
 
@@ -312,6 +313,8 @@ Bridge/handoff nuance:
 
 - Alerts assign an owner line, but bot usually continues.
 - Human bridge starts only when agent runs `/chat` or `/bridge`.
+- `conversation_mode='bot'` means normal automated replies.
+- `conversation_mode='human_pending'` means close/reservation escalated: bot still replies (payment public facts, clarifications), follow-ups are suppressed (`sales_phase=closing`), assigned bridge agent is notified on further inbound, but exclusive control still requires `/bridge`. Does **not** set `handed_off_at`.
 - `conversation_mode='bridge_active'` means bot stays silent and forwards inbound customer messages to Telegram agent.
 - `conversation_mode='referred'` means lead is sent to another line and gets handed-off style replies.
 - Stale bridge sessions expire after 12 hours and bot resumes.
