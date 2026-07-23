@@ -1,5 +1,6 @@
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
+import { reportWhatsAppApiFailure, reportWhatsAppApiSuccess } from './whatsapp-operational-health.js';
 
 const WHATSAPP_FETCH_TIMEOUT_MS = 10_000;
 /** Binary media transfers (download/upload) need more headroom than JSON message calls. */
@@ -73,13 +74,16 @@ export async function sendText(to: string, text: string): Promise<void> {
       }),
     });
   } catch (error) {
+    void reportWhatsAppApiFailure({ operation: 'envio de texto' });
     throw new WhatsAppSendError(error instanceof Error ? error.message : 'WhatsApp transport failed', true);
   }
   if (!response.ok) {
     logger.warn({ status: response.status, to, phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID }, '[WHATSAPP] text send failed');
+    void reportWhatsAppApiFailure({ operation: 'envio de texto', status: response.status });
     const retryable = response.status === 429 || response.status >= 500;
     throw new WhatsAppSendError(`WhatsApp API error: HTTP ${response.status}`, false, retryable);
   }
+  void reportWhatsAppApiSuccess();
   logger.info({ to }, '[WHATSAPP] text sent ok');
 }
 
@@ -100,6 +104,7 @@ export async function downloadMedia(mediaId: string): Promise<DownloadedMedia> {
   });
   if (!metaRes.ok) {
     logger.warn({ status: metaRes.status }, '[WHATSAPP] media metadata fetch failed');
+    void reportWhatsAppApiFailure({ operation: 'consulta de media', status: metaRes.status });
     throw new Error(`WhatsApp media metadata error: HTTP ${metaRes.status}`);
   }
   const meta = (await metaRes.json()) as { url?: string; mime_type?: string };
@@ -115,12 +120,14 @@ export async function downloadMedia(mediaId: string): Promise<DownloadedMedia> {
   });
   if (!binRes.ok) {
     logger.warn({ status: binRes.status }, '[WHATSAPP] media binary fetch failed');
+    void reportWhatsAppApiFailure({ operation: 'descarga de media', status: binRes.status });
     throw new Error(`WhatsApp media binary error: HTTP ${binRes.status}`);
   }
   const mimeType = meta.mime_type ?? binRes.headers.get('content-type') ?? 'application/octet-stream';
   const kind = normalizeMediaType(mimeType).kind;
   const maxBytes = kind === 'audio' ? MAX_AUDIO_BYTES : kind === 'video' ? MAX_VIDEO_BYTES : MAX_MEDIA_BYTES;
   const buffer = await readCappedBuffer(binRes, maxBytes);
+  void reportWhatsAppApiSuccess();
   return { buffer, mimeType };
 }
 
@@ -143,8 +150,10 @@ export async function sendImageUrl(to: string, imageUrl: string, caption: string
   });
   if (!response.ok) {
     logger.warn({ status: response.status }, '[WHATSAPP] image send failed');
+    void reportWhatsAppApiFailure({ operation: 'envio de imagen', status: response.status });
     throw new Error(`WhatsApp API error: HTTP ${response.status}`);
   }
+  void reportWhatsAppApiSuccess();
   logger.info({ to }, '[WHATSAPP] image sent ok');
 }
 
@@ -214,8 +223,10 @@ export async function uploadMedia(file: Buffer, mimeType: string): Promise<Uploa
   if (!response.ok) {
     const errBody = await response.text().catch(() => '');
     logger.warn({ status: response.status, type, errBody: errBody.slice(0, 500) }, '[WHATSAPP] media upload failed');
+    void reportWhatsAppApiFailure({ operation: 'carga de media', status: response.status });
     throw new Error(`WhatsApp media upload error: HTTP ${response.status}`);
   }
+  void reportWhatsAppApiSuccess();
   const data = (await response.json()) as { id?: string };
   if (!data.id) throw new Error('WhatsApp media upload missing id');
   return { id: data.id, kind };
@@ -239,8 +250,10 @@ async function sendMediaById(to: string, kind: MediaKind, mediaId: string, capti
   if (!response.ok) {
     const errBody = await response.text().catch(() => '');
     logger.warn({ status: response.status, kind, errBody: errBody.slice(0, 500) }, '[WHATSAPP] media (id) send failed');
+    void reportWhatsAppApiFailure({ operation: `envio de ${kind}`, status: response.status });
     throw new Error(`WhatsApp API error: HTTP ${response.status}`);
   }
+  void reportWhatsAppApiSuccess();
   logger.info({ to, kind }, '[WHATSAPP] media sent ok');
 }
 
