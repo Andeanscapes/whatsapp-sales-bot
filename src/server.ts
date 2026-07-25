@@ -9,7 +9,7 @@ import { startTelegramBot } from './services/telegram-bot.js';
 import { getRoutingConfig } from './services/lead-routing.js';
 import { setupGlobalErrorHandlers, setErrorRepos, pruneOldErrors } from './services/error-logger.js';
 import { startFollowUpScheduler } from './services/follow-up-service.js';
-import { checkWhatsAppApiHealth, sendStartupStatus } from './services/whatsapp-operational-health.js';
+import { checkWhatsAppApiHealth, sendStartupStatus, startOperationalHealthMonitor } from './services/whatsapp-operational-health.js';
 
 async function runStartupDiagnostics(dynamicDataAvailable: boolean): Promise<void> {
   const whatsapp = await checkWhatsAppApiHealth();
@@ -51,6 +51,7 @@ async function start() {
 
   let telegramInterval: ReturnType<typeof setInterval> | undefined;
   let followUpInterval: ReturnType<typeof setInterval> | undefined;
+  let opsMonitorInterval: ReturnType<typeof setInterval> | undefined;
   try {
     telegramInterval = await startTelegramBot(repos);
   } catch (err) {
@@ -65,17 +66,19 @@ async function start() {
   if (env.NODE_ENV === 'production' || env.STARTUP_DIAGNOSTICS_ENABLED) {
     // Non-blocking: diagnostics make external API calls; never delay startup.
     void runStartupDiagnostics(hasDynamicData);
+    opsMonitorInterval = startOperationalHealthMonitor();
   }
 
-  process.on('SIGTERM', gracefulShutdown('SIGTERM', db, app, telegramInterval, followUpInterval));
-  process.on('SIGINT', gracefulShutdown('SIGINT', db, app, telegramInterval, followUpInterval));
+  process.on('SIGTERM', gracefulShutdown('SIGTERM', db, app, telegramInterval, followUpInterval, opsMonitorInterval));
+  process.on('SIGINT', gracefulShutdown('SIGINT', db, app, telegramInterval, followUpInterval, opsMonitorInterval));
 }
 
-function gracefulShutdown(signal: string, db: { close: () => void }, app: { close: () => Promise<void> }, telegramInterval?: ReturnType<typeof setInterval>, followUpInterval?: ReturnType<typeof setInterval>) {
+function gracefulShutdown(signal: string, db: { close: () => void }, app: { close: () => Promise<void> }, telegramInterval?: ReturnType<typeof setInterval>, followUpInterval?: ReturnType<typeof setInterval>, opsMonitorInterval?: ReturnType<typeof setInterval>) {
   return async () => {
     logger.info({ signal }, 'shutting down gracefully');
     if (telegramInterval) clearInterval(telegramInterval);
     if (followUpInterval) clearInterval(followUpInterval);
+    if (opsMonitorInterval) clearInterval(opsMonitorInterval);
     try {
       await app.close();
     } catch (err) {
