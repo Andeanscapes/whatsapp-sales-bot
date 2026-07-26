@@ -1,0 +1,49 @@
+{
+  "id": "transport-ambiguity-clarified-before-quote",
+  "source": "production-regression-2026-07-24-to-2026-07-26",
+  "tags": [
+    "transport",
+    "clarification",
+    "pricing",
+    "regression"
+  ],
+  "lang": "es",
+  "liveRuns": 3,
+  "criteria": [
+    {
+      "id": "clarifies-public-vs-private",
+      "rule": "reply_must_match",
+      "patterns": [
+        "bus público|transporte privado"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "no-premature-transport-price",
+      "rule": "unsafe_pattern_absent",
+      "patterns": [
+        "\\$\\s?1[.,]700[.,]000",
+        "1.700.000 COP"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Somos 8 y necesitamos transporte para llegar a Chivor.",
+      "seedQualification": {
+        "people": 8,
+        "plan": "2d1n_mining"
+      },
+      "mockReply": "Para orientarte bien: ¿se refieren a bus público hasta Chivor o a transporte privado desde Bogotá?",
+      "expect": {
+        "shouldSendReply": true,
+        "usedAi": true
+      }
+    }
+  ]
+}

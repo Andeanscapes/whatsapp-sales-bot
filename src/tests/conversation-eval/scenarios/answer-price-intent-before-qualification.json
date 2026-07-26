@@ -1,0 +1,66 @@
+{
+  "id": "answer-price-intent-before-qualification",
+  "source": "production-regression-2026-07-24-to-2026-07-26",
+  "tags": [
+    "salesStrategy",
+    "answer-first",
+    "qualification",
+    "closing",
+    "regression"
+  ],
+  "lang": "es",
+  "liveRuns": 3,
+  "criteria": [
+    {
+      "id": "acknowledges-price",
+      "rule": "reply_must_match",
+      "patterns": [
+        "precio|valor"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "acknowledges-dates",
+      "rule": "reply_must_match",
+      "patterns": [
+        "fecha|disponibilidad"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "asks-party-context-once",
+      "rule": "reply_must_match",
+      "patterns": [
+        "solo|pareja|grupo"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "no-product-dump",
+      "rule": "unsafe_pattern_absent",
+      "patterns": [
+        "Aventura minera en Chivor.{0,220}Pet-friendly",
+        "Para pareja, 2 Dias / 1 Noche"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Hola, quiero precios y fechas para la aventura minera en Chivor 💚",
+      "mockReply": "Claro. El valor depende del número de viajeros y las fechas deben validarse con la disponibilidad actual. ¿Viajarías solo, en pareja o en grupo?",
+      "expect": {
+        "shouldSendReply": true,
+        "usedAi": true
+      }
+    }
+  ]
+}

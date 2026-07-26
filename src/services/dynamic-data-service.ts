@@ -11,6 +11,17 @@ export const AVAILABILITY_NOT_AVAILABLE = 'AVAILABILITY_NOT_AVAILABLE';
 export const ADDON_ID_PRIVATE_TRANSPORT = 'private_transport';
 export const ADDON_ID_APIARY_CATTLE = 'apiary_cattle';
 
+function todayInBogota(): string {
+  const parts = new Intl.DateTimeFormat('en', {
+    timeZone: 'America/Bogota',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const values = new Map(parts.map(part => [part.type, part.value]));
+  return `${values.get('year')}-${values.get('month')}-${values.get('day')}`;
+}
+
 export function shouldStripStaticPricing(dynamicSkillUrl: string, hasDynamicData: boolean): boolean {
   return dynamicSkillUrl.trim().length > 0 && !hasDynamicData;
 }
@@ -67,6 +78,9 @@ export interface InternalDynamicData {
   experiences: Record<string, InternalExperienceData>;
   media: InternalDynamicMedia | null;
   payments: InternalPaymentData | null;
+  reservationPolicy?: {
+    rescheduling: { allowed: true; freeUntilDaysBefore: number; lateChangeRule: string };
+  } | null;
 }
 
 export interface InternalPaymentData {
@@ -230,7 +244,7 @@ export class DynamicDataService {
 
   private transform(data: DynamicData): InternalDynamicData {
     const experiences: Record<string, InternalExperienceData> = {};
-    const today = data.updated?.split('T')[0] ?? new Date().toISOString().split('T')[0];
+    const today = todayInBogota();
 
     for (const [expId, dynExp] of Object.entries(data.experiences)) {
       const items: InternalPricingItem[] = [];
@@ -268,11 +282,13 @@ export class DynamicDataService {
         });
       }
 
-      const availableDates = dynExp.availability.dates.map(d => ({
-        date: d.d,
-        status: d.s,
-        slotsApprox: d.sl ?? null,
-      }));
+      const availableDates = dynExp.availability.dates
+        .filter(d => d.d >= today)
+        .map(d => ({
+          date: d.d,
+          status: d.s,
+          slotsApprox: d.sl ?? null,
+        }));
 
       const botRules = Array.isArray(dynExp.pricing.rules)
         ? dynExp.pricing.rules.map(s => s.trim()).filter(Boolean)
@@ -298,6 +314,11 @@ export class DynamicDataService {
       };
     }
 
-    return { experiences, media: this.transformMedia(data.media ?? null), payments: this.transformPayments(data.payments ?? null) };
+    return {
+      experiences,
+      media: this.transformMedia(data.media ?? null),
+      payments: this.transformPayments(data.payments ?? null),
+      reservationPolicy: data.reservationPolicy ?? null,
+    };
   }
 }

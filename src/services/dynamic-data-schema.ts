@@ -114,6 +114,13 @@ export const dynamicDataSchema = z.object({
       neverRequestFullPaymentWithoutConfirmation: z.boolean(),
     }).strict(),
   }).strict().optional(),
+  reservationPolicy: z.object({
+    rescheduling: z.object({
+      allowed: z.literal(true),
+      freeUntilDaysBefore: z.number().int().positive(),
+      lateChangeRule: z.string().min(1),
+    }).strict(),
+  }).strict().optional(),
   media: dynamicMediaSchema.optional(),
   experiences: z.record(dynamicExperienceSchema),
 }).strict();

@@ -13,11 +13,11 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain(`Invisible qualification: ${skills.salesStrategy.salesTactics.invisibleQualification}`);
   });
 
-  it('keeps unavailable pricing and availability guard ahead of sales tactics', () => {
+  it('keeps unavailable pricing and availability guards ahead of sales tactics', () => {
     const skills = withUnavailablePricingAndAvailability(loadSkills());
     const prompt = buildSystemPrompt(skills);
 
-    const guardIndex = prompt.indexOf('[CRITICAL RULE] NO hay precios ni fechas disponibles');
+    const guardIndex = prompt.indexOf('[CRITICAL RULE] NO hay precios actualizados');
     const priceContextIndex = prompt.indexOf('Price with context:');
     const salesTacticsIndex = prompt.indexOf('Sales attitude:');
 
@@ -100,6 +100,20 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('Enabled payment method names: Nequi');
     expect(prompt).not.toContain('3000000000');
     expect(prompt).not.toContain('Transfiere al');
+  });
+
+  it('includes explicit family and transport context without inventing facts', () => {
+    const prompt = buildSystemPrompt(loadSkills(), 'es', undefined, undefined, {
+      date: 'octubre',
+      transport: 'own_motorcycle',
+      childAges: [5],
+      groupRelationship: 'padre e hijo',
+    });
+
+    expect(prompt).toContain('Date mentioned: octubre');
+    expect(prompt).toContain('Transport mentioned: own_motorcycle');
+    expect(prompt).toContain('Child ages mentioned: 5');
+    expect(prompt).toContain('Group relationship: padre e hijo');
   });
 });
 

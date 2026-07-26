@@ -2,11 +2,12 @@ import { readdirSync, readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { env } from '../config/env.js';
-import { getSkills, loadSkills, refreshSkills } from '../services/skill-loader.js';
+import { getSkills, loadSkills, refreshSkills, setDynamicService } from '../services/skill-loader.js';
 import { getActiveExperience } from '../services/product-registry.js';
-import { PRICING_NOT_AVAILABLE } from '../services/dynamic-data-service.js';
+import { DynamicDataService, PRICING_NOT_AVAILABLE } from '../services/dynamic-data-service.js';
 import { applyScenarioSeeds, createRunContext, runTurn } from '../tests/conversation-eval/runner.js';
 import { runFollowUpScenario } from '../tests/conversation-eval/follow-up-runner.js';
+import { runLifecycleScenario } from '../tests/conversation-eval/lifecycle-runner.js';
 import { evaluateScenario } from '../tests/conversation-eval/evaluate-scenario.js';
 import { buildReport, printReport, writeReport } from '../tests/conversation-eval/report.js';
 import { scenarioSchema, type Scenario, type ScenarioResult } from '../tests/conversation-eval/schema.js';
@@ -22,7 +23,7 @@ function progressLabel(current: number, total: number): string {
 
 function loadScenarios(): Scenario[] {
   return readdirSync(scenariosDir)
-    .filter(file => file.endsWith('.json'))
+    .filter(file => file.endsWith('.json') && file !== 'manifest.json')
     .map(file => scenarioSchema.parse(JSON.parse(readFileSync(join(scenariosDir, file), 'utf8'))));
 }
 
@@ -51,6 +52,11 @@ function buildResult(scenario: Scenario, evaluation: ReturnType<typeof evaluateS
 
 async function main(): Promise<void> {
   requireLiveLlmConfig();
+  if (env.DYNAMIC_SKILL_URL) {
+    const service = new DynamicDataService(env.DYNAMIC_SKILL_URL, env.DYNAMIC_SKILL_REFRESH_MS);
+    setDynamicService(service);
+    await service.refreshIfStale();
+  }
   loadSkills();
   await refreshSkills(true);
 
@@ -73,8 +79,7 @@ async function main(): Promise<void> {
     for (let run = 0; run < runCount; run++) {
       const progress = progressLabel(scenarioIndex + 1, scenarios.length);
       console.log(`${progress} starting ${scenario.id} run ${run + 1}/${runCount}`);
-      const ctx = createRunContext({ phoneSuffix: scenarioIndex * 10 + run });
-      const restoreSeeds = applyScenarioSeeds(ctx, scenario);
+      const ctx = createRunContext({ phoneSuffix: scenarioIndex * 10 + run, applyFixtureOutput: false });
       const experience = getActiveExperience(getSkills());
       const originalPricingItems = experience.pricing.items;
       const originalPricingRules = experience.pricing.botRules;
@@ -85,8 +90,12 @@ async function main(): Promise<void> {
         ];
         experience.pricing.botRules = experience.pricing.botRules.filter(rule => rule !== PRICING_NOT_AVAILABLE);
       }
+      const restoreSeeds = applyScenarioSeeds(ctx, scenario);
       try {
-        if (scenario.runner === 'follow_up') {
+        if (scenario.runner === 'lifecycle') {
+          ctx.turns.push(...runLifecycleScenario(ctx, scenario));
+          console.log(`${progress} ${scenario.id} run ${run + 1}/${runCount} lifecycle complete`);
+        } else if (scenario.runner === 'follow_up') {
           ctx.turns.push(...await runFollowUpScenario(ctx, scenario));
           console.log(`${progress} ${scenario.id} run ${run + 1}/${runCount} follow-up complete`);
         } else {
@@ -103,7 +112,9 @@ async function main(): Promise<void> {
           shouldAlertOwner: turn.processOutput.shouldAlertOwner,
           shouldSendImage: turn.processOutput.shouldSendImage,
         }));
-        runResults.push(buildResult(scenario, evaluation, turns, { total: 1, passed: evaluation.hardFail ? 0 : 1 }));
+        const result = buildResult(scenario, evaluation, turns, { total: 1, passed: 0 });
+        result.runs = { total: 1, passed: result.hardFail ? 0 : 1 };
+        runResults.push(result);
         totalCostUsd += ctx.repos.aiUsage.getDailyCost(todayStart);
       } finally {
         experience.pricing.items = originalPricingItems;

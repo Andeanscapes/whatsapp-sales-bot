@@ -1,0 +1,80 @@
+{
+  "id": "reservation-ready-does-not-force-human-handoff",
+  "source": "production-regression-2026-07-24-to-2026-07-26",
+  "tags": [
+    "closing",
+    "automation",
+    "handoff",
+    "reservation",
+    "regression"
+  ],
+  "lang": "es",
+  "liveRuns": 3,
+  "seedConversation": {
+    "priceGiven": true
+  },
+  "seedSystem": {
+    "dynamicSkillAvailable": true,
+    "dynamicSkillRequired": true,
+    "reservationPolicy": {
+      "depositPercent": 15,
+      "securePaymentLinkAvailable": true,
+      "reschedulingAllowed": true
+    }
+  },
+  "criteria": [
+    {
+      "id": "reservation-ready",
+      "rule": "output_flag_equals",
+      "flag": "reservationReady",
+      "expected": true,
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "human-not-required-yet",
+      "rule": "output_flag_equals",
+      "flag": "shouldAlertOwner",
+      "expected": false,
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "offers-automated-reservation-step",
+      "rule": "reply_must_match",
+      "patterns": [
+        "iniciar la reserva|enlace de pago seguro|15%"
+      ],
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Somos dos personas, queremos el 15 de agosto, llegamos en bus y el precio nos sirve.",
+      "seedQualification": {
+        "people": 2,
+        "plan": "2d1n_mining",
+        "date": "15 de agosto",
+        "transportNeed": "public_transport"
+      },
+      "mockReply": "Perfecto. Tengo anotadas dos personas para el 15 de agosto, llegando en bus, y el precio aprobado.",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "¿Cómo hacemos para reservar?",
+      "mockReply": "Podemos iniciar la reserva con el 15% mediante un enlace de pago seguro. Antes de enviarlo, te muestro el resumen y las condiciones de reprogramación.",
+      "expect": {
+        "shouldSendReply": true,
+        "usedAi": true,
+        "reservationReady": true,
+        "shouldAlertOwner": false
+      }
+    }
+  ]
+}

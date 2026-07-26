@@ -1,0 +1,52 @@
+{
+  "id": "objection-never-triggers-identical-price-template",
+  "source": "production-regression-2026-07-24-to-2026-07-26",
+  "tags": [
+    "objection",
+    "pricing",
+    "deduplication",
+    "regression"
+  ],
+  "lang": "es",
+  "liveRuns": 3,
+  "criteria": [
+    {
+      "id": "recognizes-objection",
+      "rule": "reply_must_match",
+      "patterns": [
+        "entiendo|se siente alto|presupuesto|alternativa"
+      ],
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "does-not-repeat-template",
+      "rule": "unsafe_pattern_absent",
+      "patterns": [
+        "Para ti solo, 2 Dias / 1 Noche",
+        "Aventura minera en Chivor.{0,220}Pet-friendly"
+      ],
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "El total con transporte privado sería $2.250.000 COP.",
+      "mockReply": "Correcto, ese total incluye el plan individual y el transporte privado desde Bogotá.",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Por ese precio no.",
+      "mockReply": "Te entiendo; viajando solo, el transporte privado hace que el total se sienta alto. Puedo ayudarte a revisar una alternativa en bus hasta Chivor.",
+      "expect": {
+        "shouldSendReply": true,
+        "usedAi": true
+      }
+    }
+  ]
+}

@@ -37,6 +37,8 @@ import type {
   AiUsageRecordInput,
   AiUsageBreakdown,
   TokenBreakdown,
+  PaymentReservationRepository,
+  PaymentReservation,
 } from './types.js';
 import { env } from '../../config/env.js';
 
@@ -791,6 +793,63 @@ export class SqliteMediaSendRepo implements MediaSendRepository {
     this.db.prepare(
       'INSERT INTO media_sends (customer_phone, media_id, sent_at) VALUES (?, ?, ?)'
     ).run(phone, mediaId, new Date().toISOString());
+  }
+}
+
+interface PaymentReservationRow {
+  id: number;
+  external_reference: string;
+  customer_phone: string;
+  preference_id: string | null;
+  expected_amount_cop: number;
+  status: PaymentReservation['status'];
+  created_at: string;
+  approved_at: string | null;
+  mercado_pago_payment_id: string | null;
+}
+
+export class SqlitePaymentReservationRepo implements PaymentReservationRepository {
+  constructor(private db: Database.Database) {}
+
+  createPending(externalReference: string, customerPhone: string, expectedAmountCop: number): void {
+    this.db.prepare(`
+      INSERT INTO payment_reservations
+        (external_reference, customer_phone, expected_amount_cop, status, created_at)
+      VALUES (?, ?, ?, 'pending', ?)
+    `).run(externalReference, customerPhone, expectedAmountCop, new Date().toISOString());
+  }
+
+  attachPreference(externalReference: string, preferenceId: string): void {
+    this.db.prepare(
+      'UPDATE payment_reservations SET preference_id = ? WHERE external_reference = ?'
+    ).run(preferenceId, externalReference);
+  }
+
+  getByExternalReference(externalReference: string): PaymentReservation | null {
+    const row = this.db.prepare(
+      'SELECT * FROM payment_reservations WHERE external_reference = ?'
+    ).get(externalReference) as PaymentReservationRow | undefined;
+    if (!row) return null;
+    return {
+      id: row.id,
+      externalReference: row.external_reference,
+      customerPhone: row.customer_phone,
+      preferenceId: row.preference_id,
+      expectedAmountCop: row.expected_amount_cop,
+      status: row.status,
+      createdAt: row.created_at,
+      approvedAt: row.approved_at,
+      mercadoPagoPaymentId: row.mercado_pago_payment_id,
+    };
+  }
+
+  markApproved(externalReference: string, mercadoPagoPaymentId: string): boolean {
+    const result = this.db.prepare(`
+      UPDATE payment_reservations
+      SET status = 'approved', approved_at = ?, mercado_pago_payment_id = ?
+      WHERE external_reference = ? AND status = 'pending'
+    `).run(new Date().toISOString(), mercadoPagoPaymentId, externalReference);
+    return result.changes > 0;
   }
 }
 

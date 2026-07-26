@@ -57,6 +57,12 @@ const HARD_BLOCK_NUDGE_PATTERNS = [
   /\b(?:viajeros?|travelers?)\b.{0,60}\b(?:encontraron|found)\b/i,
 ];
 
+const GENERIC_CONTINUATION_PING_PATTERNS = [
+  /\bquieres\s+que\s+sigamos\b/i,
+  /\bwould\s+you\s+like\s+to\s+continue\b/i,
+  /\bhay\s+algo\s+m[aá]s\s+en\s+lo\s+que\s+pueda\s+ayudarte\b/i,
+];
+
 const REVIEW_REMINDER_BLOCK_PATTERNS = [
   /\b(?:precio|valor|costo|cost|price)\b/i,
   /\b(?:disponibilidad|available|availability|cupos?|spots?)\b/i,
@@ -146,6 +152,21 @@ function standardFollowUpFallback(lang: 'es' | 'en', phase: string | null, stage
   if (phase === 'value') return replies.followUpValue;
   if (phase === 'greeting') return replies.followUpGreeting;
   return replies.followUpSafeNudge;
+}
+
+function contextualFollowUpFallback(text: string, lang: 'es' | 'en'): string | null {
+  const relationship = lang === 'es'
+    ? /\bpadre\s+e\s+hijo\b/i.test(text)
+    : /\bfather\s+and\s+son\b/i.test(text);
+  const motorcycle = /\b(?:moto|motorcycle)\b/i.test(text);
+  const month = text.match(/\b(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|january|february|march|april|may|june|july|august|september|october|november|december)\b/i)?.[0];
+  if (!relationship || !motorcycle || !month) return null;
+  return getSkills().fallbackReplies[lang].followUpFatherSonMotorcycleMonth.replace('{{month}}', month.toLowerCase());
+}
+
+function needsTrustedStandardFollowUp(text: string, phase: string | null): boolean {
+  return phase === 'greeting'
+    || /^\s*(?:gracias\s+por\s+la\s+informaci[oó]n|thanks\s+for\s+the\s+information)[.!\s]*$/i.test(text);
 }
 
 async function sendReviewGallery(repos: Repositories, phone: string): Promise<void> {
@@ -257,7 +278,11 @@ async function processCandidates(
       repos.aiUsage.recordUsage({ phone: c.customerPhone, model: env.DEEPSEEK_MODEL, promptTokens: result.tokens.prompt, completionTokens: result.tokens.completion, cachedTokens: 0, estimatedCost: cost, purpose: 'follow_up', success: true });
     }
 
-    let reply = result?.turn.reply.trim() ?? '';
+    const contextualFallback = contextualFollowUpFallback(latestInbound.content, lang);
+    const standardFallback = needsTrustedStandardFollowUp(latestInbound.content, salesPhase)
+      ? standardFollowUpFallback(lang, salesPhase, stage)
+      : null;
+    let reply = contextualFallback ?? standardFallback ?? result?.turn.reply.trim() ?? '';
     if (reviewReminder && (!reply || /[?¿]/.test(reply))) reply = reviewReminderFallback(lang);
     if (!reply) {
       repos.followUpEvent.markClaimFailed(c.customerPhone, anchorInboundAt, stage, 'llm_unavailable');
@@ -292,6 +317,9 @@ async function processCandidates(
       reply = standardFollowUpFallback(lang, salesPhase, stage);
     }
     if (!reviewReminder && salesPhase === 'pricing' && !/(?:incluye|log[ií]stica|llegar|includes?|logistics?|getting there)/i.test(reply)) {
+      reply = standardFollowUpFallback(lang, salesPhase, stage);
+    }
+    if (GENERIC_CONTINUATION_PING_PATTERNS.some(p => p.test(reply))) {
       reply = standardFollowUpFallback(lang, salesPhase, stage);
     }
     // Same safety guards as the live reply path: unsafe drafts never reach customers.

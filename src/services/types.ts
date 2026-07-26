@@ -32,4 +32,7 @@ export interface ProcessMessageOutput {
   conversationMode?: ConversationMode;
   salesPhase?: string | null;
   softClosed?: boolean;
+  reservationReady?: boolean;
+  intent?: string | null;
+  mediaPlanId?: string | null;
 }

@@ -131,6 +131,17 @@ export function migrate(db: Database.Database): void {
     opened_at TEXT NOT NULL,
     last_activity_at TEXT NOT NULL
   )`);
+  db.exec(`CREATE TABLE IF NOT EXISTS payment_reservations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    external_reference TEXT NOT NULL UNIQUE,
+    customer_phone TEXT NOT NULL,
+    preference_id TEXT UNIQUE,
+    expected_amount_cop INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    approved_at TEXT,
+    mercado_pago_payment_id TEXT UNIQUE
+  )`);
   try {
     db.exec('ALTER TABLE ai_usage ADD COLUMN purpose TEXT DEFAULT \'reply\'');
   } catch {

@@ -8,6 +8,7 @@ import { PRICING_NOT_AVAILABLE } from '../../services/dynamic-data-service.js';
 import type { AnalyzerInput, LeadAnalysis } from '../../services/lead-analyzer.js';
 import { applyScenarioSeeds, createRunContext, defaultMockResult, runTurn, type MockLlmFunction } from './runner.js';
 import { runFollowUpScenario } from './follow-up-runner.js';
+import { runLifecycleScenario } from './lifecycle-runner.js';
 import { evaluateScenario } from './evaluate-scenario.js';
 import { buildReport, printReport, writeReport } from './report.js';
 import { scenarioSchema, type Scenario, type ScenarioResult } from './schema.js';
@@ -35,7 +36,7 @@ const scenariosDir = join(__dirname, 'scenarios');
 
 function loadScenarios(): Scenario[] {
   return readdirSync(scenariosDir)
-    .filter(file => file.endsWith('.json'))
+    .filter(file => file.endsWith('.json') && file !== 'manifest.json')
     .map(file => scenarioSchema.parse(JSON.parse(readFileSync(join(scenariosDir, file), 'utf8'))));
 }
 
@@ -70,7 +71,6 @@ describe('Conversation Quality Eval V2', () => {
       }
 
       const ctx = createRunContext({ phoneSuffix: index });
-      const restoreSeeds = applyScenarioSeeds(ctx, scenario);
       const experience = getActiveExperience(getSkills());
       const originalPricingItems = experience.pricing.items;
       const originalPricingRules = experience.pricing.botRules;
@@ -81,8 +81,11 @@ describe('Conversation Quality Eval V2', () => {
         ];
         experience.pricing.botRules = experience.pricing.botRules.filter(rule => rule !== PRICING_NOT_AVAILABLE);
       }
+      const restoreSeeds = applyScenarioSeeds(ctx, scenario);
       try {
-        if (scenario.runner === 'follow_up') {
+        if (scenario.runner === 'lifecycle') {
+          ctx.turns.push(...runLifecycleScenario(ctx, scenario));
+        } else if (scenario.runner === 'follow_up') {
           ctx.turns.push(...await runFollowUpScenario(ctx, scenario));
         } else {
           for (let turnIndex = 0; turnIndex < scenario.turns.length; turnIndex++) {

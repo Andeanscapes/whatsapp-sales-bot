@@ -1,0 +1,54 @@
+{
+  "id": "no-reply-after-24h-reactivation-eligibility",
+  "source": "production-regression-2026-07-24-to-2026-07-26",
+  "tags": [
+    "reactivation",
+    "meta",
+    "lifecycle",
+    "no-reply",
+    "regression"
+  ],
+  "lang": "es",
+  "runner": "lifecycle",
+  "liveRuns": 2,
+  "seedSystem": {
+    "hoursSinceLastInbound": 25,
+    "receivedBotReply": true,
+    "meaningfulSecondInbound": false,
+    "isReserved": false,
+    "isHumanPending": false,
+    "isPaused": false,
+    "isOptOut": false
+  },
+  "criteria": [
+    {
+      "id": "eligible-for-reactivation",
+      "rule": "output_flag_equals",
+      "flag": "reactivationEligible",
+      "expected": true,
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "correct-segment",
+      "rule": "output_flag_equals",
+      "flag": "reactivationSegment",
+      "expected": "no_reply_25h",
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Hola, quiero precios y fechas para la aventura minera en Chivor 💚",
+      "mockReply": "Claro. ¿Viajarías solo, en pareja o en grupo?",
+      "expect": {
+        "shouldSendReply": true,
+        "reactivationEligible": true,
+        "reactivationSegment": "no_reply_25h"
+      }
+    }
+  ]
+}

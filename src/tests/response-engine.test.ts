@@ -1509,7 +1509,7 @@ describe('processMessage', () => {
     mockLlmComplete.mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
-    const phone = '573001112289';
+    const phone = '573001112294';
 
     repos.conversation.upsert(phone, {
       collected_name: 'Diego',
@@ -3284,7 +3284,7 @@ describe('processMessage', () => {
     const result = await processMessage({ repos, customerPhone: phone, message: 'Tienes fotos de la experiencia ?' });
 
     expect(result.usedAi).toBe(false);
-    expect(result.reply).toBe(getSkills().fallbackReplies.es.galleryIntro);
+    expect(result.reply).toBe(getSkills().fallbackReplies.es.galleryIntro.replace('{{planDuration}}', 'la experiencia'));
     expect(result.shouldSendGalleryImages).toBe(true);
   });
 
@@ -4232,6 +4232,7 @@ describe('detectsReservationIntent', () => {
   it('matches explicit Spanish reservation phrases', () => {
     expect(detectsReservationIntent('Quiero reservar ya')).toBe(true);
     expect(detectsReservationIntent('Como pago?')).toBe(true);
+    expect(detectsReservationIntent('¿Cómo hacemos para reservar?')).toBe(true);
     expect(detectsReservationIntent('donde transfiero')).toBe(true);
     expect(detectsReservationIntent('manda el link de pago')).toBe(true);
     expect(detectsReservationIntent('Listo, agendamos')).toBe(true);
