@@ -1,5 +1,6 @@
 import { logger, sanitizeSensitiveText, sanitizeUrl } from '../config/logger.js';
 import type { Repositories } from '../db/repositories/index.js';
+import { reportCriticalSystemError } from './whatsapp-operational-health.js';
 
 let reposRef: Repositories | null = null;
 
@@ -57,6 +58,10 @@ export function logSystemError(
     } catch {
       // DB write itself failed — nothing more we can do
     }
+  }
+
+  if (severity === 'critical') {
+    void reportCriticalSystemError(type, safeError.message);
   }
 }
 

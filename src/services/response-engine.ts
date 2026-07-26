@@ -6,6 +6,7 @@ import { env } from '../config/env.js';
 import { scoreMessage, computeHybridScore, type LlmLeadInput } from './lead-scoring.js';
 import { checkTimeWindow } from './time-window-policy.js';
 import { checkBudget } from './budget-guard.js';
+import { reportAiBudgetBlocked } from './whatsapp-operational-health.js';
 import { buildSystemPrompt } from './deepseek-client.js';
 import { DeepSeekLlmClient } from './llm/deepseek-llm-client.js';
 import { analyzeLead, type LeadAnalysis } from './lead-analyzer.js';
@@ -1203,6 +1204,7 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   const budget = checkBudget(repos, customerPhone);
   if (!budget.aiAllowed) {
     logger.warn({ reason: budget.reason }, '[AI] budget blocked');
+    void reportAiBudgetBlocked(budget.reason ?? 'unknown');
     if (safetyOverrideReply) {
       return { reply: safetyOverrideReply, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: true, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
     }
