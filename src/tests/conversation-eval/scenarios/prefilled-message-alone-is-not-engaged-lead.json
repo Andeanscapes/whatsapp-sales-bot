@@ -1,0 +1,54 @@
+{
+  "id": "prefilled-message-alone-is-not-engaged-lead",
+  "source": "production-regression-2026-07-24-to-2026-07-26",
+  "tags": [
+    "analytics",
+    "lead-quality",
+    "meta",
+    "regression"
+  ],
+  "lang": "es",
+  "runner": "lifecycle",
+  "liveRuns": 2,
+  "criteria": [
+    {
+      "id": "conversation-started",
+      "rule": "output_flag_equals",
+      "flag": "conversationStarted",
+      "expected": true,
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "not-engaged-yet",
+      "rule": "output_flag_equals",
+      "flag": "meaningfulSecondInbound",
+      "expected": false,
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "not-qualified",
+      "rule": "output_flag_equals",
+      "flag": "qualified",
+      "expected": false,
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Hola, quiero precios y fechas para la aventura minera en Chivor 💚",
+      "mockReply": "Claro. ¿Viajarías solo, en pareja o en grupo?",
+      "expect": {
+        "shouldSendReply": true,
+        "conversationStarted": true,
+        "meaningfulSecondInbound": false,
+        "qualified": false
+      }
+    }
+  ]
+}

@@ -132,6 +132,27 @@ export interface MediaSendRepository {
   recordSend(phone: string, mediaId: string): void;
 }
 
+export type PaymentReservationStatus = 'pending' | 'approved';
+
+export interface PaymentReservation {
+  id: number;
+  externalReference: string;
+  customerPhone: string;
+  preferenceId: string | null;
+  expectedAmountCop: number;
+  status: PaymentReservationStatus;
+  createdAt: string;
+  approvedAt: string | null;
+  mercadoPagoPaymentId: string | null;
+}
+
+export interface PaymentReservationRepository {
+  createPending(externalReference: string, customerPhone: string, expectedAmountCop: number): void;
+  attachPreference(externalReference: string, preferenceId: string): void;
+  getByExternalReference(externalReference: string): PaymentReservation | null;
+  markApproved(externalReference: string, mercadoPagoPaymentId: string): boolean;
+}
+
 export type ConversationMode = 'bot' | 'bridge_active' | 'referred' | 'human_pending';
 
 export type LeadPain = 'price' | 'date_time' | 'security' | 'logistics_4x4' | 'experience_clarity' | 'partner_group' | 'not_interested' | 'other';
@@ -410,6 +431,7 @@ export interface Repositories {
   aiUsage: AiUsageRepository;
   ownerAlert: OwnerAlertRepository;
   mediaSend: MediaSendRepository;
+  paymentReservation: PaymentReservationRepository;
   bridgeSession: BridgeSessionRepository;
   stats: StatsRepository;
   systemErrors: SystemErrorRepository;

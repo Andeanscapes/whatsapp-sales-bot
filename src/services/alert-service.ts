@@ -52,10 +52,10 @@ function leadTemperatureEmoji(score: number): string {
 }
 
 export async function sendAlert(request: AlertRequest, repos: Repositories): Promise<void> {
-  const alertType = request.intent === 'reservation_handoff' || request.intent === 'reservation_intent' || request.intent === 'unsafe_reservation_blocked' || request.intent === 'policy_violation_blocked' || request.intent === 'system_error' || request.intent === 'dynamic_pricing_unavailable'
+  const alertType = request.intent === 'reservation_handoff' || request.intent === 'reservation_intent' || request.intent === 'payment_received' || request.intent === 'unsafe_reservation_blocked' || request.intent === 'policy_violation_blocked' || request.intent === 'system_error' || request.intent === 'dynamic_pricing_unavailable'
     ? request.intent
     : request.score >= env.URGENT_LEAD_THRESHOLD ? 'urgent' : 'hot';
-  const repeatableReservationAlert = alertType === 'reservation_handoff' || alertType === 'reservation_intent';
+  const repeatableReservationAlert = alertType === 'reservation_handoff' || alertType === 'reservation_intent' || alertType === 'payment_received';
   if (repeatableReservationAlert) {
     const sinceIso = new Date(Date.now() - RESERVATION_ALERT_COOLDOWN_MS).toISOString();
     if (repos.ownerAlert.wasAlertedSince(request.customerPhone, alertType, sinceIso)) {

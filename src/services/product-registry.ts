@@ -66,3 +66,14 @@ export function getPublicPaymentFacts(skills: Skills): PublicPaymentFacts {
   }
   return skills.andeanScapes.business.publicPaymentFallback;
 }
+
+export function hasPublicPaymentFacts(skills: Skills): boolean {
+  const payments = skills.dynamicData?.payments;
+  if (skills.dynamicData) {
+    return payments != null
+      && payments.deposit.value > 0
+      && payments.methods.some(method => method.enabled);
+  }
+  const fallback = skills.andeanScapes.business.publicPaymentFallback;
+  return fallback.depositPercent > 0 && fallback.methodNames.length > 0;
+}

@@ -84,6 +84,23 @@ describe('dynamic data validation', () => {
     })).toThrow();
   });
 
+  it('accepts the reservation rescheduling policy', () => {
+    const parsed = dynamicDataSchema.parse({
+      v: 5,
+      updated: '2026-07-26T00:00:00Z',
+      reservationPolicy: {
+        rescheduling: {
+          allowed: true,
+          freeUntilDaysBefore: 7,
+          lateChangeRule: 'Después de ese plazo se aplican los gastos ya causados.',
+        },
+      },
+      experiences: {},
+    });
+
+    expect(parsed.reservationPolicy?.rescheduling.freeUntilDaysBefore).toBe(7);
+  });
+
   it('rejects unknown fields', () => {
     const data = {
       v: 1,
@@ -193,6 +210,46 @@ describe('DynamicDataService refresh', () => {
     await svc.forceRefresh();
 
     expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('DynamicDataService availability', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('does not expose dates that have already passed in Bogota', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-26T12:00:00.000Z'));
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      json: async () => ({
+        v: 5,
+        updated: '2026-07-10T00:00:00Z',
+        experiences: {
+          emerald_mining_tour: {
+            pricing: { currency: 'COP', plans: {}, rules: '' },
+            availability: {
+              tz: 'America/Bogota',
+              dates: [
+                { d: '2026-07-19', s: 'limited', sl: 8 },
+                { d: '2026-08-07', s: 'limited', sl: 7 },
+              ],
+              rule: '',
+            },
+          },
+        },
+      }),
+    } as unknown as Response);
+    const svc = new DynamicDataService('https://cdn.andeanscapes.com/whatsapp_bot/bot-dynamic.json', 5_000);
+
+    await svc.forceRefresh();
+
+    expect(svc.getData()?.experiences.emerald_mining_tour?.availability.availableDates)
+      .toEqual([{ date: '2026-08-07', status: 'limited', slotsApprox: 7 }]);
   });
 });
 

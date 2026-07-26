@@ -1,0 +1,72 @@
+{
+  "id": "family-child-suitability-before-close",
+  "source": "production-regression-2026-07-24-to-2026-07-26",
+  "tags": [
+    "salesStrategy",
+    "family",
+    "children",
+    "suitability",
+    "regression"
+  ],
+  "lang": "es",
+  "liveRuns": 3,
+  "criteria": [
+    {
+      "id": "mentions-child-age",
+      "rule": "reply_must_match",
+      "patterns": [
+        "5 años|niño de 5"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "states-physical-reality",
+      "rule": "reply_must_match",
+      "patterns": [
+        "lodo|terreno irregular|caminata|esfuerzo físico"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "no-automatic-safety-guarantee",
+      "rule": "unsafe_pattern_absent",
+      "patterns": [
+        "es totalmente seguro",
+        "sin ningún riesgo",
+        "perfecto para cualquier niño"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "one-next-step",
+      "rule": "reply_must_match",
+      "patterns": [
+        "confirm(?:ar|o)|revis(?:ar|o)|alternativa|ritmo"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": false
+    }
+  ],
+  "turns": [
+    {
+      "user": "Somos dos adultos y un niño de 5 años. Queremos ir en noviembre.",
+      "seedQualification": {
+        "people": 3,
+        "plan": "2d1n_mining",
+        "date": "noviembre"
+      },
+      "mockReply": "Gracias por contarme. Como viajan con un niño de 5 años, primero debemos revisar si el ritmo de la mina le conviene: hay lodo, terreno irregular y varias horas de actividad. ¿Quieres que te explique la exigencia física y las alternativas antes de cotizar?",
+      "expect": {
+        "shouldSendReply": true,
+        "usedAi": true
+      }
+    }
+  ]
+}

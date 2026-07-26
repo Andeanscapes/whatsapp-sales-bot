@@ -14,6 +14,7 @@ import { endHandler } from '../commands/end.command.js';
 import { phasesHandler } from '../commands/phases.command.js';
 import { blockHandler } from '../commands/block.command.js';
 import { bookingHandler } from '../commands/booking.command.js';
+import { paymentHandler } from '../commands/payment.command.js';
 import { pauseHandler } from '../commands/pause.command.js';
 import { resumeHandler } from '../commands/resume.command.js';
 import { statusHandler } from '../commands/status.command.js';
@@ -405,6 +406,14 @@ export function registerCommands(): void {
     description: 'Confirmar reserva (pago recibido) de un lead',
     usage: '<telefono>',
     handler: bookingHandler,
+  });
+
+  registerCommand({
+    name: 'payment',
+    description: 'Crear y enviar enlace Mercado Pago despues de validar disponibilidad',
+    usage: '<telefono>',
+    ownerOnly: true,
+    handler: paymentHandler,
   });
 
   registerCommand({

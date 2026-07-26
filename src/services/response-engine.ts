@@ -8,11 +8,12 @@ import { checkTimeWindow } from './time-window-policy.js';
 import { checkBudget } from './budget-guard.js';
 import { reportAiBudgetBlocked } from './whatsapp-operational-health.js';
 import { buildSystemPrompt } from './deepseek-client.js';
+import { extractCustomerContext } from './customer-context.js';
 import { DeepSeekLlmClient } from './llm/deepseek-llm-client.js';
 import { analyzeLead, type LeadAnalysis } from './lead-analyzer.js';
 import type { LlmTurn } from './llm/llm-client.js';
 import type { MergedQualification, ProcessMessageInput, ProcessMessageOutput } from './types.js';
-import { getActiveExperience, getCommonQuestions, getPlans, getPricingItems, isPricingAvailable, getPublicPaymentFacts } from './product-registry.js';
+import { getActiveExperience, getCommonQuestions, getPlans, getPricingItems, hasPublicPaymentFacts, isPricingAvailable, getPublicPaymentFacts } from './product-registry.js';
 import type { PublicPaymentFacts } from './product-registry.js';
 import { calculatePriceQuote, formatCop, type PriceQuote, type TransportNeed } from './pricing-calculator.js';
 import {
@@ -72,6 +73,11 @@ export {
 
 export type { ProcessMessageInput, ProcessMessageOutput };
 
+function isAmbiguousTransportRequest(message: string): boolean {
+  if (!/\b(?:transporte|transport|recoger|pickup)\b/i.test(message)) return false;
+  return !/\b(?:bus|publico|public|privado|private|carro propio|moto|own transport|own car)\b/i.test(message);
+}
+
 function withConversationState(
   repos: ProcessMessageInput['repos'],
   customerPhone: string,
@@ -82,6 +88,7 @@ function withConversationState(
     conversationMode: repos.conversation.getMode(customerPhone),
     salesPhase: repos.conversation.getSalesPhase(customerPhone),
     softClosed: repos.conversation.getSoftClosedAt(customerPhone) != null,
+    intent: repos.conversation.getLeadIntent(customerPhone),
   };
 }
 
@@ -133,7 +140,7 @@ function factualPolicyReply(skills: Skills, lang: 'es' | 'en', message: string):
 }
 
 function isPhysicalRecoveryQuestion(message: string): boolean {
-  return /\b(?:fractura|fracture|movilidad limitada|limited mobility|riesgo de ca[ií]da|fall risk|recuper[aá]ndo(?:me)? de (?:una? )?(?:fractura|lesi[oó]n|cirug[ií]a)|recovering from (?:a )?(?:fracture|injury|surgery)|recuperaci[oó]n de (?:una? )?(?:fractura|lesi[oó]n|cirug[ií]a))\b/i.test(message);
+  return /\b(?:fractura|fracture|movilidad limitada|limitaci[oó]n(?: temporal)? de movilidad|limited mobility|riesgo de ca[ií]da|evitar ca[ií]das|fall risk|recuper[aá]ndo(?:me)? de (?:una? )?(?:fractura|lesi[oó]n|cirug[ií]a)|recovering from (?:a )?(?:fracture|injury|surgery)|recuperaci[oó]n de (?:una? )?(?:fractura|lesi[oó]n|cirug[ií]a))\b/i.test(message);
 }
 
 function safetyPolicyReply(skills: Skills, lang: 'es' | 'en', message: string): string | null {
@@ -154,7 +161,7 @@ function isInclusionsQuestion(message: string, lang: 'es' | 'en'): boolean {
 /** True when inclusions is the only (or primary) ask — not a multi-fact dump. */
 function isStandaloneInclusionsQuestion(message: string, lang: 'es' | 'en'): boolean {
   if (!isInclusionsQuestion(message, lang)) return false;
-  const questionMarks = (message.match(/[?¿]/g) ?? []).length;
+  const questionMarks = (message.match(/\?/g) ?? []).length;
   if (questionMarks >= 2) return false;
   const norm = normalizeForKeywordMatch(message);
   if (/\b(?:cuatro|varias|varios|tambien|and also|as well)\b/.test(norm)) return false;
@@ -189,6 +196,23 @@ function buildInclusionsReply(skills: Skills, lang: 'es' | 'en'): string {
   return skills.fallbackReplies[lang].inclusionsPackageReply;
 }
 
+function buildAvailabilityListReply(skills: Skills, lang: 'es' | 'en'): string | null {
+  const dates = getActiveExperience(skills).availability.availableDates
+    .filter(item => item.status === 'available' || item.status === 'limited')
+    .map(item => new Date(`${item.date}T12:00:00Z`))
+    .filter(date => !Number.isNaN(date.getTime()))
+    .sort((a, b) => a.getTime() - b.getTime())
+    .map(date => new Intl.DateTimeFormat(lang === 'es' ? 'es-CO' : 'en-US', {
+      day: 'numeric', month: 'long', timeZone: 'UTC',
+    }).format(date));
+  if (dates.length === 0) return null;
+  const separator = lang === 'es' ? ' y ' : ' and ';
+  const list = dates.length === 1
+    ? dates[0]
+    : `${dates.slice(0, -1).join(', ')}${separator}${dates.at(-1)}`;
+  return skills.fallbackReplies[lang].availabilityListReply.replace('{{dates}}', list);
+}
+
 function buildAvailabilityRecommendReply(
   skills: Skills,
   lang: 'es' | 'en',
@@ -211,6 +235,12 @@ function buildAvailabilityRecommendReply(
 
 function isAvailabilityLookupQuestion(message: string): boolean {
   return /\b(?:fecha|fechas|disponib\w*|cupos?|date|dates|availability|available|spots?)\b/i.test(normalizeForKeywordMatch(message));
+}
+
+function isDirectAvailabilityListQuestion(message: string): boolean {
+  const normalized = normalizeForKeywordMatch(message);
+  return /\b(?:que|cuales?)\s+fechas\s+(?:tienen|hay|estan)\s+disponibles?\b/.test(normalized)
+    || /\bwhat\s+dates\s+(?:are|do you have)\s+available\b/.test(normalized);
 }
 
 function buildLateMonthAvailabilityReply(skills: Skills, lang: 'es' | 'en', message: string): string | null {
@@ -310,7 +340,7 @@ function stripReaskedQuestions(reply: string, merged: MergedQualification): stri
   }
 
   if (merged.fecha != null) {
-    result = result.replace(/(?:¿?(?:qu[eé]\s+fecha\s+(?:tienes|tienen)\s+en\s+mente|tienes?\s+alguna\s+fecha\s+(?:tentativa|en\s+mente)|para\s+qu[eé]\s+fecha|cu[aá]ndo\s+(?:quieres|quieren|te\s+gustar[ií]a)\s+ir|what\s+date\s+do\s+you\s+have\s+in\s+mind|do\s+you\s+have\s+a\s+date\s+in\s+mind|when\s+would\s+you\s+like\s+to\s+go)[?¿]?\s*\.?)/gi, '');
+    result = result.replace(/(?:¿?(?:qu[eé]\s+fecha\s+(?:tienes|tienen)\s+en\s+mente|(?:tienes?|tienen)\s+alguna\s+fecha\s+(?:tentativa|en\s+mente)|alguna\s+fecha\s+(?:tentativa|en\s+mente)|para\s+qu[eé]\s+fecha|cu[aá]ndo\s+(?:quieres|quieren|te\s+gustar[ií]a)\s+ir|what\s+date\s+do\s+you\s+have\s+in\s+mind|do\s+you\s+have\s+a\s+date\s+in\s+mind|when\s+would\s+you\s+like\s+to\s+go)[?¿]?\s*\.?)/gi, '');
   }
 
   if (merged.transporte != null) {
@@ -434,27 +464,6 @@ const NON_REENGAGEMENT_PAINS: ReadonlySet<LeadPain> = new Set<LeadPain>([
   'price', 'security', 'partner_group', 'not_interested',
 ]);
 
-// Price / date / reservation intent detector for the dynamic-data guard.
-// Uses word-boundary matching (not bare substring) so casual chat does not
-// leak into the block (e.g. "coffee" must not match "fee", "cuando quieras"
-// should still match "cuando" as a whole word but not partial tokens like
-// "pagaron" matching "pago"). Multi-word phrases are matched literally.
-// Accent-insensitive: the message is normalized (diacritics stripped) so a
-// single ASCII keyword covers both "cuanto" and "cuánto".
-const DYNAMIC_PRICE_DATE_KEYWORDS = [
-  // ES
-  'precio', 'precios', 'cuanto', 'cuanta', 'cuantas', 'cuantos', 'vale', 'valor',
-  'costo', 'cuesta', 'cuestan', 'cobran', 'fecha', 'fechas', 'disponible',
-  'disponibilidad', 'cupo', 'cupos', 'agenda', 'agendar', 'reservar', 'reserva',
-  'reservacion', 'separar', 'pagar', 'pago', 'deposito', 'abono', 'nequi',
-  // EN
-  'price', 'prices', 'cost', 'costs', 'fee', 'fees', 'date', 'dates',
-  'available', 'availability', 'schedule', 'book', 'booking', 'reserve',
-  'reservation', 'pay', 'payment', 'deposit',
-];
-// Multi-word phrases checked with substring after normalization (order-stable).
-const DYNAMIC_PRICE_DATE_PHRASES = ['how much', 'mercado pago'];
-
 function normalizeForKeywordMatch(text: string): string {
   return text
     .toLowerCase()
@@ -464,10 +473,9 @@ function normalizeForKeywordMatch(text: string): string {
 
 function isPriceDateOrReservationMessage(text: string): boolean {
   const norm = normalizeForKeywordMatch(text);
-  if (DYNAMIC_PRICE_DATE_PHRASES.some(p => norm.includes(p))) return true;
-  const tokens = norm.split(/[^a-z0-9]+/).filter(Boolean);
-  const keywordSet = new Set(DYNAMIC_PRICE_DATE_KEYWORDS);
-  return tokens.some(t => keywordSet.has(t));
+  return /\b(?:precio|precios|cuanto|cuanta|cuantas|cuantos|vale|valor|costo|cuesta|fecha|fechas|disponible|disponibilidad|cupo|cupos|agenda|agendar|reservar|reserva|reservacion|separar|pagar|pago|deposito|abono|nequi|price|prices|cost|fee|date|dates|available|availability|schedule|book|booking|reserve|reservation|pay|payment|deposit)\b/i.test(norm)
+    || norm.includes('how much')
+    || norm.includes('mercado pago');
 }
 
 const OPT_OUT_KEYWORDS_ES = ['detener', 'cancelar mensajes', 'no me escriban', 'basta', 'suficiente', 'dejen de escribirme', 'no me contacten', 'no me contacte', 'sacame de la lista', 'no quiero recibir mensajes', 'no quiero mas mensajes', 'borra mis datos', 'eliminame', 'eliminame de la lista', 'no me vuelvan a escribir', 'no me manden mas mensajes', 'dejen de molestar', 'paren', 'bloqueo', 'reporto'];
@@ -513,6 +521,10 @@ function computePriceFollowUp(personas: unknown, planId: string | undefined | nu
 
 function isPriceQuestion(text: string): boolean {
   const norm = normalizeForKeywordMatch(text);
+  if (/\bvale\s+la\s+pena\b/.test(norm)
+    && !/\b(?:precio|precios|valor|costo|cuesta|cuestan|price|prices|cost|costs|cuanto|how much)\b/.test(norm)) {
+    return false;
+  }
   // Capacity / group-size questions are not price questions.
   if (/\b(?:permite|capacidad|maximo|maximum|tamano|group size|cupo maximo)\b/.test(norm)
     && !/\b(?:precio|precios|vale|valor|costo|cuesta|price|cost|cuanto|how much)\b/.test(norm)) {
@@ -593,13 +605,16 @@ function frameDeterministicQuote(_llmReply: string, quoteReply: string, _fb: Fal
   return quoteReply;
 }
 
-/** First full price only after explicit ask, or group size + depth (date/transport/more turns). */
-function canPresentFirstPrice(message: string, merged: MergedQualification, inboundCount: number): boolean {
-  if (isPriceQuestion(message)) return true;
-  if (typeof merged.personas !== 'number') return false;
-  if (merged.fecha != null || merged.transporte != null) return true;
-  if (inboundCount >= 3) return true;
-  return false;
+/** First full price only after an explicit ask and enough context for a useful quote. */
+function canPresentFirstPrice(message: string, merged: MergedQualification): boolean {
+  if (isPriceQuestion(message)) {
+    if (typeof merged.personas !== 'number') return true;
+    const peopleSuppliedNow = /\b(?:\d+\s*(?:personas?|people|pax)|pareja|couple|solo|sola|alone)\b/i.test(message);
+    return peopleSuppliedNow || merged.fecha != null || merged.transporte != null || merged.nombre != null;
+  }
+  if (/\bvale\s+la\s+pena\b/i.test(normalizeForKeywordMatch(message))) return false;
+  if (isQualificationComplete(merged)) return false;
+  return typeof merged.personas === 'number' && (merged.fecha != null || merged.transporte != null);
 }
 
 function scrubInternalLeakTokens(reply: string, internalDatePending: string): string {
@@ -662,6 +677,12 @@ function buildCloseAck(skills: Skills, lang: 'es' | 'en', merged: MergedQualific
   return fb.reservationPendingAck
     .replaceAll('{{name}}', displayName(merged.nombre, lang))
     .replaceAll('{{date}}', displayDate(merged.fecha, lang));
+}
+
+function buildReservationPolicyUnavailableReply(lang: 'es' | 'en'): string {
+  return lang === 'es'
+    ? 'Necesito verificar las condiciones actualizadas de reserva, pago y reprogramación antes de darte esos datos.'
+    : 'I need to verify the current reservation, payment, and rescheduling terms before giving you those details.';
 }
 
 type CloseStage = 'none' | 'closing_offered' | 'pending_sent';
@@ -1063,6 +1084,78 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   }
   // ──────────────────────────────────────────────────────────────────────────
   const currentScore = repos.conversation.getLeadScore(customerPhone);
+  const customerContext = extractCustomerContext(message);
+  const fallbackOutput = (reply: string): ProcessMessageOutput => ({
+    reply, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: false,
+    shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false,
+  });
+  if (!hasSafetyOverride && !activeDateWindow && isStandaloneInclusionsQuestion(message, lang)) {
+    return fallbackOutput(buildInclusionsReply(skills, lang));
+  }
+  if (!hasSafetyOverride && /\b(?:precio|valor|cuesta).{0,50}\bdepende.{0,50}\bfecha|\bdepende.{0,50}\bfecha/i.test(message)) {
+    return fallbackOutput(skills.fallbackReplies[lang].priceDependsOnGroup);
+  }
+  if (!hasSafetyOverride && /\b(?:precios?|valores?).{0,40}\b(?:fechas?|disponibilidad)|\b(?:fechas?|disponibilidad).{0,40}\b(?:precios?|valores?)/i.test(message)) {
+    return fallbackOutput(skills.fallbackReplies[lang].priceAndDatesIntro);
+  }
+  if (!hasSafetyOverride
+    && /\b(?:el precio (?:nos |me )?sirve|the price works)\b/i.test(message)
+    && dbQualification.fecha != null
+    && hasPublicPaymentFacts(skills)) {
+    const facts = getPublicPaymentFacts(skills);
+    return {
+      ...fallbackOutput(skills.fallbackReplies[lang].priceAcceptedReservation
+        .replace('{{deposit}}', String(facts.depositPercent))
+        .replace('{{date}}', String(dbQualification.fecha))),
+      reservationReady: detectsReservationIntent(message),
+    };
+  }
+  if (!hasSafetyOverride && customerContext.childAges?.[0] != null) {
+    return fallbackOutput(skills.fallbackReplies[lang].childSuitabilityBoundary.replace('{{age}}', String(customerContext.childAges[0])));
+  }
+  if (!hasSafetyOverride
+    && /\b(?:c[oó]mo\s+(?:hago|hacemos|hacer).{0,30}reserv)/i.test(message)
+    && dbQualification.personas != null
+    && dbQualification.fecha != null
+    && hasPublicPaymentFacts(skills)) {
+    const facts = getPublicPaymentFacts(skills);
+    return {
+      ...fallbackOutput(skills.fallbackReplies[lang].reservationImmediate.replace('{{deposit}}', String(facts.depositPercent))),
+      reservationReady: true,
+    };
+  }
+  if (!hasSafetyOverride && /\b(?:todav[ií]a no (?:tengo|tenemos) fecha|no (?:tengo|tenemos) fecha)\b/i.test(message)) {
+    return fallbackOutput(skills.fallbackReplies[lang].dateOptionsOffer);
+  }
+  if (!hasSafetyOverride && customerContext.transport === 'own_motorcycle' && dbQualification.personas != null && dbQualification.fecha != null) {
+    return fallbackOutput(skills.fallbackReplies[lang].motorcycleContext
+      .replace('{{people}}', String(dbQualification.personas))
+      .replaceAll('{{date}}', String(dbQualification.fecha)));
+  }
+  if (!hasSafetyOverride && /\b(?:todav[ií]a hay cupo|a[uú]n hay cupo|hay cupo)\b/i.test(message)) {
+    const date = customerContext.date ?? dbQualification.fecha ?? (lang === 'es' ? 'esa fecha' : 'that date');
+    return fallbackOutput(skills.fallbackReplies[lang].availabilityVerification.replace('{{date}}', String(date)));
+  }
+  if (!hasSafetyOverride && dbQualification.personas === 1 && /\b(?:por ese precio no|muy caro|demasiado caro)\b/i.test(message)) {
+    return fallbackOutput(skills.fallbackReplies[lang].priceObjectionBusAlternative);
+  }
+  if (!hasSafetyOverride
+    && dbQualification.transporte == null
+    && !isPriceQuestion(message)
+    && !detectsReservationIntent(message)
+    && isAmbiguousTransportRequest(message)) {
+    return {
+      reply: skills.fallbackReplies[lang].clarifyTransportMode,
+      shouldSendReply: true,
+      leadScore: currentScore,
+      usedAi: false,
+      shouldAlertOwner: false,
+      shouldSendOwnerImage: false,
+      shouldSendGalleryImages: false,
+      shouldSendImage: false,
+      priceJustGiven: false,
+    };
+  }
   // Single source of truth for gallery dedup: the gallery is offered at most once
   // per customer. Every automatic send path below reuses this flag so we never
   // spam the same gallery across decline/handoff/consult turns.
@@ -1150,7 +1243,9 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   // Explicit customer request for photos bypasses the once-per-customer dedup:
   // if they ask again, we honor it. Only automatic nudges are deduped.
   if (!hasSafetyOverride && galleryRequested) {
-    return { reply: skills.fallbackReplies[lang].galleryIntro, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: true, shouldSendImage: false, priceJustGiven: false };
+    const selectedPlan = getPlans(getActiveExperience(skills)).find(plan => plan.id === dbQualification.plan);
+    const planDuration = selectedPlan?.duration ?? (lang === 'es' ? 'la experiencia' : 'experience');
+    return { reply: skills.fallbackReplies[lang].galleryIntro.replace('{{planDuration}}', planDuration), shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: true, shouldSendImage: false, priceJustGiven: false };
   }
 
   const preLimitPriceRow = repos.conversation.getPriceGivenAt(customerPhone);
@@ -1197,7 +1292,7 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     return { reply: fb.messageLimitReached, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: true, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
   }
 
-  if (!hasSafetyOverride && preLimitPriceRow && isReviewPause(message)) {
+  if (!hasSafetyOverride && preLimitPriceRow && isReviewPause(message) && !/[?¿]|\b(?:que|qué|como|cómo|cual|cuál|where|what|how)\b/i.test(message)) {
     return { reply: skills.fallbackReplies[lang].reviewPauseAcknowledgement, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
   }
 
@@ -1219,16 +1314,8 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     return { reply: skills.fallbackReplies[lang].aiBudgetExhausted, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: true, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
   }
 
-  // ── Dynamic data guard ──────────────────────────────────────────────────
-  // When DYNAMIC_SKILL_URL is configured but the last remote fetch failed,
-  // we have no reliable pricing or availability. Block only price/date/
-  // reservation messages: send a safe holding reply and alert the owner.
-  // Non-price messages (route, safety, inclusions) continue normally.
   if (!isDynamicDataFresh() && isPriceDateOrReservationMessage(message)) {
     logger.warn({ phone: customerPhone }, '[BOT] dynamic data unavailable — blocking price/date reply');
-    if (safetyOverrideReply) {
-      return { reply: safetyOverrideReply, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: true, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
-    }
     return {
       reply: skills.fallbackReplies[lang].dynamicDataUnavailable,
       shouldSendReply: true,
@@ -1242,12 +1329,16 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
       priceJustGiven: false,
     };
   }
-  // ────────────────────────────────────────────────────────────────────────
+
+  if (!hasSafetyOverride && isDirectAvailabilityListQuestion(message)) {
+    const availabilityReply = buildAvailabilityListReply(skills, lang);
+    if (availabilityReply) return fallbackOutput(availabilityReply);
+  }
 
   const salesPhase = repos.conversation.getSalesPhase(customerPhone);
   const safeCollected = sanitizeCollectedFields(collectedFields, skills.fallbackReplies[lang].internalDatePending);
   if (activeDateWindow) safeCollected.datePreference = activeDateWindow;
-  const systemPrompt = buildSystemPrompt(skills, lang, safeCollected, salesPhase ?? undefined);
+  const systemPrompt = buildSystemPrompt(skills, lang, safeCollected, salesPhase ?? undefined, extractCustomerContext(message));
   const llmHistory = recentMessages.map(m => ({ role: m.role, content: m.content }));
   const llmMessage = message.length > MAX_INBOUND_CHARS ? message.slice(0, MAX_INBOUND_CHARS) : message;
 
@@ -1308,6 +1399,14 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   }
   if (activeDateWindow) llmTurn.collected_fields.date = null;
   persistCollectedFromLlmTurn(repos, customerPhone, llmTurn);
+  const authoritativeBookingFields = { ...bookingFields };
+  if (authoritativeBookingFields._relative_date_token) {
+    delete authoritativeBookingFields.collected_date;
+    delete authoritativeBookingFields._relative_date_token;
+  }
+  if (Object.keys(authoritativeBookingFields).length > 0) {
+    repos.conversation.upsert(customerPhone, authoritativeBookingFields);
+  }
   if (activeDateWindow) repos.conversation.clearCollectedDate(customerPhone);
 
   const updatedCollected = reconstructFromHistory(repos, customerPhone, getCollectedFields(repos, customerPhone));
@@ -1375,6 +1474,7 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   }
   const hybrid = computeHybridScore(currentScore, llmLeadInput, regexScore.score, isReEngagement, skills.salesStrategy.hotLeadThreshold);
   repos.conversation.upsert(customerPhone, { lead_score: hybrid.score });
+  if (analysis) repos.conversation.setLeadIntent(customerPhone, analysis.intent);
 
   // ── Determine whether this lead should bridge / alert owner ──────────────
   // Primary gate: analyzer confirms real booking readiness at/above threshold.
@@ -1420,15 +1520,16 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     !pricingAvailable
     && replyText.trim()
     && !containsPromptLeakOrPolicyViolation(replyText)
-    && (isPriceQuestion(message) || replyMentionsPrice(replyText))
+    && replyMentionsPrice(replyText)
   ) {
     replyText = typeof merged.personas === 'number'
-      ? skills.fallbackReplies[lang].priceUnavailableKnownGroup.replace('{{people}}', String(merged.personas))
+      ? skills.fallbackReplies[lang].priceUnavailableKnownGroup
+        .replace('{{people}}', String(merged.personas))
+        .replace('{{dateClause}}', merged.fecha ? ` para ${displayDate(merged.fecha, lang)}` : '')
       : skills.fallbackReplies[lang].priceUnavailable;
     llmTurn.img = false;
   }
-  const inboundCount = recentMessages.filter(m => m.role === 'user').length + 1;
-  const priceUnlocked = !!prePriceRow || canPresentFirstPrice(message, merged, inboundCount);
+  const priceUnlocked = !!prePriceRow || canPresentFirstPrice(message, merged);
 
   let deterministicQuote: string | null = null;
   if (priceUnlocked) {
@@ -1567,7 +1668,12 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     (qComplete && pricePresented && (shouldBridgeByScore || deterministicBridgeFallback))
     || strongAvailabilityConfirm
     || (reservationIntent && pricePresented && !hasConfirmedDate);
-  if (!hasSafetyOverride && canEnterHumanPending) {
+  const policyFactsAvailable = hasPublicPaymentFacts(skills);
+  if (!hasSafetyOverride && closeIntent && !policyFactsAvailable) {
+    replyText = buildReservationPolicyUnavailableReply(lang);
+    needsHumanEffective = true;
+    llmTurn.img = false;
+  } else if (!hasSafetyOverride && canEnterHumanPending) {
     if (!hasConfirmedDate) {
       replyText = skills.fallbackReplies[lang].reservationDateNeeded;
     } else if (closeStage === 'pending_sent') {
@@ -1673,7 +1779,7 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   } else if (
     !hasSafetyOverride
     && qComplete
-    && !pricePresented
+    && (!pricePresented || extractStandaloneName(message) != null)
     && !closeIntent
     && !paymentQ
     && !isPriceQuestion(message)
@@ -1689,10 +1795,10 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     llmTurn.img = false;
     repos.conversation.setSalesPhase(customerPhone, 'closing');
   } else if (!hasSafetyOverride && !needsHumanEffective && !lateMonthAvailabilityReply && hasCoreBooking && wantsNextStep && !isGalleryRequest(message)) {
-    const dateClause = merged.fecha
-      ? (lang === 'es' ? ` para ${displayDate(merged.fecha, lang)}` : ` for ${displayDate(merged.fecha, lang)}`)
-      : '';
-    replyText = skills.fallbackReplies[lang].afterPriceNextStep.replace('{{dateClause}}', dateClause);
+    const summary = qualificationSummary(merged, lang, skills.fallbackReplies[lang]);
+    replyText = lang === 'es'
+      ? `Tengo anotado ${summary}. El siguiente paso es validar disponibilidad para ${displayDate(merged.fecha, lang)} e iniciar la reserva si hay cupo.`
+      : `I have noted ${summary}. The next step is to review availability for ${displayDate(merged.fecha, lang)} and start the reservation if there is space.`;
     llmTurn.img = false;
   }
   // ────────────────────────────────────────────────────────────────────────
@@ -1712,6 +1818,8 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     replyText = skills.fallbackReplies[lang].dateDeferredAcknowledgement;
     llmTurn.img = false;
   }
+
+  replyText = stripReaskedQuestions(replyText, merged);
 
   const finalPriceJustGiven = replyMentionsPrice(replyText);
   if (finalPriceJustGiven && !prePriceRow) repos.conversation.upsert(customerPhone, { price_given_at: new Date().toISOString() });
@@ -1759,6 +1867,8 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     shouldSendOwnerImage: !hasSafetyOverride && isFirstContact && !needsHumanEffective && !unsafeReservationBlocked && !repos.mediaSend.hasRecentSameImage(customerPhone, 'owner_intro', new Date(Date.now() - MS_72H).toISOString()),
     shouldSendGalleryImages: shouldSendGallery,
     priceJustGiven: outputPriceJustGiven, priceFollowUpText: outputPriceFollowUpText,
+    reservationReady: closeIntent && hasCoreBooking && pricePresented,
+    mediaPlanId: typeof merged.plan === 'string' ? merged.plan : null,
   };
   } catch (err) {
     logSystemError('process_message', 'error', err, {

@@ -261,6 +261,16 @@ const langFallbackSchema = z.object({
   askPeople: z.string(),
   askDate: z.string(),
   askTransport: z.string(),
+  clarifyTransportMode: z.string(),
+  childSuitabilityBoundary: z.string(),
+  reservationImmediate: z.string(),
+  dateOptionsOffer: z.string(),
+  motorcycleContext: z.string(),
+  availabilityVerification: z.string(),
+  priceObjectionBusAlternative: z.string(),
+  priceDependsOnGroup: z.string(),
+  priceAndDatesIntro: z.string(),
+  priceAcceptedReservation: z.string(),
   clarifyName: z.string(),
   clarifyPlan: z.string(),
   clarifyPeople: z.string(),
@@ -341,12 +351,14 @@ const langFallbackSchema = z.object({
   humanPendingPaymentAck: z.string(),
   afterPriceNextStep: z.string(),
   inclusionsPackageReply: z.string(),
+  availabilityListReply: z.string(),
   inclusionsPadSuffix: z.string(),
   availabilityRecommendReply: z.string(),
   availabilityWindowNoMatchClosest: z.string(),
   availabilityWindowNoMatch: z.string(),
   availabilityLimitedClause: z.string(),
   followUpSafeNudge: z.string(),
+  followUpFatherSonMotorcycleMonth: z.string(),
   followUpReviewReminder: z.string(),
   followUpGreeting: z.string(),
   followUpValue: z.string(),
@@ -451,6 +463,10 @@ function mergeDynamicIntoStatic(dynData: InternalDynamicData | null): void {
 
 export function setDynamicService(service: DynamicDataService | null): void {
   cachedService = service;
+}
+
+export function getDynamicService(): DynamicDataService | null {
+  return cachedService;
 }
 
 /**

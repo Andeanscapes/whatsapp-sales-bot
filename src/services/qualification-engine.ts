@@ -45,7 +45,7 @@ export const TRANSPORT_OWN_PATTERNS = [
 
 export const TRANSPORT_OWN_CONTEXT_PATTERNS = [
   /\b(?:si|s[ií])\b.*\b(?:propio|tengo|tenemos|transporte|mi\s+(?:carro|auto|coche|camioneta))\b/i,
-  /\b(?:propio|tengo carro|tengo moto|tengo veh[ií]culo|en carro|en moto|manejando|mi carro|mi auto|mi coche|voy en|voy con)\b/i,
+  /\b(?:propio|tengo carro|tengo moto|tengo veh[ií]culo|manejando|mi carro|mi auto|mi coche|voy con)\b/i,
   /\b(?:yes|yeah|yep)\b.*\b(?:own|have (?:a |my )?(?:car|transport|vehicle|ride)|my car|i drive)\b/i,
   /\b(?:i (?:have|drive) (?:a |my own )?(?:car|motorcycle|vehicle))\b/i,
   /\b(?:si[,.]?\s*(?:tengo|mi|con)\s*(?:carro|auto|coche|camioneta))\b/i,
@@ -218,7 +218,7 @@ export function extractBookingFields(text: string): Record<string, unknown> {
     fields.collected_people = parseInt(simpleNumberMatch[1], 10);
   }
 
-  const couplePattern = /\b(?:couple|pareja|dos personas|2 personas|mi esposo y yo|mi esposa y yo|mi novio y yo|mi novia y yo|mi pareja y yo|mi hija y yo|mi hijo y yo|mi (?:mam[aá]|madre|made) y yo|vamos dos|somos dos|somos 2|vamos 2)\b/i;
+  const couplePattern = /\b(?:couple|pareja|dos personas|2 personas|dos pilotos|mi esposo y yo|mi esposa y yo|mi novio y yo|mi novia y yo|mi pareja y yo|mi hija y yo|mi hijo y yo|mi (?:mam[aá]|madre|made) y yo|vamos dos|somos dos|somos 2|vamos 2|por ahora dos)\b/i;
   const soloPattern = /\b(?:sola|solo|voy sola|voy solo|ir[ií]a sola|ir[ií]a solo|yo sola|yo solo|una persona|1 persona|just me|only me|me alone|solo traveler)\b/i;
   const ambiguousParty = isAmbiguousPartyComparison(text);
   if (couplePattern.test(text) && !fields.collected_people && !ambiguousParty && !mixedAdultsAndChildren) {
@@ -252,9 +252,9 @@ export function extractBookingFields(text: string): Record<string, unknown> {
     }
   }
 
-  if (/transport|pickup|transporte|recoger|Bogotá|Bogota/i.test(text)) {
+  if (/\b(?:transporte privado|private transport|recoger(?:nos)? desde Bogot[aá])\b/i.test(text)) {
     if (!fields.collected_transport_need) {
-      fields.collected_transport_need = 'yes';
+      fields.collected_transport_need = 'from_bogota';
     }
   }
 

@@ -104,6 +104,18 @@ CREATE TABLE IF NOT EXISTS media_sends (
   sent_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS payment_reservations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  external_reference TEXT NOT NULL UNIQUE,
+  customer_phone TEXT NOT NULL,
+  preference_id TEXT UNIQUE,
+  expected_amount_cop INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  approved_at TEXT,
+  mercado_pago_payment_id TEXT UNIQUE
+);
+
 CREATE TABLE IF NOT EXISTS bridge_sessions (
   agent_chat_id TEXT PRIMARY KEY,
   customer_phone TEXT NOT NULL,

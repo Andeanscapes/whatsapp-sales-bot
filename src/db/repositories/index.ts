@@ -15,6 +15,7 @@ import {
   SqliteCustomerDataRepo,
   SqliteTranscriptRepo,
   SqliteFollowUpEventRepo,
+  SqlitePaymentReservationRepo,
 } from './sqlite-repos.js';
 
 export function createRepositories(db: Database.Database): Repositories {
@@ -33,6 +34,7 @@ export function createRepositories(db: Database.Database): Repositories {
     aiUsage: new SqliteAiUsageRepo(db),
     ownerAlert: new SqliteOwnerAlertRepo(db),
     mediaSend: new SqliteMediaSendRepo(db),
+    paymentReservation: new SqlitePaymentReservationRepo(db),
     bridgeSession: new SqliteBridgeSessionRepo(db),
     stats: new SqliteStatsRepo(db),
     systemErrors: new SqliteSystemErrorRepo(db),

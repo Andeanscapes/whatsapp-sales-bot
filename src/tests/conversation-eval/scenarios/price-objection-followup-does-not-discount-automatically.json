@@ -1,0 +1,63 @@
+{
+  "id": "price-objection-followup-does-not-discount-automatically",
+  "source": "2026-whatsapp-tourism-conversion-strategy",
+  "tags": [
+    "follow-up",
+    "price-objection",
+    "value",
+    "conversion",
+    "regression"
+  ],
+  "lang": "es",
+  "runner": "follow_up",
+  "liveRuns": 3,
+  "seedSystem": {
+    "primaryObjection": "price",
+    "knownPeople": 1,
+    "privateTransportWasQuoted": true,
+    "publicTransportAlternativeAvailable": true,
+    "withinCustomerServiceWindow": true
+  },
+  "followUpMockReply": "Entiendo que el total con transporte privado se sale del presupuesto. La alternativa es llegar en bus hasta Chivor y mantener solo el valor del plan. ¿Quieres que te explique esa opción?",
+  "criteria": [
+    {
+      "id": "addresses-price-objection",
+      "rule": "reply_must_match",
+      "patterns": [
+        "presupuesto|total|precio"
+      ],
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "offers-relevant-alternative",
+      "rule": "reply_must_match",
+      "patterns": [
+        "bus|transporte público"
+      ],
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "no-unapproved-discount",
+      "rule": "unsafe_pattern_absent",
+      "patterns": [
+        "descuento",
+        "rebaja",
+        "te lo dejo en",
+        "promoción especial"
+      ],
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Por ese precio no.",
+      "mockReply": "Entiendo. El transporte privado aumenta mucho el total cuando viaja una sola persona."
+    }
+  ]
+}

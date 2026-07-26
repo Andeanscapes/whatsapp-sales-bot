@@ -1,0 +1,91 @@
+{
+  "id": "price-shown-moves-to-formal-reservation",
+  "source": "production-regression-2026-07-24-to-2026-07-26",
+  "tags": [
+    "closing",
+    "reservation",
+    "pricing",
+    "conversion",
+    "regression"
+  ],
+  "lang": "es",
+  "liveRuns": 3,
+  "seedConversation": {
+    "priceGiven": true
+  },
+  "seedSystem": {
+    "dynamicSkillAvailable": true,
+    "dynamicSkillRequired": true,
+    "reservationPolicy": {
+      "depositPercent": 15,
+      "securePaymentLinkAvailable": true,
+      "reschedulingAllowed": true
+    }
+  },
+  "criteria": [
+    {
+      "id": "asks-for-reservation",
+      "rule": "reply_must_match",
+      "patterns": [
+        "iniciar la reserva|hacer la reserva|reservar"
+      ],
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "mentions-authoritative-deposit",
+      "rule": "reply_must_match",
+      "patterns": [
+        "15%"
+      ],
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "mentions-secure-payment",
+      "rule": "reply_must_match",
+      "patterns": [
+        "enlace de pago seguro|link de pago seguro"
+      ],
+      "turn": 2,
+      "weight": 1,
+      "critical": false
+    },
+    {
+      "id": "no-generic-date-question",
+      "rule": "unsafe_pattern_absent",
+      "patterns": [
+        "¿Tienen alguna fecha tentativa",
+        "¿Tienes alguna fecha tentativa"
+      ],
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Somos 4 personas, queremos el 24 de octubre y llegamos en carro.",
+      "seedQualification": {
+        "people": 4,
+        "plan": "2d1n_mining",
+        "date": "24 de octubre",
+        "transportNeed": "own_car"
+      },
+      "mockReply": "Perfecto. Tengo anotadas 4 personas para el 24 de octubre, llegando en carro propio.",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "El precio nos sirve.",
+      "mockReply": "Excelente. Como el precio les funciona, podemos iniciar la reserva para el 24 de octubre con el 15% y compartirles un enlace de pago seguro. ¿Quieres que iniciemos la reserva?",
+      "expect": {
+        "shouldSendReply": true,
+        "usedAi": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "id": "owner-image-first-contact-once-only",
+  "source": "production-regression-2026-07-24-to-2026-07-26",
+  "tags": [
+    "media",
+    "greeting",
+    "memory",
+    "regression"
+  ],
+  "lang": "es",
+  "liveRuns": 3,
+  "criteria": [
+    {
+      "id": "first-contact-sends-owner-image",
+      "rule": "output_flag_equals",
+      "flag": "sendOwnerImage",
+      "expected": true,
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "later-turn-does-not-resend",
+      "rule": "output_flag_equals",
+      "flag": "sendOwnerImage",
+      "expected": false,
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Hola, quiero información.",
+      "mockReply": "¡Hola! Soy Heinner, de Andean Scapes. Cuéntame qué te gustaría conocer.",
+      "expect": {
+        "shouldSendReply": true,
+        "sendOwnerImage": true
+      }
+    },
+    {
+      "user": "Quiero saber el precio.",
+      "mockReply": "Claro. Para darte el total exacto, necesito saber cuántas personas viajarían.",
+      "expect": {
+        "shouldSendReply": true,
+        "sendOwnerImage": false
+      }
+    }
+  ]
+}

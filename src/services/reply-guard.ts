@@ -166,6 +166,7 @@ export function detectsReservationIntent(text: string): boolean {
     /me gustaria (reservar|pagar|agendar|separar|apartar)(?: ya)?/,
     /(como|donde) se (reserva|paga|agenda|separa|aparta)/,
     /(como|donde) (reservo|pago|reservar|pagar|transfiero|consigno)/,
+    /como (?:hacemos|hacer) para (?:reservar|pagar|separar|agendar)/,
     /\b(lo confirmo|agendamos|separemos|reservemos|apartemos)\b/,
     /manda (los datos|el link|info para pagar|el numero)/,
     /(envia|enviame) (los datos|el link|info para pagar)/,

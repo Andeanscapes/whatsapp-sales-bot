@@ -5,6 +5,7 @@ import type { Repositories } from './db/repositories/index.js';
 import { logger } from './config/logger.js';
 import { healthRoutes } from './routes/health.route.js';
 import { whatsappWebhookRoutes } from './routes/whatsapp-webhook.route.js';
+import { mercadoPagoWebhookRoutes } from './routes/mercadopago-webhook.route.js';
 import { logSystemError } from './services/error-logger.js';
 
 export async function buildApp(repos: Repositories) {
@@ -33,6 +34,7 @@ export async function buildApp(repos: Repositories) {
 
   await app.register(healthRoutes, { repos });
   await app.register(whatsappWebhookRoutes, { repos });
+  await app.register(mercadoPagoWebhookRoutes, { repos });
 
   app.get('/', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async () => ({ ok: true }));
 

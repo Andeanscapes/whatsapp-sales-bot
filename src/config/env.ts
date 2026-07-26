@@ -85,6 +85,9 @@ export const envSchema = z.object({
   DYNAMIC_SKILL_URL: z.union([z.literal(''), z.string().url()]).default(''),
   DYNAMIC_SKILL_REFRESH_MS: z.coerce.number().catch(5000),
 
+  MERCADOPAGO_ACCESS_TOKEN: z.string().default(''),
+  MERCADOPAGO_WEBHOOK_SECRET: z.string().default(''),
+
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 }).refine(
   value => value.TIME_FINAL_NUDGE_HOURS > value.TIME_FOLLOW_HOURS,
