@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
+import { reportDeepSeekFailure, reportDeepSeekSuccess } from '../whatsapp-operational-health.js';
 
 /**
  * Shared low-level DeepSeek chat/completions transport. Both the reply client
@@ -68,6 +69,7 @@ export async function requestDeepSeekCompletion(input: DeepSeekCompletionInput):
 
     if (!response.ok) {
       logger.warn({ status: response.status }, `${input.logTag} http error`);
+      void reportDeepSeekFailure(`HTTP ${response.status}`);
       return null;
     }
 
@@ -75,6 +77,7 @@ export async function requestDeepSeekCompletion(input: DeepSeekCompletionInput):
     const parsed = deepSeekApiResponseSchema.safeParse(data);
     if (!parsed.success) {
       logger.warn({ error: parsed.error.message.slice(0, 200) }, `${input.logTag} invalid api response`);
+      void reportDeepSeekFailure('respuesta invalida');
       return null;
     }
 
@@ -82,6 +85,9 @@ export async function requestDeepSeekCompletion(input: DeepSeekCompletionInput):
     const content = choice?.message?.content?.trim();
     const promptTokens = parsed.data.usage?.prompt_tokens ?? 0;
     const completionTokens = parsed.data.usage?.completion_tokens ?? 0;
+
+    // Transport OK even if content empty — do not treat as infra outage.
+    void reportDeepSeekSuccess();
 
     if (!content) {
       logger.warn({
@@ -96,6 +102,7 @@ export async function requestDeepSeekCompletion(input: DeepSeekCompletionInput):
     return { content, finishReason: choice?.finish_reason, promptTokens, completionTokens };
   } catch (error) {
     logger.warn({ error: error instanceof Error ? error.message : 'unknown' }, `${input.logTag} request failed`);
+    void reportDeepSeekFailure(error instanceof Error ? error.message : 'conexion fallida');
     return null;
   }
 }

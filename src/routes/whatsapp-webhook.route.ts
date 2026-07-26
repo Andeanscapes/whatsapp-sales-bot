@@ -14,6 +14,7 @@ import { getOwnerImage, getDynamicPlanImages, getGalleryImages } from '../servic
 import { isBridgeActive } from '../services/bridge-service.js';
 import { bridgeMessages } from '../services/bridge-messages.js';
 import { isSoftCloseMessage } from '../services/reply-guard.js';
+import { normalizePhone } from '../services/report-exclusions.js';
 import { logger } from '../config/logger.js';
 import { logSystemError } from '../services/error-logger.js';
 
@@ -123,6 +124,11 @@ export function extractMessages(body: unknown): ExtractedMessage[] | null {
     }
   }
   return result.length > 0 ? result : null;
+}
+
+export function isWebhookSenderAllowed(from: string): boolean {
+  if (!env.WEBHOOK_OWNER_ONLY_ENABLED) return true;
+  return normalizePhone(from) === normalizePhone(env.OWNER_PERSONAL_WHATSAPP_NUMBER);
 }
 
 /**
@@ -417,6 +423,10 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
 
     for (const msg of messages) {
       logger.info({ from: msg.from, type: msg.type, msgId: msg.id, textLen: msg.type === 'text' ? msg.text.length : undefined }, '[WEBHOOK] incoming WhatsApp message');
+      if (!isWebhookSenderAllowed(msg.from)) {
+        logger.info({ from: msg.from }, '[WEBHOOK] ignored non-owner sender (WEBHOOK_OWNER_ONLY_ENABLED)');
+        continue;
+      }
       if (repos.dedupe.isProcessed(msg.id)) continue;
 
       repos.dedupe.markProcessed(msg.id);
