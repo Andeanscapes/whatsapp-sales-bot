@@ -30,6 +30,7 @@ export const envSchema = z.object({
   PORT: z.coerce.number().catch(3000),
   HOST: z.string().default('127.0.0.1'),
   STARTUP_DIAGNOSTICS_ENABLED: boolSchema.default(false),
+  WEBHOOK_OWNER_ONLY_ENABLED: boolSchema.default(false),
   PUBLIC_BASE_URL: z.string().default('https://bot.yourdomain.com'),
   PUBLIC_TOUR_URL: z.string().default('https://your-public-site.com/experiences/emerald-mining-tour'),
 

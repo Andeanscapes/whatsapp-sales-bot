@@ -5,7 +5,7 @@ import { createRepositories, type Repositories } from '../db/repositories/index.
 import { env } from '../config/env.js';
 import { loadSkills } from '../services/skill-loader.js';
 import { resetRoutingConfigCache, type RoutingConfig } from '../services/lead-routing.js';
-import { extractMessages, forwardBridgeMessage, forwardPostHandoffMessage, forwardPostHandoffMedia, notifyAssignedLineIfDormant, type ExtractedMessage } from '../routes/whatsapp-webhook.route.js';
+import { extractMessages, forwardBridgeMessage, forwardPostHandoffMessage, forwardPostHandoffMedia, isWebhookSenderAllowed, notifyAssignedLineIfDormant, type ExtractedMessage } from '../routes/whatsapp-webhook.route.js';
 import { formatLeadHistory } from '../commands/lead-format.js';
 
 const { mockSendTelegram, mockSendTelegramPhoto, mockSendTelegramVoice, mockDownloadMedia } = vi.hoisted(() => ({
@@ -41,6 +41,8 @@ let db: Database.Database;
 let repos: Repositories;
 let previousRoutingJson: string;
 let previousTelegramChatId: string;
+let previousOwnerPhone: string;
+let previousWebhookOwnerOnly: boolean;
 
 function msg(text: string, id = 'wamid-1'): ExtractedMessage {
   return { from: PHONE, id, type: 'text', text, media: null, timestamp: '' };
@@ -71,6 +73,8 @@ beforeEach(() => {
   repos = createRepositories(db);
   previousRoutingJson = env.LEAD_ROUTING_JSON;
   previousTelegramChatId = env.TELEGRAM_CHAT_ID;
+  previousOwnerPhone = env.OWNER_PERSONAL_WHATSAPP_NUMBER;
+  previousWebhookOwnerOnly = env.WEBHOOK_OWNER_ONLY_ENABLED;
   env.LEAD_ROUTING_JSON = JSON.stringify(routing);
   // Owner chat must be non-empty: isOwnerChat('') is false by design, and CI
   // does not load .env.dev so TELEGRAM_CHAT_ID defaults to ''.
@@ -89,8 +93,33 @@ beforeEach(() => {
 afterEach(() => {
   env.LEAD_ROUTING_JSON = previousRoutingJson;
   env.TELEGRAM_CHAT_ID = previousTelegramChatId;
+  env.OWNER_PERSONAL_WHATSAPP_NUMBER = previousOwnerPhone;
+  env.WEBHOOK_OWNER_ONLY_ENABLED = previousWebhookOwnerOnly;
   resetRoutingConfigCache();
   db.close();
+});
+
+describe('isWebhookSenderAllowed', () => {
+  it('allows any sender when owner-only mode is disabled', () => {
+    env.WEBHOOK_OWNER_ONLY_ENABLED = false;
+    env.OWNER_PERSONAL_WHATSAPP_NUMBER = '573001112233';
+
+    expect(isWebhookSenderAllowed('573009998888')).toBe(true);
+  });
+
+  it('allows the owner sender when owner-only mode is enabled', () => {
+    env.WEBHOOK_OWNER_ONLY_ENABLED = true;
+    env.OWNER_PERSONAL_WHATSAPP_NUMBER = '+57 300 111 2233';
+
+    expect(isWebhookSenderAllowed('573001112233')).toBe(true);
+  });
+
+  it('blocks non-owner senders when owner-only mode is enabled', () => {
+    env.WEBHOOK_OWNER_ONLY_ENABLED = true;
+    env.OWNER_PERSONAL_WHATSAPP_NUMBER = '573001112233';
+
+    expect(isWebhookSenderAllowed('573009998888')).toBe(false);
+  });
 });
 
 describe('extractMessages', () => {
