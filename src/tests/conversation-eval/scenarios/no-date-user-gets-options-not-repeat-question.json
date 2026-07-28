@@ -46,10 +46,10 @@
     },
     {
       "user": "Todavía no tengo fecha.",
-      "mockReply": "No hay problema. Puedo mostrarte las próximas fechas reales disponibles para que compares con calma.",
+      "mockReply": "No hay problema. Puedo mostrarte opciones y próximas fechas disponibles para que compares con calma.",
       "expect": {
         "shouldSendReply": true,
-        "usedAi": true
+        "usedAi": false
       }
     }
   ]

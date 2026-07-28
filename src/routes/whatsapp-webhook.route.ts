@@ -511,12 +511,16 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
             }
 
             if (sent) {
-              repos.message.addMessage({
-                customer_phone: msg.from,
-                direction: 'outbound',
-                message_type: 'text',
-                body: result.reply,
-                created_at: new Date().toISOString(),
+              repos.runInTransaction(() => {
+                repos.message.addMessage({
+                  customer_phone: msg.from,
+                  direction: 'outbound',
+                  message_type: 'text',
+                  body: result.reply,
+                  created_at: new Date().toISOString(),
+                });
+                if (result.outboundDateAction === 'asked') repos.conversation.setDateAsked(msg.from);
+                if (result.outboundDateAction === 'options_offered') repos.conversation.setDateOptionsOffered(msg.from);
               });
 
               if (result.shouldSendOwnerImage) {

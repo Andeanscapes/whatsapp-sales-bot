@@ -9,6 +9,12 @@ const preferenceInputSchema = z.object({
   amountCop: z.number().int().positive(),
   externalReference: z.string().trim().min(1),
   notificationUrl: z.string().url().refine(value => new URL(value).protocol === 'https:', 'must use HTTPS'),
+  planId: z.string().trim().min(1),
+  date: z.string().trim().min(1),
+  people: z.number().int().positive(),
+  transportNeed: z.string().trim().min(1).nullable(),
+  depositPercent: z.number().int().positive(),
+  availabilityConfirmedAt: z.string().datetime({ offset: true }),
 });
 
 const preferenceResponseSchema = z.object({
@@ -22,6 +28,12 @@ export interface MercadoPagoPreferenceInput {
   amountCop: number;
   externalReference: string;
   notificationUrl: string;
+  planId: string;
+  date: string;
+  people: number;
+  transportNeed: string | null;
+  depositPercent: number;
+  availabilityConfirmedAt: string;
 }
 
 export interface MercadoPagoPreferenceResult {
@@ -46,15 +58,31 @@ export async function createMercadoPagoPreference(
   }
 
   try {
-    repos.paymentReservation.createPending(
-      preference.externalReference,
-      preference.customerPhone,
-      preference.amountCop,
-    );
+    const created = repos.paymentReservation.createPending({
+      externalReference: preference.externalReference,
+      customerPhone: preference.customerPhone,
+      expectedAmountCop: preference.amountCop,
+      planId: preference.planId,
+      date: preference.date,
+      people: preference.people,
+      transportNeed: preference.transportNeed,
+      depositPercent: preference.depositPercent,
+      availabilityConfirmedAt: preference.availabilityConfirmedAt,
+    });
+    if (!created) return null;
   } catch {
     logger.warn('[MERCADOPAGO] could not create payment reservation');
     return null;
   }
+
+  const failPending = (): null => {
+    try {
+      repos.paymentReservation.markFailed(preference.externalReference);
+    } catch {
+      logger.warn('[MERCADOPAGO] could not mark payment reservation failed');
+    }
+    return null;
+  };
 
   let response: Response;
   try {
@@ -77,12 +105,12 @@ export async function createMercadoPagoPreference(
     });
   } catch {
     logger.warn('[MERCADOPAGO] preference request failed');
-    return null;
+    return failPending();
   }
 
   if (!response.ok) {
     logger.warn({ status: response.status }, '[MERCADOPAGO] preference request rejected');
-    return null;
+    return failPending();
   }
 
   let payload: unknown;
@@ -90,20 +118,24 @@ export async function createMercadoPagoPreference(
     payload = await response.json();
   } catch {
     logger.warn('[MERCADOPAGO] preference response was not JSON');
-    return null;
+    return failPending();
   }
 
   const parsedResponse = preferenceResponseSchema.safeParse(payload);
   if (!parsedResponse.success) {
     logger.warn('[MERCADOPAGO] preference response was invalid');
-    return null;
+    return failPending();
   }
 
   try {
-    repos.paymentReservation.attachPreference(preference.externalReference, parsedResponse.data.id);
+    repos.paymentReservation.attachPreference(
+      preference.externalReference,
+      parsedResponse.data.id,
+      parsedResponse.data.init_point,
+    );
   } catch {
     logger.warn('[MERCADOPAGO] could not attach payment preference');
-    return null;
+    return failPending();
   }
 
   return {

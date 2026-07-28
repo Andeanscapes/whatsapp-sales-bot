@@ -11,6 +11,7 @@ import {
   getLastAssistantQuestion,
 } from './qualification-engine.js';
 import { getActiveExperience, getCommonQuestions } from './product-registry.js';
+import { MONTH_NAMES } from './constants.js';
 
 export { isCorrectionMessage, getLastAssistantQuestion };
 
@@ -223,7 +224,7 @@ export function isReservationIntentOrConfirmation(
     /(?:revision de reserva|dejarlo para revision|lo dejemos para revision|pasarlo al equipo|paso (?:esto |todo )?al equipo)/,
     /(?:want (?:me|us) to check|shall (?:I|we) check availability)/,
     /(?:listo para|preparado para|ready to)/,
-    /(?:inicie esa validacion|inicie la validacion|quieres que inicie|quieres que la inicie)/,
+    /(?:inicie esa validacion|inicie la validacion|quieres que inicie|quieres que la inicie|la inicie ahora)/,
     /(?:shall i start that validation|shall i start it|start it now|want me to start)/,
     /(?:separamos con anticipo|reserva se separa|booking is held with)/,
   ];
@@ -264,6 +265,20 @@ export function detectProactiveLeadPain(message: string): LeadPain | null {
 
 export function containsHandoffPhrase(reply: string): boolean {
   return HANDOFF_PHRASE_REGEX.test(reply);
+}
+
+const CLOSING_DELAY_PATTERNS = [
+  /\bma[ñn]ana\s+te\s+(genero|env[ií]o|mando|paso)/i,
+  /\bluego\s+te\s+(?:lo\s+)?(?:env[ií]o|mando|paso)/i,
+  /\bluego\s+te\s+confirmo\s+(?:disponibilidad|la\s+disponibilidad|el\s+cupo|la\s+fecha|la\s+reserva|el\s+precio)\b/i,
+  /\bd[eé]jame\s+saber\s+si\s+te\s+gustar[ií]a/i,
+  /\blet\s+me\s+know\s+if\s+you(?:'d|\s+would)\s+like\b/i,
+  /\bI(?:'ll|\s+will)\s+(generate|send|get\s+back)\s+(?:it|to\s+you|the\s+link)\s+(?:tomorrow|later)\b/i,
+  /\bcuando\s+quieras\s+(?:seguimos|reservamos|me\s+(?:dices|avisas|escribes))\b/i,
+];
+
+export function containsClosingDelay(reply: string): boolean {
+  return CLOSING_DELAY_PATTERNS.some(p => p.test(reply));
 }
 
 export function stripHandoffPhrases(reply: string): string {
@@ -355,7 +370,8 @@ export function qualificationSummary(q: MergedQualification, lang: 'es' | 'en', 
     if (human) parts.push(human);
   }
   if (q.transporte === 'public_bus') parts.push(lang === 'es' ? 'con bus por su cuenta' : 'with public bus on their own');
-  else if (q.transporte != null) parts.push(lang === 'es' ? 'con carro propio' : 'with your own car');
+  else if (q.transporte === 'from_bogota') parts.push(lang === 'es' ? 'con transporte desde Bogota' : 'with transport from Bogota');
+  else if (q.transporte != null) parts.push(lang === 'es' ? 'con transporte propio' : 'with own transport');
   if (q.mascota != null) parts.push(lang === 'es' ? 'con mascota' : 'with pet');
   return parts.length > 0 ? parts.join(', ') : (lang === 'es' ? 'tus datos' : 'your details');
 }
@@ -442,4 +458,42 @@ export function buildFallbackReply(
 
   const name = String(q.nombre ?? '');
   return fb.objectionResolvedContinue.replace('{{name}}', name);
+}
+
+const ALL_MONTH_PATTERN = MONTH_NAMES.join('|');
+
+export interface StripAssumedDateOpts {
+  /** Only true for thin first-contact turns — never strip mid-funnel availability offers. */
+  enabled: boolean;
+  hasCustomerDate: boolean;
+  hasConfirmedDate: boolean;
+  hasDateWindow: boolean;
+}
+
+/**
+ * First-contact only: strip LLM-invented date clauses ("para marzo", "for March")
+ * when the customer never gave a date. Disabled for later turns so legitimate
+ * availability offers like "el 14 de marzo" are preserved.
+ */
+export function stripAssumedDatePhrases(reply: string, opts: StripAssumedDateOpts): string {
+  if (!opts.enabled || opts.hasCustomerDate || opts.hasConfirmedDate || opts.hasDateWindow) return reply;
+
+  const pattern = new RegExp(
+    `\\s(?:para|for|en|in)\\s+(?:el\\s+)?(?:\\d{1,2}\\s+(?:de\\s+)?)?\\b(?:${ALL_MONTH_PATTERN})\\b`,
+    'i',
+  );
+  return reply.replace(pattern, '').replace(/\s{2,}/g, ' ').trim();
+}
+
+/** First-contact only: drop product/experience assumptions the customer never stated. */
+export function stripAssumedExperienceClaims(reply: string, opts: { enabled: boolean; customerNamedExperience: boolean }): string {
+  if (!opts.enabled || opts.customerNamedExperience) return reply;
+  const cleaned = reply
+    .replace(/\b(?:veo que te interesa|i see (?:that )?you(?:'re| are) interested in)[^.!?\n]*/gi, '')
+    .replace(/\b(?:la )?experiencia minera\b/gi, '')
+    .replace(/\bmining experience\b/gi, '')
+    .replace(/\b(?:mina|esmeralda|chivor|hacienda|apicultura|ganader[ií]a)\b/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  return cleaned === reply.trim() ? reply : cleaned;
 }

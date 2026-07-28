@@ -230,12 +230,16 @@ export async function runTurn(
   if (ctx.applyFixtureOutput) applyFixtureOutput(output, turnDef);
 
   if (output.shouldSendReply && output.reply) {
-    ctx.repos.message.addMessage({
-      customer_phone: ctx.customerPhone,
-      direction: 'outbound',
-      message_type: 'text',
-      body: output.reply,
-      created_at: new Date().toISOString(),
+    ctx.repos.runInTransaction(() => {
+      ctx.repos.message.addMessage({
+        customer_phone: ctx.customerPhone,
+        direction: 'outbound',
+        message_type: 'text',
+        body: output.reply,
+        created_at: new Date().toISOString(),
+      });
+      if (output.outboundDateAction === 'asked') ctx.repos.conversation.setDateAsked(ctx.customerPhone);
+      if (output.outboundDateAction === 'options_offered') ctx.repos.conversation.setDateOptionsOffered(ctx.customerPhone);
     });
   }
 

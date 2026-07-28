@@ -1,9 +1,9 @@
 {
   "name": "Andean Scapes 2026 conversion and follow-up regression pack",
   "version": "2026-07-26",
-  "totalTests": 41,
+  "totalTests": 98,
   "previousRegressionTests": 27,
-  "newConversionFollowupTests": 14,
+  "newConversionFollowupTests": 18,
   "conversionGoal": {
     "currentObservedImmediateRate": "approximately 0.5%–0.7%",
     "targetMatureRate": "3%–4%",
@@ -24,6 +24,9 @@
     "Retarget only eligible non-responders"
   ],
   "newFiles": [
+    "closing-qualified-lead-gets-direct-ask.json",
+    "consult-partner-gets-shareable-recap.json",
+    "walk-away-promise-with-quote-gets-one-reminder.json",
     "followup-no-second-inbound-value-first.json",
     "followup-no-second-inbound-last-touch-before-window-close.json",
     "followup-cap-prevents-overmessaging.json",
@@ -37,20 +40,31 @@
     "followup-message-is-concise-and-single-cta.json",
     "followup-personalization-must-use-real-known-context.json",
     "outside-24h-followup-requires-approved-template.json",
-    "followup-stop-after-clear-rejection.json"
+    "followup-stop-after-clear-rejection.json",
+    "date-deferred-options-then-price.json",
+    "date-ask-requires-plan-when-unknown.json",
+    "date-list-ask-not-price-redump.json",
+    "selected-date-prompts-reservation-validation.json",
+    "owner-image-generic-contact-price-once-only.json",
+    "first-contact-no-assumed-plan-or-date.json"
   ],
   "allFiles": [
     "all-known-qualification-fields-not-reasked.json",
     "answer-price-intent-before-qualification.json",
     "availability-date-weekday-consistency.json",
+    "closing-qualified-lead-gets-direct-ask.json",
     "consult-group-follow-up-uses-context.json",
     "consult-group-followup-after-promised-time.json",
     "consult-group-followup-respects-promised-time.json",
+    "consult-partner-gets-shareable-recap.json",
+    "date-ask-requires-plan-when-unknown.json",
+    "date-list-ask-not-price-redump.json",
     "direct-question-answer-first-across-sales-stages.json",
     "exact-date-followup-uses-soft-close-not-more-discovery.json",
     "expired-availability-dates-are-filtered.json",
     "explicit-reservation-intent-overrides-low-score.json",
     "family-child-suitability-before-close.json",
+    "first-contact-no-assumed-plan-or-date.json",
     "follow-up-lifecycle-suppression-matrix.json",
     "followup-cap-prevents-overmessaging.json",
     "followup-message-is-concise-and-single-cta.json",
@@ -66,10 +80,13 @@
     "media-send-frequency-and-relevance.json",
     "motorcycle-context-personalized-strategy.json",
     "no-date-user-gets-options-not-repeat-question.json",
+    "date-deferred-options-then-price.json",
+    "selected-date-prompts-reservation-validation.json",
     "no-reply-after-24h-reactivation-eligibility.json",
     "objection-never-triggers-identical-price-template.json",
     "outside-24h-followup-requires-approved-template.json",
     "owner-image-first-contact-once-only.json",
+    "owner-image-generic-contact-price-once-only.json",
     "payment-abandonment-followup-recovers-with-help.json",
     "plan-and-media-must-remain-consistent.json",
     "prefilled-message-alone-is-not-engaged-lead.json",
@@ -80,7 +97,8 @@
     "reservation-policy-partially-missing-fails-closed.json",
     "reservation-ready-does-not-force-human-handoff.json",
     "transport-ambiguity-clarified-before-quote.json",
-    "truthful-urgency-only-with-authoritative-capacity.json"
+    "truthful-urgency-only-with-authoritative-capacity.json",
+    "walk-away-promise-with-quote-gets-one-reminder.json"
   ],
   "implementationNotes": [
     "Map semantic rules and flags to the exact names supported by the repository runner.",

@@ -18,8 +18,9 @@ import { checkTimeWindow, isWithinServiceWindow } from './time-window-policy.js'
 import { getCollectedFields } from './qualification-engine.js';
 import { INPUT_COST_PER_TOKEN, OUTPUT_COST_PER_TOKEN } from './constants.js';
 import { getSkills } from './skill-loader.js';
-import { getActiveExperience, getGalleryImages, getShortDescription } from './product-registry.js';
+import { getActiveExperience, getGalleryImages, getShortDescription, isPricingAvailable } from './product-registry.js';
 import { galleryMediaId, recordGalleryNudge, recordImageSend, selectEligibleGalleryImages } from './media-service.js';
+import { calculatePriceQuote, formatCop } from './pricing-calculator.js';
 
 /**
  * WhatsApp only allows free-form messages within 24h of the customer's last
@@ -61,6 +62,19 @@ const GENERIC_CONTINUATION_PING_PATTERNS = [
   /\bquieres\s+que\s+sigamos\b/i,
   /\bwould\s+you\s+like\s+to\s+continue\b/i,
   /\bhay\s+algo\s+m[aá]s\s+en\s+lo\s+que\s+pueda\s+ayudarte\b/i,
+];
+
+/** Reject unsupported catalog language not grounded in the supplied experience context. */
+const MULTI_EXPERIENCE_NUDGE_PATTERNS = [
+  /\balguna\s+experiencia\s+espec[ií]fica\b/i,
+  /\bexperiencia\s+en\s+particular\b/i,
+  /\bqu[eé]\s+tipo\s+de\s+(?:aventura|experiencia)\b/i,
+  /\bwhat\s+(?:kind|type)\s+of\s+(?:adventure|experience)\b/i,
+  /\brecomiende\s+seg[uú]n\s+tus\s+intereses\b/i,
+  /\brecommend\s+according\s+to\s+your\s+interests\b/i,
+  /\bwhich\s+experience\b/i,
+  /\bwhich\s+tour\b/i,
+  /\bqu[eé]\s+experiencia\s+(?:te\s+)?interesa\b/i,
 ];
 
 const REVIEW_REMINDER_BLOCK_PATTERNS = [
@@ -215,6 +229,23 @@ async function processCandidates(
     const collected = getCollectedFields(repos, c.customerPhone);
     const salesPhase = repos.conversation.getSalesPhase(c.customerPhone);
 
+    const priceGivenAt = repos.conversation.getPriceGivenAt(c.customerPhone);
+    const knownPeople = typeof collected.personas === 'number' ? collected.personas : null;
+    const knownDate = typeof collected.fecha === 'string' && collected.fecha.trim() ? collected.fecha : null;
+    let knownPriceFormatted: string | null = null;
+    if (priceGivenAt && knownPeople != null) {
+      const exp = getActiveExperience(getSkills());
+      if (isPricingAvailable(exp)) {
+        const priceQuote = calculatePriceQuote(exp, {
+          planId: typeof collected.plan === 'string' ? collected.plan : undefined,
+          people: knownPeople,
+        });
+        if (priceQuote && (priceQuote.total ?? priceQuote.planTotal) > 0) {
+          knownPriceFormatted = `$ ${formatCop(priceQuote.total ?? priceQuote.planTotal)} COP`;
+        }
+      }
+    }
+
     // Never follow up on leads already in closing / pending validation.
     if (salesPhase === 'closing') continue;
 
@@ -244,8 +275,12 @@ async function processCandidates(
     if (!claimed) continue;
 
     if (stage === 'first_nudge' && isPermanentFollowUpPause(latestInbound.content)) {
-      repos.followUpEvent.markClaimSuppressed(c.customerPhone, anchorInboundAt, stage, 'customer_follow_up_promise');
-      continue;
+      if (repos.conversation.getPriceGivenAt(c.customerPhone)) {
+        // Promised follow-up with a quoted price: allow ONE gentle value-first reminder.
+      } else {
+        repos.followUpEvent.markClaimSuppressed(c.customerPhone, anchorInboundAt, stage, 'customer_follow_up_promise');
+        continue;
+      }
     }
     if (stage === 'first_nudge' && isReviewPause(latestInbound.content)) {
       repos.followUpEvent.markClaimSuppressed(c.customerPhone, anchorInboundAt, stage, 'review_pause');
@@ -262,7 +297,7 @@ async function processCandidates(
 
     let usageRecorded = false;
     const result = await llmClient.complete({
-      systemPrompt: buildFollowUpPrompt({ lang, phase: salesPhase, stage, reviewReminder }),
+      systemPrompt: buildFollowUpPrompt({ skills: getSkills(), lang, phase: salesPhase, stage, reviewReminder, knownPeople, knownDate, knownPriceFormatted }),
       message: `Generate the follow-up now. Collected facts: ${JSON.stringify(collected)}`,
       history: history.map(h => ({ role: h.role, content: h.content })),
       lang,
@@ -320,6 +355,10 @@ async function processCandidates(
       reply = standardFollowUpFallback(lang, salesPhase, stage);
     }
     if (GENERIC_CONTINUATION_PING_PATTERNS.some(p => p.test(reply))) {
+      reply = standardFollowUpFallback(lang, salesPhase, stage);
+    }
+    if (MULTI_EXPERIENCE_NUDGE_PATTERNS.some(p => p.test(reply))) {
+      logger.warn({ phone: c.customerPhone, replyLen: reply.length }, '[FOLLOW_UP] multi-experience draft replaced');
       reply = standardFollowUpFallback(lang, salesPhase, stage);
     }
     // Same safety guards as the live reply path: unsafe drafts never reach customers.

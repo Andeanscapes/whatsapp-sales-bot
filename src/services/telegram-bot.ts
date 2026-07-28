@@ -411,7 +411,7 @@ export function registerCommands(): void {
   registerCommand({
     name: 'payment',
     description: 'Crear y enviar enlace Mercado Pago despues de validar disponibilidad',
-    usage: '<telefono>',
+    usage: '<telefono> confirm',
     ownerOnly: true,
     handler: paymentHandler,
   });

@@ -16,6 +16,8 @@ export interface RecentMessage {
   messageType?: string;
 }
 
+export type DateStatus = 'unasked' | 'asked' | 'deferred' | 'options_offered' | 'selected' | 'window';
+
 export interface ConversationRepository {
   getByPhone(phone: string): ConversationRow | undefined;
   upsert(phone: string, data: Record<string, unknown>): void;
@@ -31,6 +33,11 @@ export interface ConversationRepository {
   updateLeadScore(phone: string, score: number): void;
   getCollectedFields(phone: string): Record<string, unknown>;
   clearCollectedDate(phone: string): void;
+  getDateStatus(phone: string): DateStatus;
+  setDateAsked(phone: string): void;
+  setDateDeferred(phone: string): void;
+  setDateOptionsOffered(phone: string): void;
+  setSelectedDate(phone: string, date: string): void;
   getCollectedDateWindow(phone: string): string | null;
   setCollectedDateWindow(phone: string, window: string | null): void;
   getCollectedPlan(phone: string): string | null;
@@ -132,14 +139,33 @@ export interface MediaSendRepository {
   recordSend(phone: string, mediaId: string): void;
 }
 
-export type PaymentReservationStatus = 'pending' | 'approved';
+export type PaymentReservationStatus = 'pending' | 'approved' | 'failed';
+
+export interface PaymentReservationCreate {
+  externalReference: string;
+  customerPhone: string;
+  expectedAmountCop: number;
+  planId: string;
+  date: string;
+  people: number;
+  transportNeed: string | null;
+  depositPercent: number;
+  availabilityConfirmedAt: string;
+}
 
 export interface PaymentReservation {
   id: number;
   externalReference: string;
   customerPhone: string;
   preferenceId: string | null;
+  paymentUrl: string | null;
   expectedAmountCop: number;
+  planId: string | null;
+  date: string | null;
+  people: number | null;
+  transportNeed: string | null;
+  depositPercent: number | null;
+  availabilityConfirmedAt: string | null;
   status: PaymentReservationStatus;
   createdAt: string;
   approvedAt: string | null;
@@ -147,10 +173,12 @@ export interface PaymentReservation {
 }
 
 export interface PaymentReservationRepository {
-  createPending(externalReference: string, customerPhone: string, expectedAmountCop: number): void;
-  attachPreference(externalReference: string, preferenceId: string): void;
+  createPending(reservation: PaymentReservationCreate): boolean;
+  attachPreference(externalReference: string, preferenceId: string, paymentUrl: string): void;
   getByExternalReference(externalReference: string): PaymentReservation | null;
+  getPendingByCustomerPhone(customerPhone: string): PaymentReservation | null;
   markApproved(externalReference: string, mercadoPagoPaymentId: string): boolean;
+  markFailed(externalReference: string): void;
 }
 
 export type ConversationMode = 'bot' | 'bridge_active' | 'referred' | 'human_pending';
@@ -223,6 +251,7 @@ export interface ConversationRow {
   collected_name: string | null;
   collected_date: string | null;
   collected_date_window: string | null;
+  date_status: DateStatus | null;
   collected_people: number | null;
   collected_transport_need: string | null;
   collected_lodging_need: string | null;
@@ -438,6 +467,7 @@ export interface Repositories {
   customerData: CustomerDataRepository;
   transcripts: TranscriptRepository;
   followUpEvent: FollowUpEventRepository;
+  runInTransaction(operation: () => void): void;
   isPaused(): boolean;
   setPaused(paused: boolean): void;
   ping(): boolean;

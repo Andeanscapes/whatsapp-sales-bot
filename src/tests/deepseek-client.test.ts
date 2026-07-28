@@ -1,7 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { buildSystemPrompt } from '../services/deepseek-client.js';
+import { buildFollowUpPrompt, buildSystemPrompt } from '../services/deepseek-client.js';
 import { loadSkills, type Skills } from '../services/skill-loader.js';
 import { AVAILABILITY_NOT_AVAILABLE, PRICING_NOT_AVAILABLE } from '../services/dynamic-data-service.js';
+import { getActiveExperience, getShortDescription } from '../services/product-registry.js';
+import { containsClosingDelay } from '../services/reply-guard.js';
+
+describe('buildFollowUpPrompt', () => {
+  it('derives supported experience context from the product registry', () => {
+    const skills = loadSkills();
+    const experience = getActiveExperience(skills);
+    const prompt = buildFollowUpPrompt({ skills, lang: 'es', phase: 'greeting', stage: 'first_nudge' });
+
+    expect(prompt).toContain(`Supported experience: ${experience.name}`);
+    expect(prompt).toContain(`Description: ${getShortDescription(experience)}`);
+    expect(prompt).not.toContain('This business has ONE core experience');
+  });
+});
 
 describe('buildSystemPrompt', () => {
   it('injects sales tactics from skill data', () => {
@@ -142,3 +156,45 @@ function withUnavailablePricingAndAvailability(skills: Skills): Skills {
     },
   };
 }
+
+describe('containsClosingDelay', () => {
+  it('detects "mañana te envío" postponement', () => {
+    expect(containsClosingDelay('Perfecto, mañana te envío los datos de pago.')).toBe(true);
+  });
+
+  it('detects "déjame saber si te gustaría" stall', () => {
+    expect(containsClosingDelay('Déjame saber si te gustaría dejar tu reserva en firme.')).toBe(true);
+  });
+
+  it('detects "luego te confirmo" delay', () => {
+    expect(containsClosingDelay('Luego te confirmo disponibilidad para esa fecha.')).toBe(true);
+  });
+
+  it('detects "let me know if you would like" English', () => {
+    expect(containsClosingDelay('Let me know if you would like to book this date.')).toBe(true);
+  });
+
+  it('detects "I will send the link tomorrow"', () => {
+    expect(containsClosingDelay('Great, I will send the link tomorrow morning.')).toBe(true);
+  });
+
+  it('detects "cuando quieras seguimos" indefinite deferral', () => {
+    expect(containsClosingDelay('Cuando quieras seguimos con la reserva.')).toBe(true);
+  });
+
+  it('normal closing message passes (no delay)', () => {
+    expect(containsClosingDelay('¿Quieres que valide disponibilidad para el 15 de agosto?')).toBe(false);
+  });
+
+  it('value-only description passes (no delay)', () => {
+    expect(containsClosingDelay('Incluye alojamiento, comidas, guía local y experiencia en la mina.')).toBe(false);
+  });
+
+  it('booking intent passes (no delay)', () => {
+    expect(containsClosingDelay('Perfecto, inicia la reserva con el 15% de anticipo.')).toBe(false);
+  });
+
+  it('legitimate operational confirm passes (no delay)', () => {
+    expect(containsClosingDelay('Te escribo y luego te confirmo el resultado de la validación.')).toBe(false);
+  });
+});
