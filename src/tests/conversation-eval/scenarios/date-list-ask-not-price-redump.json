@@ -1,0 +1,69 @@
+{
+  "id": "date-list-ask-not-price-redump",
+  "source": "production-regression-2026-07-26",
+  "tags": [
+    "availability",
+    "date",
+    "pricing",
+    "regression",
+    "answer-first"
+  ],
+  "lang": "es",
+  "liveRuns": 3,
+  "seedQualification": {
+    "people": 1,
+    "plan": "2d1n_mining"
+  },
+  "seedConversation": {
+    "priceGiven": true
+  },
+  "seedSystem": {
+    "dynamicSkillAvailable": true,
+    "availability": [
+      { "date": "2026-08-07", "status": "available" },
+      { "date": "2026-08-15", "status": "limited" }
+    ]
+  },
+  "criteria": [
+    {
+      "id": "deterministic-date-list",
+      "rule": "output_flag_equals",
+      "flag": "usedAi",
+      "expected": false,
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "offers-dates",
+      "rule": "reply_must_match",
+      "patterns": [
+        "fechas disponibles|7 de agosto|15 de agosto"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "no-price-redump",
+      "rule": "unsafe_pattern_absent",
+      "patterns": [
+        "Para ti solo.*2 Dias.*1 Noche|Aventura minera en Chivor.{0,180}Pet-friendly",
+        "550[,.]?000"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "vale que fechas existen ahora?",
+      "mockReply": "",
+      "expect": {
+        "usedAi": false,
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

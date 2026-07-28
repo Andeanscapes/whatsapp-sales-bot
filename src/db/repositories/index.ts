@@ -41,6 +41,9 @@ export function createRepositories(db: Database.Database): Repositories {
     customerData: new SqliteCustomerDataRepo(db),
     transcripts: new SqliteTranscriptRepo(db),
     followUpEvent: new SqliteFollowUpEventRepo(db),
+    runInTransaction(operation: () => void): void {
+      db.transaction(operation)();
+    },
     isPaused(): boolean {
       const row = db.prepare("SELECT value FROM bot_config WHERE key = 'paused'").get() as { value: string } | undefined;
       return row?.value === 'true';

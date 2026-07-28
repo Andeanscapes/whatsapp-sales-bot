@@ -31,7 +31,7 @@
     "export:debug-bundle": "bash scripts/export-prod-debug-bundle.sh",
     "scan:secrets": "secretlint \"**/*\" --secretlintignore .gitignore",
     "docker:dev": "ENV_FILE=.env.dev docker compose -p andean-whatsapp-bot-dev --env-file .env.dev -f compose.yml -f compose.test.yml up --build --force-recreate",
-    "docker:dev:db:clean": "docker compose -p andean-whatsapp-bot-dev --env-file .env.dev -f compose.yml -f compose.test.yml down -v --remove-orphans",
+    "docker:dev:db:clean": "bash scripts/docker-dev-db-clean.sh",
     "docker:dev:clean": "npm run docker:dev:db:clean && npm run docker:dev",
     "docker:prod": "ENV_FILE=.env.prod docker compose -p andean-whatsapp-bot --env-file .env.prod --profile tunnel up --build -d --force-recreate",
     "docker:prod:log": "bash scripts/docker-up.sh",

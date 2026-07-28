@@ -122,6 +122,26 @@ export function migrate(db: Database.Database): void {
   addColumnIfMissing(db, 'follow_up_events', 'decision_reason', 'TEXT');
   addColumnIfMissing(db, 'follow_up_events', 'claimed_at', 'TEXT');
   addColumnIfMissing(db, 'conversations', 'collected_date_window', 'TEXT');
+  addColumnIfMissing(db, 'conversations', 'date_status', "TEXT NOT NULL DEFAULT 'unasked'");
+  // Backfill date_status from legacy collected_date / window sentinels.
+  db.exec(`
+    UPDATE conversations
+    SET date_status = CASE
+      WHEN collected_date_window IS NOT NULL AND TRIM(collected_date_window) != '' THEN 'window'
+      WHEN collected_date IS NOT NULL
+        AND collected_date != 'tentative_unknown'
+        AND collected_date NOT LIKE '\\_%' ESCAPE '\\' THEN 'selected'
+      WHEN collected_date = 'tentative_unknown'
+        OR collected_date LIKE '\\_%' ESCAPE '\\' THEN 'deferred'
+      ELSE COALESCE(NULLIF(date_status, ''), 'unasked')
+    END
+  `);
+  db.exec(`
+    UPDATE conversations
+    SET collected_date = NULL
+    WHERE collected_date = 'tentative_unknown'
+       OR collected_date LIKE '\\_%' ESCAPE '\\'
+  `);
   db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_follow_up_events_customer_anchor_stage
     ON follow_up_events(customer_phone, anchor_inbound_at, stage)
     WHERE anchor_inbound_at IS NOT NULL`);
@@ -136,12 +156,26 @@ export function migrate(db: Database.Database): void {
     external_reference TEXT NOT NULL UNIQUE,
     customer_phone TEXT NOT NULL,
     preference_id TEXT UNIQUE,
+    payment_url TEXT,
     expected_amount_cop INTEGER NOT NULL,
+    plan_id TEXT,
+    booking_date TEXT,
+    people INTEGER,
+    transport_need TEXT,
+    deposit_percent INTEGER,
+    availability_confirmed_at TEXT,
     status TEXT NOT NULL,
     created_at TEXT NOT NULL,
     approved_at TEXT,
     mercado_pago_payment_id TEXT UNIQUE
   )`);
+  addColumnIfMissing(db, 'payment_reservations', 'payment_url', 'TEXT');
+  addColumnIfMissing(db, 'payment_reservations', 'plan_id', 'TEXT');
+  addColumnIfMissing(db, 'payment_reservations', 'booking_date', 'TEXT');
+  addColumnIfMissing(db, 'payment_reservations', 'people', 'INTEGER');
+  addColumnIfMissing(db, 'payment_reservations', 'transport_need', 'TEXT');
+  addColumnIfMissing(db, 'payment_reservations', 'deposit_percent', 'INTEGER');
+  addColumnIfMissing(db, 'payment_reservations', 'availability_confirmed_at', 'TEXT');
   try {
     db.exec('ALTER TABLE ai_usage ADD COLUMN purpose TEXT DEFAULT \'reply\'');
   } catch {

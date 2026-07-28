@@ -65,9 +65,10 @@ describe('Conversation Quality Eval V2', () => {
       if (scenario.runner === 'follow_up') {
         mockLlmComplete.mockResolvedValueOnce(defaultMockResult(scenario.followUpMockReply ?? ''));
       } else {
-        for (const turn of scenario.turns) {
-          mockLlmComplete.mockResolvedValueOnce(defaultMockResult(turn.mockReply));
-        }
+        mockLlmComplete.mockImplementation(async input => {
+          const turn = scenario.turns.find(candidate => candidate.user === input.message);
+          return turn ? defaultMockResult(turn.mockReply) : null;
+        });
       }
 
       const ctx = createRunContext({ phoneSuffix: index });

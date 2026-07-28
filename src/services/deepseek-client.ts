@@ -3,7 +3,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import type { Skills } from './skill-loader.js';
 import { substituteTokens } from './skill-loader.js';
-import { getActiveExperience, getPaymentInfo, getPlans, isPricingAvailable, isAvailabilityAvailable } from './product-registry.js';
+import { getActiveExperience, getPaymentInfo, getPlans, getShortDescription, isPricingAvailable, isAvailabilityAvailable } from './product-registry.js';
 import type { CustomerContext } from './customer-context.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -21,19 +21,33 @@ function readFollowUpPrompt(): string {
 }
 
 export function buildFollowUpPrompt(input: {
+  skills: Skills;
   lang: 'es' | 'en';
   phase: string | null;
   stage: 'first_nudge' | 'second_nudge';
   reviewReminder?: boolean;
+  knownPeople?: number | null;
+  knownDate?: string | null;
+  knownPriceFormatted?: string | null;
 }): string {
+  const experience = getActiveExperience(input.skills);
+  const knownLines: string[] = [];
+  if (input.knownPeople != null) knownLines.push(`Known people: ${input.knownPeople}`);
+  if (input.knownDate) knownLines.push(`Known date: ${input.knownDate}`);
+  if (input.knownPriceFormatted) knownLines.push(`Known quoted price: ${input.knownPriceFormatted}`);
   return [
     readFollowUpPrompt(),
+    '',
+    'FOLLOW-UP BUSINESS CONTEXT:',
+    `Supported experience: ${experience.name}`,
+    `Description: ${getShortDescription(experience)}`,
     '',
     'FOLLOW-UP SETTINGS:',
     `Language: ${input.lang}`,
     `Phase: ${input.phase ?? 'unknown'}`,
     `Stage: ${input.stage}`,
     ...(input.reviewReminder ? ['Mode: review_reminder'] : []),
+    ...knownLines,
   ].join('\n');
 }
 

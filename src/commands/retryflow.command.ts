@@ -32,12 +32,16 @@ export async function retryflowHandler(ctx: CommandContext): Promise<string> {
   if (!result.shouldSendReply) return `Bot no genero respuesta para ${phone}`;
 
   await sendText(phone, result.reply);
-  ctx.repos.message.addMessage({
-    customer_phone: phone,
-    direction: 'outbound',
-    message_type: 'text',
-    body: result.reply,
-    created_at: new Date().toISOString(),
+  ctx.repos.runInTransaction(() => {
+    ctx.repos.message.addMessage({
+      customer_phone: phone,
+      direction: 'outbound',
+      message_type: 'text',
+      body: result.reply,
+      created_at: new Date().toISOString(),
+    });
+    if (result.outboundDateAction === 'asked') ctx.repos.conversation.setDateAsked(phone);
+    if (result.outboundDateAction === 'options_offered') ctx.repos.conversation.setDateOptionsOffered(phone);
   });
 
   return `Reenviado a flujo bot para ${phone}`;

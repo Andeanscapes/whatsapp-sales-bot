@@ -1,10 +1,10 @@
 {
-  "id": "owner-image-first-contact-once-only",
+  "id": "owner-image-generic-contact-price-once-only",
   "source": "production-regression-2026-07-24-to-2026-07-26",
   "tags": [
     "media",
     "greeting",
-    "memory",
+    "pricing",
     "regression"
   ],
   "lang": "es",
@@ -20,7 +20,7 @@
       "critical": true
     },
     {
-      "id": "later-turn-does-not-resend",
+      "id": "price-turn-does-not-resend",
       "rule": "output_flag_equals",
       "flag": "sendOwnerImage",
       "expected": false,

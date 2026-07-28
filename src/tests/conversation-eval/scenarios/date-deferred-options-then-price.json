@@ -1,0 +1,67 @@
+{
+  "id": "date-deferred-options-then-price",
+  "source": "production-regression-2026-07-26",
+  "tags": ["date", "pricing", "deferral", "regression"],
+  "lang": "es",
+  "liveRuns": 3,
+  "mockPricing": {
+    "planId": "2d1n_mining",
+    "individual": 550000,
+    "couple": 1000000
+  },
+  "criteria": [
+    {
+      "id": "offers-options-after-deferral",
+      "rule": "reply_must_match",
+      "patterns": ["opciones|fechas disponibles|próximas fechas|publicadas"],
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "price-after-deferral",
+      "rule": "reply_must_match",
+      "patterns": ["1[,.]?000[,.]?000\\s*COP|\\$1[,.]000[,.]000"],
+      "turn": 3,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "no-date-reask-on-price",
+      "rule": "unsafe_pattern_absent",
+      "patterns": [
+        "fecha tentativa",
+        "Para darte el valor exacto",
+        "prefieren que les muestre"
+      ],
+      "turn": 3,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "one-question-on-price",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 3,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Somos 2",
+      "mockReply": "Qué bien, una experiencia para dos. ¿Tienen alguna fecha tentativa en mente o prefieren que les muestre las opciones disponibles?",
+      "expect": { "shouldSendReply": true }
+    },
+    {
+      "user": "O todavia",
+      "mockReply": "No hay problema. Ya anoté que aún no tienes fecha fija. ¿Quieres que te muestre las próximas fechas publicadas o prefieres revisar cómo llegar?",
+      "expect": { "shouldSendReply": true, "usedAi": false }
+    },
+    {
+      "user": "No Que precio tiene",
+      "mockReply": "Para pareja, el plan 2D/1N queda en $1,000,000 COP todo incluido. ¿Quieres que te muestre las próximas fechas publicadas?",
+      "expect": { "shouldSendReply": true }
+    }
+  ]
+}

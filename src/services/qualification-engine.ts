@@ -112,15 +112,62 @@ export function isConfirmedDate(value: unknown): boolean {
     && !value.startsWith('_');
 }
 
+/**
+ * Clear "no date yet" signal — safe without prior date-ask context.
+ * Patterns mined from production WhatsApp history (2026-07-26 dump).
+ */
 export function isExplicitDateDeferral(text: string): boolean {
   const norm = normalizeText(text);
-  return /\b(?:no (?:tenemos|tengo|se|sabemos) (?:la )?fecha|todav[ií]a no (?:tenemos|tengo|se|sabemos) (?:la )?fecha|a[uú]n no (?:tenemos|tengo|se|sabemos) (?:la )?fecha|no date yet|we do not have (?:a )?date yet|i do not know (?:the )?date yet)\b/i.test(norm);
+  // fecha|fechas|typos (fecja/fech)
+  const fecha = String.raw`(?:fechas?|fecja|fech)`;
+  // "no tengo/tenemos/hay/dispongo de (una|ninguna|la) fecha[s] [exacta|estimada|...]"
+  if (new RegExp(String.raw`\bno (?:tenemos|tengo|hay|dispongo de|disponemos de|se|sabemos) (?:la |una |ninguna )?${fecha}\b`).test(norm)) return true;
+  // "todavia/aun no tengo fecha...", "no aun no tengo fecha"
+  if (new RegExp(String.raw`\b(?:todavia|aun) no (?:tenemos|tengo|hay|dispongo de|disponemos de|se|sabemos) (?:la |una |ninguna )?${fecha}\b`).test(norm)) return true;
+  if (new RegExp(String.raw`\bno (?:todavia|aun) no (?:tenemos|tengo) (?:la |una |ninguna )?${fecha}\b`).test(norm)) return true;
+  // bare "sin fecha" / "ninguna fecha" / "no ninguna fecha" / "no sin fecha" / "no hay fecha tentativa"
+  if (new RegExp(String.raw`\b(?:sin ${fecha}|ninguna ${fecha}|no ninguna ${fecha}|no sin ${fecha}|no hay (?:ninguna )?${fecha})\b`).test(norm)) return true;
+  // "fecha no establecida/definida/fija", "no hay ninguna fecha establecida"
+  if (new RegExp(String.raw`\b${fecha} (?:no )?(?:definida|establecida|fija|clara|exacta|estimada|tentativa)\b`).test(norm)
+    && /\b(?:no|sin|ninguna|ningun|aun|todavia)\b/.test(norm)) return true;
+  // "no tengo fecha en mente / exacta / estimada"
+  if (new RegExp(String.raw`\bno (?:tengo|tenemos) (?:la |una |ninguna )?${fecha}(?:\s+(?:en mente|exacta|estimada|tentativa|definida|establecida|fija|clara))?\b`).test(norm)) return true;
+  // flexibility / date does not matter
+  if (new RegExp(String.raw`\b(?:no importa(?: la)? ${fecha}|da igual(?: la)? ${fecha}|${fecha} flexible|flexible con(?: la)? ${fecha}|diferente ${fecha} no importa)\b`).test(norm)) return true;
+  // EN
+  if (/\b(?:no date yet|we do not have (?:a )?date yet|i do not know (?:the )?date yet|no specific date|no fixed date|not sure (?:about |of )?(?:the )?date)\b/.test(norm)) return true;
+  return false;
 }
 
-/** Broad uncertainty answer — only meaningful right after the bot asked for a date. */
+/** Broad uncertainty / options-branch answer — only meaningful when date_status is asked. */
 export function isUncertainDateAnswer(text: string): boolean {
   const norm = normalizeText(text);
-  return isExplicitDateDeferral(norm) || /no (lo )?s[eé]|not sure|no estoy segur|todav[ií]a no/i.test(norm);
+  if (isExplicitDateDeferral(norm)) return true;
+  // short bare negatives + common typos ("o todavia" dropped N)
+  if (/^(?:no|nop|nope|nel|nah|ninguna|ninguno|no aun|no todavia|o todavia|no realmente|aun no|todavia no)$/.test(norm)) return true;
+  if (/\b(?:no lo se|no se aun|no se todavia|not sure|no estoy segur|todavia no|aun no|no aun|no todavia|o todavia)\b/.test(norm)) return true;
+  if (/^(?:no se|no lo se|not sure)$/.test(norm)) return true;
+  if (/^(?:por el momento no|por ahora no|en el momento no|en este momento no)(?:\b|$)/.test(norm)
+    && !/\b(?:presupuesto|dinero|plata|pago|costo)\b/.test(norm)) return true;
+  if (/^(?:opciones|las disponibles|disponibles|fechas|las fechas)$/.test(norm)) return true;
+  if (/\b(?:revisar opciones|revisando opciones|ver(?: las)? opciones|opciones disponibles|fechas?(?: \w+){0,3} disponibles|prefiero ver|quiero revisar|mirando opciones|viendo opciones|explorando opciones|mostrar(?:me)?(?: las)? (?:opciones|fechas)|muestrame(?: las)? (?:opciones|fechas)|me muestras?(?: las)? (?:opciones|fechas)|si muestra(?: las)? (?:opciones|fechas)|cuentame las opciones|q(?:ue)? opciones|opciones tienes)\b/.test(norm)) return true;
+  if (/^no\b/.test(norm) && /\bfechas?(?: \w+){0,3} disponibles\b/.test(norm) && !/\b\d{1,2}\b/.test(norm)) return true;
+  if (/\b(?:solo(?: quiero)?(?: la)? informacion|solo consultando|solo preguntando|mas adelante|te escribo|luego te (?:aviso|escribo|digo))\b/.test(norm)) return true;
+  if (/\b(?:plan a futuro|no tengo afan|no es(?: muy)? cercano)\b/.test(norm)) return true;
+  return false;
+}
+
+/** True when customer chose the "show options" branch (not just deferred). */
+export function isDateOptionsRequest(text: string): boolean {
+  const norm = normalizeText(text);
+  return /^(?:opciones|las disponibles|disponibles|fechas|las fechas)$/.test(norm)
+    || /\b(?:revisar opciones|revisando opciones|ver(?: las)? opciones|opciones disponibles|fechas?(?: \w+){0,3} disponibles|prefiero ver|quiero revisar|mirando opciones|viendo opciones|explorando opciones|mostrar(?:me)?(?: las)? (?:opciones|fechas)|muestrame(?: las)? (?:opciones|fechas)|me muestras?(?: las)? (?:opciones|fechas)|si muestra(?: las)? (?:opciones|fechas)|cuentame las opciones|q(?:ue)? opciones|opciones tienes)\b/.test(norm);
+}
+
+export function isDateAskQuestion(question: string | null | undefined): boolean {
+  if (!question) return false;
+  const norm = normalizeText(question);
+  return /\b(?:fecha tentativa|what date|que fecha|alguna fecha|para que fecha|date in mind|fecha en mente|fecha pensada|fecha aproximada|todavia estas explorando|andan explorando|tienen (?:una )?fecha|tienes (?:una )?fecha|cuando (?:quieres|quieren|te gustaria)|when would you)\b/.test(norm);
 }
 
 export function isQualificationComplete(q: MergedQualification): boolean {
@@ -185,7 +232,7 @@ export function extractBookingFields(text: string): Record<string, unknown> {
   }
 
   if (!fields.collected_date) {
-    const dayMonthEs = text.match(/\b(\d{1,2})\s+de\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\b/i);
+    const dayMonthEs = text.match(/\b(\d{1,2})\s+de\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)(?:\s+de\s+\d{4})?\b/i);
     if (dayMonthEs) {
       fields.collected_date = dayMonthEs[0].toLowerCase();
     }
@@ -372,18 +419,20 @@ export function contextAwareExtract(message: string, repos: Repositories, phone:
     delete fields._relative_date_token;
   }
 
-  if (!fields.collected_date && isExplicitDateDeferral(norm)) {
-    fields.collected_date = 'tentative_unknown';
+  // Date progression is engine/repo-owned via date_status. Here we only extract:
+  // - explicit exact/month dates into collected_date
+  // - deferral/options intent flags for the engine (no silent tentative_unknown write without status)
+  const dateStatus = repos.conversation.getDateStatus(phone);
+  const explicitDateDeferral = !fields.collected_date && isExplicitDateDeferral(norm);
+  if (explicitDateDeferral) {
+    fields._date_deferred = true;
   }
-
-  if (!fields.collected_date && lastQuestion) {
-    const askedDate = /fecha tentativa|what date|qu[eé] fecha/i.test(lastQuestion);
-    if (askedDate) {
-      const monthFound = MONTH_NAMES.find(m => norm.toLowerCase().includes(m));
-      if (monthFound) fields.collected_date = monthFound;
-      if (isUncertainDateAnswer(norm)) {
-        fields.collected_date = 'tentative_unknown';
-      }
+  if (!fields.collected_date && (dateStatus === 'asked' || (lastQuestion && isDateAskQuestion(lastQuestion)))) {
+    const monthFound = MONTH_NAMES.find(m => norm.toLowerCase().includes(m));
+    if (monthFound && !explicitDateDeferral) fields.collected_date = monthFound;
+    if (isUncertainDateAnswer(norm) || isUncertainDateAnswer(message)) {
+      fields._date_deferred = true;
+      if (isDateOptionsRequest(norm) || isDateOptionsRequest(message)) fields._date_options_requested = true;
     }
   }
 
@@ -428,11 +477,17 @@ export function reconstructFromHistory(repos: Repositories, phone: string, curre
 }
 
 export function buildDbQualification(collected: Record<string, unknown>): MergedQualification {
+  const rawStatus = collected.dateStatus;
+  const dateStatus = rawStatus === 'unasked' || rawStatus === 'asked' || rawStatus === 'deferred'
+    || rawStatus === 'options_offered' || rawStatus === 'selected' || rawStatus === 'window'
+    ? rawStatus
+    : undefined;
   return {
     nombre: collected.nombre,
     plan: collected.plan,
     personas: collected.personas,
     fecha: collected.fecha,
+    dateStatus,
     transporte: collected.transporte,
     mascota: collected.mascota,
   };
