@@ -1,6 +1,6 @@
 {
   "id": "owner-image-first-contact-once-only",
-  "source": "business-rule-2026-07-21",
+  "source": "production-regression-2026-07-24-to-2026-07-26",
   "tags": [
     "media",
     "trust",
@@ -8,7 +8,7 @@
     "regression"
   ],
   "lang": "es",
-  "liveRuns": 1,
+  "liveRuns": 3,
   "criteria": [
     {
       "id": "owner-image-first-turn",
@@ -17,7 +17,7 @@
       "expected": true,
       "turn": 1,
       "weight": 1,
-      "critical": false
+      "critical": true
     },
     {
       "id": "owner-image-not-repeated",

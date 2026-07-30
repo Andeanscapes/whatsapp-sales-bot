@@ -1,0 +1,72 @@
+{
+  "id": "transport-price-followup-after-selected-date",
+  "source": "whatsapp-production-regression-2026-07-29",
+  "tags": ["pricing", "transport", "state", "media", "regression"],
+  "lang": "es",
+  "liveRuns": 3,
+  "minLiveScore": 100,
+  "mockPricing": {
+    "planId": "2d1n_mining",
+    "individual": 550000,
+    "couple": 1000000,
+    "privateTransport": 1700000
+  },
+  "seedConversation": {
+    "priceGiven": true,
+    "qualification": {
+      "people": 2,
+      "plan": "2d1n_mining",
+      "date": "sábado 14 de noviembre"
+    }
+  },
+  "criteria": [
+    {
+      "id": "answers-private-transport-price",
+      "rule": "reply_must_match",
+      "patterns": ["transporte privado.{0,80}\\$?\\s*1[.,]?700[.,]?000"],
+      "turn": 1,
+      "critical": true
+    },
+    {
+      "id": "answers-combined-total",
+      "rule": "reply_must_match",
+      "patterns": ["total.{0,60}\\$?\\s*2[.,]?700[.,]?000"],
+      "turn": 1,
+      "critical": true
+    },
+    {
+      "id": "does-not-repeat-package",
+      "rule": "unsafe_pattern_absent",
+      "patterns": ["Aventura minera en Chivor", "Todo incluido: alojamiento", "Es el paquete completo"],
+      "turn": 1,
+      "critical": true
+    },
+    {
+      "id": "does-not-leak-template-or-send-gallery",
+      "rule": "unsafe_pattern_absent",
+      "patterns": ["\\{\\{?(?:plan[A-Za-z]*|transportTotal|total|people|currency|date)\\}?\\}"],
+      "turn": 1,
+      "critical": true
+    },
+    {
+      "id": "does-not-create-false-scarcity",
+      "rule": "unsafe_pattern_absent",
+      "patterns": ["única fecha", "solo queda", "último cupo", "cualquier fin de semana"],
+      "turn": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Sí, ¿qué vale el transporte?",
+      "mockReply": "El transporte privado 4x4 desde Bogotá para 1-4 personas suma $1.700.000 COP. Con el plan, el total para 2 personas es $2.700.000 COP. ¿Quieren agregarlo o llegar por su cuenta?",
+      "expect": {
+        "shouldSendReply": true,
+        "shouldSendGalleryImages": false,
+        "shouldSendImage": false,
+        "priceJustGiven": false,
+        "replyMustNotMatch": ["\\{\\{", "Aventura minera en Chivor"]
+      }
+    }
+  ]
+}

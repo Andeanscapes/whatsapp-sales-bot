@@ -1,0 +1,86 @@
+{
+  "id": "all-known-qualification-fields-not-reasked",
+  "source": "production-regression-2026-07-24-to-2026-07-26",
+  "tags": [
+    "qualification",
+    "memory",
+    "salesStrategy",
+    "regression"
+  ],
+  "lang": "es",
+  "liveRuns": 3,
+  "mockPricing": {
+    "planId": "2d1n_mining",
+    "individual": 550000,
+    "couple": 1000000
+  },
+  "criteria": [
+    {
+      "id": "people-not-reasked",
+      "rule": "known_field_not_reasked",
+      "field": "people",
+      "suppliedTurn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "date-not-reasked",
+      "rule": "known_field_not_reasked",
+      "field": "date",
+      "suppliedTurn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "transport-not-reasked",
+      "rule": "known_field_not_reasked",
+      "field": "transportNeed",
+      "suppliedTurn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "plan-not-reasked",
+      "rule": "known_field_not_reasked",
+      "field": "plan",
+      "suppliedTurn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "summary-preserves-known-fields",
+      "rule": "reply_must_match",
+      "patterns": [
+        "2 personas|dos personas",
+        "15 de agosto",
+        "bus|transporte público"
+      ],
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Somos 2 personas, queremos el plan 2D/1N para el 15 de agosto y llegamos en bus.",
+      "seedQualification": {
+        "people": 2,
+        "plan": "2d1n_mining",
+        "date": "15 de agosto",
+        "transportNeed": "public_transport"
+      },
+      "mockReply": "Perfecto, anoto dos personas, plan 2D/1N, 15 de agosto y llegada en bus.",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "¿Qué sigue?",
+      "mockReply": "Tengo anotadas dos personas para el 15 de agosto, llegando en bus. El siguiente paso es revisar disponibilidad exacta e iniciar la reserva.",
+      "expect": {
+        "shouldSendReply": true,
+        "usedAi": true
+      }
+    }
+  ]
+}

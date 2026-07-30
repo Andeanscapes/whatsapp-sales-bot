@@ -11,6 +11,7 @@ import {
   getLastAssistantQuestion,
 } from './qualification-engine.js';
 import { getActiveExperience, getCommonQuestions } from './product-registry.js';
+import { MONTH_NAMES } from './constants.js';
 
 export { isCorrectionMessage, getLastAssistantQuestion };
 
@@ -81,7 +82,7 @@ export function isTruncatedReply(reply: string): boolean {
 
 export function isSoftCloseMessage(text: string): boolean {
   const norm = normalizeText(text);
-  return /\b(no gracias|por ahora no|no me interesa|dejemoslo|dejemoslo ahi|en otro momento|otra oportunidad|muy caro|esta caro|algo caro|me parece caro|se sale del presupuesto|no me alcanza|fuera de presupuesto|costoso|caro|gracias por la info|por el momento no|lo dejamos ahi|no por ahora|lo voy a pensar|mejor no|paso por ahora|lo dejo ahi|no es para mi|no es lo que busco|no me convence|no es lo que esperaba|muy costoso|carisimo|cuesta mucho|es mucho|se me va de presupuesto|no tengo esa plata|no tengo presupuesto|no llego|no me da|luego te contacto|luego te escribo|not now|not interested|too expensive|out of budget|not in my budget|thank you for the info|for now no|not for me|not what i expected|i'?ll pass|i'?ll think about it|too much|over budget|can'?t afford|i'?ll skip|i have to decline|no thanks anyway|thanks anyway|gracias de todos modos|gracias igual|gracias de todas formas)\b/i.test(norm);
+  return /\b(no gracias|por ahora no|no me interesa|dejemoslo|dejemoslo ahi|en otro momento|otra oportunidad|muy caro|esta caro|algo caro|me parece caro|se sale del presupuesto|no me alcanza|fuera de presupuesto|costoso|caro|gracias por la info|por el momento no|lo dejamos ahi|no por ahora|lo voy a pensar|mejor no|paso por ahora|lo dejo ahi|no es para mi|no es lo que busco|no me convence|no es lo que esperaba|muy costoso|carisimo|cuesta mucho|es mucho|se me va de presupuesto|no tengo esa plata|no tengo presupuesto|no llego|no me da|luego te contacto|luego te escribo|not now|not interested|too expensive|out of budget|not in my budget|thank you for the info|for now no|not for me|not what i expected|i'?ll pass|i'?ll think about it|too much|over budget|can'?t afford|i'?ll skip|i have to decline|no thanks anyway|thanks anyway|gracias de todos modos|gracias igual|gracias de todas formas|no quiero seguir|no quiero continuar|dejemoslo hasta a[hií]|no sigamos|no quiero m[aá]s|no insistas?|dej[aá]moslo as[ií]|lo dejamos hasta a[hií]|no quiero saber m[aá]s|basta|suficiente|para ya|don'?t want to continue|let'?s stop here|i'?d rather not|stop here please|no more please|quiero pausar|pausemos|pausar|want to pause|i want to pause|let'?s pause|take a pause|hold off|put this on hold|on hold)\b/i.test(norm);
 }
 
 export function isNonSalesInquiry(text: string): boolean {
@@ -134,7 +135,7 @@ export function isReviewPause(text: string): boolean {
 export function isCustomerFollowUpPromise(text: string): boolean {
   const norm = normalizeText(text);
   return isExplicitDateDeferral(text)
-    || /\b(?:te avisare|yo te escribo|te escribimos|yo te confirmo|te confirmo cuando|cuando (?:decida|decidamos|tenga|tengamos|hable|hablemos)\b|when (?:i|we) decide|(?:i|we) (?:ll|will) let you know|i(?:'| wi)?ll confirm)\b/i.test(norm);
+    || /\b(?:te avisare|(?:yo\s+)?(?:te\s+)?aviso\b|(?:te|les) avisamos|te escribo\b|te escribimos|te escribiremos|yo te escribo|yo te confirmo|te confirmo cuando|cuando (?:decida|decidamos|tenga|tengamos|hable|hablemos)\b|when (?:i|we) decide|(?:i|we) (?:ll|will) (?:let you know|message you|get back to you)|i(?:'| wi)?ll confirm)\b/i.test(norm);
 }
 
 export function detectsAvailabilityConfirmRequest(text: string): boolean {
@@ -166,6 +167,7 @@ export function detectsReservationIntent(text: string): boolean {
     /me gustaria (reservar|pagar|agendar|separar|apartar)(?: ya)?/,
     /(como|donde) se (reserva|paga|agenda|separa|aparta)/,
     /(como|donde) (reservo|pago|reservar|pagar|transfiero|consigno)/,
+    /como (?:hacemos|hacer|se hace|se realizan?) (?:para )?(?:reservar|pagar|separar|agendar|el proceso|la reserva)/,
     /\b(lo confirmo|agendamos|separemos|reservemos|apartemos)\b/,
     /manda (los datos|el link|info para pagar|el numero)/,
     /(envia|enviame) (los datos|el link|info para pagar)/,
@@ -222,7 +224,7 @@ export function isReservationIntentOrConfirmation(
     /(?:revision de reserva|dejarlo para revision|lo dejemos para revision|pasarlo al equipo|paso (?:esto |todo )?al equipo)/,
     /(?:want (?:me|us) to check|shall (?:I|we) check availability)/,
     /(?:listo para|preparado para|ready to)/,
-    /(?:inicie esa validacion|inicie la validacion|quieres que inicie|quieres que la inicie)/,
+    /(?:inicie esa validacion|inicie la validacion|quieres que inicie|quieres que la inicie|la inicie ahora)/,
     /(?:shall i start that validation|shall i start it|start it now|want me to start)/,
     /(?:separamos con anticipo|reserva se separa|booking is held with)/,
   ];
@@ -240,6 +242,16 @@ export function replyMentionsPrice(reply: string): boolean {
     /\b(precio|price|valor|costo|total|cuestan|valen)\b[^\n]{0,30}\$[\d.,]{3,}/i,
     /\b(precio|price|valor|costo|total)\b[^\n]{0,30}\b\d{3}[.,]\d{3}\b/i,
     /\bCOP\s?\d[\d.,]{3,}/i,
+    /\b\d{4,}\s*(?:COP|pesos)\b/i,
+    // Catch-all: any COP-formatted amount with thousand separators
+    /\d{1,3}(?:[.,]\d{3})+\s*(?:COP|pesos)\b/i,
+    /\$\s*\d{1,3}(?:[.,]\d{3})+\b/,
+    // Spanish numeric phrases: "550 mil", "1 millón"
+    /\b\d{2,3}\s*(?:mil)\b.{0,20}(?:COP|pesos)?/i,
+    /\b\d\s*(?:mill[oó]n)\b.{0,20}(?:COP|pesos)?/i,
+    /\b(?:cien|ciento|doscientos|trescientos|cuatrocientos|quinientos|seiscientos|setecientos|ochocientos|novecientos)(?:\s+(?:veinte|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa)(?:\s+y\s+\w+)?)?\s+mil(?:\s+(?:COP|pesos))?\b/i,
+    /\b(?:un|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve)\s+mill[oó]n(?:es)?(?:\s+(?:COP|pesos))?\b/i,
+    /\b(?:one|two|three|four|five|six|seven|eight|nine)\s+(?:hundred(?:\s+(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety))?\s+thousand|million)(?:\s+(?:COP|pesos))?\b/i,
   ];
   return tests.some(p => p.test(reply));
 }
@@ -252,7 +264,7 @@ export function stripSelfIntro(reply: string, qualFieldCount: number): string {
 
 export function detectProactiveLeadPain(message: string): LeadPain | null {
   const norm = message.toLowerCase().trim();
-  if (/\b(muy caro|esta caro|algo caro|costoso|fuera de presupuesto|no me alcanza|no me da|expensive|too expensive|over budget|can'?t afford)\b/i.test(norm)) return 'price';
+  if (/\b(muy caro|tan caro|esta caro|algo caro|costoso|fuera de presupuesto|no me alcanza|no me da|expensive|too expensive|over budget|can'?t afford)\b/i.test(norm)) return 'price';
   if (/\b(no tengo fecha|no se que fecha|todavia no se cuando|problema con la fecha|schedule conflict|no date yet|not sure when)\b/i.test(norm)) return 'date_time';
   if (/\b(es seguro|es peligroso|me da miedo|claustrofobia|safety concern|is it safe|is it dangerous|afraid|scared)\b/i.test(norm)) return 'security';
   if (/\b(no tengo carro|como llego|dificil llegar|necesito transporte|transport problem|no car|how do i get there)\b/i.test(norm)) return 'logistics_4x4';
@@ -265,6 +277,20 @@ export function containsHandoffPhrase(reply: string): boolean {
   return HANDOFF_PHRASE_REGEX.test(reply);
 }
 
+const CLOSING_DELAY_PATTERNS = [
+  /\bma[ñn]ana\s+te\s+(genero|env[ií]o|mando|paso)/i,
+  /\bluego\s+te\s+(?:lo\s+)?(?:env[ií]o|mando|paso)/i,
+  /\bluego\s+te\s+confirmo\s+(?:disponibilidad|la\s+disponibilidad|el\s+cupo|la\s+fecha|la\s+reserva|el\s+precio)\b/i,
+  /\bd[eé]jame\s+saber\s+si\s+te\s+gustar[ií]a/i,
+  /\blet\s+me\s+know\s+if\s+you(?:'d|\s+would)\s+like\b/i,
+  /\bI(?:'ll|\s+will)\s+(generate|send|get\s+back)\s+(?:it|to\s+you|the\s+link)\s+(?:tomorrow|later)\b/i,
+  /\bcuando\s+quieras\s+(?:seguimos|reservamos|me\s+(?:dices|avisas|escribes))\b/i,
+];
+
+export function containsClosingDelay(reply: string): boolean {
+  return CLOSING_DELAY_PATTERNS.some(p => p.test(reply));
+}
+
 export function stripHandoffPhrases(reply: string): string {
   return reply.replace(HANDOFF_PHRASE_GLOBAL_REGEX, '').replace(/\n{3,}/g, '\n\n').trim();
 }
@@ -272,8 +298,8 @@ export function stripHandoffPhrases(reply: string): string {
 export function isPaymentMethodsQuestion(text: string): boolean {
   const norm = normalizeText(text);
   return (
-    /\b(metodos? de pago|medios? de pago|formas? de pago|como se paga|como pago|como puedo pagar|con que pago|nequi|mercado pago|anticipo|deposito|abono|pagar para separar)\b/i.test(norm)
-    || /\b(payment methods?|how (can|do) i pay|how to pay|deposit|down payment|nequi|mercado pago)\b/i.test(norm)
+    /\b(metodos? de pago|medios? de pago|formas? de pago|como se paga|como pago|como puedo pagar|con que pago|nequi|mercado pago|anticipo|deposito|abono|pagar para separar|por partes)\b/i.test(norm)
+    || /\b(payment methods?|how (can|do) i pay|how to pay|deposit|down payment|nequi|mercado pago|installments?|in parts)\b/i.test(norm)
   );
 }
 
@@ -354,7 +380,8 @@ export function qualificationSummary(q: MergedQualification, lang: 'es' | 'en', 
     if (human) parts.push(human);
   }
   if (q.transporte === 'public_bus') parts.push(lang === 'es' ? 'con bus por su cuenta' : 'with public bus on their own');
-  else if (q.transporte != null) parts.push(lang === 'es' ? 'con carro propio' : 'with your own car');
+  else if (q.transporte === 'from_bogota') parts.push(lang === 'es' ? 'con transporte desde Bogota' : 'with transport from Bogota');
+  else if (q.transporte != null) parts.push(lang === 'es' ? 'con transporte propio' : 'with own transport');
   if (q.mascota != null) parts.push(lang === 'es' ? 'con mascota' : 'with pet');
   return parts.length > 0 ? parts.join(', ') : (lang === 'es' ? 'tus datos' : 'your details');
 }
@@ -441,4 +468,43 @@ export function buildFallbackReply(
 
   const name = String(q.nombre ?? '');
   return fb.objectionResolvedContinue.replace('{{name}}', name);
+}
+
+const ALL_MONTH_PATTERN = MONTH_NAMES.join('|');
+
+export interface StripAssumedDateOpts {
+  /** Only true for thin first-contact turns — never strip mid-funnel availability offers. */
+  enabled: boolean;
+  hasCustomerDate: boolean;
+  hasConfirmedDate: boolean;
+  hasDateWindow: boolean;
+}
+
+/**
+ * First-contact only: strip LLM-invented date clauses ("para marzo", "for March")
+ * when the customer never gave a date. Disabled for later turns so legitimate
+ * availability offers like "el 14 de marzo" are preserved.
+ */
+export function stripAssumedDatePhrases(reply: string, opts: StripAssumedDateOpts): string {
+  if (!opts.enabled || opts.hasCustomerDate || opts.hasConfirmedDate || opts.hasDateWindow) return reply;
+
+  const pattern = new RegExp(
+    `\\s(?:para|for|en|in)\\s+(?:el\\s+)?(?:\\d{1,2}\\s+(?:de\\s+)?)?\\b(?:${ALL_MONTH_PATTERN})\\b`,
+    'i',
+  );
+  return reply.replace(pattern, '').replace(/\s{2,}/g, ' ').trim();
+}
+
+/** First-contact only: drop product/experience assumptions the customer never stated. */
+export function stripAssumedExperienceClaims(reply: string, opts: { enabled: boolean; customerNamedExperience: boolean }): string {
+  if (!opts.enabled || opts.customerNamedExperience) return reply;
+  const cleaned = reply
+    .replace(/\b(?:veo que te interesa|i see (?:that )?you(?:'re| are) interested in)[^.!?\n]*/gi, '')
+    .replace(/\b(?:la )?experiencia minera\b/gi, '')
+    .replace(/\bmining experience\b/gi, '')
+    .replace(/\b(?:mina|esmeralda|hacienda|apicultura|ganader[ií]a)\b/gi, '')
+    .replace(/(?<!(?:hasta|a|en|hacia|para|de|desde|al|del)\s)chivor\b/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  return cleaned === reply.trim() ? reply : cleaned;
 }

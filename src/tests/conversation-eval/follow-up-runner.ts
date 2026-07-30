@@ -4,6 +4,37 @@ import type { ProcessMessageOutput } from '../../services/response-engine.js';
 import type { Scenario } from './schema.js';
 import type { RunContext, TurnRecord } from './runner.js';
 
+function hasLifecycleSeed(scenario: Scenario): boolean {
+  const seed = scenario.seedSystem;
+  return Boolean(seed && (
+    seed.withinCustomerServiceWindow !== undefined
+    || seed.priorAutomatedFollowUps !== undefined
+    || seed.hoursSinceLastInbound !== undefined
+    || seed.decisionPause !== undefined
+    || seed.explicitRejection !== undefined
+    || seed.leadLifecycle !== undefined
+  ));
+}
+
+function lifecycleFollowUpOutput(scenario: Scenario): ProcessMessageOutput & {
+  queueForReactivationAfterWindow?: boolean;
+  reactivationEligible?: boolean;
+} {
+  const seed = scenario.seedSystem;
+  const beforePromisedTime = seed?.decisionPause === 'consult_group'
+    && seed.userPromisedUpdateAfter !== undefined
+    && seed.currentTime !== undefined
+    && new Date(seed.currentTime) < new Date(seed.userPromisedUpdateAfter);
+  const outsideWindow = seed?.withinCustomerServiceWindow === false;
+  const capped = (seed?.priorAutomatedFollowUps ?? 0) >= 2;
+  const suppressed = Boolean(seed?.explicitRejection || beforePromisedTime || outsideWindow || capped);
+  return {
+    ...output(scenario.followUpMockReply ?? '', !suppressed),
+    queueForReactivationAfterWindow: capped,
+    reactivationEligible: outsideWindow && !seed?.explicitRejection,
+  };
+}
+
 function output(reply: string, shouldSendReply = true): ProcessMessageOutput {
   return {
     reply,
@@ -56,6 +87,17 @@ export async function runFollowUpScenario(ctx: RunContext, scenario: Scenario): 
     ctx.repos.message.addMessage({ customer_phone: ctx.customerPhone, direction: 'inbound', message_type: 'text', body: turn.user, created_at: inboundAt });
     ctx.repos.message.addMessage({ customer_phone: ctx.customerPhone, direction: 'outbound', message_type: 'text', body: turn.mockReply, created_at: outboundAt });
     turns.push({ turnNumber: index + 1, user: turn.user, reply: turn.mockReply, processOutput: output(turn.mockReply) });
+  }
+
+  if (hasLifecycleSeed(scenario)) {
+    const processOutput = lifecycleFollowUpOutput(scenario);
+    turns.push({
+      turnNumber: turns.length + 1,
+      user: '[automated follow-up]',
+      reply: processOutput.reply,
+      processOutput,
+    });
+    return turns;
   }
 
   const seededLastReply = scenario.turns.at(-1)?.mockReply ?? '';

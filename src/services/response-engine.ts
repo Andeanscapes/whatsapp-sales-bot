@@ -8,13 +8,14 @@ import { checkTimeWindow } from './time-window-policy.js';
 import { checkBudget } from './budget-guard.js';
 import { reportAiBudgetBlocked } from './whatsapp-operational-health.js';
 import { buildSystemPrompt } from './deepseek-client.js';
+import { extractCustomerContext } from './customer-context.js';
 import { DeepSeekLlmClient } from './llm/deepseek-llm-client.js';
 import { analyzeLead, type LeadAnalysis } from './lead-analyzer.js';
 import type { LlmTurn } from './llm/llm-client.js';
-import type { MergedQualification, ProcessMessageInput, ProcessMessageOutput } from './types.js';
-import { getActiveExperience, getCommonQuestions, getPlans, getPricingItems, isPricingAvailable, getPublicPaymentFacts } from './product-registry.js';
-import type { PublicPaymentFacts } from './product-registry.js';
-import { calculatePriceQuote, formatCop, type PriceQuote, type TransportNeed } from './pricing-calculator.js';
+import type { MergedQualification, OutboundDateAction, ProcessMessageInput, ProcessMessageOutput } from './types.js';
+import { getActiveExperience, getCommonQuestions, getFutureAvailableDates, getPlans, getPricingItems, getShortDescription, hasPublicPaymentFacts, isPricingAvailable, getPublicPaymentFacts, hasMultipleExperiences, getExperiences, scopeSkillsToExperience } from './product-registry.js';
+import type { ActiveExperience, PublicPaymentFacts } from './product-registry.js';
+import { calculatePriceQuote, formatCop, getStartingPrice, type PriceQuote, type TransportNeed } from './pricing-calculator.js';
 import {
   extractBookingFields,
   contextAwareExtract,
@@ -28,6 +29,10 @@ import {
   extractStandaloneName,
   detectPlan,
   isAmbiguousPartyComparison,
+  isExplicitDateDeferral,
+  isUncertainDateAnswer,
+  isDateAskQuestion,
+  isDateOptionsRequest,
   PET_KEYWORDS,
 } from './qualification-engine.js';
 import {
@@ -35,6 +40,8 @@ import {
   isAdcodeNoise,
   isReEngagementMessage,
   isReviewPause,
+  isPartnerConsultPause,
+  isCustomerFollowUpPromise,
   getLastAssistantQuestion,
   detectsReservationIntent,
   detectsAvailabilityConfirmRequest,
@@ -52,12 +59,17 @@ import {
   stripSelfIntro,
   detectProactiveLeadPain,
   isPaymentMethodsQuestion,
+  hasActionableUserQuestion,
   qualificationSummary,
   peopleLabel,
+  stripAssumedDatePhrases,
+  stripAssumedExperienceClaims,
+  containsClosingDelay,
 } from './reply-guard.js';
 
 import { assignLine, isReferralLine } from './lead-routing.js';
 import { normalizeText } from './language-service.js';
+import { enrichReply } from './reply-enrichment.js';
 import { INPUT_COST_PER_TOKEN, MONTH_NAMES, MS_72H, OUTPUT_COST_PER_TOKEN, SCORE_GALLERY_TRIGGER_THRESHOLD } from './constants.js';
 import type { RecentMessage, LeadPain } from '../db/repositories/types.js';
 
@@ -72,6 +84,26 @@ export {
 
 export type { ProcessMessageInput, ProcessMessageOutput };
 
+function isAmbiguousTransportRequest(message: string): boolean {
+  if (!/\b(?:transporte|transport|recoger|pickup)\b/i.test(message)) return false;
+  return !/\b(?:bus|publico|public|privado|private|carro propio|moto|own transport|own car)\b/i.test(message);
+}
+
+function isTransportPriceInquiry(message: string): boolean {
+  return /\b(?:transporte|transport)\b/i.test(message)
+    && (/\b(?:cu[aá]nto|qu[eé]\s+vale|valor|precio|cost|how much)\b/i.test(message)
+      || /^\s*(?:y|and)\s+(?:el\s+)?(?:transporte|transport)\b/i.test(message));
+}
+
+function wasAskedTransport(lastAssistantQuestion: string | null): boolean {
+  return lastAssistantQuestion != null
+    && /transporte propio|necesitan desde|vas (?:con|en)|por su cuenta|own transport|pickup|Bogot[aá]|llegar desde|how (?:are you|will you) (?:getting|coming)/i.test(lastAssistantQuestion);
+}
+
+function hasExplicitOwnTransport(message: string): boolean {
+  return /\b(?:carro|moto|veh[ií]culo|propio|own|driv(?:e|ing))\b/i.test(message);
+}
+
 function withConversationState(
   repos: ProcessMessageInput['repos'],
   customerPhone: string,
@@ -82,6 +114,7 @@ function withConversationState(
     conversationMode: repos.conversation.getMode(customerPhone),
     salesPhase: repos.conversation.getSalesPhase(customerPhone),
     softClosed: repos.conversation.getSoftClosedAt(customerPhone) != null,
+    intent: repos.conversation.getLeadIntent(customerPhone),
   };
 }
 
@@ -133,7 +166,7 @@ function factualPolicyReply(skills: Skills, lang: 'es' | 'en', message: string):
 }
 
 function isPhysicalRecoveryQuestion(message: string): boolean {
-  return /\b(?:fractura|fracture|movilidad limitada|limited mobility|riesgo de ca[ií]da|fall risk|recuper[aá]ndo(?:me)? de (?:una? )?(?:fractura|lesi[oó]n|cirug[ií]a)|recovering from (?:a )?(?:fracture|injury|surgery)|recuperaci[oó]n de (?:una? )?(?:fractura|lesi[oó]n|cirug[ií]a))\b/i.test(message);
+  return /\b(?:fractura|fracture|movilidad limitada|limitaci[oó]n(?: temporal)? de movilidad|limited mobility|riesgo de ca[ií]da|evitar ca[ií]das|fall risk|recuper[aá]ndo(?:me)? de (?:una? )?(?:fractura|lesi[oó]n|cirug[ií]a)|recovering from (?:a )?(?:fracture|injury|surgery)|recuperaci[oó]n de (?:una? )?(?:fractura|lesi[oó]n|cirug[ií]a))\b/i.test(message);
 }
 
 function safetyPolicyReply(skills: Skills, lang: 'es' | 'en', message: string): string | null {
@@ -145,6 +178,26 @@ function safetyPolicyReply(skills: Skills, lang: 'es' | 'en', message: string): 
   return questions.find(question => question.lang === lang && question.intent === intent)?.answer ?? null;
 }
 
+function matchExperienceFromReply(message: string, skills: Skills, allowPositional: boolean): ActiveExperience | null {
+  const norm = normalizeForKeywordMatch(message);
+  const trimmed = message.trim().slice(0, 80);
+  for (const exp of getExperiences(skills)) {
+    const normalizedName = normalizeForKeywordMatch(exp.name);
+    if (normalizedName.length > 3 && norm.includes(normalizedName)) return exp;
+    const expWords = exp.name.toLowerCase().split(/\s+/);
+    const matchCount = expWords.filter(w => w.length > 3 && norm.includes(w)).length;
+    if (matchCount >= 2) return exp;
+    // Single-letter picks: "A", "B" etc. for positional listing
+    const expIndex = getExperiences(skills).indexOf(exp);
+    if (allowPositional && trimmed === String(expIndex + 1)) return exp;
+    if (allowPositional && /^[a-z]$/i.test(trimmed)) {
+      const letterIndex = trimmed.toUpperCase().charCodeAt(0) - 65;
+      if (letterIndex === expIndex) return exp;
+    }
+  }
+  return null;
+}
+
 function isInclusionsQuestion(message: string, lang: 'es' | 'en'): boolean {
   const norm = normalizeForKeywordMatch(message);
   if (lang === 'es') return /\bque incluye\b|\bque trae\b|\bque viene incluido\b/.test(norm);
@@ -154,7 +207,7 @@ function isInclusionsQuestion(message: string, lang: 'es' | 'en'): boolean {
 /** True when inclusions is the only (or primary) ask — not a multi-fact dump. */
 function isStandaloneInclusionsQuestion(message: string, lang: 'es' | 'en'): boolean {
   if (!isInclusionsQuestion(message, lang)) return false;
-  const questionMarks = (message.match(/[?¿]/g) ?? []).length;
+  const questionMarks = (message.match(/\?/g) ?? []).length;
   if (questionMarks >= 2) return false;
   const norm = normalizeForKeywordMatch(message);
   if (/\b(?:cuatro|varias|varios|tambien|and also|as well)\b/.test(norm)) return false;
@@ -189,6 +242,28 @@ function buildInclusionsReply(skills: Skills, lang: 'es' | 'en'): string {
   return skills.fallbackReplies[lang].inclusionsPackageReply;
 }
 
+function buildAvailabilityListReply(skills: Skills, lang: 'es' | 'en'): string | null {
+  const dates = getFutureAvailableDates(getActiveExperience(skills))
+    .map(item => new Date(`${item.date}T12:00:00Z`))
+    .filter(date => !Number.isNaN(date.getTime()))
+    .sort((a, b) => a.getTime() - b.getTime())
+    .map(date => new Intl.DateTimeFormat(lang === 'es' ? 'es-CO' : 'en-US', {
+      day: 'numeric', month: 'long', timeZone: 'UTC',
+    }).format(date));
+  if (dates.length === 0) return null;
+  const separator = lang === 'es' ? ' y ' : ' and ';
+  const list = dates.length === 1
+    ? dates[0]
+    : `${dates.slice(0, -1).join(', ')}${separator}${dates.at(-1)}`;
+  return skills.fallbackReplies[lang].availabilityListReply.replace('{{dates}}', list);
+}
+
+function needsPlanBeforeDates(skills: Skills, plan: unknown, qual: { priceGiven: boolean }): boolean {
+  if (typeof plan === 'string' && plan.length > 0) return false;
+  if (getPlans(getActiveExperience(skills)).length <= 1) return false;
+  return qual.priceGiven;
+}
+
 function buildAvailabilityRecommendReply(
   skills: Skills,
   lang: 'es' | 'en',
@@ -213,6 +288,51 @@ function isAvailabilityLookupQuestion(message: string): boolean {
   return /\b(?:fecha|fechas|disponib\w*|cupos?|date|dates|availability|available|spots?)\b/i.test(normalizeForKeywordMatch(message));
 }
 
+function isDirectAvailabilityListQuestion(message: string): boolean {
+  const normalized = normalizeForKeywordMatch(message);
+  const monthAlt = MONTH_NAMES.join('|');
+  const monthOrYear = new RegExp(`\\b(?:${monthAlt}|[12]\\d{3})\\b`);
+  const windowPhrase = /\b(?:finales?\s+de|principios?\s+de|late|end\s+of|beginning\s+of)\b/;
+  // Exclude date-window prefix (e.g. "finales de agosto que fechas tienen?") —
+  // those go through the late-month availability path.
+  const qIdx = normalized.search(/\b(?:que|cuales?)\s+fechas\b/);
+  if (qIdx > 0) {
+    const before = normalized.slice(0, qIdx);
+    if (monthOrYear.test(before) || windowPhrase.test(before)) return false;
+  }
+  const matches = /\b(?:que|cuales?)\s+fechas\s+(?:tienen|tienes|tenias|hay|estan)\s+disponibles?\b/.test(normalized)
+    || /\b(?:que|cuales?)\s+fechas\s+(?:existen|manejan|ofrecen|tienes)(?:\s+ahora)?\b/.test(normalized)
+    || /\b(?:que|cuales?)\s+fechas\s+(?:hay|tienen|existen)\s+ahora\b/.test(normalized)
+    || /\b(?:que|cuales?)\s+fechas\b.{0,30}\b(?:disponib\w*|publicad\w*|abiert\w+|cupos?)\b/.test(normalized)
+    || (/\bfechas?\s+(?:disponibles?|publicadas?)\b/.test(normalized)
+      && /\b(?:que|cuales?|muestrame|ensename|dime|quiero\s+(?:saber|ver|conocer))\b/.test(normalized))
+    || /\b(?:what|which)\s+dates\s+(?:are|do you have|exist|are there)\s+available\b/.test(normalized)
+    || /\bwhat\s+dates\s+do you have\s*\??$/.test(normalized);
+  // Month window after the ask → late-month path, not full catalog dump.
+  const monthSuffix = new RegExp(`\\b(?:para|en|durante|in|for|on|during)\\s+(?:${monthAlt})\\b`);
+  if (matches && (monthSuffix.test(normalized) || (windowPhrase.test(normalized) && monthOrYear.test(normalized)))) {
+    return false;
+  }
+  return matches;
+}
+
+function isPlanListQuestion(message: string): boolean {
+  const normalized = normalizeForKeywordMatch(message);
+  return /\b(?:que\s+planes|qu[eé]\s+planes|cuales\s+planes|qu[eé]\s+experiencias|qu[eé]\s+tipo\s+de\s+planes|qu[eé]\s+opciones\s+de\s+plan|que\s+opciones\s+de\s+experiencia)\b/i.test(normalized)
+    || /\b(?:ofrecen|tienen|hay|manejan)\s*$/i.test(normalized) && /\b(?:que\s+planes|qu[eé]\s+planes|cuales\s+planes)\b/i.test(normalized)
+    || /\b(?:what\s+plans|which\s+plans|what\s+experiences|what\s+kind\s+of\s+plans)\b/i.test(normalized)
+    || /\b(?:do\s+you\s+(?:offer|have))\s*$/i.test(normalized) && /\b(?:what\s+plans|which\s+plans)\b/i.test(normalized);
+}
+
+function buildPlansListReply(skills: Skills, lang: 'es' | 'en'): string {
+  const exp = getActiveExperience(skills);
+  const plans = getPlans(exp);
+  if (plans.length === 0) return skills.fallbackReplies[lang].plansListReply.replace('{{plans}}', lang === 'es' ? 'Consulta con el equipo para más detalles.' : 'Check with the team for more details.');
+  const separator = lang === 'es' ? '\n' : '\n';
+  const list = plans.map(p => `${p.name} (${p.duration}): ${p.shortDescription}`).join(separator);
+  return skills.fallbackReplies[lang].plansListReply.replace('{{plans}}', list);
+}
+
 function buildLateMonthAvailabilityReply(skills: Skills, lang: 'es' | 'en', message: string): string | null {
   const normalized = normalizeForKeywordMatch(message);
   const match = normalized.match(/\b(?:finales\s+de|late|end\s+of)\s+(january|february|march|april|may|june|july|august|september|october|november|december|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\b/i);
@@ -223,8 +343,7 @@ function buildLateMonthAvailabilityReply(skills: Skills, lang: 'es' | 'en', mess
   if (!month) return null;
 
   const exp = getActiveExperience(skills);
-  const monthDates = exp.availability.availableDates
-    .filter(item => item.status === 'available' || item.status === 'limited')
+  const monthDates = getFutureAvailableDates(exp)
     .map(item => ({ item, date: new Date(`${item.date}T12:00:00Z`) }))
     .filter(({ date }) => date.getUTCMonth() + 1 === month);
   const explicitYear = normalized.match(/\b(20\d{2})\b/)?.[1];
@@ -294,31 +413,40 @@ function shouldAutoSendGallery(currentScore: number, isExplicitRequest: boolean)
   return currentScore >= SCORE_GALLERY_TRIGGER_THRESHOLD;
 }
 
+/** Only strip interrogative re-asks (must include ¿ or ?), never narrative statements. */
 function stripReaskedQuestions(reply: string, merged: MergedQualification): string {
   let result = reply;
 
   if (merged.nombre) {
-    const nameAskPattern = new RegExp(
-      String.raw`(?:¿?(?:y\s+)?(?:c[oó]mo\s+te\s+llamas|c[uú]al\s+es\s+tu\s+nombre|con\s+qui[eé]n\s+tengo\s+el\s+gusto|me\s+(?:dices|recuerdas|confirmas)\s+tu\s+nombre|y\s+tu\s+nombre|tu\s+nombre\s+es|como\s+te\s+llamo|what'?s\s+your\s+name|what\s+is\s+your\s+name|may\s+i\s+ask\s+your\s+name|before\s+we\s+continue,?\s*(?:what'?s\s+your\s+name|what\s+is\s+your\s+name)|antes\s+de\s+seguir,?\s*¿?(?:c[oó]mo\s+te\s+llamas|c[uú]al\s+es\s+tu\s+nombre))[?¿]?\s*\.?)`,
-      'gi'
+    result = result.replace(
+      /(?:¿\s*)?(?:c[oó]mo\s+te\s+llamas|c[uú]al\s+es\s+tu\s+nombre|con\s+qui[eé]n\s+tengo\s+el\s+gusto|what'?s\s+your\s+name|what\s+is\s+your\s+name|may\s+i\s+ask\s+your\s+name)[^?¿]*\?/gi,
+      '',
     );
-    result = result.replace(nameAskPattern, '');
   }
 
   if (merged.personas != null) {
-    result = result.replace(/(?:¿?(?:para\s+cu[aá]ntas\s+personas\s+ser[ií]a|cu[aá]ntas\s+personas\s+(?:ser[ií]an|son)|vienes?\s+solo\s+o\s+(?:acompa[ñn]ado|con\s+alguien)|la\s+experiencia\s+ser[ií]a\s+para\s+ti\s+solo,?\s+en\s+pareja\s+o\s+para\s+un\s+grupo|how\s+many\s+people|is\s+the\s+experience\s+for\s+you\s+alone,?\s+as\s+a\s+couple,?\s+or\s+for\s+a\s+group)[?¿]?\s*\.?)/gi, '');
+    result = result.replace(
+      /(?:¿\s*)?(?:para\s+cu[aá]ntas\s+personas|cu[aá]ntas\s+personas|vienes?\s+solo\s+o|la\s+experiencia\s+ser[ií]a\s+para\s+ti\s+solo|how\s+many\s+people|is\s+the\s+experience\s+for\s+you\s+alone|for\s+you\s+alone,?\s+as\s+a\s+couple)[^?¿]*\?/gi,
+      '',
+    );
   }
 
   if (merged.fecha != null) {
-    result = result.replace(/(?:¿?(?:qu[eé]\s+fecha\s+(?:tienes|tienen)\s+en\s+mente|tienes?\s+alguna\s+fecha\s+(?:tentativa|en\s+mente)|para\s+qu[eé]\s+fecha|cu[aá]ndo\s+(?:quieres|quieren|te\s+gustar[ií]a)\s+ir|what\s+date\s+do\s+you\s+have\s+in\s+mind|do\s+you\s+have\s+a\s+date\s+in\s+mind|when\s+would\s+you\s+like\s+to\s+go)[?¿]?\s*\.?)/gi, '');
+    // Confirmed or deferred: strip dry date-ask questions only.
+    result = result.replace(
+      /(?:¿\s*)?(?:qu[eé]\s+fecha|(?:tienes?|tienen)\s+(?:alguna\s+)?fecha|alguna\s+fecha|fecha\s+tentativa|fecha\s+en\s+mente|fecha\s+pensada|fecha\s+aproximada|para\s+qu[eé]\s+fecha|cu[aá]ndo\s+(?:quieres|quieren|te\s+gustar[ií]a)\s+ir|todav[ií]a\s+est[aá]s\s+explorando|what\s+date|do\s+you\s+have\s+a\s+date|date\s+in\s+mind|when\s+would\s+you\s+like\s+to\s+go|fecha\s+est[aá]s\s+considerando)[^?¿]*\?/gi,
+      '',
+    );
   }
 
   if (merged.transporte != null) {
-    result = result.replace(/(?:¿?(?:vienen?\s+en\s+carro\s+propio\s+o\s+necesitan\s+transporte|tienen?\s+carro\s+propio\s+o\s+necesitan\s+transporte|c[oó]mo\s+(?:llegar[ií]an|van\s+a\s+llegar)|necesitan\s+transporte\s+desde\s+bogot[aá]|are\s+you\s+arriving\s+on\s+your\s+own\s+or\s+do\s+you\s+need\s+transport|do\s+you\s+need\s+transport(?:\s+from\s+bogota)?|how\s+would\s+you\s+get\s+there)[?¿]?\s*\.?)/gi, '');
+    result = result.replace(
+      /(?:¿\s*)?(?:tienes?|tienen|vienes?|vienen|are\s+you\s+arriving|do\s+you\s+have|do\s+you\s+need|how\s+would\s+you)?[^.!?¿\n]*\b(?:transporte\s+propio|carro\s+propio|por\s+tu\s+cuenta|necesitan\s+transporte|necesitas\s+transporte|own\s+transport|need\s+transport|how\s+would\s+you\s+get\s+there|c[oó]mo\s+llegar)[^?¿]*\?/gi,
+      '',
+    );
   }
 
-  result = result.replace(/\n{3,}/g, '\n\n').trim();
-
+  result = result.replace(/\n{3,}/g, '\n\n').replace(/[ \t]{2,}/g, ' ').trim();
   return result;
 }
 
@@ -354,6 +482,15 @@ function sanitizeCollectedFields(fields: Record<string, unknown>, internalDatePe
     }
     if (typeof v === 'string' && (INTERNAL_SENTINELS.has(v) || v.startsWith('_relative_ordinal_'))) continue;
     safe[k] = v;
+  }
+  if (fields.dateStatus === 'deferred' || fields.dateStatus === 'options_offered') {
+    safe.fecha = internalDatePending;
+    safe.dateStatus = fields.dateStatus;
+    safe.dateNote = fields.dateStatus === 'options_offered'
+      ? 'Date already discussed; options were offered. Do NOT re-ask for a tentative date.'
+      : 'Customer has no fixed date yet (deferred). Do NOT re-ask for a tentative date.';
+  } else if (typeof fields.dateStatus === 'string') {
+    safe.dateStatus = fields.dateStatus;
   }
   return safe;
 }
@@ -434,27 +571,6 @@ const NON_REENGAGEMENT_PAINS: ReadonlySet<LeadPain> = new Set<LeadPain>([
   'price', 'security', 'partner_group', 'not_interested',
 ]);
 
-// Price / date / reservation intent detector for the dynamic-data guard.
-// Uses word-boundary matching (not bare substring) so casual chat does not
-// leak into the block (e.g. "coffee" must not match "fee", "cuando quieras"
-// should still match "cuando" as a whole word but not partial tokens like
-// "pagaron" matching "pago"). Multi-word phrases are matched literally.
-// Accent-insensitive: the message is normalized (diacritics stripped) so a
-// single ASCII keyword covers both "cuanto" and "cuánto".
-const DYNAMIC_PRICE_DATE_KEYWORDS = [
-  // ES
-  'precio', 'precios', 'cuanto', 'cuanta', 'cuantas', 'cuantos', 'vale', 'valor',
-  'costo', 'cuesta', 'cuestan', 'cobran', 'fecha', 'fechas', 'disponible',
-  'disponibilidad', 'cupo', 'cupos', 'agenda', 'agendar', 'reservar', 'reserva',
-  'reservacion', 'separar', 'pagar', 'pago', 'deposito', 'abono', 'nequi',
-  // EN
-  'price', 'prices', 'cost', 'costs', 'fee', 'fees', 'date', 'dates',
-  'available', 'availability', 'schedule', 'book', 'booking', 'reserve',
-  'reservation', 'pay', 'payment', 'deposit',
-];
-// Multi-word phrases checked with substring after normalization (order-stable).
-const DYNAMIC_PRICE_DATE_PHRASES = ['how much', 'mercado pago'];
-
 function normalizeForKeywordMatch(text: string): string {
   return text
     .toLowerCase()
@@ -464,15 +580,19 @@ function normalizeForKeywordMatch(text: string): string {
 
 function isPriceDateOrReservationMessage(text: string): boolean {
   const norm = normalizeForKeywordMatch(text);
-  if (DYNAMIC_PRICE_DATE_PHRASES.some(p => norm.includes(p))) return true;
-  const tokens = norm.split(/[^a-z0-9]+/).filter(Boolean);
-  const keywordSet = new Set(DYNAMIC_PRICE_DATE_KEYWORDS);
-  return tokens.some(t => keywordSet.has(t));
+  return /\b(?:precio|precios|cuanto|cuanta|cuantas|cuantos|vale|valor|costo|cuesta|fecha|fechas|disponible|disponibilidad|cupo|cupos|agenda|agendar|reservar|reserva|reservacion|separar|pagar|pago|deposito|abono|nequi|price|prices|cost|fee|date|dates|available|availability|schedule|book|booking|reserve|reservation|pay|payment|deposit)\b/i.test(norm)
+    || norm.includes('how much')
+    || norm.includes('mercado pago');
 }
 
 const OPT_OUT_KEYWORDS_ES = ['detener', 'cancelar mensajes', 'no me escriban', 'basta', 'suficiente', 'dejen de escribirme', 'no me contacten', 'no me contacte', 'sacame de la lista', 'no quiero recibir mensajes', 'no quiero mas mensajes', 'borra mis datos', 'eliminame', 'eliminame de la lista', 'no me vuelvan a escribir', 'no me manden mas mensajes', 'dejen de molestar', 'paren', 'bloqueo', 'reporto'];
 const OPT_OUT_KEYWORDS_EN = ['stop', 'unsubscribe', 'no more messages', 'remove me', 'do not contact me', 'take me off', 'take me off the list', 'please stop', 'enough', "i'm done", 'i am done', 'unsubscribe me', 'do not text', 'do not message', 'stop messaging', 'leave me alone', 'do not disturb', 'block', 'report spam'];
 const ALL_OPT_OUT_KEYWORDS = [...OPT_OUT_KEYWORDS_ES, ...OPT_OUT_KEYWORDS_EN];
+
+export function isOptOutMessage(message: string): boolean {
+  const normalized = message.toLowerCase().trim();
+  return ALL_OPT_OUT_KEYWORDS.some(keyword => normalized.includes(keyword));
+}
 
 export const llmClient = new DeepSeekLlmClient(true);
 
@@ -494,25 +614,33 @@ function getPlanPricing(planId: string | undefined | null, skills: Skills): { in
   };
 }
 
-function computePriceFollowUp(personas: unknown, planId: string | undefined | null, lang: string, skills: Skills): string | undefined {
+function computePriceFollowUp(personas: unknown, planId: string | undefined | null, lang: 'es' | 'en', skills: Skills): string | undefined {
   const { individualPrice, couplePrice, duration } = getPlanPricing(planId, skills);
   if (individualPrice == null || couplePrice == null) return undefined;
+  const fb = skills.fallbackReplies[lang];
   const quote = calculatePriceQuote(getActiveExperience(skills), { planId, people: personas });
   if (!quote) {
-    return lang === 'es'
-      ? `Plan ${duration}. Individual: $${formatCop(individualPrice)} COP. Pareja: $${formatCop(couplePrice)} COP.`
-      : `${duration} Plan. Individual: $${formatCop(individualPrice)} COP. Couple: $${formatCop(couplePrice)} COP.`;
+    return fb.priceFollowUpCatalog
+      .replace('{{duration}}', duration)
+      .replace('{{individualPrice}}', formatCop(individualPrice))
+      .replace('{{couplePrice}}', formatCop(couplePrice));
   }
-  const label = lang === 'es'
-    ? (quote.people === 2 ? 'pareja' : `${quote.people} ${quote.people === 1 ? 'persona' : 'personas'}`)
-    : (quote.people === 2 ? 'couple' : `${quote.people} ${quote.people === 1 ? 'person' : 'people'}`);
-  return lang === 'es'
-    ? `En tu caso, ${label}: $${formatCop(quote.planTotal)} COP todo incluido.`
-    : `In your case, ${label}: $${formatCop(quote.planTotal)} COP all-inclusive.`;
+  const label = quote.people === 2
+    ? fb.priceFollowUpLabelCouple
+    : fb.priceFollowUpLabelPeople
+      .replace('{{count}}', String(quote.people))
+      .replace('{{unit}}', quote.people === 1 ? fb.priceFollowUpUnitPerson : fb.priceFollowUpUnitPeople);
+  return fb.priceFollowUpCase
+    .replace('{{label}}', label)
+    .replace('{{planTotal}}', formatCop(quote.planTotal));
 }
 
 function isPriceQuestion(text: string): boolean {
   const norm = normalizeForKeywordMatch(text);
+  if (/\bvale\s+la\s+pena\b/.test(norm)
+    && !/\b(?:precio|precios|valor|costo|cuesta|cuestan|price|prices|cost|costs|cuanto|how much)\b/.test(norm)) {
+    return false;
+  }
   // Capacity / group-size questions are not price questions.
   if (/\b(?:permite|capacidad|maximo|maximum|tamano|group size|cupo maximo)\b/.test(norm)
     && !/\b(?:precio|precios|vale|valor|costo|cuesta|price|cost|cuanto|how much)\b/.test(norm)) {
@@ -520,7 +648,14 @@ function isPriceQuestion(text: string): boolean {
   }
   if (norm.includes('how much')) return true;
   const tokens = new Set(norm.split(/[^a-z0-9]+/).filter(Boolean));
-  if (['precio', 'precios', 'vale', 'valor', 'costo', 'cuesta', 'cuestan', 'price', 'prices', 'cost', 'costs'].some(t => tokens.has(t))) return true;
+  if (['precio', 'precios', 'valor', 'costo', 'cuesta', 'cuestan', 'price', 'prices', 'cost', 'costs', 'presupuesto', 'presupuestos'].some(t => tokens.has(t))) return true;
+  // Colloquial "vale" (OK/agreed) is not a price word on its own.
+  // Only treat it as price when paired with a price carrier.
+  if (tokens.has('vale')) {
+    if (tokens.has('cuanto') || /\b(?:cuanto|cual|que)\s+vale\b/.test(norm)) return true;
+    if (/\bvale\s+(?:el|la|lo|\$?\d|unos?|como)\b/.test(norm)) return true;
+    if (/\bvale\s+(?:el\s+)?(?:plan|tour|paquete|experiencia|viaje)\b/.test(norm)) return true;
+  }
   if (tokens.has('cuanto') && !/\bcuanto\s+(dura|tiempo|personas|people)\b/.test(norm)) return true;
   if (tokens.has('total') && (
     tokens.has('exacto') || tokens.has('exact') || tokens.has('paquete') || tokens.has('package')
@@ -557,24 +692,43 @@ function quoteFitLine(people: number, plan: QuotePlan, fb: FallbackReplies['es']
 }
 
 // Numbers from calculator; package copy from fallback-replies (value before number).
-function formatDeterministicQuoteReply(quote: PriceQuote, skills: Skills, lang: 'es' | 'en'): string {
+function quoteCta(fb: FallbackReplies['es'], merged: Pick<MergedQualification, 'fecha' | 'transporte' | 'personas' | 'dateStatus'>): string {
+  const status = merged.dateStatus;
+  if (status === 'deferred' || status === 'options_offered' || isDeferredDate(merged.fecha, status)) {
+    return merged.transporte != null ? fb.advanceQuestionDateOnly : fb.quoteNextStepDateDeferred;
+  }
+  if (status === 'window') return fb.advanceQuestionNextStep;
+  if (!isConfirmedDate(merged.fecha)) {
+    return merged.personas === 1 ? fb.quoteNextStepSolo : fb.quoteNextStep;
+  }
+  return fb.advanceQuestionNextStep;
+}
+
+function formatDeterministicQuoteReply(
+  quote: PriceQuote,
+  skills: Skills,
+  lang: 'es' | 'en',
+  merged: Pick<MergedQualification, 'fecha' | 'transporte' | 'personas'> = { fecha: null, transporte: null, personas: quote.people },
+): string {
   const fb = skills.fallbackReplies[lang];
   const plan = quotePlan(skills, quote.planId);
   const fit = quoteFitLine(quote.people, plan, fb);
   const valueStack = applyPlanTokens(fb.quoteValueStack, plan);
   const anchor = applyPlanTokens(fb.quoteAnchor, plan);
-  const base = fb.quotePlanBase
+  const baseTemplate = quote.people === 1 ? fb.quotePlanBaseSolo : fb.quotePlanBase;
+  const base = baseTemplate
     .replace('{{people}}', peopleLabel(quote.people, lang))
     .replace('{{planTotal}}', formatCop(quote.planTotal))
     .replace('{{currency}}', quote.currency);
-
-  if (quote.requiresTransportConfirmation) {
-    return `${fit} ${valueStack} ${anchor} ${base}${fb.quoteTransportConfirm} ${fb.quoteNextStep}`.trim();
-  }
+  const nextStep = quoteCta(fb, { ...merged, personas: merged.personas ?? quote.people });
 
   const addon = quote.addonsTotal > 0
     ? fb.quoteAddons.replace('{{addonsTotal}}', formatCop(quote.addonsTotal)).replace('{{currency}}', quote.currency)
     : '';
+
+  if (quote.requiresTransportConfirmation) {
+    return `${fit} ${valueStack} ${anchor} ${base}${addon}${fb.quoteTransportConfirm} ${nextStep}`.trim();
+  }
   const transport = quote.transportTotal != null
     ? fb.quoteTransport.replace('{{transportTotal}}', formatCop(quote.transportTotal)).replace('{{currency}}', quote.currency)
     : '';
@@ -585,7 +739,7 @@ function formatDeterministicQuoteReply(quote: PriceQuote, skills: Skills, lang: 
   const totalLine = quote.total != null && quote.total !== quote.planTotal
     ? total
     : '';
-  return `${fit} ${valueStack} ${anchor} ${base}${addon}${transport}${totalLine} ${fb.quoteNextStep}`.trim();
+  return `${fit} ${valueStack} ${anchor} ${base}${addon}${transport}${totalLine} ${nextStep}`.trim();
 }
 
 function frameDeterministicQuote(_llmReply: string, quoteReply: string, _fb: FallbackReplies['es']): string {
@@ -593,25 +747,91 @@ function frameDeterministicQuote(_llmReply: string, quoteReply: string, _fb: Fal
   return quoteReply;
 }
 
-/** First full price only after explicit ask, or group size + depth (date/transport/more turns). */
-function canPresentFirstPrice(message: string, merged: MergedQualification, inboundCount: number): boolean {
-  if (isPriceQuestion(message)) return true;
+/** First full price after explicit ask once party size is known (date does not gate base price). */
+function canPresentFirstPrice(message: string, merged: MergedQualification): boolean {
   if (typeof merged.personas !== 'number') return false;
-  if (merged.fecha != null || merged.transporte != null) return true;
-  if (inboundCount >= 3) return true;
-  return false;
+  if (isPriceQuestion(message)) {
+    const msgFields = extractBookingFields(message);
+    const mergedExtra = [merged.plan, merged.fecha, merged.transporte].filter(v => v != null).length;
+    const msgExtra = [msgFields.collected_people, msgFields.collected_date, msgFields.collected_transport_need]
+      .filter(v => v != null).length;
+    return (mergedExtra + msgExtra + 1) >= 2;
+  }
+  if (/\bvale\s+la\s+pena\b/i.test(normalizeForKeywordMatch(message))) return false;
+  if (isQualificationComplete(merged)) return false;
+  return isConfirmedDate(merged.fecha) || merged.transporte != null;
 }
+
+// Known template placeholders used across fallback-replies.json and prompts.
+// Matched with single OR double braces so an LLM emitting `{planName}` is also
+// scrubbed. Kept explicit (not `[a-zA-Z]+`) so legitimate `{word}` copy is never
+// deleted. `plan` matches planName/planDuration/planSummary/planTotal via prefix.
+const KNOWN_TEMPLATE_TOKENS = /\{\{?(?:addonsTotal|age|agentName|continuation|count|couplePrice|coupleTotal|currency|date|dateClause|dates|deposit|depositAmount|displayNumber|duration|experienceName|experienceSummary|individualPrice|instagramUrl|itinerarySummary|label|maxGroupSize|methods|month|name|paymentUrl|people|peopleClause|plan[A-Za-z]*|plans|price|priceLine|soloTotal|startingPrice|statusClause|summary|total|transportTotal|unit|window|windowClause)\}?\}/g;
 
 function scrubInternalLeakTokens(reply: string, internalDatePending: string): string {
   return reply
+    .replace(KNOWN_TEMPLATE_TOKENS, '')
     .replace(/\btentative_unknown\b/gi, internalDatePending)
     .replace(/_relative_ordinal_[a-z0-9_]+/gi, internalDatePending);
 }
 
-function buildPriceGateTeaser(skills: Skills, lang: 'es' | 'en', planId: string | null | undefined): string {
+/** Final safety net: drop any known placeholder that survived substitution. */
+function stripUnsubstitutedTokens(reply: string): string {
+  return reply.replace(KNOWN_TEMPLATE_TOKENS, '').replace(/\s{2,}/g, ' ').trim();
+}
+
+/** Strip COP-format price numbers from reply text when price gating blocks them. */
+function stripPriceText(text: string): string {
+  return text
+    .replace(/\$?\s*\d{1,3}(?:[.,]\d{3})+\s*(?:COP|pesos)?/gi, '')
+    .replace(/\b\d{4,}\s*(?:COP|pesos)\b/gi, '')
+    .replace(/\b\d{2,3}\s*mil\b(?:\s*(?:COP|pesos))?/gi, '')
+    .replace(/\b\d\s*mill[oó]n\b(?:\s*(?:COP|pesos))?/gi, '')
+    .replace(/\b(?:cien|ciento|doscientos|trescientos|cuatrocientos|quinientos|seiscientos|setecientos|ochocientos|novecientos)(?:\s+(?:veinte|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa)(?:\s+y\s+\w+)?)?\s+mil(?:\s+(?:COP|pesos))?\b/gi, '')
+    .replace(/\b(?:un|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve)\s+mill[oó]n(?:es)?(?:\s+(?:COP|pesos))?\b/gi, '')
+    .replace(/\b(?:one|two|three|four|five|six|seven|eight|nine)\s+(?:hundred(?:\s+(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety))?\s+thousand|million)(?:\s+(?:COP|pesos))?\b/gi, '')
+    .replace(/\bcuesta\b.{0,40}\$?\s*\d{1,3}(?:[.,]\d{3})+/gi, '')
+    .replace(/\b(?:precio|price|valor|costo|total)\s+(?:es\b|ser[ií]a\b|de\b|desde\b)\s+\$?\s*\d{1,3}(?:[.,]\d{3})+/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+function buildPriceGateTeaser(skills: Skills, lang: 'es' | 'en', planId: string | null | undefined): string | null {
   const exp = getActiveExperience(skills);
   const plan = planId ? getPlans(exp).find(p => p.id === planId) : undefined;
-  return applyPlanTokens(skills.fallbackReplies[lang].priceGateTeaser, plan ?? getPlans(exp)[0]);
+  const startingPrice = getStartingPrice(exp, plan?.id);
+  if (!startingPrice) return null;
+  const startingPlan = getPlans(exp).find(candidate => candidate.id === startingPrice.planId);
+  if (!startingPlan) return null;
+  // Only used when party size is missing — never imply date changes base price.
+  return applyPlanTokens(skills.fallbackReplies[lang].priceGateTeaser, startingPlan)
+    .replace('{{startingPrice}}', formatCop(startingPrice.amount))
+    .replace('{{currency}}', startingPrice.currency);
+}
+
+function isPriceRequestContinuation(recentMessages: RecentMessage[], peopleFromCurrentMessage: unknown): boolean {
+  if (typeof peopleFromCurrentMessage !== 'number') return false;
+  const lastCustomerMessage = [...recentMessages].reverse().find(message => message.role === 'user');
+  return lastCustomerMessage != null && isPriceQuestion(lastCustomerMessage.content);
+}
+
+function detectOutboundDateAction(reply: string, merged: MergedQualification): OutboundDateAction | undefined {
+  if (!reply.trim()) return undefined;
+  if (isDateAskQuestion(reply) && (merged.dateStatus === 'unasked' || merged.dateStatus == null || merged.dateStatus === 'asked')) {
+    return 'asked';
+  }
+  if (/\b(?:fechas?\s+disponibles|pr[oó]ximas\s+fechas|opciones\s+disponibles|available\s+dates|published\s+dates)\b/i.test(reply)
+    && (merged.dateStatus === 'deferred' || merged.dateStatus === 'asked' || merged.dateStatus === 'options_offered' || merged.dateStatus === 'unasked' || merged.dateStatus == null)) {
+    // Only mark options when reply actually lists or offers options, not a pure date ask.
+    if (!/\bfecha tentativa en mente\b/i.test(reply) || /\bopciones|disponibles|publicadas\b/i.test(reply)) {
+      if (/\b(?:muestre|mostrar|revisar|compar|list|opciones|disponibles|publicadas)\b/i.test(reply)) {
+        return merged.dateStatus === 'deferred' || merged.dateStatus === 'options_offered' || /\bopciones|disponibles|publicadas\b/i.test(reply)
+          ? 'options_offered'
+          : 'asked';
+      }
+    }
+  }
+  return undefined;
 }
 
 type CloseKind = 'closing' | 'payment_methods' | 'pending_owner' | 'soft_hold';
@@ -635,6 +855,63 @@ function displayName(nombre: unknown, lang: 'es' | 'en'): string {
   return lang === 'es' ? 'Hola' : 'Hi';
 }
 
+function availabilityEntryForDate(skills: Skills, fecha: unknown): { status: string } | null {
+  if (typeof fecha !== 'string') return null;
+  const normalized = normalizeForKeywordMatch(fecha);
+  const explicitYear = normalized.match(/\b(20\d{2})\b/)?.[1];
+  return getFutureAvailableDates(getActiveExperience(skills)).find(entry => {
+    if (normalized === entry.date) return true;
+    const date = new Date(`${entry.date}T12:00:00Z`);
+    if (Number.isNaN(date.getTime())) return false;
+    if (explicitYear && date.getUTCFullYear() !== Number(explicitYear)) return false;
+    const day = String(date.getUTCDate());
+    const month = new Intl.DateTimeFormat('es-CO', { month: 'long', timeZone: 'UTC' }).format(date);
+    return new RegExp(`\\b${day}\\b`).test(normalized) && normalized.includes(normalizeForKeywordMatch(month));
+  }) ?? null;
+}
+
+/** Day+month (or ISO) required before reservation-close CTA; month-only is not enough. */
+function isExactBookingDate(value: unknown): boolean {
+  if (!isConfirmedDate(value)) return false;
+  const text = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return true;
+  const norm = normalizeForKeywordMatch(text);
+  const hasDay = /\b([1-9]|[12]\d|3[01])\b/.test(norm);
+  const hasMonth = /\b(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|january|february|march|april|may|june|july|august|september|october|november|december)\b/.test(norm);
+  return hasDay && hasMonth;
+}
+
+function selectedDateFromAvailabilityReply(
+  message: string,
+  lastAssistantQuestion: string | null,
+  skills: Skills,
+): string | null {
+  if (!lastAssistantQuestion || !/^(?:s[ií]|sip|si claro|claro|dale|listo|perfecto|de una|por supuesto)(?:\b|$|[\s,!.])/i.test(message.trim())) return null;
+  if (!/(?:fecha|fin de semana|les sirve|te sirve|available|date|weekend)/i.test(lastAssistantQuestion)) return null;
+
+  const assistantNorm = normalizeForKeywordMatch(lastAssistantQuestion);
+  const messageNorm = normalizeForKeywordMatch(message);
+  const selectedDay = messageNorm.match(/\b(?:el\s+)?([1-9]|[12]\d|3[01])\b/)?.[1];
+  const candidates = getFutureAvailableDates(getActiveExperience(skills)).filter(entry => {
+    const date = new Date(`${entry.date}T12:00:00Z`);
+    if (Number.isNaN(date.getTime())) return false;
+    const day = String(date.getUTCDate());
+    const monthEs = normalizeForKeywordMatch(new Intl.DateTimeFormat('es-CO', { month: 'long', timeZone: 'UTC' }).format(date));
+    const monthEn = normalizeForKeywordMatch(new Intl.DateTimeFormat('en-US', { month: 'long', timeZone: 'UTC' }).format(date));
+    // Only dates actually offered in the last assistant turn.
+    if (!new RegExp(`\\b${day}\\b`).test(assistantNorm)) return false;
+    if (!assistantNorm.includes(monthEs) && !assistantNorm.includes(monthEn)) return false;
+    if (selectedDay && day !== selectedDay) return false;
+    const monthInMessage = MONTH_NAMES.find(m => messageNorm.includes(m));
+    if (monthInMessage && monthEs !== monthInMessage && monthEn !== monthInMessage) return false;
+    return true;
+  });
+  if (candidates.length !== 1) return null;
+
+  const date = new Date(`${candidates[0].date}T12:00:00Z`);
+  return new Intl.DateTimeFormat('es-CO', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }).format(date);
+}
+
 function buildCloseReply(
   skills: Skills,
   lang: 'es' | 'en',
@@ -643,18 +920,42 @@ function buildCloseReply(
   facts: PublicPaymentFacts,
 ): string {
   const fb = skills.fallbackReplies[lang];
+  const availability = availabilityEntryForDate(skills, merged.fecha);
   const template =
     kind === 'payment_methods' ? fb.paymentMethodsReply
     : kind === 'pending_owner' ? fb.reservationPendingOwner
     : kind === 'soft_hold' ? fb.reservationSoftHold
+    : availability?.status === 'limited' ? fb.reservationClosingLimited
     : fb.reservationClosing;
+
+  let priceLine = '';
+  if (typeof merged.personas === 'number') {
+    const quote = calculatePriceQuote(getActiveExperience(skills), {
+      planId: typeof merged.plan === 'string' ? merged.plan : undefined,
+      people: merged.personas,
+      transportNeed: typeof merged.transporte === 'string' ? merged.transporte as TransportNeed : undefined,
+    });
+    if (quote) {
+      const total = quote.requiresTransportConfirmation ? quote.planTotal : (quote.total ?? quote.planTotal);
+      const depositAmount = Math.round(total * facts.depositPercent / 100);
+      priceLine = fb.closeDepositPriceLine
+        .replace('{{total}}', formatCop(total))
+        .replaceAll('{{currency}}', quote.currency)
+        .replace('{{deposit}}', String(facts.depositPercent))
+        .replace('{{depositAmount}}', formatCop(depositAmount));
+      if (quote.requiresTransportConfirmation) {
+        priceLine += fb.quoteTransportConfirm;
+      }
+    }
+  }
 
   return template
     .replaceAll('{{name}}', displayName(merged.nombre, lang))
     .replaceAll('{{summary}}', qualificationSummary(merged, lang, fb))
     .replaceAll('{{date}}', displayDate(merged.fecha, lang))
     .replaceAll('{{deposit}}', String(facts.depositPercent))
-    .replaceAll('{{methods}}', formatMethods(facts.methodNames, lang));
+    .replaceAll('{{methods}}', formatMethods(facts.methodNames, lang))
+    .replace('{{priceLine}}', priceLine);
 }
 
 function buildCloseAck(skills: Skills, lang: 'es' | 'en', merged: MergedQualification): string {
@@ -662,6 +963,10 @@ function buildCloseAck(skills: Skills, lang: 'es' | 'en', merged: MergedQualific
   return fb.reservationPendingAck
     .replaceAll('{{name}}', displayName(merged.nombre, lang))
     .replaceAll('{{date}}', displayDate(merged.fecha, lang));
+}
+
+function buildReservationPolicyUnavailableReply(skills: Skills, lang: 'es' | 'en'): string {
+  return skills.fallbackReplies[lang].reservationPolicyUnavailable;
 }
 
 type CloseStage = 'none' | 'closing_offered' | 'pending_sent';
@@ -673,10 +978,10 @@ function inferCloseStage(recentMessages: RecentMessage[]): CloseStage {
       /I am validating availability/i,
     ],
     closing_offered: [
-      /inicie esa validacion|inicie la validacion|quieres que inicie/i,
+      /inicie esa validacion|inicie la validacion|quieres que inicie|quieres que la inicie/i,
       /separamos con anticipo|reserva se separa/i,
-      /booking is held with|shall I start that validation|shall I start it/i,
-      /validacion ahora|validation now/i,
+      /booking is held with|shall I start that validation|shall I start it|start it now/i,
+      /validacion ahora|validation now|la inicie ahora/i,
     ],
   };
   for (const msg of recentMessages) {
@@ -690,8 +995,17 @@ function inferCloseStage(recentMessages: RecentMessage[]): CloseStage {
   return 'none';
 }
 
-function buildDeterministicQuote(message: string, merged: MergedQualification, lang: 'es' | 'en', skills: Skills): string | null {
-  if (!isPriceQuestion(message)) return null;
+function buildDeterministicQuote(
+  message: string,
+  merged: MergedQualification,
+  lang: 'es' | 'en',
+  skills: Skills,
+  priceRequestContinuation: boolean = false,
+): string | null {
+  if (!isPriceQuestion(message) && !priceRequestContinuation) return null;
+  if (/\b(?:ni[ñn]os?|ni[ñn]as?|children|kids?)\b/i.test(message)) return null;
+  if (/\b(?:presupuestos?|ambos|dos\b|\d+\s*presupuestos?|comparar\s+(?:precios?|presupuestos?))\b/i.test(message)) return null;
+  if (isExplicitDateDeferral(message)) return null;
   const exp = getActiveExperience(skills);
   if (!isPricingAvailable(exp)) return null;
   const quote = calculatePriceQuote(exp, {
@@ -700,7 +1014,29 @@ function buildDeterministicQuote(message: string, merged: MergedQualification, l
     transportNeed: typeof merged.transporte === 'string' ? merged.transporte as TransportNeed : undefined,
     includeApiaryCattle: wantsApiaryCattle(message),
   });
-  return quote ? formatDeterministicQuoteReply(quote, skills, lang) : null;
+  return quote ? formatDeterministicQuoteReply(quote, skills, lang, merged) : null;
+}
+
+function buildTransportPriceInquiryReply(
+  message: string,
+  merged: MergedQualification,
+  skills: Skills,
+  lang: 'es' | 'en',
+): string | null {
+  if (!isTransportPriceInquiry(message) || typeof merged.personas !== 'number') return null;
+  const exp = getActiveExperience(skills);
+  if (!isPricingAvailable(exp)) return null;
+  const quote = calculatePriceQuote(exp, {
+    planId: typeof merged.plan === 'string' ? merged.plan : undefined,
+    people: merged.personas,
+    transportNeed: 'from_bogota',
+  });
+  if (!quote?.transportTotal || quote.total == null) return null;
+  return skills.fallbackReplies[lang].transportPriceInquiry
+    .replace('{{transportTotal}}', formatCop(quote.transportTotal))
+    .replace('{{total}}', formatCop(quote.total))
+    .replace('{{people}}', peopleLabel(quote.people, lang))
+    .replaceAll('{{currency}}', quote.currency);
 }
 
 function instagramUrl(skills: Skills): string {
@@ -733,6 +1069,7 @@ function buildMergedQualification(dbFields: Record<string, unknown>, llmTurn: Ll
     plan: dbFields.plan ?? llmTurn?.collected_fields.plan,
     personas: dbFields.personas ?? llmTurn?.collected_fields.people,
     fecha: dbFields.fecha ?? llmTurn?.collected_fields.date,
+    dateStatus: buildDbQualification(dbFields).dateStatus,
     transporte: dbFields.transporte ?? llmTurn?.collected_fields.transport_need,
     mascota: dbFields.mascota ?? llmTurn?.collected_fields.pet,
   };
@@ -851,6 +1188,57 @@ function isLowInformationMessage(message: string): boolean {
     || /^(?:ok|okay|dale|listo|bueno|gracias|thanks|hola|hello|hi|hey)$/.test(normalized);
 }
 
+const HOLDING_REPLY_NO_QUESTION = /\b(?:te escribo|te confirmo|quedo atento|en un momento|dejame validar|me encargo|no enviaremos|estoy validando|te respondo en breve|te escribo enseguida|te escribo en un toque|te contactar[aá]|i(?:'| wi)?ll (?:write|confirm|get back|handle|review)|i am already validating)\b/i;
+
+const SOFT_CLOSE_REPLY_NO_QUESTION = /\b(?:sin problema|sin compromiso|abrazos?|cuando quieras retomarl[oa]|me escribes sin compromiso|aqu[ií] estoy|cuando gustes|un abrazos?|no hay problema|no te preocupes|cuando quieras|a tus [oó]rdenes|no problem|whenever you want|reach out any time|feel free to write|here for you|take care|no worries|anytime you like|when you feel like it)\b/i;
+
+function isDeferredDate(fecha: unknown, dateStatus?: MergedQualification['dateStatus']): boolean {
+  if (dateStatus === 'deferred' || dateStatus === 'options_offered') return true;
+  return typeof fecha === 'string' && (fecha === 'tentative_unknown' || fecha.startsWith('_'));
+}
+
+/** Next unknown field only — never re-ask known people/date/transport/name. */
+function pickAdvanceQuestion(fb: FallbackReplies['es'], merged: MergedQualification): string {
+  const solo = merged.personas === 1;
+  const status = merged.dateStatus;
+  if (merged.personas == null) return fb.advanceQuestionPeople;
+  if (merged.transporte == null) return solo ? fb.advanceQuestionTransportSolo : fb.advanceQuestionTransport;
+  if (status === 'deferred') return fb.advanceQuestionDateOnly;
+  if (status === 'options_offered') {
+    return solo
+      ? (fb.advanceQuestionDateOnly)
+      : fb.advanceQuestionDateOnly;
+  }
+  if (status === 'window') return fb.advanceQuestionNextStep;
+  if (status === 'unasked' || status == null || status === 'asked' || !isConfirmedDate(merged.fecha)) {
+    if (isDeferredDate(merged.fecha, status)) return fb.advanceQuestionDateOnly;
+    if (!isConfirmedDate(merged.fecha)) return solo ? fb.quoteNextStepSolo : fb.quoteNextStep;
+  }
+  if (merged.nombre == null) return solo ? fb.advanceQuestionNameSolo : fb.advanceQuestionName;
+  return fb.advanceQuestionNextStep;
+}
+
+const INVITES_RESPONSE_WITHOUT_Q = /\b(?:cu[eé]ntame|dime|decime|contame|tell me|let me know|orientarte)\b/i;
+const FACTUAL_NO_FORCE_CTA = /\b(?:el equipo (?:confirma|debe|valida)|the team (?:confirms|must|validates)|fractura|fracture|seguridad|safety|recuperando mi dinero|recovering my money|tenemos disponible|we have available)\b/i;
+
+/** Sales replies should end with one advance question, except holds/soft-close/opt-out/factual answers. */
+function ensureAdvanceQuestion(
+  reply: string,
+  fb: FallbackReplies['es'],
+  merged: MergedQualification,
+): string {
+  const trimmed = stripReaskedQuestions(reply, merged).trim();
+  if (!trimmed) return reply;
+  if (HOLDING_REPLY_NO_QUESTION.test(trimmed)) return trimmed;
+  if (SOFT_CLOSE_REPLY_NO_QUESTION.test(trimmed)) return trimmed;
+  if (INVITES_RESPONSE_WITHOUT_Q.test(trimmed)) return trimmed;
+  if (FACTUAL_NO_FORCE_CTA.test(trimmed)) return trimmed;
+  if (/instagram\.com/i.test(trimmed)) return trimmed;
+  if (/[?¿]/.test(trimmed)) return trimmed;
+  const question = pickAdvanceQuestion(fb, merged);
+  return question ? `${trimmed} ${question}`.trim() : trimmed;
+}
+
 export async function processMessage(input: ProcessMessageInput): Promise<ProcessMessageOutput> {
   const output = await processMessageCore(input);
   return withConversationState(input.repos, input.customerPhone, output);
@@ -870,7 +1258,7 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     });
   };
 
-  if (repos.isPaused()) {
+  if (repos.isPaused() && !isOptOutMessage(message)) {
     return { reply: '', shouldSendReply: false, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
   }
 
@@ -885,14 +1273,11 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   } else {
     await refreshSkills(false);
   }
-  const skills = getSkills();
-
-  const handedOffRow = repos.conversation.getHandedOffAt(customerPhone);
-  if (handedOffRow) {
-    return { reply: buildHandedOffReply(repos, customerPhone, message, skills), shouldSendReply: true, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
-  }
+  let skills = getSkills();
+  const multipleExperiences = hasMultipleExperiences(skills);
 
   const lang = resolveLanguage(repos, customerPhone, message);
+  const normalized = message.toLowerCase().trim();
 
   if (isAdcodeNoise(message)) {
     return { reply: '', shouldSendReply: false, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
@@ -902,11 +1287,14 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     return { reply: '', shouldSendReply: false, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
   }
 
-  const normalized = message.toLowerCase().trim();
-  const optOutKeywords = lang === 'es' ? OPT_OUT_KEYWORDS_ES : OPT_OUT_KEYWORDS_EN;
-  if (optOutKeywords.some(k => normalized.includes(k)) || ALL_OPT_OUT_KEYWORDS.some(k => normalized.includes(k))) {
+  if (isOptOutMessage(message)) {
     if (!repos.optOut.isOptedOut(customerPhone)) repos.optOut.setOptOut(customerPhone);
     return { reply: skills.fallbackReplies[lang].optOutConfirmation, shouldSendReply: true, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
+  }
+
+  const handedOffRow = repos.conversation.getHandedOffAt(customerPhone);
+  if (handedOffRow) {
+    return { reply: buildHandedOffReply(repos, customerPhone, message, skills), shouldSendReply: true, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendGalleryImages: false, shouldSendOwnerImage: false, shouldSendImage: false, priceJustGiven: false };
   }
 
   // Terminal state: a booked (converted) lead gets no bot reply. Placed after
@@ -918,11 +1306,67 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     return { reply: '', shouldSendReply: false, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
   }
 
-  const softClosedAt = repos.conversation.getSoftClosedAt(customerPhone);
+  let softClosedAt = repos.conversation.getSoftClosedAt(customerPhone);
 
   const isFirstContact = isNewConversation;
 
   persistInbound();
+
+  // ── Multi-experience selection (deterministic) ────────────────────────
+  // The bot never assumes an experience when multiple exist. First contact
+  // lists them all; subsequent replies that match an experience name store
+  // the selection so subsequent prompts have the right data.
+  let experienceSwitched = false;
+  if (multipleExperiences) {
+    let selectedId = repos.conversation.getSelectedExperienceId(customerPhone);
+    if (!selectedId) {
+      const collectedPlan = repos.conversation.getCollectedPlan(customerPhone);
+      const matchingExperiences = collectedPlan
+        ? getExperiences(skills).filter(experience => getPlans(experience).some(plan => plan.id === collectedPlan))
+        : [];
+      if (matchingExperiences.length === 1) {
+        selectedId = matchingExperiences[0].id;
+        repos.conversation.setSelectedExperienceId(customerPhone, selectedId);
+      }
+    }
+    const matchedExp = matchExperienceFromReply(message, skills, selectedId == null);
+    if (matchedExp) {
+      if (matchedExp.id !== selectedId) {
+        experienceSwitched = selectedId != null;
+        repos.conversation.setSelectedExperienceId(customerPhone, matchedExp.id);
+        repos.conversation.resetExperienceSalesState(customerPhone);
+        softClosedAt = null;
+      }
+      const normalizedMessage = normalizeForKeywordMatch(message);
+      const normalizedName = normalizeForKeywordMatch(matchedExp.name);
+      const isChoiceOnly = /^\s*(?:\d+|[a-z])\s*$/i.test(message) || normalizedMessage === normalizedName;
+      if (isChoiceOnly) {
+        return {
+          reply: skills.fallbackReplies[lang].experienceSelected.replace('{{name}}', matchedExp.name),
+          shouldSendReply: true, leadScore: 5, usedAi: false,
+          shouldAlertOwner: false, shouldSendOwnerImage: false,
+          shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false,
+        };
+      }
+    } else if (!selectedId) {
+        const list = getExperiences(skills)
+          .map((exp, i) => {
+            const firstSentence = exp.shortDescription.split(/\.(?:\s|$)/, 1)[0].trim();
+            const tagline = firstSentence.length > 90 ? firstSentence.slice(0, 87) + '...' : firstSentence;
+            return `  ${i + 1}. ${exp.name}\n     ${tagline}`;
+          })
+          .join('\n\n');
+        return {
+          reply: skills.fallbackReplies[lang].multiExperienceIntro.replace('{{experiences}}', list),
+          shouldSendReply: true, leadScore: 0, usedAi: false,
+          shouldAlertOwner: false, shouldSendOwnerImage: false,
+          shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false,
+        };
+    }
+  }
+  const selectedExperienceId = repos.conversation.getSelectedExperienceId(customerPhone);
+  skills = scopeSkillsToExperience(skills, selectedExperienceId);
+  const activeExperience = getActiveExperience(skills);
 
   // ── Follow-up pain reply detection ──────────────────────────────────────
   // When the customer replies after receiving the pain-question follow-up,
@@ -1012,41 +1456,57 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   }
 
   const ambiguousPartyComparison = isAmbiguousPartyComparison(message);
-  const bookingFields = extractBookingFields(message);
+  const bookingFields = extractBookingFields(message, activeExperience);
   if (futureWindow) {
     delete bookingFields.collected_date;
     delete bookingFields._relative_date_token;
   }
-  const contextFields = contextAwareExtract(message, repos, customerPhone, bookingFields);
+  const contextFields = contextAwareExtract(message, repos, customerPhone, bookingFields, activeExperience);
+  if (!contextFields.collected_date) {
+    const selectedDate = selectedDateFromAvailabilityReply(message, getLastAssistantQuestion(repos, customerPhone), skills);
+    if (selectedDate) contextFields.collected_date = selectedDate;
+  }
   if (futureWindow) {
     delete contextFields.collected_date;
     delete contextFields._relative_date_token;
   }
+  const dateDeferredFlag = contextFields._date_deferred === true;
+  const dateOptionsRequested = contextFields._date_options_requested === true;
+  delete contextFields._date_deferred;
+  delete contextFields._date_options_requested;
+  delete contextFields._relative_date_token;
+
+  // Persist non-date fields first; date transitions are atomic via repo helpers.
+  const { collected_date: extractedDate, ...nonDateContext } = contextFields as Record<string, unknown> & { collected_date?: unknown };
   repos.conversation.upsert(customerPhone, {
     language: lang,
-    ...contextFields,
+    ...nonDateContext,
   });
   if (futureWindow) {
     repos.conversation.setCollectedDateWindow(customerPhone, futureWindow);
-  } else if (typeof contextFields.collected_date === 'string' && !contextFields.collected_date.startsWith('_')) {
-    repos.conversation.setCollectedDateWindow(customerPhone, null);
+  } else if (typeof extractedDate === 'string' && extractedDate.trim() && extractedDate !== 'tentative_unknown' && !extractedDate.startsWith('_')) {
+    repos.conversation.setSelectedDate(customerPhone, extractedDate);
+  } else if (dateDeferredFlag) {
+    if (dateOptionsRequested) repos.conversation.setDateOptionsOffered(customerPhone);
+    else repos.conversation.setDateDeferred(customerPhone);
   }
   const activeDateWindow = futureWindow ?? repos.conversation.getCollectedDateWindow(customerPhone);
   const introducedLargeGroup = typeof contextFields.collected_people === 'number'
     && contextFields.collected_people > skills.salesStrategy.maxGroupSizePerDate;
 
   const rawCollected = getCollectedFields(repos, customerPhone);
-  const richCollected = reconstructFromHistory(repos, customerPhone, rawCollected);
+  const richCollected = reconstructFromHistory(repos, customerPhone, rawCollected, activeExperience);
   const missingFromDb: Record<string, unknown> = {};
   if (!rawCollected.nombre && richCollected.nombre) missingFromDb.collected_name = richCollected.nombre;
   if (!rawCollected.personas && richCollected.personas) missingFromDb.collected_people = richCollected.personas;
   if (!activeDateWindow && !rawCollected.fecha && richCollected.fecha) missingFromDb.collected_date = richCollected.fecha;
   if (!rawCollected.transporte && richCollected.transporte) missingFromDb.collected_transport_need = richCollected.transporte;
   if (!rawCollected.mascota && richCollected.mascota) missingFromDb.collected_pet = richCollected.mascota;
-  if (richCollected.plan && richCollected.plan !== rawCollected.plan) missingFromDb.collected_plan = richCollected.plan;
+  if (!experienceSwitched && richCollected.plan && richCollected.plan !== rawCollected.plan) missingFromDb.collected_plan = richCollected.plan;
   if (Object.keys(missingFromDb).length > 0) repos.conversation.upsert(customerPhone, missingFromDb);
 
-  const collectedFields = reconstructFromHistory(repos, customerPhone, getCollectedFields(repos, customerPhone));
+  const collectedFields = reconstructFromHistory(repos, customerPhone, getCollectedFields(repos, customerPhone), activeExperience);
+  if (experienceSwitched && typeof contextFields.collected_plan !== 'string') delete collectedFields.plan;
   if (activeDateWindow) delete collectedFields.fecha;
   const dbQualification = buildDbQualification(collectedFields);
   const recentMessages = repos.message.getRecentMessages(customerPhone, 21).filter((_, i, arr) => i < arr.length - 1);
@@ -1063,6 +1523,157 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   }
   // ──────────────────────────────────────────────────────────────────────────
   const currentScore = repos.conversation.getLeadScore(customerPhone);
+  const customerContext = extractCustomerContext(message);
+  const fallbackOutput = (reply: string, extra?: Partial<ProcessMessageOutput>): ProcessMessageOutput => {
+    const finalReply = ensureAdvanceQuestion(reply, skills.fallbackReplies[lang], dbQualification);
+    const outboundDateAction = extra?.outboundDateAction ?? detectOutboundDateAction(finalReply, dbQualification);
+    return {
+      reply: finalReply,
+      shouldSendReply: true,
+      leadScore: currentScore,
+      usedAi: false,
+      shouldAlertOwner: false,
+      shouldSendOwnerImage: false,
+      shouldSendGalleryImages: false,
+      shouldSendImage: false,
+      priceJustGiven: false,
+      ...extra,
+      outboundDateAction,
+    };
+  };
+  if (!hasSafetyOverride && !activeDateWindow && isStandaloneInclusionsQuestion(message, lang)) {
+    return fallbackOutput(buildInclusionsReply(skills, lang));
+  }
+  if (!hasSafetyOverride && /\b(?:precio|valor|cuesta).{0,50}\bdepende.{0,50}\bfecha|\bdepende.{0,50}\bfecha/i.test(message)) {
+    return fallbackOutput(skills.fallbackReplies[lang].priceDependsOnGroup);
+  }
+  if (!hasSafetyOverride && /\b(?:precios?|valores?).{0,40}\b(?:fechas?|disponibilidad)|\b(?:fechas?|disponibilidad).{0,40}\b(?:precios?|valores?)/i.test(message)
+    && !/\b(?:mina|minera|minero|esmeralda|emerald|mining|chivor|hacienda|apicultura|ganader[ií]a)\b/i.test(message)
+    && !isExplicitDateDeferral(message)) {
+    return fallbackOutput(skills.fallbackReplies[lang].priceAndDatesIntro);
+  }
+  if (!hasSafetyOverride
+    && /\b(?:el precio (?:nos |me )?sirve|the price works)\b/i.test(message)
+    && isConfirmedDate(dbQualification.fecha)
+    && hasPublicPaymentFacts(skills)) {
+    const facts = getPublicPaymentFacts(skills);
+    return {
+      ...fallbackOutput(skills.fallbackReplies[lang].priceAcceptedReservation
+        .replace('{{deposit}}', String(facts.depositPercent))
+        .replace('{{date}}', displayDate(dbQualification.fecha, lang))),
+      reservationReady: detectsReservationIntent(message),
+    };
+  }
+  if (!hasSafetyOverride && customerContext.childAges?.[0] != null) {
+    return fallbackOutput(skills.fallbackReplies[lang].childSuitabilityBoundary.replace('{{age}}', String(customerContext.childAges[0])));
+  }
+  if (!hasSafetyOverride
+    && /\b(?:c[oó]mo\s+(?:hago|hacemos|hacer).{0,30}reserv)/i.test(message)
+    && dbQualification.personas != null
+    && isConfirmedDate(dbQualification.fecha)
+    && hasPublicPaymentFacts(skills)) {
+    const facts = getPublicPaymentFacts(skills);
+    return {
+      ...fallbackOutput(skills.fallbackReplies[lang].reservationImmediate.replace('{{deposit}}', String(facts.depositPercent))),
+      reservationReady: true,
+    };
+  }
+  if (!hasSafetyOverride && isPlanListQuestion(message)) {
+    return fallbackOutput(buildPlansListReply(skills, lang));
+  }
+  {
+    const dateStatusNow = repos.conversation.getDateStatus(customerPhone);
+    const lastQForDate = getLastAssistantQuestion(repos, customerPhone);
+    const otherExplicitQuestion = isPlanListQuestion(message)
+      || isStandaloneInclusionsQuestion(message, lang)
+      || hasActionableUserQuestion(message)
+      || isPriceQuestion(message);
+    const dateDeferredNow = !otherExplicitQuestion && (
+      isExplicitDateDeferral(message)
+      || ((dateStatusNow === 'asked' || isDateAskQuestion(lastQForDate)) && isUncertainDateAnswer(message))
+    );
+    if (!hasSafetyOverride && dateDeferredNow) {
+      const optionsRequested = isDateOptionsRequest(message);
+      if (optionsRequested) repos.conversation.setDateOptionsOffered(customerPhone);
+      else repos.conversation.setDateDeferred(customerPhone);
+      // refresh local qual snapshot for CTA selection
+      dbQualification.dateStatus = repos.conversation.getDateStatus(customerPhone);
+      dbQualification.fecha = 'tentative_unknown';
+      if (optionsRequested) {
+        if (needsPlanBeforeDates(skills, dbQualification.plan, { priceGiven: !!repos.conversation.getPriceGivenAt(customerPhone) })) {
+          return fallbackOutput(buildPlansListReply(skills, lang), { outboundDateAction: undefined });
+        }
+        const availabilityReply = buildAvailabilityListReply(skills, lang);
+        if (availabilityReply) return fallbackOutput(availabilityReply, { outboundDateAction: 'options_offered' });
+      }
+      return fallbackOutput(skills.fallbackReplies[lang].dateOptionsOffer, { outboundDateAction: 'options_offered' });
+    }
+    // Already deferred/options + thin ping ("?", "ok") → acknowledge without re-asking date.
+    if (!hasSafetyOverride
+      && (dateStatusNow === 'deferred' || dateStatusNow === 'options_offered' || isDeferredDate(dbQualification.fecha, dateStatusNow))
+      && isLowInformationMessage(message)) {
+      return fallbackOutput(skills.fallbackReplies[lang].dateDeferredAcknowledgement);
+    }
+  }
+  if (!hasSafetyOverride && isDynamicDataFresh() && customerContext.transport === 'own_motorcycle' && dbQualification.personas != null && isConfirmedDate(dbQualification.fecha)) {
+    const motoPrice = calculatePriceQuote(getActiveExperience(skills), {
+      planId: typeof dbQualification.plan === 'string' ? dbQualification.plan : undefined,
+      people: dbQualification.personas,
+      transportNeed: isTransportNeed(dbQualification.transporte) ? dbQualification.transporte : undefined,
+    });
+    const motoPriceLine = motoPrice
+      ? skills.fallbackReplies[lang].quoteTotal
+        .replace('{{total}}', formatCop(motoPrice.total ?? motoPrice.planTotal))
+        .replace('{{currency}}', motoPrice.currency).trimStart()
+      : '';
+    const motoBase = skills.fallbackReplies[lang].motorcycleContext
+      .replace('{{people}}', String(dbQualification.personas))
+      .replaceAll('{{date}}', displayDate(dbQualification.fecha, lang));
+    const motoQuestionSuffix = skills.fallbackReplies[lang].motorcycleAvailabilityCta;
+    const motoReply = motoBase.replace(/¿Revisamos un fin de semana de[^?]*\?/, motoQuestionSuffix);
+    return fallbackOutput(motoPriceLine ? motoReply.replace('La ruta', `${motoPriceLine}La ruta`) : motoReply);
+  }
+  if (!hasSafetyOverride && /\b(?:todav[ií]a hay cupo|a[uú]n hay cupo|hay cupo)\b/i.test(message)) {
+    const rawDate = customerContext.date ?? (isConfirmedDate(dbQualification.fecha) ? dbQualification.fecha : null);
+    const date = rawDate ?? (lang === 'es' ? 'esa fecha' : 'that date');
+    return fallbackOutput(skills.fallbackReplies[lang].availabilityVerification.replace('{{date}}', displayDate(date, lang)));
+  }
+  if (!hasSafetyOverride && /\b(?:por ese precio no|por ese valor no)\b/i.test(message)) {
+    return fallbackOutput(
+      dbQualification.personas === 1
+        ? skills.fallbackReplies[lang].priceObjectionBusAlternative
+        : skills.fallbackReplies[lang].priceObjectionAlternative,
+    );
+  }
+  if (!hasSafetyOverride && dbQualification.personas === 1 && /\b(?:muy caro|demasiado caro)\b/i.test(message)) {
+    return fallbackOutput(skills.fallbackReplies[lang].priceObjectionBusAlternative);
+  }
+  const transportPriceAskedAfterChoice = isTransportPriceInquiry(message)
+    && wasAskedTransport(getLastAssistantQuestion(repos, customerPhone));
+  if (!hasSafetyOverride && isDynamicDataFresh() && (dbQualification.transporte == null || (transportPriceAskedAfterChoice && !hasExplicitOwnTransport(message)))) {
+    if (transportPriceAskedAfterChoice && dbQualification.transporte != null) {
+      repos.conversation.clearCollectedTransport(customerPhone);
+    }
+    const transportPriceReply = buildTransportPriceInquiryReply(message, dbQualification, skills, lang);
+    if (transportPriceReply) return fallbackOutput(transportPriceReply);
+  }
+  if (!hasSafetyOverride
+    && dbQualification.transporte == null
+    && !isPriceQuestion(message)
+    && !detectsReservationIntent(message)
+    && isAmbiguousTransportRequest(message)) {
+    return {
+      reply: skills.fallbackReplies[lang].clarifyTransportMode,
+      shouldSendReply: true,
+      leadScore: currentScore,
+      usedAi: false,
+      shouldAlertOwner: false,
+      shouldSendOwnerImage: false,
+      shouldSendGalleryImages: false,
+      shouldSendImage: false,
+      priceJustGiven: false,
+    };
+  }
   // Single source of truth for gallery dedup: the gallery is offered at most once
   // per customer. Every automatic send path below reuses this flag so we never
   // spam the same gallery across decline/handoff/consult turns.
@@ -1072,7 +1683,7 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     // Price objections with qualification data are recoverable: let the LLM
     // handle them instead of hard-closing with the IG soft-close.
     const hasQualData = dbQualification.personas != null || dbQualification.fecha != null || dbQualification.nombre != null;
-    const isPriceObj = /muy caro|esta caro|algo caro|me parece caro|carisimo|se sale del presupuesto|fuera de presupuesto|no me alcanza|consultarlo|lo consulto|lo hablo|lo pienso|consultar/i.test(normalized);
+    const isPriceObj = /por ese precio no|por ese valor no|muy caro|tan caro|por qu[eé]\s+(?:tan\s+)?caro|porque\s+(?:tan\s+)?caro|esta caro|algo caro|me parece caro|carisimo|se sale del presupuesto|fuera de presupuesto|no me alcanza|consultarlo|lo consulto|lo hablo|lo pienso|consultar/i.test(normalized);
     if (hasQualData && isPriceObj && !softClosedAt) {
       // Don't soft-close — let the objection fall through to the LLM for handling.
     } else {
@@ -1150,7 +1761,9 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   // Explicit customer request for photos bypasses the once-per-customer dedup:
   // if they ask again, we honor it. Only automatic nudges are deduped.
   if (!hasSafetyOverride && galleryRequested) {
-    return { reply: skills.fallbackReplies[lang].galleryIntro, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: true, shouldSendImage: false, priceJustGiven: false };
+    const selectedPlan = getPlans(getActiveExperience(skills)).find(plan => plan.id === dbQualification.plan);
+    const planDuration = selectedPlan?.duration ?? (lang === 'es' ? 'la experiencia' : 'experience');
+    return { reply: skills.fallbackReplies[lang].galleryIntro.replace('{{planDuration}}', planDuration), shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: true, shouldSendImage: false, priceJustGiven: false };
   }
 
   const preLimitPriceRow = repos.conversation.getPriceGivenAt(customerPhone);
@@ -1197,8 +1810,59 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     return { reply: fb.messageLimitReached, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: true, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
   }
 
-  if (!hasSafetyOverride && preLimitPriceRow && isReviewPause(message)) {
+  if (!hasSafetyOverride && preLimitPriceRow && isReviewPause(message) && !/[?¿]|\b(?:que|qué|como|cómo|cual|cuál|where|what|how)\b/i.test(message)) {
+    if (isPartnerConsultPause(message) && /\b(?:consulto|consultarlo|consultar[eé]|lo consulto|lo consult[eé]|consult|consults?)\b/i.test(message) && !isCustomerFollowUpPromise(message)) {
+      const pcName = typeof dbQualification.nombre === 'string' ? dbQualification.nombre.trim() : '';
+      const pcPlan = getPlans(getActiveExperience(skills)).find(p => p.id === (typeof dbQualification.plan === 'string' ? dbQualification.plan : undefined));
+      const pcExpSummary = pcPlan?.shortDescription ?? getShortDescription(getActiveExperience(skills));
+      let pcPriceLine = '';
+      if (typeof dbQualification.personas === 'number') {
+        const pcQuote = calculatePriceQuote(getActiveExperience(skills), {
+          planId: typeof dbQualification.plan === 'string' ? dbQualification.plan : undefined,
+          people: dbQualification.personas,
+          transportNeed: isTransportNeed(dbQualification.transporte) ? dbQualification.transporte : undefined,
+        });
+        if (pcQuote) {
+          pcPriceLine = skills.fallbackReplies[lang].quoteTotal
+            .replace('{{total}}', formatCop(pcQuote.total ?? pcQuote.planTotal))
+            .replace('{{currency}}', pcQuote.currency)
+            .trim();
+        }
+      }
+      const pcFilled = skills.fallbackReplies[lang].partnerConsultSummary
+        .replace('{{name}}', pcName)
+        .replace('{{experienceSummary}}', pcExpSummary)
+        .replace('{{priceLine}}', pcPriceLine);
+      const pcReply = pcName ? pcFilled : pcFilled.replace(/^(\w+)\s+,/, '$1');
+      return fallbackOutput(pcReply);
+    }
     return { reply: skills.fallbackReplies[lang].reviewPauseAcknowledgement, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
+  }
+
+  if (!hasSafetyOverride && preLimitPriceRow && isPartnerConsultPause(message) && !/[?¿]/.test(message)) {
+    const name = typeof dbQualification.nombre === 'string' ? dbQualification.nombre.trim() : '';
+    const plan = getPlans(getActiveExperience(skills)).find(p => p.id === (typeof dbQualification.plan === 'string' ? dbQualification.plan : undefined));
+    const experienceSummary = plan?.shortDescription ?? getShortDescription(getActiveExperience(skills));
+    let priceLine = '';
+    if (typeof dbQualification.personas === 'number') {
+      const priceQuote = calculatePriceQuote(getActiveExperience(skills), {
+        planId: typeof dbQualification.plan === 'string' ? dbQualification.plan : undefined,
+        people: dbQualification.personas,
+        transportNeed: isTransportNeed(dbQualification.transporte) ? dbQualification.transporte : undefined,
+      });
+      if (priceQuote) {
+        priceLine = lang === 'es'
+          ? `Precio revisado: $ ${formatCop(priceQuote.total ?? priceQuote.planTotal)} COP.`
+          : `Reviewed price: $ ${formatCop(priceQuote.total ?? priceQuote.planTotal)} COP.`;
+      }
+    }
+    const filledReply = skills.fallbackReplies[lang].partnerConsultSummary
+      .replace('{{name}}', name)
+      .replace('{{experienceSummary}}', experienceSummary)
+      .replace('{{priceLine}}', priceLine);
+    // Template starts "Dale {{name}}, ..." — without a name, drop the dangling comma.
+    const reply = name ? filledReply : filledReply.replace(/^(\w+)\s+,/, '$1');
+    return fallbackOutput(reply);
   }
 
   const budget = checkBudget(repos, customerPhone);
@@ -1219,16 +1883,8 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     return { reply: skills.fallbackReplies[lang].aiBudgetExhausted, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: true, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
   }
 
-  // ── Dynamic data guard ──────────────────────────────────────────────────
-  // When DYNAMIC_SKILL_URL is configured but the last remote fetch failed,
-  // we have no reliable pricing or availability. Block only price/date/
-  // reservation messages: send a safe holding reply and alert the owner.
-  // Non-price messages (route, safety, inclusions) continue normally.
   if (!isDynamicDataFresh() && isPriceDateOrReservationMessage(message)) {
     logger.warn({ phone: customerPhone }, '[BOT] dynamic data unavailable — blocking price/date reply');
-    if (safetyOverrideReply) {
-      return { reply: safetyOverrideReply, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: true, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
-    }
     return {
       reply: skills.fallbackReplies[lang].dynamicDataUnavailable,
       shouldSendReply: true,
@@ -1242,12 +1898,21 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
       priceJustGiven: false,
     };
   }
-  // ────────────────────────────────────────────────────────────────────────
+
+  if (!hasSafetyOverride && isDirectAvailabilityListQuestion(message)) {
+    if (needsPlanBeforeDates(skills, dbQualification.plan, { priceGiven: !!repos.conversation.getPriceGivenAt(customerPhone) })) {
+      return fallbackOutput(buildPlansListReply(skills, lang), { outboundDateAction: undefined });
+    }
+    const availabilityReply = buildAvailabilityListReply(skills, lang);
+    if (availabilityReply) {
+      return fallbackOutput(availabilityReply, { outboundDateAction: 'options_offered' });
+    }
+  }
 
   const salesPhase = repos.conversation.getSalesPhase(customerPhone);
   const safeCollected = sanitizeCollectedFields(collectedFields, skills.fallbackReplies[lang].internalDatePending);
   if (activeDateWindow) safeCollected.datePreference = activeDateWindow;
-  const systemPrompt = buildSystemPrompt(skills, lang, safeCollected, salesPhase ?? undefined);
+  const systemPrompt = buildSystemPrompt(skills, lang, safeCollected, salesPhase ?? undefined, extractCustomerContext(message), repos.conversation.getSelectedExperienceId(customerPhone));
   const llmHistory = recentMessages.map(m => ({ role: m.role, content: m.content }));
   const llmMessage = message.length > MAX_INBOUND_CHARS ? message.slice(0, MAX_INBOUND_CHARS) : message;
 
@@ -1308,9 +1973,17 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   }
   if (activeDateWindow) llmTurn.collected_fields.date = null;
   persistCollectedFromLlmTurn(repos, customerPhone, llmTurn);
+  const authoritativeBookingFields = { ...bookingFields };
+  if (authoritativeBookingFields._relative_date_token) {
+    delete authoritativeBookingFields.collected_date;
+    delete authoritativeBookingFields._relative_date_token;
+  }
+  if (Object.keys(authoritativeBookingFields).length > 0) {
+    repos.conversation.upsert(customerPhone, authoritativeBookingFields);
+  }
   if (activeDateWindow) repos.conversation.clearCollectedDate(customerPhone);
 
-  const updatedCollected = reconstructFromHistory(repos, customerPhone, getCollectedFields(repos, customerPhone));
+  const updatedCollected = reconstructFromHistory(repos, customerPhone, getCollectedFields(repos, customerPhone), activeExperience);
   if (activeDateWindow) delete updatedCollected.fecha;
   let merged = buildMergedQualification(updatedCollected, llmTurn);
   const deferredDateLowInformation = merged.fecha === 'tentative_unknown' && isLowInformationMessage(message);
@@ -1375,6 +2048,7 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   }
   const hybrid = computeHybridScore(currentScore, llmLeadInput, regexScore.score, isReEngagement, skills.salesStrategy.hotLeadThreshold);
   repos.conversation.upsert(customerPhone, { lead_score: hybrid.score });
+  if (analysis) repos.conversation.setLeadIntent(customerPhone, analysis.intent);
 
   // ── Determine whether this lead should bridge / alert owner ──────────────
   // Primary gate: analyzer confirms real booking readiness at/above threshold.
@@ -1397,7 +2071,7 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   // When the DB has no collected_plan but the customer's message clearly picks
   // one (ordinal, duration), persist it. Never infer plan from assistant text.
   if (merged.plan == null) {
-    const userPlan = detectPlan(message);
+    const userPlan = detectPlan(message, activeExperience);
     if (userPlan) {
       repos.conversation.upsert(customerPhone, { collected_plan: userPlan });
       merged = { ...merged, plan: userPlan };
@@ -1420,59 +2094,79 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     !pricingAvailable
     && replyText.trim()
     && !containsPromptLeakOrPolicyViolation(replyText)
-    && (isPriceQuestion(message) || replyMentionsPrice(replyText))
+    && replyMentionsPrice(replyText)
   ) {
     replyText = typeof merged.personas === 'number'
-      ? skills.fallbackReplies[lang].priceUnavailableKnownGroup.replace('{{people}}', String(merged.personas))
+      ? skills.fallbackReplies[lang].priceUnavailableKnownGroup
+        .replace('{{people}}', String(merged.personas))
+        .replace('{{dateClause}}', merged.fecha ? ` para ${displayDate(merged.fecha, lang)}` : '')
       : skills.fallbackReplies[lang].priceUnavailable;
     llmTurn.img = false;
   }
-  const inboundCount = recentMessages.filter(m => m.role === 'user').length + 1;
-  const priceUnlocked = !!prePriceRow || canPresentFirstPrice(message, merged, inboundCount);
+  const priceRequestContinuation = isPriceRequestContinuation(recentMessages, contextFields.collected_people);
+  const priceUnlocked = !!prePriceRow || canPresentFirstPrice(message, merged) || priceRequestContinuation;
 
   let deterministicQuote: string | null = null;
+  let usedStartingPriceTeaser = false;
   if (priceUnlocked) {
-    deterministicQuote = buildDeterministicQuote(message, merged, lang, skills);
+    deterministicQuote = buildDeterministicQuote(message, merged, lang, skills, priceRequestContinuation);
 
     // Calculator is source of truth. Always wrap numbers in the value package.
     // Skip override when price already given — re-engagement, not first present.
-    if (!prePriceRow && !deterministicQuote && typeof merged.personas === 'number' && replyMentionsPrice(replyText) && pricingAvailable) {
+    if (!prePriceRow && !deterministicQuote && typeof merged.personas === 'number' && replyMentionsPrice(replyText) && pricingAvailable
+      && !/\b(?:ni[ñn]os?|ni[ñn]as?|children|kids?)\b/i.test(message)
+      && !/\b(?:presupuestos?|ambos|\d+\s*presupuestos?|comparar\s+(?:precios?|presupuestos?))\b/i.test(message)
+      && !isExplicitDateDeferral(message)) {
       const priceOverrideQuote = calculatePriceQuote(exp, {
         planId: typeof merged.plan === 'string' ? merged.plan : undefined,
         people: merged.personas,
         transportNeed: isTransportNeed(merged.transporte) ? merged.transporte : undefined,
         includeApiaryCattle: wantsApiaryCattle(message),
       });
-      if (priceOverrideQuote) deterministicQuote = formatDeterministicQuoteReply(priceOverrideQuote, skills, lang);
+      if (priceOverrideQuote) deterministicQuote = formatDeterministicQuoteReply(priceOverrideQuote, skills, lang, merged);
     }
-  } else if (replyMentionsPrice(replyText)) {
-    // Group size alone is not enough — sell package value first, ask one depth question.
+  } else if (isPriceQuestion(message) || replyMentionsPrice(replyText)) {
+    // Group size is unknown: give a truthful starting value, then ask one question.
     const teaser = buildPriceGateTeaser(skills, lang, typeof merged.plan === 'string' ? merged.plan : undefined);
-    replyText = recentMessages.some(message => message.role === 'assistant' && message.content === teaser)
-      ? skipRepeated(nextQualificationQuestion(merged, skills.fallbackReplies[lang]), recentMessages, merged, skills.fallbackReplies[lang])
-      : teaser;
+    if (teaser) {
+      replyText = recentMessages.some(message => message.role === 'assistant' && message.content === teaser)
+        ? skipRepeated(nextQualificationQuestion(merged, skills.fallbackReplies[lang]), recentMessages, merged, skills.fallbackReplies[lang])
+        : teaser;
+      usedStartingPriceTeaser = replyText === teaser;
+    }
     llmTurn.img = false;
+  }
+
+  // Deterministic price gate: strip any price numbers the LLM may have produced
+  // when the engine decided price should not be unlocked yet.
+  if (!priceUnlocked && pricingAvailable && !usedStartingPriceTeaser) {
+    replyText = stripPriceText(replyText);
   }
 
   const usedDeterministicQuote = deterministicQuote != null;
   if (deterministicQuote) {
     replyText = frameDeterministicQuote(replyText, deterministicQuote, skills.fallbackReplies[lang]);
     llmTurn.img = false;
+    // Never invent collected_plan from catalog default — only customer/detectPlan may set it.
   }
 
   const lateMonthAvailabilityReply = buildLateMonthAvailabilityReply(skills, lang, message);
   if (safetyOverrideReply) {
     replyText = safetyOverrideReply;
+    usedStartingPriceTeaser = false;
     llmTurn.img = false;
   } else if (ambiguousPartyComparison) {
     const knownPlan = getCollectedFields(repos, customerPhone).plan ?? merged.plan;
     replyText = buildPartyComparisonReply(skills, lang, typeof knownPlan === 'string' ? knownPlan : null);
+    usedStartingPriceTeaser = false;
     llmTurn.img = false;
   } else if (isStandaloneInclusionsQuestion(message, lang)) {
     replyText = buildInclusionsReply(skills, lang);
+    usedStartingPriceTeaser = false;
     llmTurn.img = false;
   } else if (isAvailabilityRecommendQuestion(message)) {
     replyText = buildAvailabilityRecommendReply(skills, lang, merged, message);
+    usedStartingPriceTeaser = false;
     llmTurn.img = false;
   }
 
@@ -1491,9 +2185,30 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     };
   }
 
-  const initialPriceJustGiven = replyMentionsPrice(replyText);
-  const pricePresented = !!(initialPriceJustGiven || prePriceRow);
-  if (initialPriceJustGiven && !prePriceRow) repos.conversation.upsert(customerPhone, { price_given_at: new Date().toISOString() });
+  const initialPriceJustGiven = !usedStartingPriceTeaser && replyMentionsPrice(replyText);
+
+  // Only mark price as officially given when enough qualification exists.
+  // Prevents the unlock chain where an LLM price leak at turn 1 unblocks
+  // the deterministic quote gate at turn 3 with only 1 field.
+  const priceQualFields = [merged.nombre, merged.plan, merged.personas, merged.fecha, merged.transporte]
+    .filter(v => v != null).length;
+  const msgPriceFields = extractBookingFields(message);
+  const msgPriceExtra = [msgPriceFields.collected_people, msgPriceFields.collected_date, msgPriceFields.collected_transport_need]
+    .filter(v => v != null).length;
+  const mergedPriceExtra = [merged.plan, merged.fecha, merged.transporte].filter(v => v != null).length;
+  const legalPrice = (mergedPriceExtra + msgPriceExtra) >= 1 || isConfirmedDate(merged.fecha) || merged.transporte != null;
+
+  const pricePresented = !!((initialPriceJustGiven && legalPrice) || prePriceRow);
+
+  if (initialPriceJustGiven && !prePriceRow) {
+    if (legalPrice) {
+      repos.conversation.upsert(customerPhone, { price_given_at: new Date().toISOString() });
+    } else {
+      // Price leaked through — strip it and don't mark as given.
+      replyText = stripPriceText(replyText);
+      logger.info({ phone: customerPhone, fieldCount: priceQualFields + msgPriceExtra + 1 }, '[BOT] price stripped — insufficient qualification');
+    }
+  }
 
   // ── Phase progression (inferred, not LLM-dependent) ──────────────────────
   // The LLM runs in plain-text mode so the structured sales_phase field always
@@ -1525,22 +2240,58 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   const paymentQ = isPaymentMethodsQuestion(message);
   const availabilityConfirm = detectsAvailabilityConfirmRequest(message);
   const closeIntent = reservationIntent || recentReservation || llmReadyToBook || availabilityConfirm;
+  if (reservationIntent || availabilityConfirm) {
+    repos.conversation.setLeadIntent(customerPhone, 'ready_to_book');
+  }
   const closeStage = inferCloseStage(recentMessages);
   const paymentFacts = getPublicPaymentFacts(skills);
   const hasConfirmedDate = isConfirmedDate(merged.fecha);
   const hasCoreBooking = merged.personas != null && hasConfirmedDate;
   const wantsNextStep = /\b(?:qu[eé]\s+sigue|what(?:'s|\s+is)\s+next|s[ií]\s+me\s+interesa)\b/i.test(message);
 
+  // ── Closing delay guard: replace passive postponement with direct close ────
+  if (!hasSafetyOverride && qComplete && pricePresented && closeIntent && containsClosingDelay(replyText)) {
+    replyText = buildCloseReply(skills, lang, merged, 'closing', paymentFacts);
+    needsHumanEffective = true;
+    shouldSendGallery = false;
+    llmTurn.img = false;
+    finalScore = Math.max(hybrid.score, skills.salesStrategy.urgentLeadThreshold);
+    repos.conversation.upsert(customerPhone, { lead_score: finalScore });
+    logger.info({ phone: customerPhone, delayReplaced: true }, '[BOT] closing delay replaced with direct close');
+  }
+
   // ── Payment methods question: public facts + owner alert ────
   // High commercial intent. Sets human_pending (bot still answers; agent must
   // /bridge for exclusive control). Never expose phone numbers / payment links.
   if (!hasSafetyOverride && paymentQ && (pricePresented || conversationMode === 'human_pending')) {
-    replyText = conversationMode === 'human_pending'
-      ? skills.fallbackReplies[lang].humanPendingPaymentAck
+    if (conversationMode === 'human_pending') {
+      replyText = skills.fallbackReplies[lang].humanPendingPaymentAck
         .replaceAll('{{methods}}', formatMethods(paymentFacts.methodNames, lang))
         .replaceAll('{{deposit}}', String(paymentFacts.depositPercent))
-        .replaceAll('{{date}}', displayDate(merged.fecha, lang))
-      : buildCloseReply(skills, lang, merged, 'payment_methods', paymentFacts);
+        .replaceAll('{{date}}', displayDate(merged.fecha, lang));
+    } else if (/\b(?:de qu[eé] forma|por partes|se paga todo)\b/i.test(message)) {
+      const quote = calculatePriceQuote(getActiveExperience(skills), {
+        planId: typeof merged.plan === 'string' ? merged.plan : undefined,
+        people: merged.personas,
+        transportNeed: isTransportNeed(merged.transporte) ? merged.transporte : undefined,
+      });
+      const methodsList = formatMethods(paymentFacts.methodNames, lang);
+      if (!quote) {
+        replyText = buildCloseReply(skills, lang, merged, 'payment_methods', paymentFacts);
+      } else {
+        const depositAmount = Math.round((quote.requiresTransportConfirmation ? quote.planTotal : (quote.total ?? quote.planTotal)) * paymentFacts.depositPercent / 100);
+        replyText = skills.fallbackReplies[lang].installmentPaymentReply
+          .replace('{{deposit}}', String(paymentFacts.depositPercent))
+          .replace('{{depositAmount}}', formatCop(depositAmount))
+          .replace('{{currency}}', quote.currency)
+          .replaceAll('{{methods}}', methodsList);
+        if (quote.requiresTransportConfirmation) {
+          replyText += skills.fallbackReplies[lang].quoteTransportConfirm;
+        }
+      }
+    } else {
+      replyText = buildCloseReply(skills, lang, merged, 'payment_methods', paymentFacts);
+    }
     needsHumanEffective = true;
     shouldSendGallery = false;
     llmTurn.img = false;
@@ -1566,8 +2317,14 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   const canEnterHumanPending =
     (qComplete && pricePresented && (shouldBridgeByScore || deterministicBridgeFallback))
     || strongAvailabilityConfirm
-    || (reservationIntent && pricePresented && !hasConfirmedDate);
-  if (!hasSafetyOverride && canEnterHumanPending) {
+    || (reservationIntent && pricePresented && !hasConfirmedDate)
+    || (reservationIntent && qComplete && pricePresented);
+  const policyFactsAvailable = hasPublicPaymentFacts(skills);
+  if (!hasSafetyOverride && closeIntent && !policyFactsAvailable) {
+    replyText = buildReservationPolicyUnavailableReply(skills, lang);
+    needsHumanEffective = true;
+    llmTurn.img = false;
+  } else if (!hasSafetyOverride && canEnterHumanPending) {
     if (!hasConfirmedDate) {
       replyText = skills.fallbackReplies[lang].reservationDateNeeded;
     } else if (closeStage === 'pending_sent') {
@@ -1673,10 +2430,32 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   } else if (
     !hasSafetyOverride
     && qComplete
-    && !pricePresented
+    && pricePresented
+    && isExactBookingDate(merged.fecha)
     && !closeIntent
     && !paymentQ
     && !isPriceQuestion(message)
+    && !hasActionableUserQuestion(message)
+    && !/[?¿]/.test(message)
+    && !/por ese precio no|por ese valor no|muy caro|esta caro|algo caro|me parece caro|carisimo|se sale del presupuesto|fuera de presupuesto|no me alcanza/i.test(normalized)
+    && !isAvailabilityLookupQuestion(message)
+    && !lateMonthAvailabilityReply
+    && !isGalleryRequest(message)
+    && closeStage === 'none'
+    && policyFactsAvailable
+  ) {
+    replyText = buildCloseReply(skills, lang, merged, 'closing', paymentFacts);
+    llmTurn.img = false;
+    repos.conversation.setSalesPhase(customerPhone, 'closing');
+  } else if (
+    !hasSafetyOverride
+    && qComplete
+    && (!pricePresented || extractStandaloneName(message) != null)
+    && !closeIntent
+    && !paymentQ
+    && !isPriceQuestion(message)
+    && !hasActionableUserQuestion(message)
+    && !/[?¿]/.test(message)
     && !isGalleryRequest(message)
     && !lateMonthAvailabilityReply
     && !llmTurn.img
@@ -1688,11 +2467,17 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
       .replaceAll('{{summary}}', qualificationSummary(merged, lang, skills.fallbackReplies[lang]));
     llmTurn.img = false;
     repos.conversation.setSalesPhase(customerPhone, 'closing');
-  } else if (!hasSafetyOverride && !needsHumanEffective && !lateMonthAvailabilityReply && hasCoreBooking && wantsNextStep && !isGalleryRequest(message)) {
-    const dateClause = merged.fecha
-      ? (lang === 'es' ? ` para ${displayDate(merged.fecha, lang)}` : ` for ${displayDate(merged.fecha, lang)}`)
-      : '';
-    replyText = skills.fallbackReplies[lang].afterPriceNextStep.replace('{{dateClause}}', dateClause);
+  } else if (!hasSafetyOverride
+    && !needsHumanEffective
+    && !lateMonthAvailabilityReply
+    && hasCoreBooking
+    && wantsNextStep
+    && !hasActionableUserQuestion(message)
+    && !/[?¿]/.test(message)
+    && !isGalleryRequest(message)) {
+    replyText = skills.fallbackReplies[lang].coreBookingNextStep
+      .replaceAll('{{summary}}', qualificationSummary(merged, lang, skills.fallbackReplies[lang]))
+      .replaceAll('{{date}}', displayDate(merged.fecha, lang));
     llmTurn.img = false;
   }
   // ────────────────────────────────────────────────────────────────────────
@@ -1713,7 +2498,31 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     llmTurn.img = false;
   }
 
-  const finalPriceJustGiven = replyMentionsPrice(replyText);
+  // Keep dateStatus fresh for CTA selection after any mid-turn transitions.
+  merged = { ...merged, dateStatus: repos.conversation.getDateStatus(customerPhone) };
+  if (!needsHumanEffective && conversationMode === 'bot' && isFirstContact) {
+    const customerNamedExperience = /\b(?:mina|minera|minero|esmeralda|emerald|mining|chivor|hacienda|apicultura|ganader[ií]a)\b/i.test(message);
+    replyText = stripAssumedExperienceClaims(replyText, {
+      enabled: true,
+      customerNamedExperience,
+    });
+    replyText = stripAssumedDatePhrases(replyText, {
+      enabled: true,
+      hasCustomerDate: customerContext.date != null,
+      hasConfirmedDate: isConfirmedDate(dbQualification.fecha),
+      hasDateWindow: !!activeDateWindow,
+    });
+  }
+  replyText = stripReaskedQuestions(replyText, merged);
+  if (!needsHumanEffective && conversationMode === 'bot' && !ambiguousPartyComparison) {
+    replyText = ensureAdvanceQuestion(replyText, skills.fallbackReplies[lang], merged);
+  }
+
+  if (replyText.includes('{')) {
+    replyText = stripUnsubstitutedTokens(replyText);
+  }
+
+  const finalPriceJustGiven = !usedStartingPriceTeaser && legalPrice && replyMentionsPrice(replyText);
   if (finalPriceJustGiven && !prePriceRow) repos.conversation.upsert(customerPhone, { price_given_at: new Date().toISOString() });
   const outputPriceJustGiven = !needsHumanEffective && finalPriceJustGiven;
   const llmAlreadyGaveDetailedPrice = initialPriceJustGiven && replyText.length > 150;
@@ -1752,13 +2561,33 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     logger.warn({ phone: customerPhone, replyLen: replyText.length }, '[LLM] reply may be truncated');
   }
 
+  if (!hasSafetyOverride && /\b(?:presupuestos?|ambos|comparar)\b/i.test(message)) {
+    const unlabeledTransportAmount = /(\b(?:transporte|transport)\b[^.!?]{0,35}\b(?:suma|adds?|cuesta|costs?)\b[^.!?]{0,15}\$?\s*\d{1,3}(?:[.,]\d{3})+\s*(?:COP|pesos)?)(?![^.!?]{0,30}(?:adicional|additional))/i;
+    replyText = replyText.replace(unlabeledTransportAmount, `$1${skills.fallbackReplies[lang].transportAdditionalLabel}`);
+  }
+
+  // Deterministic reply completions: append missing required phrases
+  // when the LLM output is incomplete. Extracted to reply-enrichment.ts.
+  replyText = enrichReply({
+    replyText, message, lang, hasSafetyOverride, needsHumanEffective,
+    unsafeReservationBlocked, pricePresented, closeIntent, isNewConversation,
+    merged, skills,
+  });
+
   return {
     reply: replyText, shouldSendReply: true,
     leadScore: finalScore, usedAi: true,
     shouldAlertOwner, ownerAlertType, shouldSendImage,
-    shouldSendOwnerImage: !hasSafetyOverride && isFirstContact && !needsHumanEffective && !unsafeReservationBlocked && !repos.mediaSend.hasRecentSameImage(customerPhone, 'owner_intro', new Date(Date.now() - MS_72H).toISOString()),
+    shouldSendOwnerImage: !hasSafetyOverride && isFirstContact && !needsHumanEffective && !unsafeReservationBlocked && !multipleExperiences && !repos.mediaSend.hasRecentSameImage(customerPhone, 'owner_intro', new Date(Date.now() - MS_72H).toISOString()),
     shouldSendGalleryImages: shouldSendGallery,
     priceJustGiven: outputPriceJustGiven, priceFollowUpText: outputPriceFollowUpText,
+    reservationReady: closeIntent && hasCoreBooking && pricePresented,
+    mediaPlanId: typeof merged.plan === 'string' ? merged.plan : null,
+    outboundDateAction: detectOutboundDateAction(replyText, merged),
+    bookingIntent: !!needsHumanEffective || (paymentQ && pricePresented),
+    handoffCreated: false,
+    leadLifecycle: needsHumanEffective ? 'human_pending' : undefined,
+    suppressGenericFollowups: needsHumanEffective,
   };
   } catch (err) {
     logSystemError('process_message', 'error', err, {
