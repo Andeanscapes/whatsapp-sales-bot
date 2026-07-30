@@ -1,0 +1,37 @@
+{
+  "id": "starting-price-teaser",
+  "source": "synthetic-regression-fixture",
+  "tags": ["pricing", "qualification", "regression"],
+  "lang": "es",
+  "mockPricing": {
+    "planId": "2d1n_mining",
+    "individual": 550000,
+    "couple": 1000000
+  },
+  "turns": [
+    {
+      "user": "Buen día, ¿cómo es el plan de Chivor y qué costo tiene?",
+      "mockReply": "El tour cuesta $700,000 COP.",
+      "expect": {
+        "shouldSendReply": true,
+        "priceJustGiven": false,
+        "replyMustContain": ["desde \\$550,000 COP"],
+        "replyMustNotMatch": ["700,000"]
+      }
+    },
+    {
+      "user": "Para 3 personas",
+      "mockReply": "¿Sería para ti solo, en pareja o para un grupo?",
+      "expect": {
+        "shouldSendReply": true,
+        "priceJustGiven": true,
+        "replyMustContain": ["\\$1,550,000 COP"],
+        "replyMustNotMatch": ["sería para ti solo", "cuántas personas"]
+      }
+    }
+  ],
+  "criteria": [
+    { "id": "one-question-teaser", "rule": "max_question_marks", "turn": 1, "max": 1, "weight": 1, "critical": true },
+    { "id": "people-not-reasked", "rule": "known_field_not_reasked", "field": "people", "suppliedTurn": 2, "weight": 1, "critical": true }
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "id": "plan-and-media-must-remain-consistent",
+  "source": "production-regression-2026-07-24-to-2026-07-26",
+  "tags": [
+    "plan",
+    "media",
+    "consistency",
+    "regression"
+  ],
+  "lang": "es",
+  "liveRuns": 3,
+  "criteria": [
+    {
+      "id": "media-matches-plan",
+      "rule": "output_flag_equals",
+      "flag": "shouldSendGalleryImages",
+      "expected": true,
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "wrong-plan-absent",
+      "rule": "unsafe_pattern_absent",
+      "patterns": [
+        "3 días / 2 noches",
+        "plan 3D/2N"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Muéstrame una imagen de la experiencia minera del plan de 2 días y 1 noche.",
+      "seedQualification": {
+        "plan": "2d1n_mining"
+      },
+      "mockReply": "Claro, te comparto una imagen correspondiente al plan de 2 días y 1 noche.",
+      "expect": {
+        "shouldSendReply": true,
+        "shouldSendGalleryImages": true
+      }
+    }
+  ]
+}

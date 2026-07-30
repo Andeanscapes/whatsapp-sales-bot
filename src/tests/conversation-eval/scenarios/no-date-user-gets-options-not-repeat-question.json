@@ -1,0 +1,56 @@
+{
+  "id": "no-date-user-gets-options-not-repeat-question",
+  "source": "production-regression-2026-07-24-to-2026-07-26",
+  "tags": [
+    "availability",
+    "date",
+    "answer-first",
+    "regression"
+  ],
+  "lang": "es",
+  "liveRuns": 3,
+  "criteria": [
+    {
+      "id": "does-not-ask-date-again",
+      "rule": "unsafe_pattern_absent",
+      "patterns": [
+        "¿Tienen alguna fecha tentativa",
+        "¿Tienes alguna fecha tentativa"
+      ],
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "offers-authoritative-options",
+      "rule": "reply_must_match",
+      "patterns": [
+        "opciones|fechas disponibles|próximas fechas|disponibilidad"
+      ],
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Sería para mí solo.",
+      "seedQualification": {
+        "people": 1,
+        "plan": "2d1n_mining"
+      },
+      "mockReply": "Perfecto, para una persona. ¿Tienes alguna fecha tentativa o todavía estás explorando opciones?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Todavía no tengo fecha.",
+      "mockReply": "No hay problema. Puedo mostrarte opciones y próximas fechas disponibles para que compares con calma.",
+      "expect": {
+        "shouldSendReply": true,
+        "usedAi": false
+      }
+    }
+  ]
+}

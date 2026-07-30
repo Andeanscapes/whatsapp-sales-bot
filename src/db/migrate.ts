@@ -13,96 +13,27 @@ export function migrate(db: Database.Database): void {
   const schemaPath = new URL('./schema.sql', import.meta.url);
   const schema = readFileSync(schemaPath, 'utf-8');
   db.exec(schema);
-  try {
-    db.exec('ALTER TABLE messages ADD COLUMN app_version TEXT');
-  } catch {
-    // column already exists — safe to ignore
-  }
-  try {
-    db.exec('ALTER TABLE conversations ADD COLUMN handed_off_at TEXT');
-  } catch {
-    // column already exists — safe to ignore
-  }
-  try {
-    db.exec('ALTER TABLE conversations ADD COLUMN price_given_at TEXT');
-  } catch {
-    // column already exists — safe to ignore
-  }
-  try {
-    db.exec('ALTER TABLE conversations ADD COLUMN collected_pet TEXT');
-  } catch {
-    // column already exists — safe to ignore
-  }
-  try {
-    db.exec('ALTER TABLE conversations ADD COLUMN soft_closed_at TEXT');
-  } catch {
-    // column already exists — safe to ignore
-  }
-  try {
-    db.exec('ALTER TABLE conversations ADD COLUMN collected_plan TEXT');
-  } catch {
-    // column already exists — safe to ignore
-  }
-  try {
-    db.exec('ALTER TABLE conversations ADD COLUMN sales_phase TEXT');
-  } catch {
-    // column already exists — safe to ignore
-  }
-  try {
-    db.exec('ALTER TABLE conversations ADD COLUMN lead_intent TEXT');
-  } catch {
-    // column already exists — safe to ignore
-  }
-  try {
-    db.exec('ALTER TABLE conversations ADD COLUMN assigned_line_id TEXT');
-  } catch {
-    // column already exists — safe to ignore
-  }
-  try {
-    db.exec('ALTER TABLE conversations ADD COLUMN assigned_agent_chat TEXT');
-  } catch {
-    // column already exists — safe to ignore
-  }
-  try {
-    db.exec("ALTER TABLE conversations ADD COLUMN conversation_mode TEXT DEFAULT 'bot'");
-  } catch {
-    // column already exists — safe to ignore
-  }
-  try {
-    db.exec('ALTER TABLE conversations ADD COLUMN converted_at TEXT');
-  } catch {
-    // column already exists — safe to ignore
-  }
-  try {
-    db.exec('ALTER TABLE conversations ADD COLUMN gallery_nudged_at TEXT');
-  } catch {
-    // column already exists — safe to ignore
-  }
-  try {
-    db.exec('ALTER TABLE conversations ADD COLUMN follow_up_sent_at TEXT');
-  } catch {
-    // column already exists — safe to ignore
-  }
-  try {
-    db.exec('ALTER TABLE conversations ADD COLUMN lead_pain TEXT');
-  } catch {
-    // column already exists — safe to ignore
-  }
-  try {
-    db.exec('ALTER TABLE conversations ADD COLUMN lead_pain_detail TEXT');
-  } catch {
-    // column already exists — safe to ignore
-  }
-  try {
-    db.exec('ALTER TABLE conversations ADD COLUMN lead_pain_detected_at TEXT');
-  } catch {
-    // column already exists — safe to ignore
-  }
-  try {
-    db.exec('ALTER TABLE conversations ADD COLUMN follow_up_reply_count INTEGER DEFAULT 0');
-  } catch {
-    // column already exists — safe to ignore
-  }
+  addColumnIfMissing(db, 'messages', 'app_version', 'TEXT');
+  addColumnIfMissing(db, 'conversations', 'handed_off_at', 'TEXT');
+  addColumnIfMissing(db, 'conversations', 'price_given_at', 'TEXT');
+  addColumnIfMissing(db, 'conversations', 'collected_pet', 'TEXT');
+  addColumnIfMissing(db, 'conversations', 'soft_closed_at', 'TEXT');
+  addColumnIfMissing(db, 'conversations', 'collected_plan', 'TEXT');
+  addColumnIfMissing(db, 'conversations', 'sales_phase', 'TEXT');
+  addColumnIfMissing(db, 'conversations', 'lead_intent', 'TEXT');
+  addColumnIfMissing(db, 'conversations', 'assigned_line_id', 'TEXT');
+  addColumnIfMissing(db, 'conversations', 'assigned_agent_chat', 'TEXT');
+  addColumnIfMissing(db, 'conversations', 'conversation_mode', "TEXT DEFAULT 'bot'");
+  addColumnIfMissing(db, 'conversations', 'converted_at', 'TEXT');
+  addColumnIfMissing(db, 'conversations', 'gallery_nudged_at', 'TEXT');
+  addColumnIfMissing(db, 'conversations', 'follow_up_sent_at', 'TEXT');
+  addColumnIfMissing(db, 'conversations', 'lead_pain', 'TEXT');
+  addColumnIfMissing(db, 'conversations', 'lead_pain_detail', 'TEXT');
+  addColumnIfMissing(db, 'conversations', 'lead_pain_detected_at', 'TEXT');
+  addColumnIfMissing(db, 'conversations', 'follow_up_reply_count', 'INTEGER DEFAULT 0');
+  addColumnIfMissing(db, 'conversations', 'selected_experience_id', 'TEXT');
+  addColumnIfMissing(db, 'conversations', 'meta_audience_consent_at', 'TEXT');
+  addColumnIfMissing(db, 'conversations', 'meta_audience_consent_source', 'TEXT');
   db.exec(`CREATE TABLE IF NOT EXISTS follow_up_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     customer_phone TEXT NOT NULL,
@@ -122,6 +53,26 @@ export function migrate(db: Database.Database): void {
   addColumnIfMissing(db, 'follow_up_events', 'decision_reason', 'TEXT');
   addColumnIfMissing(db, 'follow_up_events', 'claimed_at', 'TEXT');
   addColumnIfMissing(db, 'conversations', 'collected_date_window', 'TEXT');
+  addColumnIfMissing(db, 'conversations', 'date_status', "TEXT NOT NULL DEFAULT 'unasked'");
+  // Backfill date_status from legacy collected_date / window sentinels.
+  db.exec(`
+    UPDATE conversations
+    SET date_status = CASE
+      WHEN collected_date_window IS NOT NULL AND TRIM(collected_date_window) != '' THEN 'window'
+      WHEN collected_date IS NOT NULL
+        AND collected_date != 'tentative_unknown'
+        AND collected_date NOT LIKE '\\_%' ESCAPE '\\' THEN 'selected'
+      WHEN collected_date = 'tentative_unknown'
+        OR collected_date LIKE '\\_%' ESCAPE '\\' THEN 'deferred'
+      ELSE COALESCE(NULLIF(date_status, ''), 'unasked')
+    END
+  `);
+  db.exec(`
+    UPDATE conversations
+    SET collected_date = NULL
+    WHERE collected_date = 'tentative_unknown'
+       OR collected_date LIKE '\\_%' ESCAPE '\\'
+  `);
   db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_follow_up_events_customer_anchor_stage
     ON follow_up_events(customer_phone, anchor_inbound_at, stage)
     WHERE anchor_inbound_at IS NOT NULL`);
@@ -129,8 +80,35 @@ export function migrate(db: Database.Database): void {
     agent_chat_id TEXT PRIMARY KEY,
     customer_phone TEXT NOT NULL,
     opened_at TEXT NOT NULL,
-    last_activity_at TEXT NOT NULL
+    last_activity_at TEXT NOT NULL,
+    return_mode TEXT NOT NULL DEFAULT 'bot'
   )`);
+  addColumnIfMissing(db, 'bridge_sessions', 'return_mode', "TEXT NOT NULL DEFAULT 'bot'");
+  db.exec(`CREATE TABLE IF NOT EXISTS payment_reservations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    external_reference TEXT NOT NULL UNIQUE,
+    customer_phone TEXT NOT NULL,
+    preference_id TEXT UNIQUE,
+    payment_url TEXT,
+    expected_amount_cop INTEGER NOT NULL,
+    plan_id TEXT,
+    booking_date TEXT,
+    people INTEGER,
+    transport_need TEXT,
+    deposit_percent INTEGER,
+    availability_confirmed_at TEXT,
+    status TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    approved_at TEXT,
+    mercado_pago_payment_id TEXT UNIQUE
+  )`);
+  addColumnIfMissing(db, 'payment_reservations', 'payment_url', 'TEXT');
+  addColumnIfMissing(db, 'payment_reservations', 'plan_id', 'TEXT');
+  addColumnIfMissing(db, 'payment_reservations', 'booking_date', 'TEXT');
+  addColumnIfMissing(db, 'payment_reservations', 'people', 'INTEGER');
+  addColumnIfMissing(db, 'payment_reservations', 'transport_need', 'TEXT');
+  addColumnIfMissing(db, 'payment_reservations', 'deposit_percent', 'INTEGER');
+  addColumnIfMissing(db, 'payment_reservations', 'availability_confirmed_at', 'TEXT');
   try {
     db.exec('ALTER TABLE ai_usage ADD COLUMN purpose TEXT DEFAULT \'reply\'');
   } catch {

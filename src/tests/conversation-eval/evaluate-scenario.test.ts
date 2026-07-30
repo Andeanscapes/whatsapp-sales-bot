@@ -89,6 +89,28 @@ describe('conversation criteria', () => {
     expect(evaluateScenario(input, [turn('Hola', '¿A? ¿B?')]).hardFail).toBe(true);
   });
 
+  it('allows a starting price before qualification but rejects an exact price', () => {
+    const input = scenario([{ id: 'price', rule: 'price_after_min_fields', minFields: 2, weight: 1, critical: true }]);
+    expect(evaluateScenario(input, [turn('Hola', 'Tenemos opciones desde $550,000 COP. ¿Sería para ti solo, en pareja o para un grupo?')]).score).toBe(100);
+    expect(evaluateScenario(input, [turn('Hola', 'Tenemos opciones desde $550,000. ¿Sería para ti solo, en pareja o para un grupo?')]).score).toBe(100);
+    expect(evaluateScenario(input, [turn('Hola', 'El valor es $550,000 COP.')]).hardFail).toBe(true);
+    expect(evaluateScenario(input, [turn('Hola', 'El valor es $550,000.')]).hardFail).toBe(true);
+    expect(evaluateScenario(input, [turn('Hola', 'Tenemos opciones desde $550,000 COP, pero el total es $1,000,000.')]).hardFail).toBe(true);
+  });
+
+  it('counts every real media output flag', () => {
+    const input = scenario([{ id: 'media', rule: 'output_count_at_most', output: 'media', expected: 0, weight: 1, critical: true }]);
+    const image = turn('foto', 'ok');
+    image.processOutput.shouldSendImage = true;
+    const owner = turn('hola', 'ok');
+    owner.processOutput.shouldSendOwnerImage = true;
+    const gallery = turn('fotos', 'ok');
+    gallery.processOutput.shouldSendGalleryImages = true;
+    expect(evaluateScenario(input, [image]).hardFail).toBe(true);
+    expect(evaluateScenario(input, [owner]).hardFail).toBe(true);
+    expect(evaluateScenario(input, [gallery]).hardFail).toBe(true);
+  });
+
   it('supports output_flag_not_equals and conversationMode', () => {
     const record = turn('Hola', 'ok');
     record.processOutput.conversationMode = 'human_pending';

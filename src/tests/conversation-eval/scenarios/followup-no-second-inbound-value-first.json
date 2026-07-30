@@ -1,0 +1,61 @@
+{
+  "id": "followup-no-second-inbound-value-first",
+  "source": "2026-whatsapp-tourism-conversion-strategy",
+  "tags": [
+    "follow-up",
+    "no-reply",
+    "personalization",
+    "conversion",
+    "regression"
+  ],
+  "lang": "es",
+  "runner": "follow_up",
+  "liveRuns": 3,
+  "seedSystem": {
+    "hoursSinceBotReply": 4,
+    "meaningfulSecondInbound": false,
+    "withinCustomerServiceWindow": true,
+    "knownIntent": "prices_and_dates"
+  },
+  "followUpMockReply": "Para orientarte sin hacerte perder tiempo: el valor cambia según cuántas personas viajen. ¿Sería para una persona, pareja o grupo?",
+  "criteria": [
+    {
+      "id": "sends-within-window",
+      "rule": "output_flag_equals",
+      "flag": "shouldSendReply",
+      "expected": true,
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "provides-contextual-value",
+      "rule": "reply_must_match",
+      "patterns": [
+        "valor|precio",
+        "persona|pareja|grupo"
+      ],
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "no-generic-ping",
+      "rule": "unsafe_pattern_absent",
+      "patterns": [
+        "¿Sigues interesado",
+        "¿Hola\\?",
+        "¿Quieres que sigamos"
+      ],
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Hola, quiero precios y fechas para la aventura minera en Chivor 💚",
+      "mockReply": "Claro. El total depende del número de viajeros. ¿Viajarías solo, en pareja o en grupo?"
+    }
+  ]
+}

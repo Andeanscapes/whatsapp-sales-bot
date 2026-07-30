@@ -1,10 +1,14 @@
-import type { ConversationMode, Repositories } from '../db/repositories/index.js';
+import type { ConversationMode, DateStatus, Repositories } from '../db/repositories/index.js';
+
+export type OutboundDateAction = 'asked' | 'options_offered';
+export type LeadLifecycle = 'quoted' | 'human_pending' | 'payment_pending' | 'decision_pending' | 'lost_price';
 
 export interface MergedQualification {
   nombre?: unknown;
   plan?: unknown;
   personas?: unknown;
   fecha?: unknown;
+  dateStatus?: DateStatus;
   transporte?: unknown;
   mascota?: unknown;
 }
@@ -32,4 +36,12 @@ export interface ProcessMessageOutput {
   conversationMode?: ConversationMode;
   salesPhase?: string | null;
   softClosed?: boolean;
+  reservationReady?: boolean;
+  intent?: string | null;
+  mediaPlanId?: string | null;
+  outboundDateAction?: OutboundDateAction;
+  bookingIntent?: boolean;
+  handoffCreated?: boolean;
+  leadLifecycle?: LeadLifecycle;
+  suppressGenericFollowups?: boolean;
 }

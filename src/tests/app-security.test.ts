@@ -8,10 +8,16 @@ import { createRepositories } from '../db/repositories/index.js';
 let db: Database.Database;
 let app: Awaited<ReturnType<typeof buildApp>>;
 let previousVerifyToken: string;
+let previousMercadoPagoAccessToken: string;
+let previousMercadoPagoWebhookSecret: string;
 
 beforeEach(async () => {
   previousVerifyToken = env.WHATSAPP_VERIFY_TOKEN;
+  previousMercadoPagoAccessToken = env.MERCADOPAGO_ACCESS_TOKEN;
+  previousMercadoPagoWebhookSecret = env.MERCADOPAGO_WEBHOOK_SECRET;
   env.WHATSAPP_VERIFY_TOKEN = 'verify-test-token';
+  env.MERCADOPAGO_ACCESS_TOKEN = 'TEST-access-token';
+  env.MERCADOPAGO_WEBHOOK_SECRET = 'test-webhook-secret';
   db = new Database(':memory:');
   migrate(db);
   app = await buildApp(createRepositories(db));
@@ -20,6 +26,8 @@ beforeEach(async () => {
 
 afterEach(async () => {
   env.WHATSAPP_VERIFY_TOKEN = previousVerifyToken;
+  env.MERCADOPAGO_ACCESS_TOKEN = previousMercadoPagoAccessToken;
+  env.MERCADOPAGO_WEBHOOK_SECRET = previousMercadoPagoWebhookSecret;
   await app.close();
   db.close();
 });
@@ -56,5 +64,20 @@ describe('app security controls', () => {
     });
 
     expect(res.statusCode).toBe(413);
+  });
+
+  it('rejects Mercado Pago callbacks with an invalid signature', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/webhooks/mercadopago',
+      headers: {
+        'content-type': 'application/json',
+        'x-request-id': 'request-123',
+        'x-signature': 'ts:123,v1:not-a-valid-signature',
+      },
+      payload: { data: { id: 'payment-123' }, type: 'payment' },
+    });
+
+    expect(res.statusCode).toBe(401);
   });
 });

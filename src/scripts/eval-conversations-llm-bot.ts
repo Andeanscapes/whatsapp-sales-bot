@@ -1,16 +1,16 @@
-import { readdirSync, readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { env } from '../config/env.js';
-import { getSkills, loadSkills, refreshSkills } from '../services/skill-loader.js';
+import { getSkills, loadSkills, refreshSkills, setDynamicService } from '../services/skill-loader.js';
 import { getActiveExperience } from '../services/product-registry.js';
-import { PRICING_NOT_AVAILABLE } from '../services/dynamic-data-service.js';
+import { DynamicDataService, PRICING_NOT_AVAILABLE } from '../services/dynamic-data-service.js';
 import { applyScenarioSeeds, createRunContext, runTurn } from '../tests/conversation-eval/runner.js';
-import { runFollowUpScenario } from '../tests/conversation-eval/follow-up-runner.js';
 import { evaluateScenario } from '../tests/conversation-eval/evaluate-scenario.js';
 import { buildReport, printReport, writeReport } from '../tests/conversation-eval/report.js';
-import { scenarioSchema, type Scenario, type ScenarioResult } from '../tests/conversation-eval/schema.js';
+import type { Scenario, ScenarioResult } from '../tests/conversation-eval/schema.js';
 import { aggregateRuns } from '../tests/conversation-eval/aggregate-runs.js';
+import { loadScenarios, partitionLiveScenarios } from '../tests/conversation-eval/scenario-loader.js';
+import { validateTurnExpectations } from '../tests/conversation-eval/turn-expectations.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const scenariosDir = join(__dirname, '..', 'tests', 'conversation-eval', 'scenarios');
@@ -18,12 +18,6 @@ const scenariosDir = join(__dirname, '..', 'tests', 'conversation-eval', 'scenar
 function progressLabel(current: number, total: number): string {
   const percent = Math.round((current / Math.max(1, total)) * 100);
   return `[LLM_BOT_EVAL] ${current}/${total} (${percent}%)`;
-}
-
-function loadScenarios(): Scenario[] {
-  return readdirSync(scenariosDir)
-    .filter(file => file.endsWith('.json'))
-    .map(file => scenarioSchema.parse(JSON.parse(readFileSync(join(scenariosDir, file), 'utf8'))));
 }
 
 function option(name: string): string | undefined {
@@ -36,13 +30,17 @@ function requireLiveLlmConfig(): void {
   if (!env.AI_ENABLED) throw new Error('AI_ENABLED=true is required');
 }
 
-function buildResult(scenario: Scenario, evaluation: ReturnType<typeof evaluateScenario>, turns: ScenarioResult['turnResults'], runs: { total: number; passed: number }): ScenarioResult {
+function buildResult(scenario: Scenario, evaluation: ReturnType<typeof evaluateScenario>, turns: ScenarioResult['turnResults'], runs: { total: number; passed: number }, expectationErrors: string[]): ScenarioResult {
   const minimumFailure = scenario.minLiveScore !== undefined && evaluation.score < scenario.minLiveScore;
   return {
     id: scenario.id,
     score: evaluation.score,
-    hardFail: evaluation.hardFail || minimumFailure,
-    notes: minimumFailure ? [...evaluation.notes, `[minimum] score ${evaluation.score} < ${scenario.minLiveScore}`] : evaluation.notes,
+    hardFail: evaluation.hardFail || minimumFailure || expectationErrors.length > 0,
+    notes: [
+      ...evaluation.notes,
+      ...(minimumFailure ? [`[minimum] score ${evaluation.score} < ${scenario.minLiveScore}`] : []),
+      ...expectationErrors,
+    ],
     criteria: evaluation.criteria,
     turnResults: turns,
     ...(runs.total > 1 ? { runs } : {}),
@@ -50,16 +48,30 @@ function buildResult(scenario: Scenario, evaluation: ReturnType<typeof evaluateS
 }
 
 async function main(): Promise<void> {
-  requireLiveLlmConfig();
-  loadSkills();
-  await refreshSkills(true);
-
   const selectedId = option('--scenario');
   const requestedRuns = Number(option('--runs') ?? 1);
   if (!Number.isInteger(requestedRuns) || requestedRuns < 1 || requestedRuns > 5) throw new Error('--runs must be an integer from 1 to 5');
 
-  const scenarios = loadScenarios().filter(scenario => !selectedId || scenario.id === selectedId);
-  if (scenarios.length === 0) throw new Error(`No scenario found for ${selectedId}`);
+  const selectedScenarios = loadScenarios(scenariosDir).filter(scenario => !selectedId || scenario.id === selectedId);
+  if (selectedScenarios.length === 0) throw new Error(`No scenario found for ${selectedId}`);
+  const { supported: scenarios, skipped } = partitionLiveScenarios(selectedScenarios);
+  if (skipped.length > 0) {
+    console.log(`[LLM_BOT_EVAL] skipped ${skipped.length} unsupported synthetic scenarios: ${skipped.map(scenario => scenario.id).join(', ')}`);
+  }
+  if (scenarios.length === 0) {
+    if (selectedId) throw new Error(`Scenario ${selectedId} uses an unsupported synthetic runner`);
+    console.log('[LLM_BOT_EVAL] no live message scenarios to run');
+    return;
+  }
+
+  requireLiveLlmConfig();
+  if (env.DYNAMIC_SKILL_URL) {
+    const service = new DynamicDataService(env.DYNAMIC_SKILL_URL, env.DYNAMIC_SKILL_REFRESH_MS);
+    setDynamicService(service);
+    await service.refreshIfStale();
+  }
+  loadSkills();
+  await refreshSkills(true);
 
   const results: ScenarioResult[] = [];
   let totalCostUsd = 0;
@@ -74,7 +86,6 @@ async function main(): Promise<void> {
       const progress = progressLabel(scenarioIndex + 1, scenarios.length);
       console.log(`${progress} starting ${scenario.id} run ${run + 1}/${runCount}`);
       const ctx = createRunContext({ phoneSuffix: scenarioIndex * 10 + run });
-      const restoreSeeds = applyScenarioSeeds(ctx, scenario);
       const experience = getActiveExperience(getSkills());
       const originalPricingItems = experience.pricing.items;
       const originalPricingRules = experience.pricing.botRules;
@@ -82,18 +93,18 @@ async function main(): Promise<void> {
         experience.pricing.items = [
           { id: `${scenario.mockPricing.planId}_individual`, planId: scenario.mockPricing.planId, label: 'Individual', pricePerPerson: scenario.mockPricing.individual, publiclyShow: true },
           { id: `${scenario.mockPricing.planId}_couple`, planId: scenario.mockPricing.planId, label: 'Pareja', couplePrice: scenario.mockPricing.couple, publiclyShow: true },
+          ...(scenario.mockPricing.privateTransport
+            ? [{ id: 'private_transport', kind: 'addon' as const, label: 'Private transport', couplePrice: scenario.mockPricing.privateTransport, publiclyShow: true }]
+            : []),
         ];
         experience.pricing.botRules = experience.pricing.botRules.filter(rule => rule !== PRICING_NOT_AVAILABLE);
       }
+      let restoreSeeds = (): void => undefined;
       try {
-        if (scenario.runner === 'follow_up') {
-          ctx.turns.push(...await runFollowUpScenario(ctx, scenario));
-          console.log(`${progress} ${scenario.id} run ${run + 1}/${runCount} follow-up complete`);
-        } else {
-          for (let turnIndex = 0; turnIndex < scenario.turns.length; turnIndex++) {
-            ctx.turns.push(await runTurn(ctx, scenario.turns[turnIndex], turnIndex + 1));
-            console.log(`${progress} ${scenario.id} run ${run + 1}/${runCount} turn ${turnIndex + 1}/${scenario.turns.length}`);
-          }
+        restoreSeeds = applyScenarioSeeds(ctx, scenario);
+        for (let turnIndex = 0; turnIndex < scenario.turns.length; turnIndex++) {
+          ctx.turns.push(await runTurn(ctx, scenario.turns[turnIndex], turnIndex + 1));
+          console.log(`${progress} ${scenario.id} run ${run + 1}/${runCount} turn ${turnIndex + 1}/${scenario.turns.length}`);
         }
         const evaluation = evaluateScenario(scenario, ctx.turns);
         const turns = ctx.turns.map(turn => ({
@@ -103,13 +114,18 @@ async function main(): Promise<void> {
           shouldAlertOwner: turn.processOutput.shouldAlertOwner,
           shouldSendImage: turn.processOutput.shouldSendImage,
         }));
-        runResults.push(buildResult(scenario, evaluation, turns, { total: 1, passed: evaluation.hardFail ? 0 : 1 }));
+        const result = buildResult(scenario, evaluation, turns, { total: 1, passed: 0 }, validateTurnExpectations(scenario, ctx.turns));
+        result.runs = { total: 1, passed: result.hardFail ? 0 : 1 };
+        runResults.push(result);
         totalCostUsd += ctx.repos.aiUsage.getDailyCost(todayStart);
       } finally {
-        experience.pricing.items = originalPricingItems;
-        experience.pricing.botRules = originalPricingRules;
-        restoreSeeds();
-        ctx.destroy();
+        try {
+          restoreSeeds();
+        } finally {
+          experience.pricing.items = originalPricingItems;
+          experience.pricing.botRules = originalPricingRules;
+          ctx.destroy();
+        }
       }
     }
 

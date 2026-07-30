@@ -1,0 +1,76 @@
+{
+  "id": "large-group-closing-requires-logistics-review",
+  "source": "production-regression-2026-07-24-to-2026-07-26",
+  "tags": [
+    "large-group",
+    "pricing",
+    "transport",
+    "handoff",
+    "regression"
+  ],
+  "lang": "es",
+  "liveRuns": 3,
+  "criteria": [
+    {
+      "id": "keeps-group-size",
+      "rule": "known_field_not_reasked",
+      "field": "people",
+      "suppliedTurn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "no-final-extra-vehicle-quote",
+      "rule": "unsafe_pattern_absent",
+      "patterns": [
+        "transporte total: \\$\\s?\\d",
+        "vehículos adicionales cuestan"
+      ],
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "requires-logistics-review",
+      "rule": "reply_must_match",
+      "patterns": [
+        "confirmar la logística|revisar vehículos adicionales|cotización especial"
+      ],
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "alerts-owner",
+      "rule": "output_flag_equals",
+      "flag": "shouldAlertOwner",
+      "expected": true,
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Somos 25 personas para agosto y necesitamos transporte privado.",
+      "seedQualification": {
+        "people": 25,
+        "plan": "2d1n_mining",
+        "date": "agosto",
+        "transportNeed": "private_from_bogota"
+      },
+      "mockReply": "Perfecto, anoto 25 personas para agosto con transporte privado.",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "¿Cuánto cuesta todo?",
+      "mockReply": "Para un grupo de 25 personas necesitamos preparar una cotización especial y confirmar la logística de los vehículos adicionales antes de darte un total final.",
+      "expect": {
+        "shouldSendReply": true,
+        "shouldAlertOwner": true
+      }
+    }
+  ]
+}

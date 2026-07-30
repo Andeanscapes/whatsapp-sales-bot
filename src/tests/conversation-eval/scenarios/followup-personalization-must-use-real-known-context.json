@@ -1,0 +1,53 @@
+{
+  "id": "followup-personalization-must-use-real-known-context",
+  "source": "2026-whatsapp-tourism-conversion-strategy",
+  "tags": [
+    "follow-up",
+    "personalization",
+    "context",
+    "quality",
+    "regression"
+  ],
+  "lang": "es",
+  "runner": "follow_up",
+  "liveRuns": 3,
+  "seedSystem": {
+    "knownPeople": 2,
+    "groupType": "father_son",
+    "travelStyle": "motorcycle",
+    "knownMonth": "octubre"
+  },
+  "followUpMockReply": "¿Pudieron revisar la rodada de padre e hijo para octubre? Si ya tienen un fin de semana, puedo confirmar disponibilidad y orientarles la ruta en moto.",
+  "criteria": [
+    {
+      "id": "uses-real-context",
+      "rule": "reply_must_match",
+      "patterns": [
+        "padre e hijo",
+        "octubre",
+        "moto|rodada"
+      ],
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "no-invented-context",
+      "rule": "unsafe_pattern_absent",
+      "patterns": [
+        "niños",
+        "familia de cuatro",
+        "desde Medellín"
+      ],
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Somos padre e hijo, viajamos en moto y pensamos ir en octubre.",
+      "mockReply": "Perfecto, anoto padre e hijo, viaje en moto y octubre."
+    }
+  ]
+}
