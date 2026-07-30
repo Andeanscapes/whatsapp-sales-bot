@@ -2968,7 +2968,7 @@
       "turnResults": [
         {
           "user": "Hola, quiero información.",
-          "reply": "¡Hola! Soy Heinner, de Andean Scapes. Cuéntame qué te gustaría conocer.",
+          "reply": "¡Hola! Soy Test Owner, de Andean Scapes. Cuéntame qué te gustaría conocer.",
           "leadScore": 0,
           "shouldAlertOwner": false,
           "shouldSendImage": false
