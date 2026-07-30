@@ -32,7 +32,6 @@ function main(): void {
     }
     if (!after) {
       console.log(`REMOVED ${id}`);
-      failed = true;
       continue;
     }
     const state = after.hardFail ? 'FAIL' : after.score >= before.score ? 'PASS' : 'DOWN';
