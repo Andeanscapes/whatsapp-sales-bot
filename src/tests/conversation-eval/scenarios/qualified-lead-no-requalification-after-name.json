@@ -16,7 +16,7 @@
       "patterns": [
         "4 personas",
         "21.{0,15}22 de agosto|21-22 de agosto|22 de agosto",
-        "carro",
+        "transporte propio",
         "Cliente Demo"
       ],
       "turn": 4,

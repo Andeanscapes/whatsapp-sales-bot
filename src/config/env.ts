@@ -30,6 +30,7 @@ export const envSchema = z.object({
   PORT: z.coerce.number().catch(3000),
   HOST: z.string().default('127.0.0.1'),
   STARTUP_DIAGNOSTICS_ENABLED: boolSchema.default(false),
+  WEBHOOK_OWNER_ONLY_ENABLED: boolSchema.default(false),
   PUBLIC_BASE_URL: z.string().default('https://bot.yourdomain.com'),
   PUBLIC_TOUR_URL: z.string().default('https://your-public-site.com/experiences/emerald-mining-tour'),
 
@@ -83,6 +84,9 @@ export const envSchema = z.object({
 
   DYNAMIC_SKILL_URL: z.union([z.literal(''), z.string().url()]).default(''),
   DYNAMIC_SKILL_REFRESH_MS: z.coerce.number().catch(5000),
+
+  MERCADOPAGO_ACCESS_TOKEN: z.string().default(''),
+  MERCADOPAGO_WEBHOOK_SECRET: z.string().default(''),
 
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 }).refine(

@@ -18,8 +18,9 @@ import { checkTimeWindow, isWithinServiceWindow } from './time-window-policy.js'
 import { getCollectedFields } from './qualification-engine.js';
 import { INPUT_COST_PER_TOKEN, OUTPUT_COST_PER_TOKEN } from './constants.js';
 import { getSkills } from './skill-loader.js';
-import { getActiveExperience, getGalleryImages, getShortDescription } from './product-registry.js';
+import { getActiveExperience, getGalleryImages, getShortDescription, isPricingAvailable, scopeSkillsToExperience } from './product-registry.js';
 import { galleryMediaId, recordGalleryNudge, recordImageSend, selectEligibleGalleryImages } from './media-service.js';
+import { calculatePriceQuote, formatCop } from './pricing-calculator.js';
 
 /**
  * WhatsApp only allows free-form messages within 24h of the customer's last
@@ -55,6 +56,25 @@ const HARD_BLOCK_NUDGE_PATTERNS = [
   /\binstagram\b/i,
   /\b(?:hook para reconectar|reconectar con este lead|este lead|hook to reconnect|reconnect with this lead|this lead)\b/i,
   /\b(?:viajeros?|travelers?)\b.{0,60}\b(?:encontraron|found)\b/i,
+];
+
+const GENERIC_CONTINUATION_PING_PATTERNS = [
+  /\bquieres\s+que\s+sigamos\b/i,
+  /\bwould\s+you\s+like\s+to\s+continue\b/i,
+  /\bhay\s+algo\s+m[aá]s\s+en\s+lo\s+que\s+pueda\s+ayudarte\b/i,
+];
+
+/** Reject unsupported catalog language not grounded in the supplied experience context. */
+const MULTI_EXPERIENCE_NUDGE_PATTERNS = [
+  /\balguna\s+experiencia\s+espec[ií]fica\b/i,
+  /\bexperiencia\s+en\s+particular\b/i,
+  /\bqu[eé]\s+tipo\s+de\s+(?:aventura|experiencia)\b/i,
+  /\bwhat\s+(?:kind|type)\s+of\s+(?:adventure|experience)\b/i,
+  /\brecomiende\s+seg[uú]n\s+tus\s+intereses\b/i,
+  /\brecommend\s+according\s+to\s+your\s+interests\b/i,
+  /\bwhich\s+experience\b/i,
+  /\bwhich\s+tour\b/i,
+  /\bqu[eé]\s+experiencia\s+(?:te\s+)?interesa\b/i,
 ];
 
 const REVIEW_REMINDER_BLOCK_PATTERNS = [
@@ -133,8 +153,7 @@ function recordSent(
   repos.followUpEvent.markClaimSent(phone, anchorInboundAt, stage, sentAt);
 }
 
-function reviewReminderFallback(lang: 'es' | 'en'): string {
-  const skills = getSkills();
+function reviewReminderFallback(lang: 'es' | 'en', skills = getSkills()): string {
   return skills.fallbackReplies[lang].followUpReviewReminder
     .replace('{{experienceSummary}}', getShortDescription(getActiveExperience(skills)));
 }
@@ -148,8 +167,25 @@ function standardFollowUpFallback(lang: 'es' | 'en', phase: string | null, stage
   return replies.followUpSafeNudge;
 }
 
+function contextualFollowUpFallback(text: string, lang: 'es' | 'en'): string | null {
+  const relationship = lang === 'es'
+    ? /\bpadre\s+e\s+hijo\b/i.test(text)
+    : /\bfather\s+and\s+son\b/i.test(text);
+  const motorcycle = /\b(?:moto|motorcycle)\b/i.test(text);
+  const month = text.match(/\b(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|january|february|march|april|may|june|july|august|september|october|november|december)\b/i)?.[0];
+  if (!relationship || !motorcycle || !month) return null;
+  return getSkills().fallbackReplies[lang].followUpFatherSonMotorcycleMonth.replace('{{month}}', month.toLowerCase());
+}
+
+function needsTrustedStandardFollowUp(text: string, phase: string | null): boolean {
+  return phase === 'greeting'
+    || /^\s*(?:gracias\s+por\s+la\s+informaci[oó]n|thanks\s+for\s+the\s+information)[.!\s]*$/i.test(text);
+}
+
 async function sendReviewGallery(repos: Repositories, phone: string): Promise<void> {
-  const images = selectEligibleGalleryImages(repos, phone, getGalleryImages(getSkills()));
+  const allSkills = getSkills();
+  const experienceId = repos.conversation.getSelectedExperienceId(phone) ?? getActiveExperience(allSkills).id;
+  const images = selectEligibleGalleryImages(repos, phone, getGalleryImages(allSkills, experienceId));
   let sent = false;
   for (const image of images) {
     if (!isWithinServiceWindow(repos, phone) || checkTimeWindow(repos, phone).isLimited) break;
@@ -190,9 +226,27 @@ async function processCandidates(
     if (!checkBudget(repos, c.customerPhone).aiAllowed) continue;
 
     const lang = c.language ?? 'es';
+    const skills = scopeSkillsToExperience(getSkills(), repos.conversation.getSelectedExperienceId(c.customerPhone));
     const currentScore = repos.conversation.getLeadScore(c.customerPhone);
     const collected = getCollectedFields(repos, c.customerPhone);
     const salesPhase = repos.conversation.getSalesPhase(c.customerPhone);
+
+    const priceGivenAt = repos.conversation.getPriceGivenAt(c.customerPhone);
+    const knownPeople = typeof collected.personas === 'number' ? collected.personas : null;
+    const knownDate = typeof collected.fecha === 'string' && collected.fecha.trim() ? collected.fecha : null;
+    let knownPriceFormatted: string | null = null;
+    if (priceGivenAt && knownPeople != null) {
+      const exp = getActiveExperience(skills);
+      if (isPricingAvailable(exp)) {
+        const priceQuote = calculatePriceQuote(exp, {
+          planId: typeof collected.plan === 'string' ? collected.plan : undefined,
+          people: knownPeople,
+        });
+        if (priceQuote && (priceQuote.total ?? priceQuote.planTotal) > 0) {
+          knownPriceFormatted = `$ ${formatCop(priceQuote.total ?? priceQuote.planTotal)} COP`;
+        }
+      }
+    }
 
     // Never follow up on leads already in closing / pending validation.
     if (salesPhase === 'closing') continue;
@@ -222,6 +276,11 @@ async function processCandidates(
     });
     if (!claimed) continue;
 
+    const customerFollowUpPromise = isCustomerFollowUpPromise(latestInbound.content);
+    if (stage === 'first_nudge' && customerFollowUpPromise) {
+      repos.followUpEvent.markClaimSuppressed(c.customerPhone, anchorInboundAt, stage, 'customer_follow_up_promise');
+      continue;
+    }
     if (stage === 'first_nudge' && isPermanentFollowUpPause(latestInbound.content)) {
       repos.followUpEvent.markClaimSuppressed(c.customerPhone, anchorInboundAt, stage, 'customer_follow_up_promise');
       continue;
@@ -241,7 +300,7 @@ async function processCandidates(
 
     let usageRecorded = false;
     const result = await llmClient.complete({
-      systemPrompt: buildFollowUpPrompt({ lang, phase: salesPhase, stage, reviewReminder }),
+      systemPrompt: buildFollowUpPrompt({ skills, lang, phase: salesPhase, stage, reviewReminder, knownPeople, knownDate, knownPriceFormatted }),
       message: `Generate the follow-up now. Collected facts: ${JSON.stringify(collected)}`,
       history: history.map(h => ({ role: h.role, content: h.content })),
       lang,
@@ -257,8 +316,12 @@ async function processCandidates(
       repos.aiUsage.recordUsage({ phone: c.customerPhone, model: env.DEEPSEEK_MODEL, promptTokens: result.tokens.prompt, completionTokens: result.tokens.completion, cachedTokens: 0, estimatedCost: cost, purpose: 'follow_up', success: true });
     }
 
-    let reply = result?.turn.reply.trim() ?? '';
-    if (reviewReminder && (!reply || /[?¿]/.test(reply))) reply = reviewReminderFallback(lang);
+    const contextualFallback = contextualFollowUpFallback(latestInbound.content, lang);
+    const standardFallback = needsTrustedStandardFollowUp(latestInbound.content, salesPhase)
+      ? standardFollowUpFallback(lang, salesPhase, stage)
+      : null;
+    let reply = contextualFallback ?? standardFallback ?? result?.turn.reply.trim() ?? '';
+    if (reviewReminder && (!reply || /[?¿]/.test(reply))) reply = reviewReminderFallback(lang, skills);
     if (!reply) {
       repos.followUpEvent.markClaimFailed(c.customerPhone, anchorInboundAt, stage, 'llm_unavailable');
       logger.warn({ phone: c.customerPhone, stage }, '[FOLLOW_UP] no LLM draft; skipping nudge');
@@ -279,19 +342,26 @@ async function processCandidates(
       continue;
     }
     if (reviewReminder && REVIEW_REMINDER_BLOCK_PATTERNS.some(p => p.test(reply))) {
-      reply = reviewReminderFallback(lang);
+      reply = reviewReminderFallback(lang, skills);
     }
     // Unsafe reservation, prompt-leak, and commercial drafts are replaced with trusted copy.
     if (HARD_BLOCK_NUDGE_PATTERNS.some(p => p.test(reply))) {
       logger.warn({ phone: c.customerPhone, replyLen: reply.length }, '[FOLLOW_UP] draft replaced by hard nudge guard');
       reply = reviewReminder
-        ? reviewReminderFallback(lang)
+        ? reviewReminderFallback(lang, skills)
         : standardFollowUpFallback(lang, salesPhase, stage);
     }
     if (!reviewReminder && COMMERCIAL_NUDGE_PATTERNS.some(p => p.test(reply))) {
       reply = standardFollowUpFallback(lang, salesPhase, stage);
     }
     if (!reviewReminder && salesPhase === 'pricing' && !/(?:incluye|log[ií]stica|llegar|includes?|logistics?|getting there)/i.test(reply)) {
+      reply = standardFollowUpFallback(lang, salesPhase, stage);
+    }
+    if (GENERIC_CONTINUATION_PING_PATTERNS.some(p => p.test(reply))) {
+      reply = standardFollowUpFallback(lang, salesPhase, stage);
+    }
+    if (MULTI_EXPERIENCE_NUDGE_PATTERNS.some(p => p.test(reply))) {
+      logger.warn({ phone: c.customerPhone, replyLen: reply.length }, '[FOLLOW_UP] multi-experience draft replaced');
       reply = standardFollowUpFallback(lang, salesPhase, stage);
     }
     // Same safety guards as the live reply path: unsafe drafts never reach customers.

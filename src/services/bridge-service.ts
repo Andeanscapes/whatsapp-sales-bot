@@ -18,7 +18,7 @@ const BRIDGE_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 /**
  * Resolves whether a customer currently has a live agent bridge. A session is
  * live only when it exists AND is within its TTL. Stale sessions are reaped
- * (closed + conversation mode reverted to `bot`) so the bot resumes replying.
+ * (closed + conversation mode restored) so the bot resumes when appropriate.
  * Returns true only when the bot must stay silent and forward to the agent.
  */
 export function isBridgeActive(repos: Repositories, customerPhone: string, now: Date = new Date()): boolean {
@@ -33,7 +33,7 @@ export function isBridgeActive(repos: Repositories, customerPhone: string, now: 
   const age = now.getTime() - new Date(session.lastActivityAt).getTime();
   if (age >= BRIDGE_SESSION_TTL_MS) {
     repos.bridgeSession.close(session.agentChatId);
-    repos.conversation.setMode(customerPhone, 'bot');
+    repos.conversation.setMode(customerPhone, session.returnMode);
     return false;
   }
 

@@ -6,19 +6,36 @@ const expectSchema = z.object({
   shouldSendImage: z.boolean().optional(),
   shouldSendOwnerImage: z.boolean().optional(),
   shouldSendGalleryImages: z.boolean().optional(),
+  sendOwnerImage: z.boolean().optional(),
   usedAi: z.boolean().optional(),
   priceJustGiven: z.boolean().optional(),
   reply: z.string().optional(),
   replyMustNotMatch: z.array(z.string()).optional(),
   replyMustContain: z.array(z.string()).optional(),
+  queueForReactivationAfterWindow: z.boolean().optional(),
+  reactivationEligible: z.boolean().optional(),
+  reactivationSegment: z.string().optional(),
+  conversationStarted: z.boolean().optional(),
+  meaningfulSecondInbound: z.boolean().optional(),
+  qualified: z.boolean().optional(),
+  reservationReady: z.boolean().optional(),
+  salesPhase: z.string().optional(),
+  intent: z.string().optional(),
+  mediaPlanId: z.string().optional(),
+  bookingIntent: z.boolean().optional(),
+  handoffCreated: z.boolean().optional(),
+  leadLifecycle: z.enum(['quoted', 'human_pending', 'payment_pending', 'decision_pending', 'lost_price']).optional(),
+  suppressGenericFollowups: z.boolean().optional(),
 }).strict();
 
 const qualificationSeedSchema = z.object({
   name: z.string().optional(),
   people: z.number().int().positive().optional(),
-  date: z.string().optional(),
+  date: z.string().nullable().optional(),
   transport: z.string().optional(),
+  transportNeed: z.string().optional(),
   plan: z.string().optional(),
+  leadScore: z.number().int().min(0).max(100).optional(),
 }).strict();
 
 const conversationModeSchema = z.enum(['bot', 'bridge_active', 'referred', 'human_pending']);
@@ -59,6 +76,53 @@ const seedConversationSchema = z.object({
 const seedSystemSchema = z.object({
   dynamicSkillAvailable: z.boolean().optional(),
   dynamicSkillRequired: z.boolean().optional(),
+  withinCustomerServiceWindow: z.boolean().optional(),
+  approvedTemplateAvailable: z.boolean().optional(),
+  meaningfulSecondInbound: z.boolean().optional(),
+  priorAutomatedFollowUps: z.number().int().min(0).optional(),
+  hoursSinceLastInbound: z.number().nonnegative().optional(),
+  hoursSinceBotReply: z.number().nonnegative().optional(),
+  receivedBotReply: z.boolean().optional(),
+  isReserved: z.boolean().optional(),
+  isHumanPending: z.boolean().optional(),
+  isPaused: z.boolean().optional(),
+  isOptOut: z.boolean().optional(),
+  decisionPause: z.string().optional(),
+  userPromisedUpdateAfter: z.string().datetime({ offset: true }).optional(),
+  currentTime: z.string().datetime({ offset: true }).optional(),
+  knownIntent: z.string().optional(),
+  knownMonth: z.string().optional(),
+  knownPeople: z.number().int().positive().optional(),
+  knownDate: z.string().optional(),
+  knownPrice: z.string().optional(),
+  leadLifecycle: z.string().optional(),
+  hoursSincePaymentLinkSent: z.number().nonnegative().optional(),
+  paymentCompleted: z.boolean().optional(),
+  priceShown: z.boolean().optional(),
+  explicitRejection: z.boolean().optional(),
+  groupType: z.string().optional(),
+  travelStyle: z.string().optional(),
+  knownPlan: z.string().optional(),
+  reservationPolicy: z.object({
+    depositPercent: z.number().nonnegative().nullable(),
+    securePaymentLinkAvailable: z.boolean().nullable(),
+    reschedulingAllowed: z.boolean().nullable(),
+  }).strict().optional(),
+  availabilityVerified: z.boolean().optional(),
+  primaryObjection: z.string().optional(),
+  privateTransportWasQuoted: z.boolean().optional(),
+  publicTransportAlternativeAvailable: z.boolean().optional(),
+  currentDate: z.string().optional(),
+  timezone: z.string().optional(),
+  availability: z.union([z.object({
+    date: z.string(),
+    status: z.string(),
+    remainingSpots: z.number().int().nonnegative().nullable(),
+  }).strict(), z.array(z.object({
+    date: z.string(),
+    weekday: z.string().optional(),
+    status: z.string(),
+  }).strict())]).optional(),
 }).strict();
 
 const criterionRuleSchema = z.enum([
@@ -74,6 +138,9 @@ const criterionRuleSchema = z.enum([
   'unsafe_pattern_absent',
   'group_quote_integrity',
   'max_question_marks',
+  'reply_length_at_most',
+  'output_question_count_at_most',
+  'output_count_at_most',
 ]);
 
 const outputFlagSchema = z.enum([
@@ -88,6 +155,19 @@ const outputFlagSchema = z.enum([
   'salesPhase',
   'softClosed',
   'sendOwnerImage',
+  'queueForReactivationAfterWindow',
+  'reactivationEligible',
+  'reactivationSegment',
+  'conversationStarted',
+  'meaningfulSecondInbound',
+  'qualified',
+  'reservationReady',
+  'intent',
+  'mediaPlanId',
+  'bookingIntent',
+  'handoffCreated',
+  'leadLifecycle',
+  'suppressGenericFollowups',
 ]);
 
 const criterionSchema = z.object({
@@ -96,9 +176,10 @@ const criterionSchema = z.object({
   weight: z.number().positive().default(1),
   critical: z.boolean().default(false),
   patterns: z.array(z.string().min(1)).min(1).optional(),
-  field: z.enum(['name', 'people', 'date', 'transport']).optional(),
+  field: z.enum(['name', 'people', 'date', 'transport', 'transportNeed', 'plan']).optional(),
   flag: outputFlagSchema.optional(),
-  expected: z.union([z.boolean(), z.string()]).optional(),
+  output: z.enum(['media']).optional(),
+  expected: z.union([z.boolean(), z.string(), z.number().int().nonnegative()]).optional(),
   turn: z.number().int().min(1).optional(),
   suppliedTurn: z.number().int().min(1).optional(),
   minFields: z.number().int().min(0).max(6).optional(),
@@ -124,6 +205,13 @@ const criterionSchema = z.object({
   if (criterion.rule === 'max_question_marks' && criterion.max === undefined) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'max_question_marks requires max' });
   }
+  if (['reply_length_at_most', 'output_question_count_at_most', 'output_count_at_most'].includes(criterion.rule)
+    && typeof criterion.expected !== 'number') {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${criterion.rule} requires numeric expected` });
+  }
+  if (criterion.rule === 'output_count_at_most' && criterion.output === undefined) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'output_count_at_most requires output' });
+  }
 });
 
 export const scenarioSchema = z.object({
@@ -131,7 +219,7 @@ export const scenarioSchema = z.object({
   source: z.string().optional(),
   tags: z.array(z.string()).optional(),
   lang: z.enum(['es', 'en']).default('es'),
-  runner: z.enum(['message', 'follow_up']).default('message'),
+  runner: z.enum(['message', 'follow_up', 'lifecycle']).default('message'),
   followUpMockReply: z.string().optional(),
   followUpSeed: followUpSeedSchema.optional(),
   seedQualification: qualificationSeedSchema.optional(),
@@ -143,14 +231,11 @@ export const scenarioSchema = z.object({
     planId: z.string().min(1),
     individual: z.number().int().positive(),
     couple: z.number().int().positive(),
+    privateTransport: z.number().int().positive().optional(),
   }).strict().optional(),
   turns: z.array(turnSchema).min(1),
   criteria: z.array(criterionSchema).min(1),
-}).strict().superRefine((scenario, ctx) => {
-  if (scenario.runner === 'follow_up' && scenario.followUpMockReply === undefined) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'follow_up runner requires followUpMockReply' });
-  }
-});
+}).strict();
 
 export type Scenario = z.infer<typeof scenarioSchema>;
 export type ScenarioTurn = z.infer<typeof turnSchema>;

@@ -31,7 +31,7 @@ export async function chatHandler(ctx: CommandContext): Promise<string> {
   const currentSession = ctx.repos.bridgeSession.getByAgentChat(chatId);
   if (currentSession && currentSession.customerPhone !== phone) {
     ctx.repos.bridgeSession.close(chatId);
-    ctx.repos.conversation.setMode(currentSession.customerPhone, 'bot');
+    ctx.repos.conversation.setMode(currentSession.customerPhone, currentSession.returnMode);
   }
 
   // Owner takeover replaces an agent's active bridge for this customer. The
@@ -40,7 +40,9 @@ export async function chatHandler(ctx: CommandContext): Promise<string> {
     ctx.repos.bridgeSession.close(targetSession.agentChatId);
   }
 
-  ctx.repos.bridgeSession.open(chatId, phone);
+  const returnMode = targetSession?.returnMode
+    ?? (ctx.repos.conversation.getMode(phone) === 'human_only' ? 'human_only' : 'bot');
+  ctx.repos.bridgeSession.open(chatId, phone, returnMode);
   ctx.repos.conversation.setMode(phone, 'bridge_active');
 
   const history = formatLeadHistory(conv, ctx.repos.message.getRecentMessages(phone, 500));

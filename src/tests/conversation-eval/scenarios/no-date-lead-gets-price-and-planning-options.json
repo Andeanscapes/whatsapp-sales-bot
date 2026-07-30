@@ -1,0 +1,63 @@
+{
+  "id": "no-date-lead-gets-price-and-planning-options",
+  "source": "andean-history-conversion-pack-2026-07-28",
+  "tags": [
+    "no-date",
+    "pricing",
+    "planning",
+    "conversion",
+    "regression"
+  ],
+  "lang": "es",
+  "liveRuns": 3,
+  "mockPricing": { "planId": "2d1n_mining", "individual": 550000, "couple": 1000000 },
+  "criteria": [
+    {
+      "id": "gives-known-couple-price",
+      "rule": "reply_must_match",
+      "patterns": [
+        "\\$?\\s*1[.,]?000[.,]?000"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "offers-planning-path-without-exact-date",
+      "rule": "reply_must_match",
+      "patterns": [
+        "fin de semana|mes",
+        "15 de agosto|26 de septiembre"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "does-not-block-price-on-date",
+      "rule": "unsafe_pattern_absent",
+      "patterns": [
+        "sin fecha no puedo",
+        "necesito una fecha exacta",
+        "antes de darte el precio.*fecha"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "No tengo fecha pero busco precios para así proyectarnos",
+      "seedQualification": {
+        "people": 2,
+        "plan": "2d1n_mining",
+        "date": null
+      },
+      "mockReply": "Claro. Para dos personas el plan de 2 días y 1 noche cuesta $1.000.000 COP en total. No necesitas definir una fecha hoy para proyectar el viaje. Como referencia, puedes revisar el 15 de agosto o el 26 de septiembre. ¿Qué les queda más fácil: agosto, septiembre o cualquier fin de semana?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

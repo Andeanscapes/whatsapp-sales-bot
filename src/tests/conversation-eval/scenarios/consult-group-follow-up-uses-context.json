@@ -1,0 +1,35 @@
+{
+  "id": "consult-group-follow-up-uses-context",
+  "source": "production-regression-2026-07-24-to-2026-07-26",
+  "tags": [
+    "follow-up",
+    "closing",
+    "group",
+    "context",
+    "regression"
+  ],
+  "lang": "es",
+  "runner": "follow_up",
+  "liveRuns": 2,
+  "criteria": [
+    {
+      "id": "respects-customer-update-promise",
+      "rule": "output_flag_equals",
+      "flag": "shouldSendReply",
+      "expected": false,
+      "turn": 3,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Nos interesa para agosto, pero debo hablarlo con el grupo.",
+      "mockReply": "Perfecto. Revísalo con el grupo y cuando tengan un fin de semana en mente seguimos."
+    },
+    {
+      "user": "Yo te aviso cuando hable con ellos.",
+      "mockReply": "Claro, quedo atento."
+    }
+  ]
+}

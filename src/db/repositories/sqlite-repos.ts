@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import type {
   ConversationRepository,
   ConversationRow,
+  MetaAudienceLead,
   MessageRepository,
   DedupeRepository,
   OptOutRepository,
@@ -37,12 +38,17 @@ import type {
   AiUsageRecordInput,
   AiUsageBreakdown,
   TokenBreakdown,
+  PaymentReservationRepository,
+  PaymentReservation,
+  PaymentReservationCreate,
+  DateStatus,
+  MetaAudienceConsentSource,
 } from './types.js';
 import { env } from '../../config/env.js';
 
 const ALLOWED_CONVERSATION_COLUMNS = new Set([
   'language', 'lead_score', 'last_seen_at', 'opt_out_at', 'handed_off_at',
-  'collected_name', 'collected_date', 'collected_date_window', 'collected_people',
+  'collected_name', 'collected_date', 'collected_date_window', 'date_status', 'collected_people',
   'collected_transport_need', 'collected_lodging_need',
   'collected_pet', 'collected_plan',
   'free_entry_detected', 'ad_referral_json',
@@ -51,7 +57,8 @@ const ALLOWED_CONVERSATION_COLUMNS = new Set([
   'sales_phase', 'lead_intent',
   'assigned_line_id', 'assigned_agent_chat', 'conversation_mode',
   'converted_at', 'gallery_nudged_at', 'follow_up_sent_at',
-  'lead_pain', 'lead_pain_detail', 'lead_pain_detected_at', 'follow_up_reply_count'
+  'lead_pain', 'lead_pain_detail', 'lead_pain_detected_at', 'follow_up_reply_count',
+  'selected_experience_id'
 ]);
 
 export class SqliteConversationRepo implements ConversationRepository {
@@ -63,25 +70,63 @@ export class SqliteConversationRepo implements ConversationRepository {
     ).get(phone) as ConversationRow | undefined;
   }
 
+  listMetaAudienceLeads(): MetaAudienceLead[] {
+    const rows = this.db.prepare(
+      `SELECT customer_phone, collected_name
+       FROM conversations
+       WHERE converted_at IS NULL
+         AND opt_out_at IS NULL
+         AND meta_audience_consent_at IS NOT NULL
+         AND meta_audience_consent_source IS NOT NULL
+       ORDER BY customer_phone ASC`
+    ).all() as Array<{ customer_phone: string; collected_name: string | null }>;
+    return rows.map(row => ({ customerPhone: row.customer_phone, collectedName: row.collected_name }));
+  }
+
+  recordMetaAudienceConsent(phone: string, source: MetaAudienceConsentSource, consentedAt = new Date().toISOString()): void {
+    this.ensureConversation(phone);
+    this.db.prepare(
+      'UPDATE conversations SET meta_audience_consent_at = ?, meta_audience_consent_source = ? WHERE customer_phone = ?'
+    ).run(consentedAt, source, phone);
+  }
+
   upsert(phone: string, data: Record<string, unknown>): void {
     const now = new Date().toISOString();
     const existing = this.db.prepare('SELECT * FROM conversations WHERE customer_phone = ?').get(phone);
+    const normalized: Record<string, unknown> = { ...data };
+
+    // Normalize legacy date writes into coherent date_status transitions.
+    if (typeof normalized.collected_date === 'string') {
+      const dateVal = normalized.collected_date;
+      if (dateVal === 'tentative_unknown' || dateVal.startsWith('_')) {
+        delete normalized.collected_date;
+        if (normalized.date_status == null) normalized.date_status = 'deferred';
+      } else if (normalized.date_status == null) {
+        normalized.date_status = 'selected';
+      }
+    }
 
     if (existing) {
       const updates: string[] = ['last_seen_at = ?'];
       const values: unknown[] = [now];
-      for (const [key, val] of Object.entries(data)) {
+      for (const [key, val] of Object.entries(normalized)) {
         if (val !== undefined && val !== null && ALLOWED_CONVERSATION_COLUMNS.has(key)) {
           updates.push(`${key} = ?`);
           values.push(val);
         }
+      }
+      if (normalized.date_status === 'selected') {
+        updates.push('collected_date_window = NULL');
+      }
+      if (normalized.date_status === 'deferred' || normalized.date_status === 'options_offered') {
+        updates.push('collected_date = NULL');
       }
       values.push(phone);
       this.db.prepare(`UPDATE conversations SET ${updates.join(', ')} WHERE customer_phone = ?`).run(...values);
     } else {
       const cols: string[] = ['customer_phone', 'first_seen_at', 'last_seen_at'];
       const vals: unknown[] = [phone, now, now];
-      for (const [key, val] of Object.entries(data)) {
+      for (const [key, val] of Object.entries(normalized)) {
         if (val !== undefined && val !== null && ALLOWED_CONVERSATION_COLUMNS.has(key)) {
           cols.push(key);
           vals.push(val);
@@ -154,13 +199,18 @@ export class SqliteConversationRepo implements ConversationRepository {
 
   getCollectedFields(phone: string): Record<string, unknown> {
     const row = this.db.prepare(
-      'SELECT collected_name, collected_date, collected_date_window, collected_people, collected_transport_need, collected_lodging_need, collected_pet, collected_plan, language FROM conversations WHERE customer_phone = ?'
+      'SELECT collected_name, collected_date, collected_date_window, date_status, collected_people, collected_transport_need, collected_lodging_need, collected_pet, collected_plan, language FROM conversations WHERE customer_phone = ?'
     ).get(phone) as Record<string, unknown> | undefined;
     if (!row) return {};
     const fields: Record<string, unknown> = {};
     if (row.collected_name) fields.nombre = row.collected_name;
     if (row.collected_date) fields.fecha = row.collected_date;
     if (row.collected_date_window) fields._date_window = row.collected_date_window;
+    fields.dateStatus = this.normalizeDateStatus(row.date_status, row.collected_date, row.collected_date_window);
+    // Compat: deferred/options without concrete date expose sentinel for legacy readers.
+    if ((fields.dateStatus === 'deferred' || fields.dateStatus === 'options_offered') && !fields.fecha) {
+      fields.fecha = 'tentative_unknown';
+    }
     if (row.collected_people) fields.personas = row.collected_people;
     if (row.collected_transport_need) fields.transporte = row.collected_transport_need;
     if (row.collected_lodging_need) fields.hospedaje = row.collected_lodging_need;
@@ -170,8 +220,71 @@ export class SqliteConversationRepo implements ConversationRepository {
     return fields;
   }
 
+  resetExperienceSalesState(phone: string): void {
+    this.db.prepare(
+      `UPDATE conversations
+       SET collected_plan = NULL,
+           price_given_at = NULL,
+           sales_phase = NULL,
+           lead_intent = NULL,
+           gallery_nudged_at = NULL,
+           soft_closed_at = NULL,
+           handed_off_at = NULL,
+           assigned_line_id = NULL,
+           assigned_agent_chat = NULL,
+           conversation_mode = 'bot'
+       WHERE customer_phone = ?`
+    ).run(phone);
+  }
+
+  clearCollectedTransport(phone: string): void {
+    this.db.prepare('UPDATE conversations SET collected_transport_need = NULL WHERE customer_phone = ?').run(phone);
+  }
+
   clearCollectedDate(phone: string): void {
-    this.db.prepare('UPDATE conversations SET collected_date = NULL WHERE customer_phone = ?').run(phone);
+    this.db.prepare(
+      "UPDATE conversations SET collected_date = NULL, date_status = CASE WHEN date_status IN ('selected') THEN 'unasked' ELSE date_status END WHERE customer_phone = ?"
+    ).run(phone);
+  }
+
+  getDateStatus(phone: string): DateStatus {
+    const row = this.db.prepare(
+      'SELECT date_status, collected_date, collected_date_window FROM conversations WHERE customer_phone = ?'
+    ).get(phone) as { date_status: string | null; collected_date: string | null; collected_date_window: string | null } | undefined;
+    if (!row) return 'unasked';
+    return this.normalizeDateStatus(row.date_status, row.collected_date, row.collected_date_window);
+  }
+
+  setDateAsked(phone: string): void {
+    this.ensureConversation(phone);
+    const current = this.getDateStatus(phone);
+    if (current === 'selected' || current === 'window' || current === 'deferred' || current === 'options_offered') return;
+    this.db.prepare(
+      "UPDATE conversations SET date_status = 'asked', collected_date = NULL, collected_date_window = NULL WHERE customer_phone = ?"
+    ).run(phone);
+  }
+
+  setDateDeferred(phone: string): void {
+    this.ensureConversation(phone);
+    this.db.prepare(
+      "UPDATE conversations SET date_status = 'deferred', collected_date = NULL, collected_date_window = NULL WHERE customer_phone = ?"
+    ).run(phone);
+  }
+
+  setDateOptionsOffered(phone: string): void {
+    this.ensureConversation(phone);
+    const current = this.getDateStatus(phone);
+    if (current === 'selected' || current === 'window') return;
+    this.db.prepare(
+      "UPDATE conversations SET date_status = 'options_offered', collected_date = NULL, collected_date_window = NULL WHERE customer_phone = ?"
+    ).run(phone);
+  }
+
+  setSelectedDate(phone: string, date: string): void {
+    this.ensureConversation(phone);
+    this.db.prepare(
+      "UPDATE conversations SET date_status = 'selected', collected_date = ?, collected_date_window = NULL WHERE customer_phone = ?"
+    ).run(date, phone);
   }
 
   getCollectedDateWindow(phone: string): string | null {
@@ -182,10 +295,37 @@ export class SqliteConversationRepo implements ConversationRepository {
   }
 
   setCollectedDateWindow(phone: string, window: string | null): void {
-    const sql = window
-      ? 'UPDATE conversations SET collected_date_window = ?, collected_date = NULL WHERE customer_phone = ?'
-      : 'UPDATE conversations SET collected_date_window = NULL WHERE customer_phone = ?';
-    this.db.prepare(sql).run(...(window ? [window, phone] : [phone]));
+    this.ensureConversation(phone);
+    if (window) {
+      this.db.prepare(
+        "UPDATE conversations SET collected_date_window = ?, collected_date = NULL, date_status = 'window' WHERE customer_phone = ?"
+      ).run(window, phone);
+      return;
+    }
+    this.db.prepare(
+      "UPDATE conversations SET collected_date_window = NULL, date_status = CASE WHEN date_status = 'window' THEN 'unasked' ELSE date_status END WHERE customer_phone = ?"
+    ).run(phone);
+  }
+
+  private ensureConversation(phone: string): void {
+    if (!this.getByPhone(phone)) this.upsert(phone, {});
+  }
+
+  private normalizeDateStatus(
+    status: unknown,
+    collectedDate: unknown,
+    collectedWindow: unknown,
+  ): DateStatus {
+    const allowed: DateStatus[] = ['unasked', 'asked', 'deferred', 'options_offered', 'selected', 'window'];
+    if (typeof status === 'string' && (allowed as string[]).includes(status)) {
+      return status as DateStatus;
+    }
+    if (typeof collectedWindow === 'string' && collectedWindow.trim()) return 'window';
+    if (typeof collectedDate === 'string' && collectedDate.trim()) {
+      if (collectedDate === 'tentative_unknown' || collectedDate.startsWith('_')) return 'deferred';
+      return 'selected';
+    }
+    return 'unasked';
   }
 
   getCollectedPlan(phone: string): string | null {
@@ -248,6 +388,17 @@ export class SqliteConversationRepo implements ConversationRepository {
 
   setMode(phone: string, mode: ConversationMode): void {
     this.upsert(phone, { conversation_mode: mode });
+  }
+
+  getSelectedExperienceId(phone: string): string | null {
+    const row = this.db.prepare(
+      'SELECT selected_experience_id FROM conversations WHERE customer_phone = ?'
+    ).get(phone) as { selected_experience_id: string | null } | undefined;
+    return row?.selected_experience_id ?? null;
+  }
+
+  setSelectedExperienceId(phone: string, experienceId: string): void {
+    this.upsert(phone, { selected_experience_id: experienceId });
   }
 
   getBookedAt(phone: string): string | null {
@@ -517,13 +668,13 @@ export class SqliteFollowUpEventRepo implements FollowUpEventRepository {
 export class SqliteBridgeSessionRepo implements BridgeSessionRepository {
   constructor(private db: Database.Database) {}
 
-  open(agentChatId: string, customerPhone: string): void {
+  open(agentChatId: string, customerPhone: string, returnMode: 'bot' | 'human_only' = 'bot'): void {
     const now = new Date().toISOString();
     this.db.prepare(
-      `INSERT INTO bridge_sessions (agent_chat_id, customer_phone, opened_at, last_activity_at)
-       VALUES (?, ?, ?, ?)
-       ON CONFLICT(agent_chat_id) DO UPDATE SET customer_phone = ?, last_activity_at = ?`
-    ).run(agentChatId, customerPhone, now, now, customerPhone, now);
+      `INSERT INTO bridge_sessions (agent_chat_id, customer_phone, opened_at, last_activity_at, return_mode)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(agent_chat_id) DO UPDATE SET customer_phone = ?, last_activity_at = ?, return_mode = ?`
+    ).run(agentChatId, customerPhone, now, now, returnMode, customerPhone, now, returnMode);
   }
 
   close(agentChatId: string): void {
@@ -532,18 +683,18 @@ export class SqliteBridgeSessionRepo implements BridgeSessionRepository {
 
   getByAgentChat(agentChatId: string): BridgeSessionRow | null {
     const row = this.db.prepare(
-      'SELECT agent_chat_id, customer_phone, opened_at, last_activity_at FROM bridge_sessions WHERE agent_chat_id = ?'
-    ).get(agentChatId) as { agent_chat_id: string; customer_phone: string; opened_at: string; last_activity_at: string } | undefined;
+      'SELECT agent_chat_id, customer_phone, opened_at, last_activity_at, return_mode FROM bridge_sessions WHERE agent_chat_id = ?'
+    ).get(agentChatId) as { agent_chat_id: string; customer_phone: string; opened_at: string; last_activity_at: string; return_mode: 'bot' | 'human_only' } | undefined;
     if (!row) return null;
-    return { agentChatId: row.agent_chat_id, customerPhone: row.customer_phone, openedAt: row.opened_at, lastActivityAt: row.last_activity_at };
+    return { agentChatId: row.agent_chat_id, customerPhone: row.customer_phone, openedAt: row.opened_at, lastActivityAt: row.last_activity_at, returnMode: row.return_mode };
   }
 
   getByCustomer(customerPhone: string): BridgeSessionRow | null {
     const row = this.db.prepare(
-      'SELECT agent_chat_id, customer_phone, opened_at, last_activity_at FROM bridge_sessions WHERE customer_phone = ? ORDER BY last_activity_at DESC LIMIT 1'
-    ).get(customerPhone) as { agent_chat_id: string; customer_phone: string; opened_at: string; last_activity_at: string } | undefined;
+      'SELECT agent_chat_id, customer_phone, opened_at, last_activity_at, return_mode FROM bridge_sessions WHERE customer_phone = ? ORDER BY last_activity_at DESC LIMIT 1'
+    ).get(customerPhone) as { agent_chat_id: string; customer_phone: string; opened_at: string; last_activity_at: string; return_mode: 'bot' | 'human_only' } | undefined;
     if (!row) return null;
-    return { agentChatId: row.agent_chat_id, customerPhone: row.customer_phone, openedAt: row.opened_at, lastActivityAt: row.last_activity_at };
+    return { agentChatId: row.agent_chat_id, customerPhone: row.customer_phone, openedAt: row.opened_at, lastActivityAt: row.last_activity_at, returnMode: row.return_mode };
   }
 
   touch(agentChatId: string): void {
@@ -791,6 +942,113 @@ export class SqliteMediaSendRepo implements MediaSendRepository {
     this.db.prepare(
       'INSERT INTO media_sends (customer_phone, media_id, sent_at) VALUES (?, ?, ?)'
     ).run(phone, mediaId, new Date().toISOString());
+  }
+}
+
+interface PaymentReservationRow {
+  id: number;
+  external_reference: string;
+  customer_phone: string;
+  preference_id: string | null;
+  payment_url: string | null;
+  expected_amount_cop: number;
+  plan_id: string | null;
+  booking_date: string | null;
+  people: number | null;
+  transport_need: string | null;
+  deposit_percent: number | null;
+  availability_confirmed_at: string | null;
+  status: PaymentReservation['status'];
+  created_at: string;
+  approved_at: string | null;
+  mercado_pago_payment_id: string | null;
+}
+
+export class SqlitePaymentReservationRepo implements PaymentReservationRepository {
+  constructor(private db: Database.Database) {}
+
+  createPending(reservation: PaymentReservationCreate): boolean {
+    const result = this.db.prepare(`
+      INSERT INTO payment_reservations
+        (external_reference, customer_phone, expected_amount_cop, plan_id, booking_date,
+         people, transport_need, deposit_percent, availability_confirmed_at, status, created_at)
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?
+      WHERE NOT EXISTS (
+        SELECT 1 FROM payment_reservations WHERE customer_phone = ? AND status = 'pending'
+      )
+    `).run(
+      reservation.externalReference,
+      reservation.customerPhone,
+      reservation.expectedAmountCop,
+      reservation.planId,
+      reservation.date,
+      reservation.people,
+      reservation.transportNeed,
+      reservation.depositPercent,
+      reservation.availabilityConfirmedAt,
+      new Date().toISOString(),
+      reservation.customerPhone,
+    );
+    return result.changes > 0;
+  }
+
+  attachPreference(externalReference: string, preferenceId: string, paymentUrl: string): void {
+    this.db.prepare(
+      'UPDATE payment_reservations SET preference_id = ?, payment_url = ? WHERE external_reference = ?'
+    ).run(preferenceId, paymentUrl, externalReference);
+  }
+
+  getByExternalReference(externalReference: string): PaymentReservation | null {
+    const row = this.db.prepare(
+      'SELECT * FROM payment_reservations WHERE external_reference = ?'
+    ).get(externalReference) as PaymentReservationRow | undefined;
+    if (!row) return null;
+    return {
+      id: row.id,
+      externalReference: row.external_reference,
+      customerPhone: row.customer_phone,
+      preferenceId: row.preference_id,
+      paymentUrl: row.payment_url,
+      expectedAmountCop: row.expected_amount_cop,
+      planId: row.plan_id,
+      date: row.booking_date,
+      people: row.people,
+      transportNeed: row.transport_need,
+      depositPercent: row.deposit_percent,
+      availabilityConfirmedAt: row.availability_confirmed_at,
+      status: row.status,
+      createdAt: row.created_at,
+      approvedAt: row.approved_at,
+      mercadoPagoPaymentId: row.mercado_pago_payment_id,
+    };
+  }
+
+  getPendingByCustomerPhone(customerPhone: string): PaymentReservation | null {
+    const row = this.db.prepare(`
+      SELECT external_reference
+      FROM payment_reservations
+      WHERE customer_phone = ? AND status = 'pending'
+      ORDER BY created_at DESC
+      LIMIT 1
+    `).get(customerPhone) as { external_reference: string } | undefined;
+    return row ? this.getByExternalReference(row.external_reference) : null;
+  }
+
+  markApproved(externalReference: string, mercadoPagoPaymentId: string): boolean {
+    const result = this.db.prepare(`
+      UPDATE payment_reservations
+      SET status = 'approved', approved_at = ?, mercado_pago_payment_id = ?
+      WHERE external_reference = ? AND status = 'pending'
+    `).run(new Date().toISOString(), mercadoPagoPaymentId, externalReference);
+    return result.changes > 0;
+  }
+
+  markFailed(externalReference: string): void {
+    this.db.prepare(`
+      UPDATE payment_reservations
+      SET status = 'failed'
+      WHERE external_reference = ? AND status = 'pending'
+    `).run(externalReference);
   }
 }
 

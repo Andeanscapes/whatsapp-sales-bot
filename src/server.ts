@@ -9,44 +9,12 @@ import { startTelegramBot } from './services/telegram-bot.js';
 import { getRoutingConfig } from './services/lead-routing.js';
 import { setupGlobalErrorHandlers, setErrorRepos, pruneOldErrors } from './services/error-logger.js';
 import { startFollowUpScheduler } from './services/follow-up-service.js';
+import { checkWhatsAppApiHealth, sendStartupStatus, startOperationalHealthMonitor } from './services/whatsapp-operational-health.js';
 
-async function runStartupDiagnostics(): Promise<void> {
-  // WhatsApp phone number info — validates token + phone number ID
-  const waUrl = `https://graph.facebook.com/${env.WHATSAPP_GRAPH_API_VERSION}/${env.WHATSAPP_PHONE_NUMBER_ID}?fields=id,display_phone_number,verified_name,code_verification_status`;
-  try {
-    const waRes = await fetch(waUrl, {
-      signal: AbortSignal.timeout(10_000),
-      headers: { 'Authorization': `Bearer ${env.WHATSAPP_ACCESS_TOKEN}` },
-    });
-    if (waRes.ok) {
-      const waData = await waRes.json() as Record<string, unknown>;
-      logger.info({ phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID, displayPhoneNumber: waData.display_phone_number, verifiedName: waData.verified_name, codeVerificationStatus: waData.code_verification_status }, '[DIAG] WhatsApp phone number valid');
-    } else {
-      logger.error({ status: waRes.status, phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID }, '[DIAG] WhatsApp phone number lookup FAILED');
-    }
-  } catch (err) {
-      logger.error({ err, phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID }, '[DIAG] WhatsApp API unreachable');
-  }
-
-  const phonesUrl = `https://graph.facebook.com/${env.WHATSAPP_GRAPH_API_VERSION}/${env.WHATSAPP_BUSINESS_ACCOUNT_ID}/phone_numbers?fields=id,display_phone_number,verified_name`;
-  try {
-    const phonesRes = await fetch(phonesUrl, {
-      signal: AbortSignal.timeout(10_000),
-      headers: { 'Authorization': `Bearer ${env.WHATSAPP_ACCESS_TOKEN}` },
-    });
-    if (phonesRes.ok) {
-      const phonesData = await phonesRes.json() as { data?: Array<{ id?: string; display_phone_number?: string; verified_name?: string }> };
-      const phones = phonesData.data ?? [];
-      logger.info({ businessAccountId: env.WHATSAPP_BUSINESS_ACCOUNT_ID, phones, configuredPhoneFound: phones.some(phone => phone.id === env.WHATSAPP_PHONE_NUMBER_ID) }, '[DIAG] WhatsApp WABA phone list');
-    } else {
-      logger.error({ status: phonesRes.status, businessAccountId: env.WHATSAPP_BUSINESS_ACCOUNT_ID }, '[DIAG] WhatsApp WABA phone list FAILED');
-    }
-  } catch (err) {
-    logger.error({ err, businessAccountId: env.WHATSAPP_BUSINESS_ACCOUNT_ID }, '[DIAG] WhatsApp WABA lookup unreachable');
-  }
-
-  // Webhook config reminder
+async function runStartupDiagnostics(dynamicDataAvailable: boolean): Promise<void> {
+  const whatsapp = await checkWhatsAppApiHealth();
   logger.info({ publicBaseUrl: env.PUBLIC_BASE_URL, webhookPath: '/webhooks/whatsapp', verifyTokenConfigured: env.WHATSAPP_VERIFY_TOKEN.length > 0 }, '[DIAG] webhook should be configured in Meta');
+  await sendStartupStatus({ whatsapp, dynamicDataAvailable });
 }
 
 async function start() {
@@ -81,13 +49,9 @@ async function start() {
   await app.listen({ host: env.HOST, port: env.PORT });
   logger.info({ host: env.HOST, port: env.PORT }, 'server started');
 
-  if (env.STARTUP_DIAGNOSTICS_ENABLED) {
-    // Non-blocking: diagnostics make external Graph API calls; never delay startup.
-    void runStartupDiagnostics();
-  }
-
   let telegramInterval: ReturnType<typeof setInterval> | undefined;
   let followUpInterval: ReturnType<typeof setInterval> | undefined;
+  let opsMonitorInterval: ReturnType<typeof setInterval> | undefined;
   try {
     telegramInterval = await startTelegramBot(repos);
   } catch (err) {
@@ -99,15 +63,22 @@ async function start() {
     logger.error(err, '[INIT] failed to start follow-up scheduler');
   }
 
-  process.on('SIGTERM', gracefulShutdown('SIGTERM', db, app, telegramInterval, followUpInterval));
-  process.on('SIGINT', gracefulShutdown('SIGINT', db, app, telegramInterval, followUpInterval));
+  if (env.NODE_ENV === 'production' || env.STARTUP_DIAGNOSTICS_ENABLED) {
+    // Non-blocking: diagnostics make external API calls; never delay startup.
+    void runStartupDiagnostics(hasDynamicData);
+    opsMonitorInterval = startOperationalHealthMonitor();
+  }
+
+  process.on('SIGTERM', gracefulShutdown('SIGTERM', db, app, telegramInterval, followUpInterval, opsMonitorInterval));
+  process.on('SIGINT', gracefulShutdown('SIGINT', db, app, telegramInterval, followUpInterval, opsMonitorInterval));
 }
 
-function gracefulShutdown(signal: string, db: { close: () => void }, app: { close: () => Promise<void> }, telegramInterval?: ReturnType<typeof setInterval>, followUpInterval?: ReturnType<typeof setInterval>) {
+function gracefulShutdown(signal: string, db: { close: () => void }, app: { close: () => Promise<void> }, telegramInterval?: ReturnType<typeof setInterval>, followUpInterval?: ReturnType<typeof setInterval>, opsMonitorInterval?: ReturnType<typeof setInterval>) {
   return async () => {
     logger.info({ signal }, 'shutting down gracefully');
     if (telegramInterval) clearInterval(telegramInterval);
     if (followUpInterval) clearInterval(followUpInterval);
+    if (opsMonitorInterval) clearInterval(opsMonitorInterval);
     try {
       await app.close();
     } catch (err) {

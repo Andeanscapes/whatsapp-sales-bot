@@ -4,16 +4,17 @@ import { z } from 'zod';
 import type { Repositories } from '../db/repositories/index.js';
 import { env } from '../config/env.js';
 import { getSkills } from '../services/skill-loader.js';
-import { buildHandedOffReply, processMessage } from '../services/response-engine.js';
+import { buildHandedOffReply, isOptOutMessage, processMessage } from '../services/response-engine.js';
 import { sendText, sendImageUrl, downloadMedia } from '../services/whatsapp-client.js';
 import { canSendImage, recordGalleryNudge, recordImageSend, selectGalleryImages, selectPlanImage, canSendPlanImage } from '../services/media-service.js';
 import { sendAlert } from '../services/alert-service.js';
 import { sendTelegramMessage, sendTelegramPhoto, sendTelegramVoice } from '../services/telegram-bot.js';
 import { getLineById, hasRoutingConfig, isBridgeTelegramChat, isReferralLine } from '../services/lead-routing.js';
-import { getOwnerImage, getDynamicPlanImages, getGalleryImages } from '../services/product-registry.js';
+import { getOwnerImage, getDynamicPlanImages, getGalleryImages, getPlans, resolveExperience } from '../services/product-registry.js';
 import { isBridgeActive } from '../services/bridge-service.js';
 import { bridgeMessages } from '../services/bridge-messages.js';
 import { isSoftCloseMessage } from '../services/reply-guard.js';
+import { normalizePhone } from '../services/report-exclusions.js';
 import { logger } from '../config/logger.js';
 import { logSystemError } from '../services/error-logger.js';
 
@@ -125,6 +126,22 @@ export function extractMessages(body: unknown): ExtractedMessage[] | null {
   return result.length > 0 ? result : null;
 }
 
+export function isWebhookSenderAllowed(from: string): boolean {
+  if (!env.WEBHOOK_OWNER_ONLY_ENABLED) return true;
+  return normalizePhone(from) === normalizePhone(env.OWNER_PERSONAL_WHATSAPP_NUMBER);
+}
+
+async function recordBridgeRelayFailure(repos: Repositories, phone: string, agentChatId: string, messageType: string): Promise<void> {
+  const body = bridgeMessages.relayFailed(phone, messageType);
+  repos.ownerAlert.insert(phone, 'telegram', 0, 'bridge_relay_failed', body);
+  if (!env.TELEGRAM_CHAT_ID || env.TELEGRAM_CHAT_ID === agentChatId) return;
+  try {
+    await sendTelegramMessage(env.TELEGRAM_CHAT_ID, bridgeMessages.fallbackAlert(body));
+  } catch {
+    logger.warn({ chatId: env.TELEGRAM_CHAT_ID }, '[BRIDGE] fallback owner notification also failed');
+  }
+}
+
 /**
  * When a human agent is actively bridging this customer (same API line), the
  * bot must stay silent: store the inbound and forward it to the assigned agent.
@@ -142,7 +159,7 @@ export async function forwardBridgeMessage(repos: Repositories, msg: ExtractedMe
   if (!session) return false;
   if (!isBridgeTelegramChat(session.agentChatId)) {
     repos.bridgeSession.close(session.agentChatId);
-    repos.conversation.setMode(msg.from, 'bot');
+    repos.conversation.setMode(msg.from, session.returnMode);
     return false;
   }
 
@@ -169,7 +186,7 @@ export async function forwardBridgeMessage(repos: Repositories, msg: ExtractedMe
       try {
         await sendTelegramMessage(session.agentChatId, bridgeMessages.customerImageFailed(msg.from));
       } catch {
-        // agent notification is best-effort
+        await recordBridgeRelayFailure(repos, msg.from, session.agentChatId, msg.type);
       }
     }
     return true;
@@ -185,7 +202,7 @@ export async function forwardBridgeMessage(repos: Repositories, msg: ExtractedMe
       try {
         await sendTelegramMessage(session.agentChatId, bridgeMessages.customerAudioFailed(msg.from));
       } catch {
-        // agent notification is best-effort
+        await recordBridgeRelayFailure(repos, msg.from, session.agentChatId, msg.type);
       }
     }
     return true;
@@ -196,6 +213,7 @@ export async function forwardBridgeMessage(repos: Repositories, msg: ExtractedMe
       await sendTelegramMessage(session.agentChatId, bridgeMessages.newCustomerVideo(msg.from));
     } catch (err) {
       logger.warn({ err, phone: msg.from, chatId: session.agentChatId }, '[BRIDGE] customer video notify failed; keeping bridge active');
+      await recordBridgeRelayFailure(repos, msg.from, session.agentChatId, msg.type);
     }
     return true;
   }
@@ -205,8 +223,9 @@ export async function forwardBridgeMessage(repos: Repositories, msg: ExtractedMe
     return true;
   } catch (err) {
     logger.warn({ err, phone: msg.from, chatId: session.agentChatId }, '[BRIDGE] failed to notify active agent; resuming bot path');
+    await recordBridgeRelayFailure(repos, msg.from, session.agentChatId, msg.type);
     repos.bridgeSession.close(session.agentChatId);
-    repos.conversation.setMode(msg.from, 'bot');
+    repos.conversation.setMode(msg.from, session.returnMode);
     return false;
   }
 }
@@ -417,16 +436,36 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
 
     for (const msg of messages) {
       logger.info({ from: msg.from, type: msg.type, msgId: msg.id, textLen: msg.type === 'text' ? msg.text.length : undefined }, '[WEBHOOK] incoming WhatsApp message');
+      if (!isWebhookSenderAllowed(msg.from)) {
+        logger.info({ from: msg.from }, '[WEBHOOK] ignored non-owner sender (WEBHOOK_OWNER_ONLY_ENABLED)');
+        continue;
+      }
       if (repos.dedupe.isProcessed(msg.id)) continue;
 
       repos.dedupe.markProcessed(msg.id);
       const prev = processingPhones.get(msg.from) ?? Promise.resolve();
       const task = prev.then(async () => {
         try {
+          const optOutRequest = msg.type === 'text' && isOptOutMessage(msg.text);
           // Inbound routing precedence: live bridge session > post-handoff notify > bot.
-          if (await forwardBridgeMessage(repos, msg)) return;
-          if (await notifyAssignedLineIfDormant(repos, msg)) return;
-          if (await forwardPostHandoffMedia(repos, msg)) return;
+          // Opt-out requests always use the bot path so compliance state is set.
+          if (!optOutRequest && await forwardBridgeMessage(repos, msg)) return;
+          if (!optOutRequest && await notifyAssignedLineIfDormant(repos, msg)) return;
+          if (!optOutRequest && await forwardPostHandoffMedia(repos, msg)) return;
+          // Bot is silenced for this customer (/stopbot). Persist the inbound so
+          // it stays visible in lead history, but never generate a bot reply.
+          if (!optOutRequest && repos.conversation.getMode(msg.from) === 'human_only') {
+            repos.message.addMessage({
+              whatsapp_message_id: msg.id,
+              customer_phone: msg.from,
+              direction: 'inbound',
+              message_type: msg.type,
+              body: msg.text || '',
+              created_at: new Date().toISOString(),
+              raw_json: null,
+            });
+            return;
+          }
           if (msg.type !== 'text') return;
 
           const handoffReply = await forwardPostHandoffMessage(repos, msg);
@@ -501,12 +540,16 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
             }
 
             if (sent) {
-              repos.message.addMessage({
-                customer_phone: msg.from,
-                direction: 'outbound',
-                message_type: 'text',
-                body: result.reply,
-                created_at: new Date().toISOString(),
+              repos.runInTransaction(() => {
+                repos.message.addMessage({
+                  customer_phone: msg.from,
+                  direction: 'outbound',
+                  message_type: 'text',
+                  body: result.reply,
+                  created_at: new Date().toISOString(),
+                });
+                if (result.outboundDateAction === 'asked') repos.conversation.setDateAsked(msg.from);
+                if (result.outboundDateAction === 'options_offered') repos.conversation.setDateOptionsOffered(msg.from);
               });
 
               if (result.shouldSendOwnerImage) {
@@ -536,7 +579,8 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
               if (result.priceJustGiven) {
                 const skills = getSkills();
                 const collectedPlan = repos.conversation.getCollectedPlan(msg.from);
-                const image = selectPlanImage(getDynamicPlanImages(skills), collectedPlan);
+                const experienceId = resolveExperience(skills, repos.conversation.getSelectedExperienceId(msg.from)).id;
+                const image = selectPlanImage(getDynamicPlanImages(skills), collectedPlan, experienceId);
                 if (image && canSendImage(repos, msg.from) && canSendPlanImage(repos, msg.from, image.id)) {
                   const caption = result.priceFollowUpText ?? image.caption;
                   let priceSent = false;
@@ -562,7 +606,8 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
               if (result.shouldSendImage && !result.priceJustGiven) {
                 const skills = getSkills();
                 const collectedPlan = repos.conversation.getCollectedPlan(msg.from);
-                const image = selectPlanImage(getDynamicPlanImages(skills), collectedPlan);
+                const experienceId = resolveExperience(skills, repos.conversation.getSelectedExperienceId(msg.from)).id;
+                const image = selectPlanImage(getDynamicPlanImages(skills), collectedPlan, experienceId);
                 if (image && canSendImage(repos, msg.from) && canSendPlanImage(repos, msg.from, image.id)) {
                   try {
                     await sendImageUrl(msg.from, image.url, image.caption);
@@ -575,10 +620,14 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
 
               if (result.shouldSendGalleryImages) {
                 const skills = getSkills();
-                const gallery = selectGalleryImages(getGalleryImages(skills));
-                if (gallery.length > 0) {
-                  const lang = repos.conversation.getLanguage(msg.from) ?? 'es';
-                  const intro = skills.fallbackReplies[lang].galleryIntro;
+                  const experienceId = resolveExperience(skills, repos.conversation.getSelectedExperienceId(msg.from)).id;
+                  const gallery = selectGalleryImages(getGalleryImages(skills, experienceId));
+                  if (gallery.length > 0) {
+                    const lang = repos.conversation.getLanguage(msg.from) ?? 'es';
+                    const selectedPlan = getPlans(resolveExperience(skills, repos.conversation.getSelectedExperienceId(msg.from)))
+                      .find(plan => plan.id === repos.conversation.getCollectedPlan(msg.from));
+                    const planDuration = selectedPlan?.duration ?? (lang === 'es' ? 'la experiencia' : 'experience');
+                    const intro = skills.fallbackReplies[lang].galleryIntro.replace('{{planDuration}}', planDuration);
                   let introSent = false;
                   if (result.reply.trim() !== intro.trim()) {
                     try {

@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS conversations (
   collected_name TEXT,
   collected_date TEXT,
   collected_date_window TEXT,
+  date_status TEXT NOT NULL DEFAULT 'unasked',
   collected_people INTEGER,
   collected_transport_need TEXT,
   collected_lodging_need TEXT,
@@ -30,7 +31,10 @@ CREATE TABLE IF NOT EXISTS conversations (
   lead_pain TEXT,
   lead_pain_detail TEXT,
   lead_pain_detected_at TEXT,
-  follow_up_reply_count INTEGER DEFAULT 0
+  follow_up_reply_count INTEGER DEFAULT 0,
+  selected_experience_id TEXT,
+  meta_audience_consent_at TEXT,
+  meta_audience_consent_source TEXT
 );
 
 CREATE TABLE IF NOT EXISTS follow_up_events (
@@ -104,11 +108,31 @@ CREATE TABLE IF NOT EXISTS media_sends (
   sent_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS payment_reservations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  external_reference TEXT NOT NULL UNIQUE,
+  customer_phone TEXT NOT NULL,
+  preference_id TEXT UNIQUE,
+  payment_url TEXT,
+  expected_amount_cop INTEGER NOT NULL,
+  plan_id TEXT,
+  booking_date TEXT,
+  people INTEGER,
+  transport_need TEXT,
+  deposit_percent INTEGER,
+  availability_confirmed_at TEXT,
+  status TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  approved_at TEXT,
+  mercado_pago_payment_id TEXT UNIQUE
+);
+
 CREATE TABLE IF NOT EXISTS bridge_sessions (
   agent_chat_id TEXT PRIMARY KEY,
   customer_phone TEXT NOT NULL,
   opened_at TEXT NOT NULL,
-  last_activity_at TEXT NOT NULL
+  last_activity_at TEXT NOT NULL,
+  return_mode TEXT NOT NULL DEFAULT 'bot'
 );
 
 CREATE TABLE IF NOT EXISTS system_errors (

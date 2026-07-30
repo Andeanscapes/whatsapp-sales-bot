@@ -6,6 +6,7 @@ export async function endHandler(ctx: CommandContext): Promise<string> {
   if (!session) return bridgeMessages.noActiveChat;
 
   ctx.repos.bridgeSession.close(String(ctx.chatId));
-  ctx.repos.conversation.setMode(session.customerPhone, 'bot');
+  const currentMode = ctx.repos.conversation.getMode(session.customerPhone);
+  ctx.repos.conversation.setMode(session.customerPhone, currentMode === 'human_only' ? 'human_only' : session.returnMode);
   return bridgeMessages.chatClosed(session.customerPhone);
 }

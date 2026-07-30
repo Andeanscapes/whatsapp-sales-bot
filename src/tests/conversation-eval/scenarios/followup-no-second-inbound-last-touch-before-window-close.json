@@ -1,0 +1,57 @@
+{
+  "id": "followup-no-second-inbound-last-touch-before-window-close",
+  "source": "2026-whatsapp-tourism-conversion-strategy",
+  "tags": [
+    "follow-up",
+    "no-reply",
+    "24-hour-window",
+    "conversion",
+    "regression"
+  ],
+  "lang": "es",
+  "runner": "follow_up",
+  "liveRuns": 3,
+  "seedSystem": {
+    "hoursSinceLastInbound": 20,
+    "meaningfulSecondInbound": false,
+    "withinCustomerServiceWindow": true,
+    "priorAutomatedFollowUps": 1
+  },
+  "followUpMockReply": "Antes de cerrar esta conversación por ahora, puedo ayudarte con una de estas dos cosas: precio para tu grupo o próximas fechas. ¿Cuál te sirve más?",
+  "criteria": [
+    {
+      "id": "one-last-touch",
+      "rule": "output_flag_equals",
+      "flag": "shouldSendReply",
+      "expected": true,
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "offers-two-easy-choices",
+      "rule": "reply_must_match",
+      "patterns": [
+        "precio",
+        "fecha"
+      ],
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "single-clear-cta",
+      "rule": "output_question_count_at_most",
+      "expected": 1,
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Hola, quiero precios y fechas para la aventura minera en Chivor 💚",
+      "mockReply": "Claro. ¿Viajarías solo, en pareja o en grupo?"
+    }
+  ]
+}
