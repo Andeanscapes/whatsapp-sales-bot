@@ -45,7 +45,7 @@
       "mockReply": "Te entiendo; viajando solo, el transporte privado hace que el total se sienta alto. Puedo ayudarte a revisar una alternativa en bus hasta Chivor.",
       "expect": {
         "shouldSendReply": true,
-        "usedAi": true
+        "usedAi": false
       }
     }
   ]

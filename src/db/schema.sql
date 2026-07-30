@@ -31,7 +31,10 @@ CREATE TABLE IF NOT EXISTS conversations (
   lead_pain TEXT,
   lead_pain_detail TEXT,
   lead_pain_detected_at TEXT,
-  follow_up_reply_count INTEGER DEFAULT 0
+  follow_up_reply_count INTEGER DEFAULT 0,
+  selected_experience_id TEXT,
+  meta_audience_consent_at TEXT,
+  meta_audience_consent_source TEXT
 );
 
 CREATE TABLE IF NOT EXISTS follow_up_events (
@@ -128,7 +131,8 @@ CREATE TABLE IF NOT EXISTS bridge_sessions (
   agent_chat_id TEXT PRIMARY KEY,
   customer_phone TEXT NOT NULL,
   opened_at TEXT NOT NULL,
-  last_activity_at TEXT NOT NULL
+  last_activity_at TEXT NOT NULL,
+  return_mode TEXT NOT NULL DEFAULT 'bot'
 );
 
 CREATE TABLE IF NOT EXISTS system_errors (

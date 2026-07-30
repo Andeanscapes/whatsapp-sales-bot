@@ -18,7 +18,7 @@ import { checkTimeWindow, isWithinServiceWindow } from './time-window-policy.js'
 import { getCollectedFields } from './qualification-engine.js';
 import { INPUT_COST_PER_TOKEN, OUTPUT_COST_PER_TOKEN } from './constants.js';
 import { getSkills } from './skill-loader.js';
-import { getActiveExperience, getGalleryImages, getShortDescription, isPricingAvailable } from './product-registry.js';
+import { getActiveExperience, getGalleryImages, getShortDescription, isPricingAvailable, scopeSkillsToExperience } from './product-registry.js';
 import { galleryMediaId, recordGalleryNudge, recordImageSend, selectEligibleGalleryImages } from './media-service.js';
 import { calculatePriceQuote, formatCop } from './pricing-calculator.js';
 
@@ -153,8 +153,7 @@ function recordSent(
   repos.followUpEvent.markClaimSent(phone, anchorInboundAt, stage, sentAt);
 }
 
-function reviewReminderFallback(lang: 'es' | 'en'): string {
-  const skills = getSkills();
+function reviewReminderFallback(lang: 'es' | 'en', skills = getSkills()): string {
   return skills.fallbackReplies[lang].followUpReviewReminder
     .replace('{{experienceSummary}}', getShortDescription(getActiveExperience(skills)));
 }
@@ -184,7 +183,9 @@ function needsTrustedStandardFollowUp(text: string, phase: string | null): boole
 }
 
 async function sendReviewGallery(repos: Repositories, phone: string): Promise<void> {
-  const images = selectEligibleGalleryImages(repos, phone, getGalleryImages(getSkills()));
+  const allSkills = getSkills();
+  const experienceId = repos.conversation.getSelectedExperienceId(phone) ?? getActiveExperience(allSkills).id;
+  const images = selectEligibleGalleryImages(repos, phone, getGalleryImages(allSkills, experienceId));
   let sent = false;
   for (const image of images) {
     if (!isWithinServiceWindow(repos, phone) || checkTimeWindow(repos, phone).isLimited) break;
@@ -225,6 +226,7 @@ async function processCandidates(
     if (!checkBudget(repos, c.customerPhone).aiAllowed) continue;
 
     const lang = c.language ?? 'es';
+    const skills = scopeSkillsToExperience(getSkills(), repos.conversation.getSelectedExperienceId(c.customerPhone));
     const currentScore = repos.conversation.getLeadScore(c.customerPhone);
     const collected = getCollectedFields(repos, c.customerPhone);
     const salesPhase = repos.conversation.getSalesPhase(c.customerPhone);
@@ -234,7 +236,7 @@ async function processCandidates(
     const knownDate = typeof collected.fecha === 'string' && collected.fecha.trim() ? collected.fecha : null;
     let knownPriceFormatted: string | null = null;
     if (priceGivenAt && knownPeople != null) {
-      const exp = getActiveExperience(getSkills());
+      const exp = getActiveExperience(skills);
       if (isPricingAvailable(exp)) {
         const priceQuote = calculatePriceQuote(exp, {
           planId: typeof collected.plan === 'string' ? collected.plan : undefined,
@@ -274,13 +276,14 @@ async function processCandidates(
     });
     if (!claimed) continue;
 
+    const customerFollowUpPromise = isCustomerFollowUpPromise(latestInbound.content);
+    if (stage === 'first_nudge' && customerFollowUpPromise) {
+      repos.followUpEvent.markClaimSuppressed(c.customerPhone, anchorInboundAt, stage, 'customer_follow_up_promise');
+      continue;
+    }
     if (stage === 'first_nudge' && isPermanentFollowUpPause(latestInbound.content)) {
-      if (repos.conversation.getPriceGivenAt(c.customerPhone)) {
-        // Promised follow-up with a quoted price: allow ONE gentle value-first reminder.
-      } else {
-        repos.followUpEvent.markClaimSuppressed(c.customerPhone, anchorInboundAt, stage, 'customer_follow_up_promise');
-        continue;
-      }
+      repos.followUpEvent.markClaimSuppressed(c.customerPhone, anchorInboundAt, stage, 'customer_follow_up_promise');
+      continue;
     }
     if (stage === 'first_nudge' && isReviewPause(latestInbound.content)) {
       repos.followUpEvent.markClaimSuppressed(c.customerPhone, anchorInboundAt, stage, 'review_pause');
@@ -297,7 +300,7 @@ async function processCandidates(
 
     let usageRecorded = false;
     const result = await llmClient.complete({
-      systemPrompt: buildFollowUpPrompt({ skills: getSkills(), lang, phase: salesPhase, stage, reviewReminder, knownPeople, knownDate, knownPriceFormatted }),
+      systemPrompt: buildFollowUpPrompt({ skills, lang, phase: salesPhase, stage, reviewReminder, knownPeople, knownDate, knownPriceFormatted }),
       message: `Generate the follow-up now. Collected facts: ${JSON.stringify(collected)}`,
       history: history.map(h => ({ role: h.role, content: h.content })),
       lang,
@@ -318,7 +321,7 @@ async function processCandidates(
       ? standardFollowUpFallback(lang, salesPhase, stage)
       : null;
     let reply = contextualFallback ?? standardFallback ?? result?.turn.reply.trim() ?? '';
-    if (reviewReminder && (!reply || /[?¿]/.test(reply))) reply = reviewReminderFallback(lang);
+    if (reviewReminder && (!reply || /[?¿]/.test(reply))) reply = reviewReminderFallback(lang, skills);
     if (!reply) {
       repos.followUpEvent.markClaimFailed(c.customerPhone, anchorInboundAt, stage, 'llm_unavailable');
       logger.warn({ phone: c.customerPhone, stage }, '[FOLLOW_UP] no LLM draft; skipping nudge');
@@ -339,13 +342,13 @@ async function processCandidates(
       continue;
     }
     if (reviewReminder && REVIEW_REMINDER_BLOCK_PATTERNS.some(p => p.test(reply))) {
-      reply = reviewReminderFallback(lang);
+      reply = reviewReminderFallback(lang, skills);
     }
     // Unsafe reservation, prompt-leak, and commercial drafts are replaced with trusted copy.
     if (HARD_BLOCK_NUDGE_PATTERNS.some(p => p.test(reply))) {
       logger.warn({ phone: c.customerPhone, replyLen: reply.length }, '[FOLLOW_UP] draft replaced by hard nudge guard');
       reply = reviewReminder
-        ? reviewReminderFallback(lang)
+        ? reviewReminderFallback(lang, skills)
         : standardFollowUpFallback(lang, salesPhase, stage);
     }
     if (!reviewReminder && COMMERCIAL_NUDGE_PATTERNS.some(p => p.test(reply))) {

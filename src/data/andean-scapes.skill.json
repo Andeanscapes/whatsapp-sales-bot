@@ -35,8 +35,14 @@
           "Menciona el horario del ferry (6am-5:20pm) si preguntan por logistica.",
           "Si el cliente tiene carro no 4x4, explicale que debe llegar por Chivor pueblo, dejarlo seguro en el pueblo y nosotros lo llevamos a la mina.",
           "El tour empieza y termina en Chivor. Si tienen vehiculo propio pueden llegar por Chivor; solo moto o 4x4 puede considerar Ubala.",
-          "Recomenda salir de Bogota con 5 horas de anticipacion o maximo 2pm. Siempre sugiere validar estado de vias antes de viajar.",
-          "Si el tour es al dia siguiente, el cliente puede llegar el dia anterior antes de las 2pm."
+           "Si una persona pregunta por que el transporte privado es costoso, explica que es un servicio 4x4 puerta a puerta con recogida en casa u hotel e ida y regreso Bogota-Chivor-Bogota, de aproximadamente 5-6 horas por trayecto. El mismo valor cubre hasta 4 personas y conviene mas al compartirlo en grupo. Para una persona sola, recomienda primero carro propio o moto; como alternativa mas economica, bus publico desde Bogota o Tunja comprado por su cuenta.",
+           "Recomenda salir de Bogota con 5 horas de anticipacion o maximo 2pm. Siempre sugiere validar estado de vias antes de viajar.",
+           "Si el tour es al dia siguiente, el cliente puede llegar el dia anterior antes de las 2pm.",
+           "Para bus publico: desde Bogota sale aproximadamente a las 7:00 am desde Terminal Salitre; desde Tunja, aproximadamente a las 5:00 am. Hay pocas salidas al dia. Estos horarios son de referencia, no una garantia.",
+           "El pasaje de bus publico cuesta aproximadamente $60.000 COP por persona y por trayecto. El cliente lo compra por su cuenta y no se suma al valor del plan.",
+           "Antes de viajar en bus publico, pide al cliente validar horario actualizado y disponibilidad directamente con Flota Valle de Tenza o Flota La Macarena. No asignes una empresa especifica a Bogota o Tunja ni inventes otros horarios, terminales, tarifas o disponibilidad.",
+           "Quien llega en bus publico debe coordinar la experiencia para hacer la visita minera al dia siguiente; no prometas mina la misma manana de llegada.",
+           "La ruta y el ferry descritos para carro propio no aplican automaticamente al bus publico. No menciones ferry al explicar bus salvo que el cliente pregunte especificamente por ese cruce."
         ]
       },
       "availability": {
@@ -226,13 +232,13 @@
           "lang": "es",
           "intent": "transport",
           "question": "¿Pueden ayudar con transporte desde Bogotá?",
-          "answer": "Si, el transporte se coordina segun grupo y fecha. Bogota-Chivor son 5-6 horas. Decime cuantas personas y que fecha para evaluarlo."
+          "answer": "Si. Hay transporte privado 4x4 con costo adicional, o bus publico comprado por tu cuenta. Como referencia, desde Terminal Salitre en Bogota sale aproximadamente a las 7:00 am y desde Tunja aproximadamente a las 5:00 am; hay pocas salidas. El pasaje cuesta cerca de $60.000 COP por persona y por trayecto. Confirma horario y disponibilidad con Flota Valle de Tenza o Flota La Macarena antes de viajar. Si llegas en bus, coordinamos la mina para el dia siguiente."
         },
         {
           "lang": "en",
           "intent": "transport",
           "question": "Can you help with transport from Bogotá?",
-          "answer": "Yes, transport can be arranged depending on group size and date. Bogota-Chivor is 5-6 hours. Tell me how many people and what date."
+          "answer": "Yes. Private 4x4 transport is available at an additional cost, or you can buy a public bus ticket yourself. As a reference, buses leave Bogota's Terminal Salitre at approximately 7:00 am and Tunja at approximately 5:00 am; departures are limited. The fare is about COP 60,000 per person each way. Confirm the current schedule and availability directly with Flota Valle de Tenza or Flota La Macarena before traveling. If you arrive by bus, we coordinate the mine visit for the following day."
         },
         {
           "lang": "es",
@@ -346,13 +352,25 @@
           "lang": "es",
           "intent": "transport_price",
           "question": "¿Cuánto cuesta el transporte desde Bogotá?",
-          "answer": "Hay opcion de transporte privado 4x4 desde Bogota (capacidad maxima 4 personas, mismo precio para 1-4). El equipo te confirma el costo exacto. Si vas en bus publico, lo compras directamente en la terminal segun tu ciudad de origen; ese costo no se suma al plan."
+          "answer": "Hay opcion de transporte privado 4x4 desde Bogota (capacidad maxima 4 personas, mismo precio para 1-4). El equipo te confirma el costo exacto. Si vas en bus publico, lo compras directamente por tu cuenta; cuesta aproximadamente $60.000 COP por persona y por trayecto, y no se suma al plan. Confirma horario y disponibilidad con Flota Valle de Tenza o Flota La Macarena antes de viajar."
         },
         {
           "lang": "en",
           "intent": "transport_price",
           "question": "How much is transport from Bogotá?",
-          "answer": "Private 4x4 transport from Bogota is available (max 4 people, same price for 1-4). The team confirms the exact cost. Groups of 5+ need additional vehicles. Public bus is also an option: you buy it directly at the terminal for your city; that cost is not added to the plan."
+          "answer": "Private 4x4 transport from Bogota is available (max 4 people, same price for 1-4). The team confirms the exact cost. Groups of 5+ need additional vehicles. Public bus is also an option: you buy it yourself for about COP 60,000 per person each way, and it is not added to the plan. Confirm the current schedule and availability with Flota Valle de Tenza or Flota La Macarena before traveling."
+        },
+        {
+          "lang": "es",
+          "intent": "transport_cost_objection",
+          "question": "¿Por qué es costoso el transporte privado?",
+          "answer": "Tiene sentido que parezca alto para una persona. Es un transporte privado 4x4 puerta a puerta: te recogemos en tu casa u hotel e incluye ida y regreso Bogota-Chivor-Bogota, aproximadamente 5-6 horas por trayecto. El mismo valor cubre hasta 4 personas, por eso conviene mas cuando un grupo lo comparte. Si vienes solo, normalmente es mejor usar carro propio o moto; como alternativa mas economica, puedes comprar bus publico desde Bogota o Tunja. ¿Quieres que te oriente con la ruta en bus?"
+        },
+        {
+          "lang": "en",
+          "intent": "transport_cost_objection",
+          "question": "Why is private transport expensive?",
+          "answer": "It makes sense that the price feels high for one person. It is a private door-to-door 4x4 service: pickup from your home or hotel and round trip Bogota-Chivor-Bogota, approximately 5-6 hours each way. The same price covers up to 4 people, so it works better when a group shares it. If you travel alone, your own car or motorcycle is usually better; for a lower-cost alternative, you can buy a public bus ticket from Bogota or Tunja. Would you like help with the bus route?"
         },
         {
           "lang": "es",

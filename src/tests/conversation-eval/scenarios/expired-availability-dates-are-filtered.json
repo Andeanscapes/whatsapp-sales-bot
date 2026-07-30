@@ -63,7 +63,7 @@
       "mockReply": "Las próximas fechas disponibles son el 7 y el 15 de agosto. ¿Cuál te interesa revisar?",
       "expect": {
         "shouldSendReply": true,
-        "usedAi": true
+        "usedAi": false
       }
     }
   ]

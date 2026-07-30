@@ -5,6 +5,7 @@ import { migrate } from '../db/migrate.js';
 import { createRepositories, type Repositories } from '../db/repositories/index.js';
 import { extractBookingFields, isAmbiguousPartyComparison, isCorrectionMessage, contextAwareExtract, detectPlan, isExplicitDateDeferral, isUncertainDateAnswer, isDateAskQuestion, isQualificationComplete, resolveLanguage } from '../services/qualification-engine.js';
 import { detectExplicitLanguageSwitch } from '../services/language-service.js';
+import { getActiveExperience } from '../services/product-registry.js';
 
 describe('extractBookingFields — people detection', () => {
   beforeAll(() => {
@@ -305,6 +306,8 @@ describe('contextAwareExtract — people reply parsing', () => {
 });
 
 describe('detectPlan — ordinal / duration choice', () => {
+  const experience = getActiveExperience(loadSkills());
+
   beforeAll(() => {
     loadSkills();
   });
@@ -316,7 +319,7 @@ describe('detectPlan — ordinal / duration choice', () => {
     'el corto',
     'plan de 2 dias',
   ])('resolves "%s" to 2d1n_mining', (text) => {
-    expect(detectPlan(text)).toBe('2d1n_mining');
+    expect(detectPlan(text, experience)).toBe('2d1n_mining');
   });
 
   it.each([
@@ -326,11 +329,25 @@ describe('detectPlan — ordinal / duration choice', () => {
     'el largo',
     'plan de 3 dias',
   ])('resolves "%s" to 3d2n_rural', (text) => {
-    expect(detectPlan(text)).toBe('3d2n_rural');
+    expect(detectPlan(text, experience)).toBe('3d2n_rural');
   });
 
   it('does not treat "la del primero" as a plan (date-list phrasing)', () => {
-    expect(detectPlan('la del primero esta bien')).toBeNull();
+    expect(detectPlan('la del primero esta bien', experience)).toBeNull();
+  });
+
+  it('uses only the request-scoped experience plans', () => {
+    const scoped = {
+      ...experience,
+      plans: [{
+        ...experience.plans[0],
+        id: 'lagoon_day',
+        keywords: ['laguna azul'],
+      }],
+    };
+
+    expect(detectPlan('quiero laguna azul', scoped)).toBe('lagoon_day');
+    expect(detectPlan('quiero la mina', scoped)).toBeNull();
   });
 });
 

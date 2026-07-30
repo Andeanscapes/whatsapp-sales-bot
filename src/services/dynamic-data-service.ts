@@ -11,9 +11,9 @@ export const AVAILABILITY_NOT_AVAILABLE = 'AVAILABILITY_NOT_AVAILABLE';
 export const ADDON_ID_PRIVATE_TRANSPORT = 'private_transport';
 export const ADDON_ID_APIARY_CATTLE = 'apiary_cattle';
 
-function todayInBogota(): string {
+function todayInTimeZone(timeZone = 'America/Bogota'): string {
   const parts = new Intl.DateTimeFormat('en', {
-    timeZone: 'America/Bogota',
+    timeZone,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -28,6 +28,7 @@ export function shouldStripStaticPricing(dynamicSkillUrl: string, hasDynamicData
 
 export type InternalPricingItem = {
   id: string;
+  kind?: 'plan' | 'addon';
   planId?: string;
   label: string;
   pricePerPerson?: number | null;
@@ -64,6 +65,7 @@ export interface InternalPlanImage {
 }
 
 export interface InternalGalleryImage {
+  experienceId?: string;
   url: string;
   caption: string;
 }
@@ -165,6 +167,7 @@ export class DynamicDataService {
       caption: pi.caption,
     }));
     const galleryImages: InternalGalleryImage[] = raw.galleryImages.map(gi => ({
+      experienceId: gi.experienceId,
       url: gi.url,
       caption: gi.caption,
     }));
@@ -244,7 +247,7 @@ export class DynamicDataService {
 
   private transform(data: DynamicData): InternalDynamicData {
     const experiences: Record<string, InternalExperienceData> = {};
-    const today = todayInBogota();
+    const today = todayInTimeZone();
 
     for (const [expId, dynExp] of Object.entries(data.experiences)) {
       const items: InternalPricingItem[] = [];
@@ -253,6 +256,7 @@ export class DynamicDataService {
         if (planPricing.individual != null) {
           items.push({
             id: `${planId}_individual`,
+            kind: 'plan',
             planId,
             label: `${planId}_individual`,
             pricePerPerson: planPricing.individual,
@@ -262,6 +266,7 @@ export class DynamicDataService {
         if (planPricing.couple != null) {
           items.push({
             id: `${planId}_couple`,
+            kind: 'plan',
             planId,
             label: `${planId}_couple`,
             couplePrice: planPricing.couple,
@@ -271,19 +276,24 @@ export class DynamicDataService {
       }
 
       for (const [addonId, addon] of Object.entries(dynExp.pricing.addons ?? {})) {
-        items.push({
-          id: addonId,
-          label: addon.label,
-          pricePerPerson: addon.pp ?? null,
-          couplePrice: addon.price ?? null,
-          peopleIncluded: addon.max ?? null,
-          publiclyShow: true,
-          planId: addon.plans?.[0],
-        });
+        const planIds = addon.plans?.length ? addon.plans : [undefined];
+        for (const planId of planIds) {
+          items.push({
+            id: addonId,
+            kind: 'addon',
+            label: addon.label,
+            pricePerPerson: addon.pp ?? null,
+            couplePrice: addon.price ?? null,
+            peopleIncluded: addon.max ?? null,
+            publiclyShow: true,
+            planId,
+          });
+        }
       }
 
+      const availabilityToday = todayInTimeZone(dynExp.availability.tz);
       const availableDates = dynExp.availability.dates
-        .filter(d => d.d >= today)
+        .filter(d => d.d >= availabilityToday)
         .map(d => ({
           date: d.d,
           status: d.s,

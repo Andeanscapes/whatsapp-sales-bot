@@ -10,7 +10,7 @@ import type { Scenario, ScenarioTurn } from './schema.js';
 import { recordGalleryNudge } from '../../services/media-service.js';
 import { getDynamicService, getSkills, loadSkills, setDynamicService } from '../../services/skill-loader.js';
 import { getActiveExperience } from '../../services/product-registry.js';
-import { DynamicDataService } from '../../services/dynamic-data-service.js';
+import { DynamicDataService, PRICING_NOT_AVAILABLE } from '../../services/dynamic-data-service.js';
 import type { InternalDynamicData, InternalPaymentData } from '../../services/dynamic-data-service.js';
 
 export interface TurnRecord {
@@ -21,27 +21,15 @@ export interface TurnRecord {
 }
 
 export type EvaluationOutput = ProcessMessageOutput & Partial<Record<
-  'sendMedia' | 'mediaCount' | 'mediaRelevant' | 'queueForReactivationAfterWindow' | 'reactivationEligible' | 'reactivationSegment' | 'conversationStarted' | 'meaningfulSecondInbound' | 'qualified',
+  'queueForReactivationAfterWindow' | 'reactivationEligible' | 'reactivationSegment' | 'conversationStarted' | 'meaningfulSecondInbound' | 'qualified' | 'leadLifecycle' | 'bookingIntent' | 'handoffCreated' | 'suppressGenericFollowups',
   boolean | number | string
 >>;
-
-function applyFixtureOutput(output: EvaluationOutput, turn: ScenarioTurn): void {
-  const expected = turn.expect;
-  if (!expected) return;
-  if (expected.sendMedia !== undefined) output.shouldSendImage = expected.sendMedia;
-  if (expected.mediaCount !== undefined) output.mediaCount = expected.mediaCount;
-  if (expected.mediaRelevant !== undefined) output.mediaRelevant = expected.mediaRelevant;
-  if (expected.reservationReady !== undefined) output.reservationReady = expected.reservationReady;
-  if (expected.intent !== undefined) output.intent = expected.intent;
-  if (expected.mediaPlanId !== undefined) output.mediaPlanId = expected.mediaPlanId;
-}
 
 export interface RunContext {
   repos: Repositories;
   db: Database.Database;
   customerPhone: string;
   turns: TurnRecord[];
-  applyFixtureOutput: boolean;
   destroy: () => void;
 }
 
@@ -67,7 +55,6 @@ export type MockLlmFunction = (input: LlmClientInput) => Promise<LlmResult | nul
 export interface RunOptions {
   customerPhone?: string;
   phoneSuffix?: number;
-  applyFixtureOutput?: boolean;
 }
 
 function createDynamicData(scenario: Scenario): InternalDynamicData {
@@ -154,7 +141,6 @@ export function createRunContext(options: RunOptions): RunContext {
     db,
     customerPhone: phone,
     turns: [],
-    applyFixtureOutput: options.applyFixtureOutput ?? true,
     destroy: () => db.close(),
   };
 }
@@ -165,7 +151,7 @@ function applyQualificationSeed(
   seed?: {
     name?: string;
     people?: number;
-    date?: string;
+    date?: string | null;
     transport?: string;
     transportNeed?: string;
     plan?: string;
@@ -200,6 +186,13 @@ export function applyScenarioSeeds(ctx: RunContext, scenario: Scenario): () => v
   if (dynamicAvailable !== undefined) {
     setDynamicService(createDynamicService(dynamicAvailable ? createDynamicData(scenario) : null, dynamicAvailable));
     loadSkills();
+  } else {
+    const exp = getActiveExperience(getSkills());
+    const prevRules = [...exp.pricing.botRules];
+    exp.pricing.botRules = exp.pricing.botRules.filter(rule => rule !== PRICING_NOT_AVAILABLE);
+    return () => {
+      exp.pricing.botRules = prevRules;
+    };
   }
 
   return () => {
@@ -227,8 +220,6 @@ export async function runTurn(
   };
 
   const output = await processMessage(input);
-  if (ctx.applyFixtureOutput) applyFixtureOutput(output, turnDef);
-
   if (output.shouldSendReply && output.reply) {
     ctx.repos.runInTransaction(() => {
       ctx.repos.message.addMessage({

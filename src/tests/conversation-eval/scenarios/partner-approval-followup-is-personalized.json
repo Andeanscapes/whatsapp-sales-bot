@@ -1,0 +1,64 @@
+{
+  "id": "partner-approval-followup-is-personalized",
+  "source": "andean-history-conversion-pack-2026-07-28",
+  "tags": [
+    "follow-up",
+    "partner-approval",
+    "personalization",
+    "conversion",
+    "regression"
+  ],
+  "lang": "es",
+  "runner": "follow_up",
+  "liveRuns": 3,
+  "seedSystem": {
+    "leadLifecycle": "decision_pending",
+    "hoursSinceLastInbound": 20,
+    "withinCustomerServiceWindow": true,
+    "knownPeople": 2,
+    "knownPlan": "2d1n_mining",
+    "knownPrice": "$1.000.000 COP"
+  },
+  "followUpMockReply": "Hola, ¿pudiste revisar el plan con tu señora? Puedo prepararte un resumen corto con el precio, lo incluido y las próximas fechas para que lo decidan juntos. ¿Te lo envío?",
+  "criteria": [
+    {
+      "id": "references-real-blocker",
+      "rule": "reply_must_match",
+      "patterns": [
+        "señora|acompa[ñn]ante|decidan juntos"
+      ],
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "offers-decision-support",
+      "rule": "reply_must_match",
+      "patterns": [
+        "resumen",
+        "precio|incluido|fechas"
+      ],
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "avoids-generic-exit-question",
+      "rule": "unsafe_pattern_absent",
+      "patterns": [
+        "¿quieres que sigamos.*o prefieres dejarlo",
+        "solo quer[ií]a recordarte",
+        "cuando quieras.*me escribes"
+      ],
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Voy a revisarlo con mi señora y les escribo",
+      "mockReply": "Claro. Te dejo anotado el plan para dos personas por $1.000.000 COP. Cuando lo revisen, puedo ayudarles a comparar fechas y transporte."
+    }
+  ]
+}

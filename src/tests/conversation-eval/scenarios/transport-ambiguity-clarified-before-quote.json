@@ -42,7 +42,7 @@
       "mockReply": "Para orientarte bien: ¿se refieren a bus público hasta Chivor o a transporte privado desde Bogotá?",
       "expect": {
         "shouldSendReply": true,
-        "usedAi": true
+        "usedAi": false
       }
     }
   ]

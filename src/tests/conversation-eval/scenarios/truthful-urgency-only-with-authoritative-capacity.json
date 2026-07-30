@@ -50,7 +50,7 @@
       "mockReply": "Puedo revisar la disponibilidad exacta del 24 de octubre antes de iniciar la reserva. Prefiero confirmarla correctamente en lugar de prometerte cupo sin verificar.",
       "expect": {
         "shouldSendReply": true,
-        "usedAi": true
+        "usedAi": false
       }
     }
   ]

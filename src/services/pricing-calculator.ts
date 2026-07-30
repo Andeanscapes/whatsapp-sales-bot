@@ -21,6 +21,12 @@ export interface PriceQuote {
   requiresTransportConfirmation: boolean;
 }
 
+export interface StartingPrice {
+  amount: number;
+  currency: string;
+  planId: string;
+}
+
 function toPeople(value: unknown): number | null {
   const n = typeof value === 'number' ? value : Number.parseInt(String(value), 10);
   return Number.isInteger(n) && n > 0 ? n : null;
@@ -84,6 +90,21 @@ export function calculatePriceQuote(exp: ActiveExperience, input: PriceQuoteInpu
     total,
     requiresTransportConfirmation,
   };
+}
+
+/** Lowest one-person package total, excluding optional add-ons and transport. */
+export function getStartingPrice(exp: ActiveExperience, planId?: string | null): StartingPrice | null {
+  const individualItems = exp.pricing.items.filter(item => item.publiclyShow
+    && item.pricePerPerson != null
+    && item.kind !== 'addon'
+    && item.id !== ADDON_ID_APIARY_CATTLE
+    && (!planId || item.planId === planId));
+  const item = individualItems.reduce<typeof individualItems[number] | null>(
+    (lowest, candidate) => lowest == null || candidate.pricePerPerson! < lowest.pricePerPerson! ? candidate : lowest,
+    null,
+  );
+  if (!item?.planId || item.pricePerPerson == null) return null;
+  return { amount: item.pricePerPerson, currency: exp.pricing.currency, planId: item.planId };
 }
 
 export function formatCop(amount: number): string {

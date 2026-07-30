@@ -24,6 +24,7 @@ const availableDateSchema = z.object({
 
 const pricingItemSchema = z.object({
   id: z.string(),
+  kind: z.enum(['plan', 'addon']).optional(),
   planId: z.string().optional(),
   label: z.string(),
   pricePerPerson: z.number().int().nullable().optional(),
@@ -339,6 +340,7 @@ const langFallbackSchema = z.object({
   quoteTransport: z.string(),
   quoteTotal: z.string(),
   quoteTransportConfirm: z.string(),
+  transportPriceInquiry: z.string(),
   safeReservationHandoff: z.string(),
   safeReservationHandoffAlt1: z.string(),
   safeReservationHandoffAlt2: z.string(),
@@ -395,6 +397,17 @@ const langFallbackSchema = z.object({
   painReplyLogistics: z.string(),
   painReplyExperienceClarity: z.string(),
   painReplyPartnerGroup: z.string(),
+  multiExperienceIntro: z.string(),
+  experienceSelected: z.string(),
+  enrichAfterPriceNextStep: z.string(),
+  enrichFirstContactQualification: z.string(),
+  enrichPublishedDates: z.string(),
+    enrichBusAlternative: z.string(),
+    enrichReengagementDates: z.string(),
+  closeDepositPriceLine: z.string(),
+  motorcycleAvailabilityCta: z.string(),
+  installmentPaymentReply: z.string(),
+  transportAdditionalLabel: z.string(),
 });
 
 const fallbackRepliesSchema = z.object({

@@ -1,9 +1,8 @@
 import type { Repositories } from '../db/repositories/index.js';
 import { normalizeText, detectLanguageOrNull, detectExplicitLanguageSwitch, type SupportedLanguage } from './language-service.js';
 import type { FallbackReplies } from './skill-loader.js';
-import { getSkills } from './skill-loader.js';
 import type { MergedQualification } from './types.js';
-import { getActiveExperience, getPlans } from './product-registry.js';
+import { getPlans, type ActiveExperience } from './product-registry.js';
 import { MONTH_NAMES } from './constants.js';
 import { env } from '../config/env.js';
 
@@ -44,7 +43,7 @@ export const TRANSPORT_OWN_PATTERNS = [
 ];
 
 export const TRANSPORT_OWN_CONTEXT_PATTERNS = [
-  /\b(?:si|s[ií])\b.*\b(?:propio|tengo|tenemos|transporte|mi\s+(?:carro|auto|coche|camioneta))\b/i,
+  /\b(?:si|s[ií])\b.*\b(?:propio|tengo|tenemos|mi\s+(?:carro|auto|coche|camioneta))\b/i,
   /\b(?:propio|tengo carro|tengo moto|tengo veh[ií]culo|manejando|mi carro|mi auto|mi coche|voy con)\b/i,
   /\b(?:yes|yeah|yep)\b.*\b(?:own|have (?:a |my )?(?:car|transport|vehicle|ride)|my car|i drive)\b/i,
   /\b(?:i (?:have|drive) (?:a |my own )?(?:car|motorcycle|vehicle))\b/i,
@@ -53,10 +52,9 @@ export const TRANSPORT_OWN_CONTEXT_PATTERNS = [
 
 export const PET_KEYWORDS = /\b(?:perro|perrito|mascota|mascotas|gato|gatos|perra|perros|gatito|pet|dog|cat|dogs|cats|puppy|kitten)\b/i;
 
-export function detectPlan(message: string): string | null {
+export function detectPlan(message: string, experience: ActiveExperience): string | null {
   const norm = normalizeText(message);
-  const skills = getSkills();
-  const plans = getPlans(getActiveExperience(skills));
+  const plans = getPlans(experience);
   if (!plans.length) return null;
 
   const durationBoosts = new Map<string, RegExp>([
@@ -210,7 +208,7 @@ function resolveRelativeDate(text: string): string | null {
   return `_relative_ordinal_${n}`;
 }
 
-export function extractBookingFields(text: string): Record<string, unknown> {
+export function extractBookingFields(text: string, experience?: ActiveExperience): Record<string, unknown> {
   const fields: Record<string, unknown> = {};
 
   const relDate = resolveRelativeDate(text);
@@ -317,8 +315,10 @@ export function extractBookingFields(text: string): Record<string, unknown> {
     fields.collected_pet = 'yes';
   }
 
-  const detectedPlan = detectPlan(text);
-  if (detectedPlan) fields.collected_plan = detectedPlan;
+  if (experience) {
+    const detectedPlan = detectPlan(text, experience);
+    if (detectedPlan) fields.collected_plan = detectedPlan;
+  }
 
   return fields;
 }
@@ -371,7 +371,7 @@ function extractPeopleFromReply(text: string): number | null {
   return null;
 }
 
-export function contextAwareExtract(message: string, repos: Repositories, phone: string, existing: Record<string, unknown>): Record<string, unknown> {
+export function contextAwareExtract(message: string, repos: Repositories, phone: string, existing: Record<string, unknown>, experience?: ActiveExperience): Record<string, unknown> {
   const fields = { ...existing };
   const lastQuestion = getLastAssistantQuestion(repos, phone);
   const norm = message.trim();
@@ -401,9 +401,7 @@ export function contextAwareExtract(message: string, repos: Repositories, phone:
     const askedTransport = /transporte propio|necesitan desde|vas (?:con|en)|por su cuenta|own transport|pickup|Bogot[aá]|llegar desde|how (?:are you|will you) (?:getting|coming)/i.test(lastQuestion);
     if (askedTransport) {
       const hasOwn = TRANSPORT_OWN_PATTERNS.some(p => p.test(norm)) || TRANSPORT_OWN_CONTEXT_PATTERNS.some(p => p.test(norm));
-      const shortYes = /^(?:s[ií]|sip|yes|yeah|yep|claro|dale|ok|okay|de una|por supuesto)\b/i.test(norm)
-        && !/\bno\b/i.test(norm);
-      if (hasOwn || shortYes) fields.collected_transport_need = 'own';
+      if (hasOwn) fields.collected_transport_need = 'own';
     }
   }
 
@@ -439,20 +437,18 @@ export function contextAwareExtract(message: string, repos: Repositories, phone:
   if (lastQuestion && !fields.collected_plan) {
     const askedPlan = /que plan|which plan|cual plan|2 dias|3 dias|2d|3d/i.test(lastQuestion);
     if (askedPlan) {
-      const detectedPlan = detectPlan(norm);
+      const detectedPlan = experience ? detectPlan(norm, experience) : null;
       if (detectedPlan) fields.collected_plan = detectedPlan;
     }
   }
 
-  if (!fields.collected_plan) {
-    const detectedPlan = detectPlan(norm);
-    if (detectedPlan) fields.collected_plan = detectedPlan;
-  }
+  const explicitPlan = experience ? detectPlan(norm, experience) : null;
+  if (explicitPlan) fields.collected_plan = explicitPlan;
 
   return fields;
 }
 
-export function reconstructFromHistory(repos: Repositories, phone: string, current: Record<string, unknown>): Record<string, unknown> {
+export function reconstructFromHistory(repos: Repositories, phone: string, current: Record<string, unknown>, experience?: ActiveExperience): Record<string, unknown> {
   const fields = { ...current };
   const allInbound = repos.message.getLastInboundBodies(phone, 20);
   const need = {
@@ -462,16 +458,22 @@ export function reconstructFromHistory(repos: Repositories, phone: string, curre
     transporte: !fields.transporte,
     mascota: !fields.mascota,
   };
-  let planChecked = false;
+  let scannedPlan: string | null = null;
   for (const row of allInbound) {
-    if (!row.body || (!need.nombre && planChecked && !need.personas && !need.fecha && !need.transporte && !need.mascota)) continue;
-    const extracted = extractBookingFields(row.body);
+    if (!row.body || (!need.nombre && !need.personas && !need.fecha && !need.transporte && !need.mascota && !scannedPlan)) continue;
+    const extracted = extractBookingFields(row.body, experience);
     if (need.nombre && extracted.collected_name) { fields.nombre = extracted.collected_name; need.nombre = false; }
-    if (!planChecked && extracted.collected_plan) { fields.plan = extracted.collected_plan; planChecked = true; }
     if (need.personas && extracted.collected_people) { fields.personas = extracted.collected_people; need.personas = false; }
     if (need.fecha && extracted.collected_date) { fields.fecha = extracted.collected_date; need.fecha = false; }
     if (need.transporte && extracted.collected_transport_need) { fields.transporte = extracted.collected_transport_need; need.transporte = false; }
     if (need.mascota && extracted.collected_pet) { fields.mascota = extracted.collected_pet; need.mascota = false; }
+    if (typeof extracted.collected_plan === 'string' && !scannedPlan) scannedPlan = extracted.collected_plan;
+  }
+  if (scannedPlan && typeof fields.plan === 'string' && scannedPlan !== fields.plan) {
+    fields.plan = scannedPlan;
+  }
+  if (!fields.plan && scannedPlan && !repos.conversation.getSelectedExperienceId(phone)) {
+    fields.plan = scannedPlan;
   }
   return fields;
 }

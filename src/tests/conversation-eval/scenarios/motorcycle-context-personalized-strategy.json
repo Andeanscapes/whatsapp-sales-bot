@@ -62,7 +62,7 @@
       "mockReply": "Perfecto: padre e hijo, dos personas, viaje en moto y octubre. Esta experiencia encaja muy bien con una ruta de aventura por Boyacá. ¿Quieren revisar un fin de semana específico de octubre?",
       "expect": {
         "shouldSendReply": true,
-        "usedAi": true
+        "usedAi": false
       }
     }
   ]

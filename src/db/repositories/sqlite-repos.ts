@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import type {
   ConversationRepository,
   ConversationRow,
+  MetaAudienceLead,
   MessageRepository,
   DedupeRepository,
   OptOutRepository,
@@ -41,6 +42,7 @@ import type {
   PaymentReservation,
   PaymentReservationCreate,
   DateStatus,
+  MetaAudienceConsentSource,
 } from './types.js';
 import { env } from '../../config/env.js';
 
@@ -55,7 +57,8 @@ const ALLOWED_CONVERSATION_COLUMNS = new Set([
   'sales_phase', 'lead_intent',
   'assigned_line_id', 'assigned_agent_chat', 'conversation_mode',
   'converted_at', 'gallery_nudged_at', 'follow_up_sent_at',
-  'lead_pain', 'lead_pain_detail', 'lead_pain_detected_at', 'follow_up_reply_count'
+  'lead_pain', 'lead_pain_detail', 'lead_pain_detected_at', 'follow_up_reply_count',
+  'selected_experience_id'
 ]);
 
 export class SqliteConversationRepo implements ConversationRepository {
@@ -65,6 +68,26 @@ export class SqliteConversationRepo implements ConversationRepository {
     return this.db.prepare(
       'SELECT * FROM conversations WHERE customer_phone = ?'
     ).get(phone) as ConversationRow | undefined;
+  }
+
+  listMetaAudienceLeads(): MetaAudienceLead[] {
+    const rows = this.db.prepare(
+      `SELECT customer_phone, collected_name
+       FROM conversations
+       WHERE converted_at IS NULL
+         AND opt_out_at IS NULL
+         AND meta_audience_consent_at IS NOT NULL
+         AND meta_audience_consent_source IS NOT NULL
+       ORDER BY customer_phone ASC`
+    ).all() as Array<{ customer_phone: string; collected_name: string | null }>;
+    return rows.map(row => ({ customerPhone: row.customer_phone, collectedName: row.collected_name }));
+  }
+
+  recordMetaAudienceConsent(phone: string, source: MetaAudienceConsentSource, consentedAt = new Date().toISOString()): void {
+    this.ensureConversation(phone);
+    this.db.prepare(
+      'UPDATE conversations SET meta_audience_consent_at = ?, meta_audience_consent_source = ? WHERE customer_phone = ?'
+    ).run(consentedAt, source, phone);
   }
 
   upsert(phone: string, data: Record<string, unknown>): void {
@@ -195,6 +218,27 @@ export class SqliteConversationRepo implements ConversationRepository {
     if (row.collected_plan) fields.plan = row.collected_plan;
     if (row.language) fields.idioma = row.language;
     return fields;
+  }
+
+  resetExperienceSalesState(phone: string): void {
+    this.db.prepare(
+      `UPDATE conversations
+       SET collected_plan = NULL,
+           price_given_at = NULL,
+           sales_phase = NULL,
+           lead_intent = NULL,
+           gallery_nudged_at = NULL,
+           soft_closed_at = NULL,
+           handed_off_at = NULL,
+           assigned_line_id = NULL,
+           assigned_agent_chat = NULL,
+           conversation_mode = 'bot'
+       WHERE customer_phone = ?`
+    ).run(phone);
+  }
+
+  clearCollectedTransport(phone: string): void {
+    this.db.prepare('UPDATE conversations SET collected_transport_need = NULL WHERE customer_phone = ?').run(phone);
   }
 
   clearCollectedDate(phone: string): void {
@@ -344,6 +388,17 @@ export class SqliteConversationRepo implements ConversationRepository {
 
   setMode(phone: string, mode: ConversationMode): void {
     this.upsert(phone, { conversation_mode: mode });
+  }
+
+  getSelectedExperienceId(phone: string): string | null {
+    const row = this.db.prepare(
+      'SELECT selected_experience_id FROM conversations WHERE customer_phone = ?'
+    ).get(phone) as { selected_experience_id: string | null } | undefined;
+    return row?.selected_experience_id ?? null;
+  }
+
+  setSelectedExperienceId(phone: string, experienceId: string): void {
+    this.upsert(phone, { selected_experience_id: experienceId });
   }
 
   getBookedAt(phone: string): string | null {
@@ -613,13 +668,13 @@ export class SqliteFollowUpEventRepo implements FollowUpEventRepository {
 export class SqliteBridgeSessionRepo implements BridgeSessionRepository {
   constructor(private db: Database.Database) {}
 
-  open(agentChatId: string, customerPhone: string): void {
+  open(agentChatId: string, customerPhone: string, returnMode: 'bot' | 'human_only' = 'bot'): void {
     const now = new Date().toISOString();
     this.db.prepare(
-      `INSERT INTO bridge_sessions (agent_chat_id, customer_phone, opened_at, last_activity_at)
-       VALUES (?, ?, ?, ?)
-       ON CONFLICT(agent_chat_id) DO UPDATE SET customer_phone = ?, last_activity_at = ?`
-    ).run(agentChatId, customerPhone, now, now, customerPhone, now);
+      `INSERT INTO bridge_sessions (agent_chat_id, customer_phone, opened_at, last_activity_at, return_mode)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(agent_chat_id) DO UPDATE SET customer_phone = ?, last_activity_at = ?, return_mode = ?`
+    ).run(agentChatId, customerPhone, now, now, returnMode, customerPhone, now, returnMode);
   }
 
   close(agentChatId: string): void {
@@ -628,18 +683,18 @@ export class SqliteBridgeSessionRepo implements BridgeSessionRepository {
 
   getByAgentChat(agentChatId: string): BridgeSessionRow | null {
     const row = this.db.prepare(
-      'SELECT agent_chat_id, customer_phone, opened_at, last_activity_at FROM bridge_sessions WHERE agent_chat_id = ?'
-    ).get(agentChatId) as { agent_chat_id: string; customer_phone: string; opened_at: string; last_activity_at: string } | undefined;
+      'SELECT agent_chat_id, customer_phone, opened_at, last_activity_at, return_mode FROM bridge_sessions WHERE agent_chat_id = ?'
+    ).get(agentChatId) as { agent_chat_id: string; customer_phone: string; opened_at: string; last_activity_at: string; return_mode: 'bot' | 'human_only' } | undefined;
     if (!row) return null;
-    return { agentChatId: row.agent_chat_id, customerPhone: row.customer_phone, openedAt: row.opened_at, lastActivityAt: row.last_activity_at };
+    return { agentChatId: row.agent_chat_id, customerPhone: row.customer_phone, openedAt: row.opened_at, lastActivityAt: row.last_activity_at, returnMode: row.return_mode };
   }
 
   getByCustomer(customerPhone: string): BridgeSessionRow | null {
     const row = this.db.prepare(
-      'SELECT agent_chat_id, customer_phone, opened_at, last_activity_at FROM bridge_sessions WHERE customer_phone = ? ORDER BY last_activity_at DESC LIMIT 1'
-    ).get(customerPhone) as { agent_chat_id: string; customer_phone: string; opened_at: string; last_activity_at: string } | undefined;
+      'SELECT agent_chat_id, customer_phone, opened_at, last_activity_at, return_mode FROM bridge_sessions WHERE customer_phone = ? ORDER BY last_activity_at DESC LIMIT 1'
+    ).get(customerPhone) as { agent_chat_id: string; customer_phone: string; opened_at: string; last_activity_at: string; return_mode: 'bot' | 'human_only' } | undefined;
     if (!row) return null;
-    return { agentChatId: row.agent_chat_id, customerPhone: row.customer_phone, openedAt: row.opened_at, lastActivityAt: row.last_activity_at };
+    return { agentChatId: row.agent_chat_id, customerPhone: row.customer_phone, openedAt: row.opened_at, lastActivityAt: row.last_activity_at, returnMode: row.return_mode };
   }
 
   touch(agentChatId: string): void {

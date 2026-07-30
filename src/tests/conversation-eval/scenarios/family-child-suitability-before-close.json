@@ -65,7 +65,7 @@
       "mockReply": "Gracias por contarme. Como viajan con un niño de 5 años, primero debemos revisar si el ritmo de la mina le conviene: hay lodo, terreno irregular y varias horas de actividad. ¿Quieres que te explique la exigencia física y las alternativas antes de cotizar?",
       "expect": {
         "shouldSendReply": true,
-        "usedAi": true
+        "usedAi": false
       }
     }
   ]

@@ -28,6 +28,7 @@
     "validate:prompt": "tsx src/scripts/validate-prompt.ts",
     "validate:dynamic": "tsx src/scripts/validate-dynamic.ts",
     "export:transcripts": "bash scripts/export-prod-transcripts.sh",
+    "export:meta-leads": "bash scripts/export-meta-leads.sh",
     "export:debug-bundle": "bash scripts/export-prod-debug-bundle.sh",
     "scan:secrets": "secretlint \"**/*\" --secretlintignore .gitignore",
     "docker:dev": "ENV_FILE=.env.dev docker compose -p andean-whatsapp-bot-dev --env-file .env.dev -f compose.yml -f compose.test.yml up --build --force-recreate",

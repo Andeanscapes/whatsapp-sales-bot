@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { dynamicDataSchema } from '../services/dynamic-data-schema.js';
 import { DynamicDataService, shouldStripStaticPricing } from '../services/dynamic-data-service.js';
 import { loadSkills, isDynamicDataFresh, setDynamicService, refreshSkills, getSkills } from '../services/skill-loader.js';
+import { getActiveExperience, getFutureAvailableDates } from '../services/product-registry.js';
 
 describe('dynamic data validation', () => {
   it('accepts the v4 payment contract with optional availability', () => {
@@ -250,6 +251,88 @@ describe('DynamicDataService availability', () => {
 
     expect(svc.getData()?.experiences.emerald_mining_tour?.availability.availableDates)
       .toEqual([{ date: '2026-08-07', status: 'limited', slotsApprox: 7 }]);
+  });
+
+  it('keeps the current Bogota date before midnight local time', () => {
+    const exp = getActiveExperience(loadSkills());
+    const originalAvailability = exp.availability;
+    exp.availability = {
+      lastUpdated: '2026-07-29',
+      timezone: 'America/Bogota',
+      availableDates: [{ date: '2026-07-29', status: 'available', slotsApprox: 4 }],
+      botRule: 'Published availability is authoritative.',
+    };
+
+    try {
+      expect(getFutureAvailableDates(exp, new Date('2026-07-30T00:30:00.000Z'))).toHaveLength(1);
+    } finally {
+      exp.availability = originalAvailability;
+    }
+  });
+
+  it('applies an add-on to every plan listed by the dynamic feed', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      json: async () => ({
+        v: 5,
+        updated: '2026-07-29T00:00:00Z',
+        experiences: {
+          emerald_mining_tour: {
+            pricing: {
+              currency: 'COP',
+              plans: {
+                '2d1n_mining': { individual: 550000, couple: 1000000 },
+                '3d2n_rural': { individual: 650000, couple: 1200000 },
+              },
+              addons: {
+                apiary_cattle: { label: 'Apicultura', pp: 55000, plans: ['2d1n_mining', '3d2n_rural'] },
+              },
+              rules: '',
+            },
+          },
+        },
+      }),
+    } as unknown as Response);
+    const svc = new DynamicDataService('https://cdn.andeanscapes.com/whatsapp_bot/bot-dynamic.json', 5_000);
+
+    await svc.forceRefresh();
+
+    const addonPlans = svc.getData()?.experiences.emerald_mining_tour?.pricing.items
+      .filter(item => item.id === 'apiary_cattle')
+      .map(item => item.planId);
+    expect(addonPlans).toEqual(['2d1n_mining', '3d2n_rural']);
+  });
+
+  it('prefilters dynamic dates in the experience timezone', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-30T06:00:00.000Z'));
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      json: async () => ({
+        v: 5,
+        updated: '2026-07-29T00:00:00Z',
+        experiences: {
+          emerald_mining_tour: {
+            pricing: { currency: 'COP', plans: {}, rules: '' },
+            availability: {
+              tz: 'Pacific/Honolulu',
+              dates: [{ d: '2026-07-29', s: 'available', sl: 4 }],
+              rule: 'Published availability is authoritative.',
+            },
+          },
+        },
+      }),
+    } as unknown as Response);
+    const svc = new DynamicDataService('https://cdn.andeanscapes.com/whatsapp_bot/bot-dynamic.json', 5_000);
+
+    await svc.forceRefresh();
+
+    expect(svc.getData()?.experiences.emerald_mining_tour?.availability.availableDates)
+      .toEqual([{ date: '2026-07-29', status: 'available', slotsApprox: 4 }]);
   });
 });
 
