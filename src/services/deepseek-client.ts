@@ -3,7 +3,8 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import type { Skills } from './skill-loader.js';
 import { substituteTokens } from './skill-loader.js';
-import { getActiveExperience, getPaymentInfo, getPlans, isPricingAvailable, isAvailabilityAvailable } from './product-registry.js';
+import { getActiveExperience, getFutureAvailableDates, getPaymentInfo, getPlans, getShortDescription, isPricingAvailable, isAvailabilityAvailable, resolveExperience } from './product-registry.js';
+import type { CustomerContext } from './customer-context.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -20,33 +21,48 @@ function readFollowUpPrompt(): string {
 }
 
 export function buildFollowUpPrompt(input: {
+  skills: Skills;
   lang: 'es' | 'en';
   phase: string | null;
   stage: 'first_nudge' | 'second_nudge';
   reviewReminder?: boolean;
+  knownPeople?: number | null;
+  knownDate?: string | null;
+  knownPriceFormatted?: string | null;
 }): string {
+  const experience = getActiveExperience(input.skills);
+  const knownLines: string[] = [];
+  if (input.knownPeople != null) knownLines.push(`Known people: ${input.knownPeople}`);
+  if (input.knownDate) knownLines.push(`Known date: ${input.knownDate}`);
+  if (input.knownPriceFormatted) knownLines.push(`Known quoted price: ${input.knownPriceFormatted}`);
   return [
     readFollowUpPrompt(),
+    '',
+    'FOLLOW-UP BUSINESS CONTEXT:',
+    `Supported experience: ${experience.name}`,
+    `Description: ${getShortDescription(experience)}`,
     '',
     'FOLLOW-UP SETTINGS:',
     `Language: ${input.lang}`,
     `Phase: ${input.phase ?? 'unknown'}`,
     `Stage: ${input.stage}`,
     ...(input.reviewReminder ? ['Mode: review_reminder'] : []),
+    ...knownLines,
   ].join('\n');
 }
 
-export function buildSystemPrompt(skills: Skills, lang?: string, collectedFields?: Record<string, unknown>, salesPhase?: string): string {
+export function buildSystemPrompt(skills: Skills, lang?: string, collectedFields?: Record<string, unknown>, salesPhase?: string, customerContext?: CustomerContext, selectedExperienceId?: string | null): string {
   const base = readSystemPrompt();
-  const exp = getActiveExperience(skills);
+  const exp = resolveExperience(skills, selectedExperienceId);
   const route = exp.route;
   const tactics = skills.salesStrategy.salesTactics;
 
   const pricingAvailable = isPricingAvailable(exp);
   const availabilityAvailable = isAvailabilityAvailable(exp);
+  const availableDates = getFutureAvailableDates(exp);
 
   const dateList = availabilityAvailable
-    ? exp.availability.availableDates
+    ? availableDates
         .map(d => {
           const dObj = new Date(d.date + 'T00:00:00');
           const dayName = dObj.toLocaleDateString(lang === 'en' ? 'en-US' : 'es-CO', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
@@ -116,9 +132,10 @@ export function buildSystemPrompt(skills: Skills, lang?: string, collectedFields
   const plansList = getPlans(exp)
     .map(p => `${p.id} — ${p.name} (${p.duration}): ${p.shortDescription} | Benefits: ${p.benefits}`).join('\n');
 
-  const dataUnavailableRule = (!pricingAvailable || !availabilityAvailable)
-    ? '[CRITICAL RULE] NO hay precios ni fechas disponibles — el equipo los esta ajustando. IGNORA las fases de precio/fechas. NO des ninguna cifra. NO des ninguna fecha concreta. Responde solo con la info que SI tienes (ruta, inclusiones, clima, etc) y di que el equipo confirmara precios y disponibilidad.'
-    : null;
+  const dataUnavailableRules = [
+    !pricingAvailable ? '[CRITICAL RULE] NO hay precios actualizados. NO des cifras ni calcules valores; explica que el equipo debe confirmarlos.' : null,
+    !availabilityAvailable ? '[CRITICAL RULE] NO hay fechas publicadas. NO des fechas concretas ni prometas cupo; explica que debes verificar disponibilidad.' : null,
+  ].filter((rule): rule is string => rule !== null);
 
   const facts = [
     `Business: ${skills.andeanScapes.business.name} — ${shortDesc}`,
@@ -163,8 +180,8 @@ export function buildSystemPrompt(skills: Skills, lang?: string, collectedFields
     negativeExamples ? `Negative examples: ${negativeExamples}` : null,
   ].filter((f): f is string => f !== null);
 
-  if (dataUnavailableRule) {
-    facts.unshift(dataUnavailableRule);
+  if (dataUnavailableRules.length > 0) {
+    facts.unshift(...dataUnavailableRules);
   }
 
   if (tactics) {
@@ -212,6 +229,20 @@ export function buildSystemPrompt(skills: Skills, lang?: string, collectedFields
 
   if (salesPhase) {
     facts.push('', `SALES PHASE ACTUAL: ${salesPhase}`);
+  }
+
+  const customerContextLines = [
+    customerContext?.name ? `Name: ${customerContext.name}` : null,
+    customerContext?.people != null ? `People: ${customerContext.people}` : null,
+    customerContext?.date ? `Date mentioned: ${customerContext.date}` : null,
+    customerContext?.transport ? `Transport mentioned: ${customerContext.transport}` : null,
+    customerContext?.childAges?.length ? `Child ages mentioned: ${customerContext.childAges.join(', ')}` : null,
+    customerContext?.groupRelationship ? `Group relationship: ${customerContext.groupRelationship}` : null,
+    customerContext?.lodgingNeeded ? 'Lodging mentioned: yes' : null,
+    customerContext?.pet ? 'Pet mentioned: yes' : null,
+  ].filter((line): line is string => line !== null);
+  if (customerContextLines.length > 0) {
+    facts.unshift(`EXPLICIT CONTEXT FROM THE LATEST CUSTOMER MESSAGE:\n${customerContextLines.map(line => `  - ${line}`).join('\n')}`);
   }
 
   return `${base}\n\n---\n${facts.join('\n')}`;

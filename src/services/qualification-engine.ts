@@ -1,9 +1,8 @@
 import type { Repositories } from '../db/repositories/index.js';
 import { normalizeText, detectLanguageOrNull, detectExplicitLanguageSwitch, type SupportedLanguage } from './language-service.js';
 import type { FallbackReplies } from './skill-loader.js';
-import { getSkills } from './skill-loader.js';
 import type { MergedQualification } from './types.js';
-import { getActiveExperience, getPlans } from './product-registry.js';
+import { getPlans, type ActiveExperience } from './product-registry.js';
 import { MONTH_NAMES } from './constants.js';
 import { env } from '../config/env.js';
 
@@ -44,8 +43,8 @@ export const TRANSPORT_OWN_PATTERNS = [
 ];
 
 export const TRANSPORT_OWN_CONTEXT_PATTERNS = [
-  /\b(?:si|s[ií])\b.*\b(?:propio|tengo|tenemos|transporte|mi\s+(?:carro|auto|coche|camioneta))\b/i,
-  /\b(?:propio|tengo carro|tengo moto|tengo veh[ií]culo|en carro|en moto|manejando|mi carro|mi auto|mi coche|voy en|voy con)\b/i,
+  /\b(?:si|s[ií])\b.*\b(?:propio|tengo|tenemos|mi\s+(?:carro|auto|coche|camioneta))\b/i,
+  /\b(?:propio|tengo carro|tengo moto|tengo veh[ií]culo|manejando|mi carro|mi auto|mi coche|voy con)\b/i,
   /\b(?:yes|yeah|yep)\b.*\b(?:own|have (?:a |my )?(?:car|transport|vehicle|ride)|my car|i drive)\b/i,
   /\b(?:i (?:have|drive) (?:a |my own )?(?:car|motorcycle|vehicle))\b/i,
   /\b(?:si[,.]?\s*(?:tengo|mi|con)\s*(?:carro|auto|coche|camioneta))\b/i,
@@ -53,10 +52,9 @@ export const TRANSPORT_OWN_CONTEXT_PATTERNS = [
 
 export const PET_KEYWORDS = /\b(?:perro|perrito|mascota|mascotas|gato|gatos|perra|perros|gatito|pet|dog|cat|dogs|cats|puppy|kitten)\b/i;
 
-export function detectPlan(message: string): string | null {
+export function detectPlan(message: string, experience: ActiveExperience): string | null {
   const norm = normalizeText(message);
-  const skills = getSkills();
-  const plans = getPlans(getActiveExperience(skills));
+  const plans = getPlans(experience);
   if (!plans.length) return null;
 
   const durationBoosts = new Map<string, RegExp>([
@@ -112,15 +110,62 @@ export function isConfirmedDate(value: unknown): boolean {
     && !value.startsWith('_');
 }
 
+/**
+ * Clear "no date yet" signal — safe without prior date-ask context.
+ * Patterns mined from production WhatsApp history (2026-07-26 dump).
+ */
 export function isExplicitDateDeferral(text: string): boolean {
   const norm = normalizeText(text);
-  return /\b(?:no (?:tenemos|tengo|se|sabemos) (?:la )?fecha|todav[ií]a no (?:tenemos|tengo|se|sabemos) (?:la )?fecha|a[uú]n no (?:tenemos|tengo|se|sabemos) (?:la )?fecha|no date yet|we do not have (?:a )?date yet|i do not know (?:the )?date yet)\b/i.test(norm);
+  // fecha|fechas|typos (fecja/fech)
+  const fecha = String.raw`(?:fechas?|fecja|fech)`;
+  // "no tengo/tenemos/hay/dispongo de (una|ninguna|la) fecha[s] [exacta|estimada|...]"
+  if (new RegExp(String.raw`\bno (?:tenemos|tengo|hay|dispongo de|disponemos de|se|sabemos) (?:la |una |ninguna )?${fecha}\b`).test(norm)) return true;
+  // "todavia/aun no tengo fecha...", "no aun no tengo fecha"
+  if (new RegExp(String.raw`\b(?:todavia|aun) no (?:tenemos|tengo|hay|dispongo de|disponemos de|se|sabemos) (?:la |una |ninguna )?${fecha}\b`).test(norm)) return true;
+  if (new RegExp(String.raw`\bno (?:todavia|aun) no (?:tenemos|tengo) (?:la |una |ninguna )?${fecha}\b`).test(norm)) return true;
+  // bare "sin fecha" / "ninguna fecha" / "no ninguna fecha" / "no sin fecha" / "no hay fecha tentativa"
+  if (new RegExp(String.raw`\b(?:sin ${fecha}|ninguna ${fecha}|no ninguna ${fecha}|no sin ${fecha}|no hay (?:ninguna )?${fecha})\b`).test(norm)) return true;
+  // "fecha no establecida/definida/fija", "no hay ninguna fecha establecida"
+  if (new RegExp(String.raw`\b${fecha} (?:no )?(?:definida|establecida|fija|clara|exacta|estimada|tentativa)\b`).test(norm)
+    && /\b(?:no|sin|ninguna|ningun|aun|todavia)\b/.test(norm)) return true;
+  // "no tengo fecha en mente / exacta / estimada"
+  if (new RegExp(String.raw`\bno (?:tengo|tenemos) (?:la |una |ninguna )?${fecha}(?:\s+(?:en mente|exacta|estimada|tentativa|definida|establecida|fija|clara))?\b`).test(norm)) return true;
+  // flexibility / date does not matter
+  if (new RegExp(String.raw`\b(?:no importa(?: la)? ${fecha}|da igual(?: la)? ${fecha}|${fecha} flexible|flexible con(?: la)? ${fecha}|diferente ${fecha} no importa)\b`).test(norm)) return true;
+  // EN
+  if (/\b(?:no date yet|we do not have (?:a )?date yet|i do not know (?:the )?date yet|no specific date|no fixed date|not sure (?:about |of )?(?:the )?date)\b/.test(norm)) return true;
+  return false;
 }
 
-/** Broad uncertainty answer — only meaningful right after the bot asked for a date. */
+/** Broad uncertainty / options-branch answer — only meaningful when date_status is asked. */
 export function isUncertainDateAnswer(text: string): boolean {
   const norm = normalizeText(text);
-  return isExplicitDateDeferral(norm) || /no (lo )?s[eé]|not sure|no estoy segur|todav[ií]a no/i.test(norm);
+  if (isExplicitDateDeferral(norm)) return true;
+  // short bare negatives + common typos ("o todavia" dropped N)
+  if (/^(?:no|nop|nope|nel|nah|ninguna|ninguno|no aun|no todavia|o todavia|no realmente|aun no|todavia no)$/.test(norm)) return true;
+  if (/\b(?:no lo se|no se aun|no se todavia|not sure|no estoy segur|todavia no|aun no|no aun|no todavia|o todavia)\b/.test(norm)) return true;
+  if (/^(?:no se|no lo se|not sure)$/.test(norm)) return true;
+  if (/^(?:por el momento no|por ahora no|en el momento no|en este momento no)(?:\b|$)/.test(norm)
+    && !/\b(?:presupuesto|dinero|plata|pago|costo)\b/.test(norm)) return true;
+  if (/^(?:opciones|las disponibles|disponibles|fechas|las fechas)$/.test(norm)) return true;
+  if (/\b(?:revisar opciones|revisando opciones|ver(?: las)? opciones|opciones disponibles|fechas?(?: \w+){0,3} disponibles|prefiero ver|quiero revisar|mirando opciones|viendo opciones|explorando opciones|mostrar(?:me)?(?: las)? (?:opciones|fechas)|muestrame(?: las)? (?:opciones|fechas)|me muestras?(?: las)? (?:opciones|fechas)|si muestra(?: las)? (?:opciones|fechas)|cuentame las opciones|q(?:ue)? opciones|opciones tienes)\b/.test(norm)) return true;
+  if (/^no\b/.test(norm) && /\bfechas?(?: \w+){0,3} disponibles\b/.test(norm) && !/\b\d{1,2}\b/.test(norm)) return true;
+  if (/\b(?:solo(?: quiero)?(?: la)? informacion|solo consultando|solo preguntando|mas adelante|te escribo|luego te (?:aviso|escribo|digo))\b/.test(norm)) return true;
+  if (/\b(?:plan a futuro|no tengo afan|no es(?: muy)? cercano)\b/.test(norm)) return true;
+  return false;
+}
+
+/** True when customer chose the "show options" branch (not just deferred). */
+export function isDateOptionsRequest(text: string): boolean {
+  const norm = normalizeText(text);
+  return /^(?:opciones|las disponibles|disponibles|fechas|las fechas)$/.test(norm)
+    || /\b(?:revisar opciones|revisando opciones|ver(?: las)? opciones|opciones disponibles|fechas?(?: \w+){0,3} disponibles|prefiero ver|quiero revisar|mirando opciones|viendo opciones|explorando opciones|mostrar(?:me)?(?: las)? (?:opciones|fechas)|muestrame(?: las)? (?:opciones|fechas)|me muestras?(?: las)? (?:opciones|fechas)|si muestra(?: las)? (?:opciones|fechas)|cuentame las opciones|q(?:ue)? opciones|opciones tienes)\b/.test(norm);
+}
+
+export function isDateAskQuestion(question: string | null | undefined): boolean {
+  if (!question) return false;
+  const norm = normalizeText(question);
+  return /\b(?:fecha tentativa|what date|que fecha|alguna fecha|para que fecha|date in mind|fecha en mente|fecha pensada|fecha aproximada|todavia estas explorando|andan explorando|tienen (?:una )?fecha|tienes (?:una )?fecha|cuando (?:quieres|quieren|te gustaria)|when would you)\b/.test(norm);
 }
 
 export function isQualificationComplete(q: MergedQualification): boolean {
@@ -163,7 +208,7 @@ function resolveRelativeDate(text: string): string | null {
   return `_relative_ordinal_${n}`;
 }
 
-export function extractBookingFields(text: string): Record<string, unknown> {
+export function extractBookingFields(text: string, experience?: ActiveExperience): Record<string, unknown> {
   const fields: Record<string, unknown> = {};
 
   const relDate = resolveRelativeDate(text);
@@ -185,7 +230,7 @@ export function extractBookingFields(text: string): Record<string, unknown> {
   }
 
   if (!fields.collected_date) {
-    const dayMonthEs = text.match(/\b(\d{1,2})\s+de\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\b/i);
+    const dayMonthEs = text.match(/\b(\d{1,2})\s+de\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)(?:\s+de\s+\d{4})?\b/i);
     if (dayMonthEs) {
       fields.collected_date = dayMonthEs[0].toLowerCase();
     }
@@ -218,7 +263,7 @@ export function extractBookingFields(text: string): Record<string, unknown> {
     fields.collected_people = parseInt(simpleNumberMatch[1], 10);
   }
 
-  const couplePattern = /\b(?:couple|pareja|dos personas|2 personas|mi esposo y yo|mi esposa y yo|mi novio y yo|mi novia y yo|mi pareja y yo|mi hija y yo|mi hijo y yo|mi (?:mam[aá]|madre|made) y yo|vamos dos|somos dos|somos 2|vamos 2)\b/i;
+  const couplePattern = /\b(?:couple|pareja|dos personas|2 personas|dos pilotos|mi esposo y yo|mi esposa y yo|mi novio y yo|mi novia y yo|mi pareja y yo|mi hija y yo|mi hijo y yo|mi (?:mam[aá]|madre|made) y yo|vamos dos|somos dos|somos 2|vamos 2|por ahora dos)\b/i;
   const soloPattern = /\b(?:sola|solo|voy sola|voy solo|ir[ií]a sola|ir[ií]a solo|yo sola|yo solo|una persona|1 persona|just me|only me|me alone|solo traveler)\b/i;
   const ambiguousParty = isAmbiguousPartyComparison(text);
   if (couplePattern.test(text) && !fields.collected_people && !ambiguousParty && !mixedAdultsAndChildren) {
@@ -252,9 +297,9 @@ export function extractBookingFields(text: string): Record<string, unknown> {
     }
   }
 
-  if (/transport|pickup|transporte|recoger|Bogotá|Bogota/i.test(text)) {
+  if (/\b(?:transporte privado|private transport|recoger(?:nos)? desde Bogot[aá])\b/i.test(text)) {
     if (!fields.collected_transport_need) {
-      fields.collected_transport_need = 'yes';
+      fields.collected_transport_need = 'from_bogota';
     }
   }
 
@@ -270,8 +315,10 @@ export function extractBookingFields(text: string): Record<string, unknown> {
     fields.collected_pet = 'yes';
   }
 
-  const detectedPlan = detectPlan(text);
-  if (detectedPlan) fields.collected_plan = detectedPlan;
+  if (experience) {
+    const detectedPlan = detectPlan(text, experience);
+    if (detectedPlan) fields.collected_plan = detectedPlan;
+  }
 
   return fields;
 }
@@ -324,7 +371,7 @@ function extractPeopleFromReply(text: string): number | null {
   return null;
 }
 
-export function contextAwareExtract(message: string, repos: Repositories, phone: string, existing: Record<string, unknown>): Record<string, unknown> {
+export function contextAwareExtract(message: string, repos: Repositories, phone: string, existing: Record<string, unknown>, experience?: ActiveExperience): Record<string, unknown> {
   const fields = { ...existing };
   const lastQuestion = getLastAssistantQuestion(repos, phone);
   const norm = message.trim();
@@ -354,9 +401,7 @@ export function contextAwareExtract(message: string, repos: Repositories, phone:
     const askedTransport = /transporte propio|necesitan desde|vas (?:con|en)|por su cuenta|own transport|pickup|Bogot[aá]|llegar desde|how (?:are you|will you) (?:getting|coming)/i.test(lastQuestion);
     if (askedTransport) {
       const hasOwn = TRANSPORT_OWN_PATTERNS.some(p => p.test(norm)) || TRANSPORT_OWN_CONTEXT_PATTERNS.some(p => p.test(norm));
-      const shortYes = /^(?:s[ií]|sip|yes|yeah|yep|claro|dale|ok|okay|de una|por supuesto)\b/i.test(norm)
-        && !/\bno\b/i.test(norm);
-      if (hasOwn || shortYes) fields.collected_transport_need = 'own';
+      if (hasOwn) fields.collected_transport_need = 'own';
     }
   }
 
@@ -372,38 +417,38 @@ export function contextAwareExtract(message: string, repos: Repositories, phone:
     delete fields._relative_date_token;
   }
 
-  if (!fields.collected_date && isExplicitDateDeferral(norm)) {
-    fields.collected_date = 'tentative_unknown';
+  // Date progression is engine/repo-owned via date_status. Here we only extract:
+  // - explicit exact/month dates into collected_date
+  // - deferral/options intent flags for the engine (no silent tentative_unknown write without status)
+  const dateStatus = repos.conversation.getDateStatus(phone);
+  const explicitDateDeferral = !fields.collected_date && isExplicitDateDeferral(norm);
+  if (explicitDateDeferral) {
+    fields._date_deferred = true;
   }
-
-  if (!fields.collected_date && lastQuestion) {
-    const askedDate = /fecha tentativa|what date|qu[eé] fecha/i.test(lastQuestion);
-    if (askedDate) {
-      const monthFound = MONTH_NAMES.find(m => norm.toLowerCase().includes(m));
-      if (monthFound) fields.collected_date = monthFound;
-      if (isUncertainDateAnswer(norm)) {
-        fields.collected_date = 'tentative_unknown';
-      }
+  if (!fields.collected_date && (dateStatus === 'asked' || (lastQuestion && isDateAskQuestion(lastQuestion)))) {
+    const monthFound = MONTH_NAMES.find(m => norm.toLowerCase().includes(m));
+    if (monthFound && !explicitDateDeferral) fields.collected_date = monthFound;
+    if (isUncertainDateAnswer(norm) || isUncertainDateAnswer(message)) {
+      fields._date_deferred = true;
+      if (isDateOptionsRequest(norm) || isDateOptionsRequest(message)) fields._date_options_requested = true;
     }
   }
 
   if (lastQuestion && !fields.collected_plan) {
     const askedPlan = /que plan|which plan|cual plan|2 dias|3 dias|2d|3d/i.test(lastQuestion);
     if (askedPlan) {
-      const detectedPlan = detectPlan(norm);
+      const detectedPlan = experience ? detectPlan(norm, experience) : null;
       if (detectedPlan) fields.collected_plan = detectedPlan;
     }
   }
 
-  if (!fields.collected_plan) {
-    const detectedPlan = detectPlan(norm);
-    if (detectedPlan) fields.collected_plan = detectedPlan;
-  }
+  const explicitPlan = experience ? detectPlan(norm, experience) : null;
+  if (explicitPlan) fields.collected_plan = explicitPlan;
 
   return fields;
 }
 
-export function reconstructFromHistory(repos: Repositories, phone: string, current: Record<string, unknown>): Record<string, unknown> {
+export function reconstructFromHistory(repos: Repositories, phone: string, current: Record<string, unknown>, experience?: ActiveExperience): Record<string, unknown> {
   const fields = { ...current };
   const allInbound = repos.message.getLastInboundBodies(phone, 20);
   const need = {
@@ -413,26 +458,38 @@ export function reconstructFromHistory(repos: Repositories, phone: string, curre
     transporte: !fields.transporte,
     mascota: !fields.mascota,
   };
-  let planChecked = false;
+  let scannedPlan: string | null = null;
   for (const row of allInbound) {
-    if (!row.body || (!need.nombre && planChecked && !need.personas && !need.fecha && !need.transporte && !need.mascota)) continue;
-    const extracted = extractBookingFields(row.body);
+    if (!row.body || (!need.nombre && !need.personas && !need.fecha && !need.transporte && !need.mascota && !scannedPlan)) continue;
+    const extracted = extractBookingFields(row.body, experience);
     if (need.nombre && extracted.collected_name) { fields.nombre = extracted.collected_name; need.nombre = false; }
-    if (!planChecked && extracted.collected_plan) { fields.plan = extracted.collected_plan; planChecked = true; }
     if (need.personas && extracted.collected_people) { fields.personas = extracted.collected_people; need.personas = false; }
     if (need.fecha && extracted.collected_date) { fields.fecha = extracted.collected_date; need.fecha = false; }
     if (need.transporte && extracted.collected_transport_need) { fields.transporte = extracted.collected_transport_need; need.transporte = false; }
     if (need.mascota && extracted.collected_pet) { fields.mascota = extracted.collected_pet; need.mascota = false; }
+    if (typeof extracted.collected_plan === 'string' && !scannedPlan) scannedPlan = extracted.collected_plan;
+  }
+  if (scannedPlan && typeof fields.plan === 'string' && scannedPlan !== fields.plan) {
+    fields.plan = scannedPlan;
+  }
+  if (!fields.plan && scannedPlan && !repos.conversation.getSelectedExperienceId(phone)) {
+    fields.plan = scannedPlan;
   }
   return fields;
 }
 
 export function buildDbQualification(collected: Record<string, unknown>): MergedQualification {
+  const rawStatus = collected.dateStatus;
+  const dateStatus = rawStatus === 'unasked' || rawStatus === 'asked' || rawStatus === 'deferred'
+    || rawStatus === 'options_offered' || rawStatus === 'selected' || rawStatus === 'window'
+    ? rawStatus
+    : undefined;
   return {
     nombre: collected.nombre,
     plan: collected.plan,
     personas: collected.personas,
     fecha: collected.fecha,
+    dateStatus,
     transporte: collected.transporte,
     mascota: collected.mascota,
   };

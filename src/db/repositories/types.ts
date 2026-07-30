@@ -16,8 +16,17 @@ export interface RecentMessage {
   messageType?: string;
 }
 
+export type DateStatus = 'unasked' | 'asked' | 'deferred' | 'options_offered' | 'selected' | 'window';
+
+export type MetaAudienceConsentSource =
+  | 'whatsapp_explicit_opt_in'
+  | 'booking_checkout_opt_in'
+  | 'documented_lawful_basis';
+
 export interface ConversationRepository {
   getByPhone(phone: string): ConversationRow | undefined;
+  listMetaAudienceLeads(): MetaAudienceLead[];
+  recordMetaAudienceConsent(phone: string, source: MetaAudienceConsentSource, consentedAt?: string): void;
   upsert(phone: string, data: Record<string, unknown>): void;
   getHandedOffAt(phone: string): string | null;
   setHandedOff(phone: string): void;
@@ -31,9 +40,16 @@ export interface ConversationRepository {
   updateLeadScore(phone: string, score: number): void;
   getCollectedFields(phone: string): Record<string, unknown>;
   clearCollectedDate(phone: string): void;
+  getDateStatus(phone: string): DateStatus;
+  setDateAsked(phone: string): void;
+  setDateDeferred(phone: string): void;
+  setDateOptionsOffered(phone: string): void;
+  setSelectedDate(phone: string, date: string): void;
   getCollectedDateWindow(phone: string): string | null;
   setCollectedDateWindow(phone: string, window: string | null): void;
   getCollectedPlan(phone: string): string | null;
+  resetExperienceSalesState(phone: string): void;
+  clearCollectedTransport(phone: string): void;
   getLanguage(phone: string): 'es' | 'en' | null;
   getSalesPhase(phone: string): string | null;
   setSalesPhase(phone: string, phase: string): void;
@@ -43,6 +59,8 @@ export interface ConversationRepository {
   setAssignment(phone: string, assignment: ConversationAssignment): void;
   getMode(phone: string): ConversationMode;
   setMode(phone: string, mode: ConversationMode): void;
+  getSelectedExperienceId(phone: string): string | null;
+  setSelectedExperienceId(phone: string, experienceId: string): void;
   getBookedAt(phone: string): string | null;
   setBooked(phone: string): void;
   getFollowUpCandidates(cutoffIso: string, serviceWindowStartIso: string, limit: number): FollowUpCandidate[];
@@ -51,6 +69,11 @@ export interface ConversationRepository {
   setLeadPain(phone: string, pain: LeadPain, detail?: string): void;
   getLeadPain(phone: string): LeadPain | null;
   incrementFollowUpReplyCount(phone: string): void;
+}
+
+export interface MetaAudienceLead {
+  customerPhone: string;
+  collectedName: string | null;
 }
 
 export interface MessageRepository {
@@ -132,7 +155,49 @@ export interface MediaSendRepository {
   recordSend(phone: string, mediaId: string): void;
 }
 
-export type ConversationMode = 'bot' | 'bridge_active' | 'referred' | 'human_pending';
+export type PaymentReservationStatus = 'pending' | 'approved' | 'failed';
+
+export interface PaymentReservationCreate {
+  externalReference: string;
+  customerPhone: string;
+  expectedAmountCop: number;
+  planId: string;
+  date: string;
+  people: number;
+  transportNeed: string | null;
+  depositPercent: number;
+  availabilityConfirmedAt: string;
+}
+
+export interface PaymentReservation {
+  id: number;
+  externalReference: string;
+  customerPhone: string;
+  preferenceId: string | null;
+  paymentUrl: string | null;
+  expectedAmountCop: number;
+  planId: string | null;
+  date: string | null;
+  people: number | null;
+  transportNeed: string | null;
+  depositPercent: number | null;
+  availabilityConfirmedAt: string | null;
+  status: PaymentReservationStatus;
+  createdAt: string;
+  approvedAt: string | null;
+  mercadoPagoPaymentId: string | null;
+}
+
+export interface PaymentReservationRepository {
+  createPending(reservation: PaymentReservationCreate): boolean;
+  attachPreference(externalReference: string, preferenceId: string, paymentUrl: string): void;
+  getByExternalReference(externalReference: string): PaymentReservation | null;
+  getPendingByCustomerPhone(customerPhone: string): PaymentReservation | null;
+  markApproved(externalReference: string, mercadoPagoPaymentId: string): boolean;
+  markFailed(externalReference: string): void;
+}
+
+export type ConversationMode = 'bot' | 'bridge_active' | 'referred' | 'human_pending' | 'human_only';
 
 export type LeadPain = 'price' | 'date_time' | 'security' | 'logistics_4x4' | 'experience_clarity' | 'partner_group' | 'not_interested' | 'other';
 
@@ -177,10 +242,11 @@ export interface BridgeSessionRow {
   customerPhone: string;
   openedAt: string;
   lastActivityAt: string;
+  returnMode: 'bot' | 'human_only';
 }
 
 export interface BridgeSessionRepository {
-  open(agentChatId: string, customerPhone: string): void;
+  open(agentChatId: string, customerPhone: string, returnMode?: 'bot' | 'human_only'): void;
   close(agentChatId: string): void;
   getByAgentChat(agentChatId: string): BridgeSessionRow | null;
   getByCustomer(customerPhone: string): BridgeSessionRow | null;
@@ -202,6 +268,7 @@ export interface ConversationRow {
   collected_name: string | null;
   collected_date: string | null;
   collected_date_window: string | null;
+  date_status: DateStatus | null;
   collected_people: number | null;
   collected_transport_need: string | null;
   collected_lodging_need: string | null;
@@ -222,6 +289,9 @@ export interface ConversationRow {
   assigned_line_id: string | null;
   assigned_agent_chat: string | null;
   conversation_mode: ConversationMode | null;
+  selected_experience_id: string | null;
+  meta_audience_consent_at: string | null;
+  meta_audience_consent_source: MetaAudienceConsentSource | null;
 }
 
 export interface FollowUpCandidate {
@@ -410,12 +480,14 @@ export interface Repositories {
   aiUsage: AiUsageRepository;
   ownerAlert: OwnerAlertRepository;
   mediaSend: MediaSendRepository;
+  paymentReservation: PaymentReservationRepository;
   bridgeSession: BridgeSessionRepository;
   stats: StatsRepository;
   systemErrors: SystemErrorRepository;
   customerData: CustomerDataRepository;
   transcripts: TranscriptRepository;
   followUpEvent: FollowUpEventRepository;
+  runInTransaction(operation: () => void): void;
   isPaused(): boolean;
   setPaused(paused: boolean): void;
   ping(): boolean;

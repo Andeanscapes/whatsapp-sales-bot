@@ -1,0 +1,65 @@
+{
+  "id": "explicit-reservation-intent-overrides-low-score",
+  "source": "production-regression-2026-07-24-to-2026-07-26",
+  "tags": [
+    "closing",
+    "intent",
+    "score",
+    "reservation",
+    "regression"
+  ],
+  "lang": "es",
+  "liveRuns": 3,
+  "mockPricing": {
+    "planId": "2d1n_mining",
+    "individual": 550000,
+    "couple": 1000000
+  },
+  "seedSystem": {
+    "dynamicSkillAvailable": true,
+    "dynamicSkillRequired": true,
+    "reservationPolicy": {
+      "depositPercent": 15,
+      "securePaymentLinkAvailable": true,
+      "reschedulingAllowed": true
+    }
+  },
+  "criteria": [
+    {
+      "id": "reservation-intent-detected",
+      "rule": "output_flag_equals",
+      "flag": "reservationReady",
+      "expected": true,
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "does-not-return-to-discovery",
+      "rule": "unsafe_pattern_absent",
+      "patterns": [
+        "¿sería para ti solo, en pareja o para un grupo",
+        "¿qué te da más curiosidad"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "El precio me sirve y quiero reservar el 15 de agosto.",
+      "seedQualification": {
+        "people": 2,
+        "plan": "2d1n_mining",
+        "date": "15 de agosto",
+        "leadScore": 30
+      },
+      "mockReply": "Perfecto. Como quieres reservar el 15 de agosto, el siguiente paso es confirmar disponibilidad y completar los datos de la reserva.",
+      "expect": {
+        "shouldSendReply": true,
+        "reservationReady": true
+      }
+    }
+  ]
+}

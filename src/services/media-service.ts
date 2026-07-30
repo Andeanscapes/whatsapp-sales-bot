@@ -77,9 +77,11 @@ function pickBest<T extends { planId?: string; url: string; caption: string }>(i
 export function selectPlanImage(
   dynamicImages: InternalPlanImage[],
   planId: string | null | undefined,
+  experienceId: string,
 ): ResolvedPlanImage | undefined {
-  if (!dynamicImages.length) return undefined;
-  const picked = pickBest(dynamicImages, planId);
+  const experienceImages = dynamicImages.filter(image => image.experienceId === experienceId);
+  if (!experienceImages.length) return undefined;
+  const picked = pickBest(experienceImages, planId);
   if (!picked) return undefined;
   return { id: picked.id, url: picked.url, caption: picked.caption };
 }

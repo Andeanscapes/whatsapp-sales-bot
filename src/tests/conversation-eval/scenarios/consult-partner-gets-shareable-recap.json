@@ -1,0 +1,80 @@
+{
+  "id": "consult-partner-gets-shareable-recap",
+  "source": "production-regression-2026-07-25-to-2026-07-28",
+  "tags": [
+    "objection",
+    "partner",
+    "closing",
+    "recap",
+    "regression"
+  ],
+  "lang": "es",
+  "liveRuns": 3,
+  "mockPricing": { "planId": "2d1n_mining", "individual": 550000, "couple": 1000000 },
+  "criteria": [
+    {
+      "id": "provides-shareable-recap",
+      "rule": "reply_must_match",
+      "patterns": [
+        "resumen|para que lo mires"
+      ],
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "includes-price-reference",
+      "rule": "reply_must_match",
+      "patterns": [
+        "[\\d,\\.]+\\s*COP"
+      ],
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "no-new-qualification-questions",
+      "rule": "unsafe_pattern_absent",
+      "patterns": [
+        "¿sería para ti solo",
+        "¿tienen alguna fecha tentativa",
+        "¿cu[aá]ntas personas",
+        "¿c[oó]mo te llamas"
+      ],
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "2 personas, para el 15 de agosto. ¿Cuánto vale?",
+      "seedPriceGiven": false,
+      "seedQualification": {
+        "plan": "2d1n_mining"
+      },
+      "mockReply": "Para pareja, 2 Dias / 1 Noche — Mina Esmeralda (2D/1N) es el que mas recomendamos. Para pareja: $1,000,000 COP. ¿Alguna fecha tentativa en mente?",
+      "mockAnalysis": {
+        "intent": "qualified",
+        "scoreDelta": 5,
+        "confidence": 0.7,
+        "afterPriceInterest": true,
+        "reservationReadiness": "medium"
+      }
+    },
+    {
+      "user": "Déjame consultarlo con mi esposa.",
+      "seedQualification": {
+        "people": 2,
+        "plan": "2d1n_mining"
+      },
+      "seedPriceGiven": true,
+      "seedLeadScore": 75,
+      "mockReply": "Dale, cero afán.",
+      "expect": {
+        "shouldSendReply": true,
+        "usedAi": false
+      }
+    }
+  ]
+}

@@ -1,0 +1,68 @@
+{
+  "id": "known-travelers-date-and-transport-are-not-asked-again",
+  "source": "andean-history-conversion-pack-2026-07-28",
+  "tags": [
+    "memory",
+    "state",
+    "closing",
+    "conversion",
+    "regression"
+  ],
+  "lang": "es",
+  "liveRuns": 3,
+  "mockPricing": { "planId": "2d1n_mining", "individual": 550000, "couple": 1000000 },
+  "criteria": [
+    {
+      "id": "summarizes-known-booking-state",
+      "rule": "reply_must_match",
+      "patterns": [
+        "2 personas|para los dos|pareja",
+        "26 de septiembre",
+        "moto|transporte propio"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "moves-to-price-or-availability",
+      "rule": "reply_must_match",
+      "patterns": [
+        "\\$?\\s*1[.,]?000[.,]?000",
+        "validar.*(cupo|disponibilidad)|revisar.*(cupo|disponibilidad)"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "does-not-repeat-known-questions",
+      "rule": "unsafe_pattern_absent",
+      "patterns": [
+        "¿.{0,30}(solo|pareja|grupo)",
+        "¿.{0,30}cu[aá]ntas personas",
+        "¿.{0,30}fecha tentativa",
+        "¿.{0,30}(transporte propio|necesitan transporte)"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Con mi pareja ya lo había dicho, y vamos en moto",
+      "seedPriceGiven": false,
+      "seedQualification": {
+        "people": 2,
+        "plan": "2d1n_mining",
+        "date": "26 de septiembre",
+        "transport": "own_motorcycle"
+      },
+      "mockReply": "Tienes razón. Queda registrado: 2 personas, plan 2D/1N, 26 de septiembre y transporte propio en moto. El valor total es $1.000.000 COP para los dos. ¿Quieres que valide disponibilidad para esa fecha?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

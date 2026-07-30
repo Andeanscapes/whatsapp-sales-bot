@@ -135,7 +135,7 @@ describe('follow-up service', () => {
 
   it('suppresses the early nudge when a customer needs to review with their children', async () => {
     repos.conversation.upsert(PHONE, { language: 'es', lead_score: 71, price_given_at: new Date().toISOString() });
-    addMsg('inbound', 'Déjame revisar esta semana con mis hijos y te confirmo.', -5 * 60 * 60 * 1000);
+    addMsg('inbound', 'Déjame revisar esta semana con mis hijos.', -5 * 60 * 60 * 1000);
     addMsg('outbound', 'Perfecto, tómense su tiempo.', -4 * 60 * 60 * 1000);
 
     await runFollowUps(repos);
@@ -151,7 +151,7 @@ describe('follow-up service', () => {
     "I will review it with my family and we'll let you know.",
     'I will review it with my family and we will let you know.',
   ])('never follows up after the customer promises "%s"', async (message) => {
-    repos.conversation.upsert(PHONE, { language: 'en', lead_score: 71, price_given_at: new Date().toISOString() });
+    repos.conversation.upsert(PHONE, { language: 'en', lead_score: 71 });
     addMsg('inbound', message, -5 * 60 * 60 * 1000);
     addMsg('outbound', 'Take your time.', -4 * 60 * 60 * 1000);
 
@@ -162,6 +162,46 @@ describe('follow-up service', () => {
     expect(repos.followUpEvent.getLatestByPhone(PHONE)).toMatchObject({
       stage: 'first_nudge', status: 'suppressed', decisionReason: 'customer_follow_up_promise',
     });
+  });
+
+  it('does not follow up after a quoted customer follow-up promise', async () => {
+    repos.conversation.upsert(PHONE, { language: 'es', lead_score: 71, price_given_at: new Date().toISOString() });
+    addMsg('inbound', 'Lo reviso con mi familia y yo te escribo.', -5 * 60 * 60 * 1000);
+    addMsg('outbound', 'Perfecto, tómense su tiempo.', -4 * 60 * 60 * 1000);
+    await runFollowUps(repos);
+
+    expect(mockLlmComplete).not.toHaveBeenCalled();
+    expect(sendText).not.toHaveBeenCalled();
+    expect(repos.followUpEvent.getLatestByPhone(PHONE)).toMatchObject({
+      stage: 'first_nudge', status: 'suppressed', decisionReason: 'customer_follow_up_promise',
+    });
+  });
+
+  it('does not follow up when the customer says they will coordinate and advise', async () => {
+    repos.conversation.upsert(PHONE, { language: 'es', lead_score: 71, price_given_at: new Date().toISOString() });
+    addMsg('inbound', 'Voy a cuadrar la fecha y aviso muchas gracias.', -5 * 60 * 60 * 1000);
+    addMsg('outbound', 'Perfecto, quedo atento.', -4 * 60 * 60 * 1000);
+
+    await runFollowUps(repos);
+
+    expect(mockLlmComplete).not.toHaveBeenCalled();
+    expect(sendText).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    'Les avisamos cuando decidamos.',
+    'Te escribiremos cuando tengamos fecha.',
+    "We'll message you when we decide.",
+    "We'll get back to you.",
+  ])('does not follow up after the explicit contact promise "%s"', async message => {
+    repos.conversation.upsert(PHONE, { language: 'es', lead_score: 71, price_given_at: new Date().toISOString() });
+    addMsg('inbound', message, -5 * 60 * 60 * 1000);
+    addMsg('outbound', 'Perfecto, quedo atento.', -4 * 60 * 60 * 1000);
+
+    await runFollowUps(repos);
+
+    expect(mockLlmComplete).not.toHaveBeenCalled();
+    expect(sendText).not.toHaveBeenCalled();
   });
 
   it('never follows up after an explicit date deferral', async () => {

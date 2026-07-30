@@ -3,8 +3,9 @@ import Database from 'better-sqlite3';
 import { loadSkills } from '../services/skill-loader.js';
 import { migrate } from '../db/migrate.js';
 import { createRepositories, type Repositories } from '../db/repositories/index.js';
-import { extractBookingFields, isAmbiguousPartyComparison, isCorrectionMessage, contextAwareExtract, detectPlan, isExplicitDateDeferral, isUncertainDateAnswer, isQualificationComplete, resolveLanguage } from '../services/qualification-engine.js';
+import { extractBookingFields, isAmbiguousPartyComparison, isCorrectionMessage, contextAwareExtract, detectPlan, isExplicitDateDeferral, isUncertainDateAnswer, isDateAskQuestion, isQualificationComplete, resolveLanguage } from '../services/qualification-engine.js';
 import { detectExplicitLanguageSwitch } from '../services/language-service.js';
+import { getActiveExperience } from '../services/product-registry.js';
 
 describe('extractBookingFields — people detection', () => {
   beforeAll(() => {
@@ -82,8 +83,36 @@ describe('isExplicitDateDeferral', () => {
     'Ya te dije que no se la fecha',
     'Todavia no tenemos fecha',
     'We do not have a date yet',
+    // production history 2026-07-26
+    'No tengo fecha',
+    'No tengo una fecha',
+    'No hay fecha tentativa',
+    'No sin fecha',
+    'No ninguna fecha',
+    'No tengo fecja',
+    'Pero no tengo fecha exacta',
+    'No tengo fecha en mente',
+    'Aún no tengo fechas, quisiera que me contaras un poco cómo es la experiencia',
+    'no aún no tengo fecha',
+    'Ideal un festivo pero aun no dispongo de fecha',
+    'Suena increíble, en este momento no tengo una fecha estimada, pero tampoco planeo que sea muy cercano',
+    'Sería para el mes de agosto por lo cual no hay ninguna fecha establecida',
+    'Diferente fecha no importa fecha tentativa dime qué fechas tienes disponibles',
+    'Aún no tengo fecha tentativa, que tan probable es encontrar las esmeraldas?',
   ])('detects "%s"', (text) => {
     expect(isExplicitDateDeferral(text)).toBe(true);
+  });
+
+  it.each([
+    'todavía no',
+    'no',
+    'cuanto cuesta',
+    'Por el momento no tengo el presupuesto',
+    '31 julio',
+    'Para octubre el 15',
+    'Opciones disponibles, la verdad no tengo afán ya que es un plan a futuro',
+  ])('does not false-positive on "%s"', (text) => {
+    expect(isExplicitDateDeferral(text)).toBe(false);
   });
 });
 
@@ -93,12 +122,54 @@ describe('isUncertainDateAnswer', () => {
     'todavía no',
     'not sure',
     'Ya te dije que no se la fecha',
+    'no',
+    'No.',
+    'No,',
+    'ninguna',
+    'aun no',
+    'No aún',
+    'No todavia',
+    'no todavía',
+    'O todavia',
+    'No realmente',
+    'Prefiero ver las opciones disponibles',
+    'Quiero revisar opciones',
+    'Revisando opciones',
+    'Opciones',
+    'Q opciones tienes',
+    'Si muestra las opciones por favor',
+    'No , como te comentaba quisiera saber que fechas tienen disponibles',
+    'Me muestras fechas por favor',
+    'Solo quiero la información',
+    'por el momento no',
+    'Opciones disponibles, la verdad no tengo afán ya que es un plan a futuro',
   ])('detects "%s"', (text) => {
     expect(isUncertainDateAnswer(text)).toBe(true);
   });
 
   it('strict deferral does not fire on bare uncertainty without date context', () => {
     expect(isExplicitDateDeferral('todavía no')).toBe(false);
+    expect(isExplicitDateDeferral('no')).toBe(false);
+  });
+
+  it('does not treat budget soft-no as date uncertainty', () => {
+    expect(isUncertainDateAnswer('Por el momento no tengo el presupuesto')).toBe(false);
+  });
+});
+
+describe('isDateAskQuestion', () => {
+  it.each([
+    '¿Tienes alguna fecha tentativa o todavía estás explorando opciones?',
+    'Genial. ¿Para que fecha lo tienen pensado?',
+    'Do you have a date in mind?',
+    '¿Tienen alguna fecha en mente o quieren revisar opciones disponibles?',
+    '¿Tienen fecha tentativa o prefieren que les muestre las opciones?',
+  ])('detects date ask in "%s"', (text) => {
+    expect(isDateAskQuestion(text)).toBe(true);
+  });
+
+  it('does not flag non-date questions', () => {
+    expect(isDateAskQuestion('¿Cuantas personas serian?')).toBe(false);
   });
 });
 
@@ -173,7 +244,58 @@ describe('contextAwareExtract — people reply parsing', () => {
 
   it('captures an explicit date deferral without relying on the previous question', () => {
     const result = contextAwareExtract('Ya te dije que no se la fecha', repos, PHONE, {});
-    expect(result.collected_date).toBe('tentative_unknown');
+    expect(result._date_deferred).toBe(true);
+  });
+
+  it('captures bare no as date deferral only after a date ask', () => {
+    seedLastQuestion('¿Tienes alguna fecha tentativa o todavía estás explorando opciones?');
+    repos.conversation.setDateAsked(PHONE);
+    const result = contextAwareExtract('no', repos, PHONE, {});
+    expect(result._date_deferred).toBe(true);
+  });
+
+  it('captures O todavia typo as deferral when date was asked', () => {
+    seedLastQuestion('¿Tienen alguna fecha tentativa en mente o prefieren que les muestre las opciones disponibles?');
+    repos.conversation.setDateAsked(PHONE);
+    const result = contextAwareExtract('O todavia', repos, PHONE, {});
+    expect(result._date_deferred).toBe(true);
+  });
+
+  it('does not treat rejection of an options offer as another date deferral', () => {
+    seedLastQuestion('¿Quieres que te muestre las fechas disponibles?');
+    const result = contextAwareExtract('no', repos, PHONE, {});
+    expect(result._date_deferred).toBeUndefined();
+  });
+
+  it('lets explicit date uncertainty override a month mention', () => {
+    const result = contextAwareExtract(
+      'Sería para el mes de agosto por lo cual no hay ninguna fecha establecida',
+      repos,
+      PHONE,
+      {},
+    );
+    expect(result._date_deferred).toBe(true);
+    expect(result.collected_date).toBeUndefined();
+  });
+
+  it('keeps a concrete date when the customer also says the date is flexible', () => {
+    const message = 'Tengo fecha flexible, podría ser el 20 de agosto';
+    const result = contextAwareExtract(message, repos, PHONE, extractBookingFields(message));
+
+    expect(result.collected_date).toMatch(/20 de agosto/i);
+    expect(result._date_deferred).toBeUndefined();
+  });
+
+  it('preserves an explicit year in a concrete date', () => {
+    const result = extractBookingFields('Podría ser el 14 de noviembre de 2027');
+    expect(result.collected_date).toBe('14 de noviembre de 2027');
+  });
+
+  it('does not treat bare no as date when last question was people', () => {
+    seedLastQuestion('Perfecto! ¿Cuantas personas serian?');
+    const result = contextAwareExtract('no', repos, PHONE, {});
+    expect(result._date_deferred).toBeUndefined();
+    expect(result.collected_date).toBeUndefined();
   });
 
   it('ignores numbers outside 1-20 range', () => {
@@ -184,6 +306,8 @@ describe('contextAwareExtract — people reply parsing', () => {
 });
 
 describe('detectPlan — ordinal / duration choice', () => {
+  const experience = getActiveExperience(loadSkills());
+
   beforeAll(() => {
     loadSkills();
   });
@@ -195,7 +319,7 @@ describe('detectPlan — ordinal / duration choice', () => {
     'el corto',
     'plan de 2 dias',
   ])('resolves "%s" to 2d1n_mining', (text) => {
-    expect(detectPlan(text)).toBe('2d1n_mining');
+    expect(detectPlan(text, experience)).toBe('2d1n_mining');
   });
 
   it.each([
@@ -205,11 +329,25 @@ describe('detectPlan — ordinal / duration choice', () => {
     'el largo',
     'plan de 3 dias',
   ])('resolves "%s" to 3d2n_rural', (text) => {
-    expect(detectPlan(text)).toBe('3d2n_rural');
+    expect(detectPlan(text, experience)).toBe('3d2n_rural');
   });
 
   it('does not treat "la del primero" as a plan (date-list phrasing)', () => {
-    expect(detectPlan('la del primero esta bien')).toBeNull();
+    expect(detectPlan('la del primero esta bien', experience)).toBeNull();
+  });
+
+  it('uses only the request-scoped experience plans', () => {
+    const scoped = {
+      ...experience,
+      plans: [{
+        ...experience.plans[0],
+        id: 'lagoon_day',
+        keywords: ['laguna azul'],
+      }],
+    };
+
+    expect(detectPlan('quiero laguna azul', scoped)).toBe('lagoon_day');
+    expect(detectPlan('quiero la mina', scoped)).toBeNull();
   });
 });
 

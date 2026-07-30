@@ -1,0 +1,62 @@
+{
+  "id": "payment-abandonment-followup-recovers-with-help",
+  "source": "2026-whatsapp-tourism-conversion-strategy",
+  "tags": [
+    "follow-up",
+    "payment",
+    "abandonment",
+    "closing",
+    "regression"
+  ],
+  "lang": "es",
+  "runner": "follow_up",
+  "liveRuns": 3,
+  "seedSystem": {
+    "leadLifecycle": "payment_pending",
+    "hoursSincePaymentLinkSent": 2,
+    "paymentCompleted": false,
+    "withinCustomerServiceWindow": true,
+    "knownDate": "15 de agosto"
+  },
+  "followUpMockReply": "Vi que la reserva del 15 de agosto quedó pendiente. ¿Tuviste algún problema con el enlace o quieres que revisemos otra forma de pago autorizada?",
+  "criteria": [
+    {
+      "id": "references-pending-reservation",
+      "rule": "reply_must_match",
+      "patterns": [
+        "reserva.*pendiente|pago.*pendiente"
+      ],
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "offers-help-not-pressure",
+      "rule": "reply_must_match",
+      "patterns": [
+        "problema con el enlace|otra forma de pago"
+      ],
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "no-false-urgency",
+      "rule": "unsafe_pattern_absent",
+      "patterns": [
+        "pierdes el cupo hoy",
+        "última oportunidad",
+        "paga ya"
+      ],
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Listo, envíame el enlace.",
+      "mockReply": "Te comparto el enlace de pago seguro para iniciar la reserva."
+    }
+  ]
+}

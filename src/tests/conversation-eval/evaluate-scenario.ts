@@ -1,4 +1,3 @@
-import type { ProcessMessageOutput } from '../../services/response-engine.js';
 import { env } from '../../config/env.js';
 import { getSkills } from '../../services/skill-loader.js';
 import { getActiveExperience } from '../../services/product-registry.js';
@@ -6,7 +5,8 @@ import { calculatePriceQuote } from '../../services/pricing-calculator.js';
 import type { Criterion, CriterionResult, Scenario } from './schema.js';
 import type { TurnRecord } from './runner.js';
 
-const PRICE_PATTERN = /\b(\$\s*[\d.,]+\s*(?:COP|USD)?|[\d.,]+\s*COP|precio total|total.*COP|cuesta|vale)\b/i;
+const STARTING_PRICE_PATTERN = /\b(?:desde|a\s+partir\s+de|starting\s+at)\s*\$?\s*[\d.,]+(?:\s*(?:COP|USD))?/i;
+const PRICE_AMOUNT_PATTERN = /\$\s*[\d.,]+(?:\s*(?:COP|USD))?|\b[\d.,]+\s*(?:COP|USD)\b/gi;
 const DATE_GIVEN_PATTERN = /\b(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|january|february|march|april|may|june|july|august|september|october|november|december|mañana|manana|tomorrow|fin de semana|weekend|s[aá]bado|domingo|\d{1,2}[/-]\d{1,2})\b/i;
 const PEOPLE_GIVEN_PATTERN = /(?:somos|ser[ií]amos?|para|grupo de)\s+\d+|\d+\s*(?:persona|people|pax)|\b(?:pareja|solo|sola|couple|alone|mi hijo y yo|my son and i)\b/i;
 const TRANSPORT_GIVEN_PATTERN = /\b(?:carro|moto|transporte propio|veh[ií]culo|4x4|desde bogot[aá]|bus|transport|motorcycle)\b/i;
@@ -16,6 +16,8 @@ const FIELD_ASK_PATTERNS = {
   people: /\b(cu[aá]ntas personas|how many people|para cu[aá]ntos|ser[ií]an|vienes?\s*solo|is the experience for you alone)\b/i,
   date: /\b(tienen .{0,30} fecha|(?:alguna|cual|qué|que|c[uú]al) fecha|fecha en mente|para cu[aá]ndo|fecha preferida|en mente.*fecha)\b/i,
   transport: /\b(?:llegar[ií]an|llegan|llegar)\s+(?:por su cuenta|en carro|en moto)|(?:necesitan|necesitas).{0,20}(?:transporte|transport)\b/i,
+  transportNeed: /\b(?:llegar[ií]an|llegan|llegar)\s+(?:por su cuenta|en carro|en moto)|(?:necesitan|necesitas).{0,20}(?:transporte|transport)\b/i,
+  plan: /\b(?:qu[eé] plan|cu[aá]l plan|which plan)\b/i,
 };
 const BIG_GROUP_PATTERN = /\b(\d{2,})\s*(?:personas|people|pax)\b|\b(?:m[ií]nimo|aprox\.?|aproximadamente|mas de|m[aá]s de|al menos)\s*(\d{2,})\b/i;
 const BIG_GROUP_DATE_PATTERN = /\b(validar.*(?:fecha|disponibilidad|cupo)|con cuidado|grupo grande|cuidadosamente|revisar.*(?:fecha|disponibilidad|cupo))\b/i;
@@ -79,9 +81,9 @@ function evaluateCriterion(criterion: Criterion, turns: TurnRecord[]): Criterion
 
   if (criterion.rule === 'output_flag_equals' || criterion.rule === 'output_flag_not_equals') {
     const turn = turns[(criterion.turn ?? turns.length) - 1];
-    const output = turn?.processOutput as ProcessMessageOutput | undefined;
+    const output = turn?.processOutput;
     const flagKey = criterion.flag === 'sendOwnerImage' ? 'shouldSendOwnerImage' : criterion.flag!;
-    const actual = output?.[flagKey as keyof ProcessMessageOutput];
+    const actual = output?.[flagKey as keyof typeof output];
     const passed = criterion.rule === 'output_flag_equals'
       ? actual === criterion.expected
       : actual !== criterion.expected;
@@ -95,13 +97,37 @@ function evaluateCriterion(criterion: Criterion, turns: TurnRecord[]): Criterion
     return criterionResult(criterion, count <= max, `questionMarks=${count} max=${max}`);
   }
 
+  if (criterion.rule === 'reply_length_at_most') {
+    const max = criterion.expected as number;
+    return criterionResult(criterion, replyText.length <= max, `length=${replyText.length} max=${max}`);
+  }
+
+  if (criterion.rule === 'output_question_count_at_most') {
+    const max = criterion.expected as number;
+    const count = (replyText.match(/\?/g) ?? []).length;
+    return criterionResult(criterion, count <= max, `questionMarks=${count} max=${max}`);
+  }
+
+  if (criterion.rule === 'output_count_at_most') {
+    const max = criterion.expected as number;
+    const selectedTurns = criterion.turn === undefined ? turns : turns.slice(criterion.turn - 1, criterion.turn);
+    const count = selectedTurns.filter(turn => (
+      turn.processOutput.shouldSendImage
+      || turn.processOutput.shouldSendOwnerImage
+      || turn.processOutput.shouldSendGalleryImages
+    )).length;
+    return criterionResult(criterion, count <= max, `${criterion.output}=${count} max=${max}`);
+  }
+
   if (criterion.rule === 'known_field_not_reasked') {
     const suppliedIndex = (criterion.suppliedTurn ?? 1) - 1;
     const supplied = turns[suppliedIndex]?.user.trim();
     if (!supplied) return criterionResult(criterion, false, `${criterion.field} supplied turn missing`);
+    const startsAtSuppliedTurn = criterion.field === 'date'
+      && /\b(?:sin fecha|no (?:tengo|tenemos) fecha|a[uú]n no.*fecha)\b/i.test(supplied);
     for (let index = 0; index < turns.length; index++) {
       const turn = turns[index];
-      if (index >= suppliedIndex && FIELD_ASK_PATTERNS[criterion.field!].test(turn.reply)) {
+      if (index >= suppliedIndex + (startsAtSuppliedTurn ? 0 : 1) && FIELD_ASK_PATTERNS[criterion.field!].test(turn.reply)) {
         return criterionResult(criterion, false, `re-asked ${criterion.field} at turn ${turn.turnNumber}`);
       }
     }
@@ -111,7 +137,9 @@ function evaluateCriterion(criterion: Criterion, turns: TurnRecord[]): Criterion
   if (criterion.rule === 'price_after_min_fields') {
     const minimum = criterion.minFields ?? 2;
     for (let i = 0; i < turns.length; i++) {
-      if (PRICE_PATTERN.test(turns[i].reply) && fieldsBefore(turns, i + 1) < minimum) {
+      const amounts = turns[i].reply.match(PRICE_AMOUNT_PATTERN) ?? [];
+      const hasOnlyStartingPrice = STARTING_PRICE_PATTERN.test(turns[i].reply) && amounts.length === 1;
+      if (amounts.length > 0 && !hasOnlyStartingPrice && fieldsBefore(turns, i + 1) < minimum) {
         return criterionResult(criterion, false, `price before ${minimum} fields at turn ${i + 1}`);
       }
     }

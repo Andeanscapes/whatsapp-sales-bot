@@ -8,15 +8,22 @@ import type { LlmResult, LlmTurn } from '../../services/llm/llm-client.js';
 import type { LlmClientInput } from '../../services/llm/llm-client.js';
 import type { Scenario, ScenarioTurn } from './schema.js';
 import { recordGalleryNudge } from '../../services/media-service.js';
-import { setDynamicService } from '../../services/skill-loader.js';
-import type { DynamicDataService } from '../../services/dynamic-data-service.js';
+import { getDynamicService, getSkills, loadSkills, setDynamicService } from '../../services/skill-loader.js';
+import { getActiveExperience } from '../../services/product-registry.js';
+import { DynamicDataService, PRICING_NOT_AVAILABLE } from '../../services/dynamic-data-service.js';
+import type { InternalDynamicData, InternalPaymentData } from '../../services/dynamic-data-service.js';
 
 export interface TurnRecord {
   turnNumber: number;
   user: string;
   reply: string;
-  processOutput: ProcessMessageOutput;
+  processOutput: EvaluationOutput;
 }
+
+export type EvaluationOutput = ProcessMessageOutput & Partial<Record<
+  'queueForReactivationAfterWindow' | 'reactivationEligible' | 'reactivationSegment' | 'conversationStarted' | 'meaningfulSecondInbound' | 'qualified' | 'leadLifecycle' | 'bookingIntent' | 'handoffCreated' | 'suppressGenericFollowups',
+  boolean | number | string
+>>;
 
 export interface RunContext {
   repos: Repositories;
@@ -50,6 +57,78 @@ export interface RunOptions {
   phoneSuffix?: number;
 }
 
+function createDynamicData(scenario: Scenario): InternalDynamicData {
+  const seed = scenario.seedSystem;
+  const experience = getActiveExperience(getSkills());
+  const rawAvailability = Array.isArray(seed?.availability)
+    ? seed.availability
+    : seed?.availability ? [seed.availability] : [];
+  const currentDate = seed?.currentDate?.slice(0, 10) ?? '2026-01-01';
+  const availability = rawAvailability
+    .filter(item => !/^\d{4}-\d{2}-\d{2}$/.test(item.date) || item.date >= currentDate)
+    .map(item => ({ date: item.date, status: item.status, slotsApprox: 'remainingSpots' in item ? item.remainingSpots : null }));
+  const policy = seed?.reservationPolicy;
+  const payments: InternalPaymentData | null = policy
+    && policy.depositPercent !== null
+    && policy.securePaymentLinkAvailable !== null
+    && policy.reschedulingAllowed !== null
+    ? {
+      currency: experience.pricing.currency,
+      deposit: {
+        type: 'percentage', value: policy.depositPercent, label: `${policy.depositPercent}%`, calculationRule: 'Test scenario policy',
+        remainingBalance: { type: 'percentage', value: 100 - policy.depositPercent },
+      },
+      methods: policy.securePaymentLinkAvailable ? [{
+        id: 'secure_link', name: 'Secure payment link', type: 'link', enabled: true,
+        currency: experience.pricing.currency, instructions: 'Test scenario payment link', paymentLink: 'https://payments.example.test', requiresPaymentProof: false,
+      }] : [],
+      confirmation: { automatic: false, requiresTeamValidation: true, message: 'Test scenario confirmation' },
+      displayPolicy: {
+        showMethodsAfterAvailabilityValidation: true,
+        showWhenCustomerAsks: true,
+        neverRequestFullPaymentWithoutConfirmation: true,
+      },
+    }
+    : null;
+  return {
+    experiences: {
+      [experience.id]: {
+        pricing: {
+          currency: experience.pricing.currency,
+          lastUpdated: seed?.currentDate ?? '2026-01-01',
+          items: experience.pricing.items.map(item => ({
+            id: item.id,
+            planId: item.planId,
+            label: item.label,
+            pricePerPerson: item.pricePerPerson,
+            couplePrice: item.couplePrice,
+            peopleIncluded: item.peopleIncluded,
+            publiclyShow: item.publiclyShow,
+          })),
+          botRules: experience.pricing.botRules,
+        },
+        availability: {
+          lastUpdated: seed?.currentDate ?? '2026-01-01',
+          timezone: seed?.timezone ?? 'America/Bogota',
+          availableDates: availability,
+          botRule: seed?.availabilityVerified ? 'Availability is authoritative for this test scenario.' : 'Confirm availability with the team.',
+        },
+      },
+    },
+    media: null,
+    payments,
+  };
+}
+
+function createDynamicService(data: InternalDynamicData | null, fresh: boolean): DynamicDataService {
+  const service = new DynamicDataService('https://conversation-eval.invalid/dynamic.json', 0);
+  service.getData = () => data;
+  service.forceRefresh = async () => undefined;
+  service.refreshIfStale = async () => undefined;
+  Object.defineProperty(service, 'lastFetchOk', { get: () => fresh });
+  return service;
+}
+
 export function createRunContext(options: RunOptions): RunContext {
   const db = new Database(':memory:');
   migrate(db);
@@ -72,9 +151,11 @@ function applyQualificationSeed(
   seed?: {
     name?: string;
     people?: number;
-    date?: string;
+    date?: string | null;
     transport?: string;
+    transportNeed?: string;
     plan?: string;
+    leadScore?: number;
   },
 ): void {
   if (!seed) return;
@@ -82,9 +163,10 @@ function applyQualificationSeed(
     collected_name: seed.name,
     collected_people: seed.people,
     collected_date: seed.date,
-    collected_transport_need: seed.transport,
+    collected_transport_need: seed.transportNeed ?? seed.transport,
     collected_plan: seed.plan,
   });
+  if (seed.leadScore !== undefined) repos.conversation.updateLeadScore(phone, seed.leadScore);
 }
 
 export function applyScenarioSeeds(ctx: RunContext, scenario: Scenario): () => void {
@@ -99,20 +181,25 @@ export function applyScenarioSeeds(ctx: RunContext, scenario: Scenario): () => v
     if (seed.priceGiven) ctx.repos.conversation.setPriceGiven(ctx.customerPhone);
   }
 
-  let restoreDynamic: (() => void) | undefined;
-  if (scenario.seedSystem?.dynamicSkillRequired && scenario.seedSystem.dynamicSkillAvailable === false) {
-    const stale = {
-      lastFetchOk: false,
-      getData: () => null,
-      forceRefresh: async () => undefined,
-      refreshIfStale: async () => undefined,
-    } as unknown as DynamicDataService;
-    setDynamicService(stale);
-    restoreDynamic = () => setDynamicService(null);
+  const dynamicAvailable = scenario.seedSystem?.dynamicSkillAvailable;
+  const previousDynamicService = dynamicAvailable !== undefined ? getDynamicService() : null;
+  if (dynamicAvailable !== undefined) {
+    setDynamicService(createDynamicService(dynamicAvailable ? createDynamicData(scenario) : null, dynamicAvailable));
+    loadSkills();
+  } else {
+    const exp = getActiveExperience(getSkills());
+    const prevRules = [...exp.pricing.botRules];
+    exp.pricing.botRules = exp.pricing.botRules.filter(rule => rule !== PRICING_NOT_AVAILABLE);
+    return () => {
+      exp.pricing.botRules = prevRules;
+    };
   }
 
   return () => {
-    restoreDynamic?.();
+    if (dynamicAvailable !== undefined) {
+      setDynamicService(previousDynamicService);
+      loadSkills();
+    }
   };
 }
 
@@ -133,14 +220,17 @@ export async function runTurn(
   };
 
   const output = await processMessage(input);
-
   if (output.shouldSendReply && output.reply) {
-    ctx.repos.message.addMessage({
-      customer_phone: ctx.customerPhone,
-      direction: 'outbound',
-      message_type: 'text',
-      body: output.reply,
-      created_at: new Date().toISOString(),
+    ctx.repos.runInTransaction(() => {
+      ctx.repos.message.addMessage({
+        customer_phone: ctx.customerPhone,
+        direction: 'outbound',
+        message_type: 'text',
+        body: output.reply,
+        created_at: new Date().toISOString(),
+      });
+      if (output.outboundDateAction === 'asked') ctx.repos.conversation.setDateAsked(ctx.customerPhone);
+      if (output.outboundDateAction === 'options_offered') ctx.repos.conversation.setDateOptionsOffered(ctx.customerPhone);
     });
   }
 
