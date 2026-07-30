@@ -79,7 +79,7 @@
       "mockReply": "Perfecto. Vamos a iniciar la reserva para el 15 de agosto.",
       "expect": {
         "shouldSendReply": true,
-        "intent": "reservation",
+        "intent": "ready_to_book",
         "reservationReady": true
       }
     }

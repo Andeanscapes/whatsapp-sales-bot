@@ -3,7 +3,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import type { Skills } from './skill-loader.js';
 import { substituteTokens } from './skill-loader.js';
-import { getActiveExperience, getPaymentInfo, getPlans, getShortDescription, isPricingAvailable, isAvailabilityAvailable } from './product-registry.js';
+import { getActiveExperience, getFutureAvailableDates, getPaymentInfo, getPlans, getShortDescription, isPricingAvailable, isAvailabilityAvailable, resolveExperience } from './product-registry.js';
 import type { CustomerContext } from './customer-context.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -51,17 +51,18 @@ export function buildFollowUpPrompt(input: {
   ].join('\n');
 }
 
-export function buildSystemPrompt(skills: Skills, lang?: string, collectedFields?: Record<string, unknown>, salesPhase?: string, customerContext?: CustomerContext): string {
+export function buildSystemPrompt(skills: Skills, lang?: string, collectedFields?: Record<string, unknown>, salesPhase?: string, customerContext?: CustomerContext, selectedExperienceId?: string | null): string {
   const base = readSystemPrompt();
-  const exp = getActiveExperience(skills);
+  const exp = resolveExperience(skills, selectedExperienceId);
   const route = exp.route;
   const tactics = skills.salesStrategy.salesTactics;
 
   const pricingAvailable = isPricingAvailable(exp);
   const availabilityAvailable = isAvailabilityAvailable(exp);
+  const availableDates = getFutureAvailableDates(exp);
 
   const dateList = availabilityAvailable
-    ? exp.availability.availableDates
+    ? availableDates
         .map(d => {
           const dObj = new Date(d.date + 'T00:00:00');
           const dayName = dObj.toLocaleDateString(lang === 'en' ? 'en-US' : 'es-CO', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });

@@ -18,8 +18,15 @@ export interface RecentMessage {
 
 export type DateStatus = 'unasked' | 'asked' | 'deferred' | 'options_offered' | 'selected' | 'window';
 
+export type MetaAudienceConsentSource =
+  | 'whatsapp_explicit_opt_in'
+  | 'booking_checkout_opt_in'
+  | 'documented_lawful_basis';
+
 export interface ConversationRepository {
   getByPhone(phone: string): ConversationRow | undefined;
+  listMetaAudienceLeads(): MetaAudienceLead[];
+  recordMetaAudienceConsent(phone: string, source: MetaAudienceConsentSource, consentedAt?: string): void;
   upsert(phone: string, data: Record<string, unknown>): void;
   getHandedOffAt(phone: string): string | null;
   setHandedOff(phone: string): void;
@@ -41,6 +48,8 @@ export interface ConversationRepository {
   getCollectedDateWindow(phone: string): string | null;
   setCollectedDateWindow(phone: string, window: string | null): void;
   getCollectedPlan(phone: string): string | null;
+  resetExperienceSalesState(phone: string): void;
+  clearCollectedTransport(phone: string): void;
   getLanguage(phone: string): 'es' | 'en' | null;
   getSalesPhase(phone: string): string | null;
   setSalesPhase(phone: string, phase: string): void;
@@ -50,6 +59,8 @@ export interface ConversationRepository {
   setAssignment(phone: string, assignment: ConversationAssignment): void;
   getMode(phone: string): ConversationMode;
   setMode(phone: string, mode: ConversationMode): void;
+  getSelectedExperienceId(phone: string): string | null;
+  setSelectedExperienceId(phone: string, experienceId: string): void;
   getBookedAt(phone: string): string | null;
   setBooked(phone: string): void;
   getFollowUpCandidates(cutoffIso: string, serviceWindowStartIso: string, limit: number): FollowUpCandidate[];
@@ -58,6 +69,11 @@ export interface ConversationRepository {
   setLeadPain(phone: string, pain: LeadPain, detail?: string): void;
   getLeadPain(phone: string): LeadPain | null;
   incrementFollowUpReplyCount(phone: string): void;
+}
+
+export interface MetaAudienceLead {
+  customerPhone: string;
+  collectedName: string | null;
 }
 
 export interface MessageRepository {
@@ -181,7 +197,7 @@ export interface PaymentReservationRepository {
   markFailed(externalReference: string): void;
 }
 
-export type ConversationMode = 'bot' | 'bridge_active' | 'referred' | 'human_pending';
+export type ConversationMode = 'bot' | 'bridge_active' | 'referred' | 'human_pending' | 'human_only';
 
 export type LeadPain = 'price' | 'date_time' | 'security' | 'logistics_4x4' | 'experience_clarity' | 'partner_group' | 'not_interested' | 'other';
 
@@ -226,10 +242,11 @@ export interface BridgeSessionRow {
   customerPhone: string;
   openedAt: string;
   lastActivityAt: string;
+  returnMode: 'bot' | 'human_only';
 }
 
 export interface BridgeSessionRepository {
-  open(agentChatId: string, customerPhone: string): void;
+  open(agentChatId: string, customerPhone: string, returnMode?: 'bot' | 'human_only'): void;
   close(agentChatId: string): void;
   getByAgentChat(agentChatId: string): BridgeSessionRow | null;
   getByCustomer(customerPhone: string): BridgeSessionRow | null;
@@ -272,6 +289,9 @@ export interface ConversationRow {
   assigned_line_id: string | null;
   assigned_agent_chat: string | null;
   conversation_mode: ConversationMode | null;
+  selected_experience_id: string | null;
+  meta_audience_consent_at: string | null;
+  meta_audience_consent_source: MetaAudienceConsentSource | null;
 }
 
 export interface FollowUpCandidate {

@@ -25,13 +25,13 @@ let previousTelegramBotToken: string;
 
 registerCommands();
 
-function update(chatId: number, text: string): TelegramUpdate {
+function update(chatId: number, text: string, chatType = 'private', fromId = chatId): TelegramUpdate {
   return {
     update_id: Math.floor(Math.random() * 1e9),
     message: {
       message_id: 1,
-      chat: { id: chatId, type: 'private' },
-      from: { id: chatId, username: 'tester' },
+      chat: { id: chatId, type: chatType },
+      from: { id: fromId, username: 'tester' },
       text,
     },
   };
@@ -166,6 +166,34 @@ describe('telegram dispatcher authorization', () => {
     await processUpdate(update(333, command), repos);
 
     expect(activitySpy).toHaveBeenCalledOnce();
+    expect(vi.mocked(globalThis.fetch).mock.calls.some(([input]) => String(input).includes('/sendDocument'))).toBe(true);
+  });
+
+  it('blocks /metaleads export from an allowlisted non-owner chat', async () => {
+    const leadSpy = vi.spyOn(repos.conversation, 'listMetaAudienceLeads');
+
+    await processUpdate(update(111, '/metaleads'), repos);
+
+    expect(leadSpy).not.toHaveBeenCalled();
+    expect(vi.mocked(globalThis.fetch).mock.calls.some(([input]) => String(input).includes('/sendDocument'))).toBe(false);
+  });
+
+  it('blocks /metaleads from a non-owner member when the owner destination is a group', async () => {
+    env.TELEGRAM_CHAT_ID = '333';
+    const leadSpy = vi.spyOn(repos.conversation, 'listMetaAudienceLeads');
+
+    await processUpdate(update(333, '/metaleads', 'group', 444), repos);
+
+    expect(leadSpy).not.toHaveBeenCalled();
+    expect(vi.mocked(globalThis.fetch).mock.calls.some(([input]) => String(input).includes('/sendDocument'))).toBe(false);
+  });
+
+  it('allows the owner chat to run /metaleads export', async () => {
+    const leadSpy = vi.spyOn(repos.conversation, 'listMetaAudienceLeads');
+
+    await processUpdate(update(333, '/metaleads'), repos);
+
+    expect(leadSpy).toHaveBeenCalledOnce();
     expect(vi.mocked(globalThis.fetch).mock.calls.some(([input]) => String(input).includes('/sendDocument'))).toBe(true);
   });
 

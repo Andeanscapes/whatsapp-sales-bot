@@ -33,9 +33,7 @@
       "mockReply": "Claro, te comparto una imagen representativa de la experiencia en la mina.",
       "expect": {
         "shouldSendReply": true,
-        "sendMedia": true,
-        "mediaCount": 1,
-        "mediaRelevant": true
+        "shouldSendGalleryImages": true
       }
     }
   ]

@@ -84,7 +84,7 @@
       "mockReply": "Excelente. Como el precio les funciona, podemos iniciar la reserva para el 24 de octubre con el 15% y compartirles un enlace de pago seguro. ¿Quieres que iniciemos la reserva?",
       "expect": {
         "shouldSendReply": true,
-        "usedAi": true
+        "usedAi": false
       }
     }
   ]

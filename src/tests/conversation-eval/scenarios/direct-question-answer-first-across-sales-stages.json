@@ -48,7 +48,7 @@
       "mockReply": "El valor del plan no depende de la fecha; depende principalmente del número de personas y los servicios adicionales. ¿Qué fecha estás considerando?",
       "expect": {
         "shouldSendReply": true,
-        "usedAi": true
+        "usedAi": false
       }
     }
   ]

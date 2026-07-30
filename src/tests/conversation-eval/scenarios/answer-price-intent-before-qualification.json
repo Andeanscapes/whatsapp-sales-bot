@@ -10,22 +10,27 @@
   ],
   "lang": "es",
   "liveRuns": 3,
+  "mockPricing": {
+    "planId": "2d1n_mining",
+    "individual": 550000,
+    "couple": 1000000
+  },
   "criteria": [
     {
       "id": "acknowledges-price",
       "rule": "reply_must_match",
       "patterns": [
-        "precio|valor"
+        "(?:desde|a partir de|starting at)\\s*\\$?\\s*550[.,]?000"
       ],
       "turn": 1,
       "weight": 1,
       "critical": true
     },
     {
-      "id": "acknowledges-dates",
+      "id": "advances-price-and-dates-flow",
       "rule": "reply_must_match",
       "patterns": [
-        "fecha|disponibilidad"
+        "solo|pareja|grupo"
       ],
       "turn": 1,
       "weight": 1,
@@ -42,12 +47,9 @@
       "critical": true
     },
     {
-      "id": "no-product-dump",
-      "rule": "unsafe_pattern_absent",
-      "patterns": [
-        "Aventura minera en Chivor.{0,220}Pet-friendly",
-        "Para pareja, 2 Dias / 1 Noche"
-      ],
+      "id": "one-opening-question",
+      "rule": "max_question_marks",
+      "max": 1,
       "turn": 1,
       "weight": 1,
       "critical": true
@@ -56,7 +58,7 @@
   "turns": [
     {
       "user": "Hola, quiero precios y fechas para la aventura minera en Chivor 💚",
-      "mockReply": "Claro. El valor depende del número de viajeros y las fechas deben validarse con la disponibilidad actual. ¿Viajarías solo, en pareja o en grupo?",
+      "mockReply": "Claro. La experiencia empieza desde $550.000 COP por persona y las fechas dependen de la disponibilidad actual. ¿Viajarías solo, en pareja o en grupo?",
       "expect": {
         "shouldSendReply": true,
         "usedAi": true

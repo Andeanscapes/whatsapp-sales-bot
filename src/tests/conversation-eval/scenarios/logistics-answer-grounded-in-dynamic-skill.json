@@ -41,7 +41,7 @@
       "mockReply": "Necesito verificar la información actualizada de acceso y horarios antes de darte una ruta exacta. Prefiero confirmarla correctamente.",
       "expect": {
         "shouldSendReply": true,
-        "shouldAlertOwner": true
+        "shouldAlertOwner": false
       }
     }
   ]

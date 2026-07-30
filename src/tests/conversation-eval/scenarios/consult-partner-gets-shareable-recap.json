@@ -10,6 +10,7 @@
   ],
   "lang": "es",
   "liveRuns": 3,
+  "mockPricing": { "planId": "2d1n_mining", "individual": 550000, "couple": 1000000 },
   "criteria": [
     {
       "id": "provides-shareable-recap",

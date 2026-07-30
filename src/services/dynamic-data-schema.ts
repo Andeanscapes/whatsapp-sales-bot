@@ -65,6 +65,7 @@ export const dynamicPlanImageSchema = z.object({
 }).strict();
 
 export const dynamicGalleryImageSchema = z.object({
+  experienceId: z.string().min(1).optional(),
   url: cdnMediaUrlSchema,
   caption: z.string().default(''),
 }).strict();

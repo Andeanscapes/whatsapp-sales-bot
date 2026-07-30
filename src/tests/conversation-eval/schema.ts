@@ -12,9 +12,6 @@ const expectSchema = z.object({
   reply: z.string().optional(),
   replyMustNotMatch: z.array(z.string()).optional(),
   replyMustContain: z.array(z.string()).optional(),
-  sendMedia: z.boolean().optional(),
-  mediaCount: z.number().int().min(0).optional(),
-  mediaRelevant: z.boolean().optional(),
   queueForReactivationAfterWindow: z.boolean().optional(),
   reactivationEligible: z.boolean().optional(),
   reactivationSegment: z.string().optional(),
@@ -25,12 +22,16 @@ const expectSchema = z.object({
   salesPhase: z.string().optional(),
   intent: z.string().optional(),
   mediaPlanId: z.string().optional(),
+  bookingIntent: z.boolean().optional(),
+  handoffCreated: z.boolean().optional(),
+  leadLifecycle: z.enum(['quoted', 'human_pending', 'payment_pending', 'decision_pending', 'lost_price']).optional(),
+  suppressGenericFollowups: z.boolean().optional(),
 }).strict();
 
 const qualificationSeedSchema = z.object({
   name: z.string().optional(),
   people: z.number().int().positive().optional(),
-  date: z.string().optional(),
+  date: z.string().nullable().optional(),
   transport: z.string().optional(),
   transportNeed: z.string().optional(),
   plan: z.string().optional(),
@@ -101,6 +102,7 @@ const seedSystemSchema = z.object({
   explicitRejection: z.boolean().optional(),
   groupType: z.string().optional(),
   travelStyle: z.string().optional(),
+  knownPlan: z.string().optional(),
   reservationPolicy: z.object({
     depositPercent: z.number().nonnegative().nullable(),
     securePaymentLinkAvailable: z.boolean().nullable(),
@@ -153,9 +155,6 @@ const outputFlagSchema = z.enum([
   'salesPhase',
   'softClosed',
   'sendOwnerImage',
-  'sendMedia',
-  'mediaCount',
-  'mediaRelevant',
   'queueForReactivationAfterWindow',
   'reactivationEligible',
   'reactivationSegment',
@@ -165,6 +164,10 @@ const outputFlagSchema = z.enum([
   'reservationReady',
   'intent',
   'mediaPlanId',
+  'bookingIntent',
+  'handoffCreated',
+  'leadLifecycle',
+  'suppressGenericFollowups',
 ]);
 
 const criterionSchema = z.object({
@@ -228,6 +231,7 @@ export const scenarioSchema = z.object({
     planId: z.string().min(1),
     individual: z.number().int().positive(),
     couple: z.number().int().positive(),
+    privateTransport: z.number().int().positive().optional(),
   }).strict().optional(),
   turns: z.array(turnSchema).min(1),
   criteria: z.array(criterionSchema).min(1),

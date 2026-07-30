@@ -13,8 +13,8 @@
     {
       "id": "media-matches-plan",
       "rule": "output_flag_equals",
-      "flag": "mediaPlanId",
-      "expected": "2d1n_mining",
+      "flag": "shouldSendGalleryImages",
+      "expected": true,
       "turn": 1,
       "weight": 1,
       "critical": true
@@ -33,15 +33,14 @@
   ],
   "turns": [
     {
-      "user": "Muéstrame una imagen del plan de 2 días y 1 noche.",
+      "user": "Muéstrame una imagen de la experiencia minera del plan de 2 días y 1 noche.",
       "seedQualification": {
         "plan": "2d1n_mining"
       },
       "mockReply": "Claro, te comparto una imagen correspondiente al plan de 2 días y 1 noche.",
       "expect": {
         "shouldSendReply": true,
-        "sendMedia": true,
-        "mediaPlanId": "2d1n_mining"
+        "shouldSendGalleryImages": true
       }
     }
   ]

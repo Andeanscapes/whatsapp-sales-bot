@@ -13,7 +13,7 @@ import {
   stripHandoffPhrases,
   isTruncatedReply,
 } from '../services/response-engine.js';
-import { PRICING_NOT_AVAILABLE, AVAILABILITY_NOT_AVAILABLE } from '../services/dynamic-data-service.js';
+import { ADDON_ID_PRIVATE_TRANSPORT, PRICING_NOT_AVAILABLE, AVAILABILITY_NOT_AVAILABLE } from '../services/dynamic-data-service.js';
 import { sendAlert } from '../services/alert-service.js';
 import { insertMediaSendAt, getLatestOwnerAlertBody } from './helpers/db-test-helpers.js';
 import { containsPromptLeakOrPolicyViolation, stripAssumedDatePhrases, stripAssumedExperienceClaims } from '../services/reply-guard.js';
@@ -126,6 +126,44 @@ function installPaymentData(): () => void {
   return () => { skills.dynamicData = previous; };
 }
 
+function installTwoExperienceCatalog(): () => void {
+  const skills = getSkills();
+  const previous = skills.andeanScapes.experiences;
+  const first = previous[0];
+  const second = {
+    ...first,
+    id: 'blue_lagoon_escape',
+    name: 'Aventura Laguna Azul',
+    shortDescription: 'Una escapada entre montanas y lagunas.',
+    plans: [
+      {
+        ...first.plans[0],
+        id: 'lagoon_premium',
+        name: 'Retiro Premium',
+        shortDescription: 'Plan premium junto a la laguna.',
+        keywords: ['retiro premium'],
+      },
+      {
+        ...first.plans[1],
+        id: 'lagoon_day',
+        name: 'Dia Laguna',
+        shortDescription: 'Plan de dia junto a la laguna azul.',
+        keywords: ['laguna azul', 'dia laguna'],
+      },
+    ],
+    pricing: {
+      ...first.pricing,
+      items: [
+        { id: 'lagoon-premium-single', planId: 'lagoon_premium', label: 'Premium', pricePerPerson: 400000, peopleIncluded: 1, publiclyShow: true },
+        { id: 'lagoon-day-single', planId: 'lagoon_day', label: 'Dia', pricePerPerson: 200000, peopleIncluded: 1, publiclyShow: true },
+      ],
+      botRules: [],
+    },
+  };
+  skills.andeanScapes.experiences = [first, second];
+  return () => { skills.andeanScapes.experiences = previous; };
+}
+
 let repos: Repositories;
 let db: Database.Database;
 
@@ -152,6 +190,112 @@ beforeAll(() => {
 });
 
 describe('processMessage', () => {
+  it('detects plans from the selected experience in a two-experience conversation', async () => {
+    const restore = installTwoExperienceCatalog();
+    const phone = '573009991101';
+    mockLlmComplete.mockReset();
+    mockLlmComplete.mockResolvedValueOnce(fromOld({ response: { reply: 'Es una gran opcion.' } }));
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    try {
+      await processMessage({ repos, customerPhone: phone, message: '2' });
+      await processMessage({ repos, customerPhone: phone, message: 'Me interesa el plan laguna azul' });
+
+      expect(repos.conversation.getSelectedExperienceId(phone)).toBe('blue_lagoon_escape');
+      expect(repos.conversation.getCollectedFields(phone).plan).toBe('lagoon_day');
+    } finally {
+      restore();
+    }
+  });
+
+  it('asks an existing ambiguous conversation to select an experience', async () => {
+    const restore = installTwoExperienceCatalog();
+    const phone = '573009991104';
+    repos.conversation.upsert(phone, { language: 'es' });
+    repos.message.addMessage({
+      customer_phone: phone,
+      direction: 'outbound',
+      message_type: 'text',
+      body: 'Mensaje anterior.',
+      created_at: new Date(Date.now() - 1000).toISOString(),
+    });
+    try {
+      const result = await processMessage({ repos, customerPhone: phone, message: 'Hola de nuevo' });
+
+      expect(result.reply).toContain('Aventura Laguna Azul');
+      expect(repos.conversation.getSelectedExperienceId(phone)).toBeNull();
+    } finally {
+      restore();
+    }
+  });
+
+  it('switches experience explicitly and does not restore the previous plan from history', async () => {
+    const restore = installTwoExperienceCatalog();
+    const phone = '573009991102';
+    const first = getSkills().andeanScapes.experiences[0];
+    repos.conversation.upsert(phone, {
+      collected_plan: first.plans[0].id,
+      price_given_at: new Date().toISOString(),
+      sales_phase: 'closing',
+      lead_intent: 'book',
+      gallery_nudged_at: new Date().toISOString(),
+      soft_closed_at: new Date().toISOString(),
+    });
+    repos.conversation.setSelectedExperienceId(phone, first.id);
+    repos.conversation.setAssignment(phone, { assignedLineId: 'old_line', assignedAgentChat: '111' });
+    repos.conversation.setMode(phone, 'human_pending');
+    repos.message.addMessage({
+      customer_phone: phone,
+      direction: 'inbound',
+      message_type: 'text',
+      body: first.plans[0].keywords[0],
+      created_at: new Date(Date.now() - 1000).toISOString(),
+    });
+    mockLlmComplete.mockReset();
+    mockLlmComplete.mockResolvedValueOnce(fromOld({ response: { reply: 'Claro, te ayudo.' } }));
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    try {
+      await processMessage({ repos, customerPhone: phone, message: 'Aventura Laguna Azul' });
+      const switchedConversation = repos.conversation.getByPhone(phone);
+      expect(switchedConversation?.price_given_at).toBeNull();
+      expect(switchedConversation?.sales_phase).toBeNull();
+      expect(switchedConversation?.lead_intent).toBeNull();
+      expect(switchedConversation?.gallery_nudged_at).toBeNull();
+      expect(switchedConversation?.soft_closed_at).toBeNull();
+      expect(switchedConversation?.handed_off_at).toBeNull();
+      expect(switchedConversation?.assigned_line_id).toBeNull();
+      expect(switchedConversation?.assigned_agent_chat).toBeNull();
+      expect(switchedConversation?.conversation_mode).toBe('bot');
+
+      await processMessage({ repos, customerPhone: phone, message: 'Cuentame mas' });
+      expect(repos.conversation.getSelectedExperienceId(phone)).toBe('blue_lagoon_escape');
+      expect(repos.conversation.getCollectedFields(phone).plan).toBeUndefined();
+      expect(repos.conversation.getSalesPhase(phone)).not.toBe('closing');
+    } finally {
+      restore();
+    }
+  });
+
+  it('describes the plan returned by the starting-price calculation', async () => {
+    const restore = installTwoExperienceCatalog();
+    const phone = '573009991103';
+    mockLlmComplete.mockReset();
+    mockLlmComplete.mockResolvedValueOnce(fromOld({ response: { reply: 'Te cuento el valor.' } }));
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    try {
+      await processMessage({ repos, customerPhone: phone, message: '2' });
+      const result = await processMessage({ repos, customerPhone: phone, message: 'Cuanto cuesta?' });
+
+      expect(result.reply).toContain('Plan de dia junto a la laguna azul.');
+      expect(result.reply).toContain('$200,000 COP');
+      expect(result.reply).not.toContain('Plan premium junto a la laguna.');
+    } finally {
+      restore();
+    }
+  });
+
   it('handles opt-out keyword stop', async () => {
     mockLlmComplete.mockReset();
     const phone = '573009990001';
@@ -536,6 +680,75 @@ describe('processMessage', () => {
 
     const conv = repos.conversation.getByPhone(phone) as { soft_closed_at: string | null };
     expect(conv.soft_closed_at).toBeNull();
+  });
+
+  it('lets the LLM explain private transport cost instead of soft-closing', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: {
+        reply: 'Te entiendo. Es un servicio 4x4 puerta a puerta y puedes llegar en bus. ¿Quieres revisar esa ruta?',
+        intent: 'general', lead_score_delta: 0, should_send_image: false, needs_human: false, missing_fields: [], collected_fields: {},
+      },
+    }));
+    const phone = '573001112289';
+    repos.conversation.upsert(phone, {
+      collected_people: 1,
+      collected_plan: '2d1n_mining',
+      collected_transport_need: 'from_bogota',
+      price_given_at: new Date().toISOString(),
+    });
+
+    const result = await processMessage({ repos, customerPhone: phone, message: 'Y por que tan caro ese transporte?' });
+
+    expect(result.usedAi).toBe(true);
+    expect(result.reply).toMatch(/(?:servicio|transporte) privado 4x4/i);
+    expect(result.reply).toMatch(/carro propio.{0,10}moto/i);
+    expect(result.reply).not.toContain('https://www.instagram.com/andean_scapes/');
+    expect(result.reply.trim()).toMatch(/\?$/);
+    expect(result.reply.split(/\n\n/).length).toBeLessThanOrEqual(3);
+    expect(repos.conversation.getByPhone(phone)?.soft_closed_at).toBeNull();
+  });
+
+  it('soft-closes on definitive decline without appending qualification questions', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001112330';
+
+    repos.conversation.upsert(phone, {
+      collected_name: 'David',
+      collected_people: 1,
+      collected_date: 'agosto',
+      collected_transport_need: 'own',
+      collected_plan: '2d1n_mining',
+      price_given_at: new Date().toISOString(),
+      lead_score: 25,
+    });
+
+    const result = await processMessage({ repos, customerPhone: phone, message: 'No quiero seguir' });
+
+    expect(result.shouldSendReply).toBe(true);
+    expect(result.usedAi).toBe(false);
+    expect(result.reply).toContain('instagram');
+    expect(result.reply.trim().endsWith('?')).toBe(false);
+    expect(result.reply).not.toContain('¿');
+    expect(repos.conversation.getByPhone(phone)?.soft_closed_at).toBeTruthy();
+  });
+
+  it('soft-closes on no quiero continuar without appending qualification questions', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001112331';
+
+    const result = await processMessage({ repos, customerPhone: phone, message: 'No quiero continuar' });
+
+    expect(result.usedAi).toBe(false);
+    expect(result.reply).toContain('instagram');
+    expect(result.reply.trim().endsWith('?')).toBe(false);
+    expect(result.reply).not.toContain('¿');
   });
 
   it('handles por ese precio no without repeating product dump when people unknown', async () => {
@@ -2960,6 +3173,50 @@ describe('processMessage', () => {
     expect(conv.collected_transport_need).not.toBe('own');
   });
 
+  it('quotes private transport without selecting it or repeating the package', async () => {
+    const phone = '573001112292';
+    const exp = getActiveExperience(getSkills());
+    const originalPricing = exp.pricing;
+    exp.pricing = {
+      currency: 'COP',
+      lastUpdated: '2026-01-01',
+      items: [
+        { id: '2d1n_mining_individual', planId: '2d1n_mining', label: 'Individual', pricePerPerson: 550000, publiclyShow: true },
+        { id: '2d1n_mining_couple', planId: '2d1n_mining', label: 'Pareja', couplePrice: 1000000, publiclyShow: true },
+        { id: ADDON_ID_PRIVATE_TRANSPORT, label: 'Transporte privado', couplePrice: 1700000, publiclyShow: true },
+      ],
+      botRules: [],
+      businessRules: [],
+    };
+    repos.conversation.upsert(phone, {
+      collected_plan: '2d1n_mining',
+      collected_people: 2,
+      collected_date: 'sábado 14 de noviembre',
+      price_given_at: new Date().toISOString(),
+    });
+    repos.message.addMessage({
+      customer_phone: phone,
+      direction: 'outbound',
+      message_type: 'text',
+      body: '¿Tienen transporte propio o lo necesitan desde Bogotá?',
+      created_at: new Date().toISOString(),
+    });
+
+    try {
+      const result = await processMessage({ repos, customerPhone: phone, message: 'Sí, ¿qué vale el transporte?' });
+
+      expect(result.reply).toContain('$1,700,000 COP');
+      expect(result.reply).toContain('$2,700,000 COP');
+      expect(result.reply).not.toMatch(/aventura minera|todo incluido|paquete completo/i);
+      expect(result.shouldSendGalleryImages).toBe(false);
+      expect(result.shouldSendImage).toBe(false);
+      expect(result.priceJustGiven).toBe(false);
+      expect(repos.conversation.getByPhone(phone)?.collected_transport_need).toBeNull();
+    } finally {
+      exp.pricing = originalPricing;
+    }
+  });
+
   it('captures public bus from "voy en bus"', async () => {
     mockLlmComplete.mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
@@ -3251,7 +3508,7 @@ describe('processMessage', () => {
       { id: 'emerald_mining_preview_1', experienceId: 'emerald_mining_tour', planId: '2d1n_mining', url: 'https://cdn.andeanscapes.com/whatsapp_bot/details/2d1n_1.png', caption: '2D/1N' },
       { id: 'rural_experience_preview_1', experienceId: 'emerald_mining_tour', planId: '3d2n_rural', url: 'https://cdn.andeanscapes.com/whatsapp_bot/details/3d2n_1.png', caption: '3D/2N' },
     ];
-    const image = selectPlanImage(dynamicImages, '3d2n_rural');
+    const image = selectPlanImage(dynamicImages, '3d2n_rural', 'emerald_mining_tour');
     expect(image?.url).toBe('https://cdn.andeanscapes.com/whatsapp_bot/details/3d2n_1.png');
   });
 
@@ -3500,7 +3757,7 @@ describe('processMessage', () => {
         { id: 'dyn_2d1n', experienceId: 'emerald_mining_tour', planId: '2d1n_mining', url: 'https://cdn.andeanscapes.com/whatsapp_bot/details/2d1n_1.png', caption: '2D/1N' },
         { id: 'dyn_3d2n', experienceId: 'emerald_mining_tour', planId: '3d2n_rural', url: 'https://cdn.andeanscapes.com/whatsapp_bot/details/3d2n_1.png', caption: '3D/2N' },
       ];
-      const image = selectPlanImage(dynamicImages, '3d2n_rural');
+      const image = selectPlanImage(dynamicImages, '3d2n_rural', 'emerald_mining_tour');
       expect(image?.id).toBe('dyn_3d2n');
     });
 
@@ -3508,12 +3765,12 @@ describe('processMessage', () => {
       const dynamicImages = [
         { id: 'dyn_2d1n', experienceId: 'emerald_mining_tour', planId: '2d1n_mining', url: 'https://cdn.andeanscapes.com/whatsapp_bot/details/2d1n_1.png', caption: '2D/1N' },
       ];
-      const image = selectPlanImage(dynamicImages, 'nonexistent_plan');
+      const image = selectPlanImage(dynamicImages, 'nonexistent_plan', 'emerald_mining_tour');
       expect(image?.id).toBe('dyn_2d1n');
     });
 
     it('returns undefined when dynamic images array is empty', () => {
-      const image = selectPlanImage([], '2d1n_mining');
+      const image = selectPlanImage([], '2d1n_mining', 'emerald_mining_tour');
       expect(image).toBeUndefined();
     });
 
@@ -3522,8 +3779,15 @@ describe('processMessage', () => {
         { id: 'dyn_2d1n', experienceId: 'emerald_mining_tour', planId: '2d1n_mining', url: 'https://cdn.andeanscapes.com/whatsapp_bot/details/2d1n_1.png', caption: '2D/1N' },
         { id: 'dyn_3d2n', experienceId: 'emerald_mining_tour', planId: '3d2n_rural', url: 'https://cdn.andeanscapes.com/whatsapp_bot/details/3d2n_1.png', caption: '3D/2N' },
       ];
-      const image = selectPlanImage(dynamicImages, null);
+      const image = selectPlanImage(dynamicImages, null, 'emerald_mining_tour');
       expect(image?.id).toBe('dyn_2d1n');
+    });
+
+    it('never falls back to an image from another experience', () => {
+      const dynamicImages = [
+        { id: 'other', experienceId: 'other_experience', planId: 'shared', url: 'https://cdn.andeanscapes.com/other.png', caption: 'Other' },
+      ];
+      expect(selectPlanImage(dynamicImages, 'shared', 'emerald_mining_tour')).toBeUndefined();
     });
   });
 
@@ -4719,7 +4983,7 @@ describe('processMessage — dynamic data guard', () => {
     }
   });
 
-  it('does not add transport for 5+ people because extra vehicle cost needs confirmation', async () => {
+  it('keeps known add-ons but does not add transport for 5+ people', async () => {
     mockLlmComplete.mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
@@ -4734,6 +4998,7 @@ describe('processMessage — dynamic data guard', () => {
         { id: '2d1n_mining_individual', planId: '2d1n_mining', label: 'Individual', pricePerPerson: 550000, publiclyShow: true },
         { id: '2d1n_mining_couple', planId: '2d1n_mining', label: 'Pareja', couplePrice: 1000000, peopleIncluded: 2, publiclyShow: true },
         { id: 'private_transport', label: 'Transporte privado 4x4 desde Bogota', couplePrice: 1700000, peopleIncluded: 4, publiclyShow: true },
+        { id: 'apiary_cattle', kind: 'addon', planId: '2d1n_mining', label: 'Apicultura', pricePerPerson: 55000, publiclyShow: true },
       ],
       botRules: ['pricing rules'],
       businessRules: [],
@@ -4746,9 +5011,10 @@ describe('processMessage — dynamic data guard', () => {
         },
       }));
 
-      const result = await processMessage({ repos, customerPhone: phone, message: 'precio para 5 personas con transporte desde bogota' });
+      const result = await processMessage({ repos, customerPhone: phone, message: 'precio para 5 personas del plan 2 dias con transporte desde bogota y cattle' });
 
       expect(result.reply).toContain('$2,500,000 COP');
+      expect(result.reply).toContain('$275,000 COP');
       expect(result.reply).toContain('confirmar el costo');
       expect(result.reply).not.toContain('4,200,000');
       expect(result.reply).toMatch(/paquete completo|Hacienda|3 comidas/i);
@@ -4876,6 +5142,7 @@ describe('processMessage — dynamic data guard', () => {
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
     const phone = '573009993203';
+    repos.message.addMessage({ whatsapp_message_id: 'msg-seed-0', customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'Hola', created_at: new Date(Date.now() - 3600000).toISOString(), raw_json: null });
     mockLlmComplete.mockResolvedValueOnce(fromOld({
       response: {
         reply: 'Listo Michell. Me encanta el plan para 3 personas, para tentative_unknown, con transporte propio.',
@@ -4886,6 +5153,43 @@ describe('processMessage — dynamic data guard', () => {
     const result = await processMessage({ repos, customerPhone: phone, message: 'Tengo transporte propio' });
     expect(result.reply).not.toContain('tentative_unknown');
     expect(result.reply).toMatch(/fecha por confirmar|date TBD/i);
+  });
+
+  it('scrubs unsubstituted template tokens the LLM emits (single or double brace)', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573009993204';
+    // Seed an inbound so this is NOT first contact — the deterministic greeting
+    // would otherwise bypass the LLM entirely. The scrub runs on LLM output.
+    repos.message.addMessage({ whatsapp_message_id: 'msg-seed', customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'Hola', created_at: new Date(Date.now() - 3600000).toISOString(), raw_json: null });
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: {
+        reply: 'El plan {planName} dura {planDuration} y te encantara. {{planSummary}}',
+        collected_fields: { name: 'Ana' },
+      },
+    }));
+
+    const result = await processMessage({ repos, customerPhone: phone, message: 'Cuentame del plan' });
+    expect(result.reply).not.toMatch(/\{\{?(?:planName|planDuration|planSummary)\}?\}/);
+    expect(result.reply).not.toContain('{');
+  });
+
+  it('preserves legitimate copy that contains non-template braces', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573009993205';
+    repos.message.addMessage({ whatsapp_message_id: 'msg-seed-2', customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'Hola', created_at: new Date(Date.now() - 3600000).toISOString(), raw_json: null });
+    mockLlmComplete.mockResolvedValueOnce(fromOld({
+      response: {
+        reply: 'Perfecto :) usa el codigo {promo} al reservar.',
+        collected_fields: { name: 'Ana' },
+      },
+    }));
+
+    const result = await processMessage({ repos, customerPhone: phone, message: 'Hay descuento?' });
+    expect(result.reply).toContain('{promo}');
   });
 });
 
@@ -5852,6 +6156,224 @@ describe('processMessage — plan-list question', () => {
       expect(result.reply).not.toMatch(/ya anoté que aún no|anotado que a[uú]n no|no tienes fecha/i);
     } finally {
       db.close();
+    }
+  });
+});
+
+describe('review regression guards', () => {
+  beforeAll(() => {
+    loadSkills();
+  });
+
+  it('uses calculator pricing when a price question names the mining experience and Chivor', async () => {
+    const testDb = new Database(':memory:');
+    migrate(testDb);
+    const testRepos = createRepositories(testDb);
+    const phone = '573002240001';
+    const exp = getActiveExperience(getSkills());
+    const originalPricing = exp.pricing;
+    exp.pricing = {
+      currency: 'COP', lastUpdated: '2026-01-01',
+      items: [
+        { id: 'individual', planId: '2d1n_mining', label: 'Individual', pricePerPerson: 550000, publiclyShow: true },
+        { id: 'couple', planId: '2d1n_mining', label: 'Pareja', couplePrice: 1000000, publiclyShow: true },
+      ],
+      botRules: [], businessRules: [],
+    };
+    mockLlmComplete.mockReset();
+    mockLlmComplete.mockResolvedValueOnce(fromOld({ response: { reply: 'El tour cuesta $700,000 COP.' } }));
+
+    try {
+      const result = await processMessage({
+        repos: testRepos,
+        customerPhone: phone,
+        message: '¿Cuánto cuesta el tour minero de 2 días en Chivor para 2 personas?',
+      });
+
+      expect(result.reply).toContain('$1,000,000 COP');
+      expect(result.reply).not.toContain('$700,000 COP');
+    } finally {
+      exp.pricing = originalPricing;
+      testDb.close();
+    }
+  });
+
+  it('replaces an LLM price with a starting-price teaser when group size is unknown', async () => {
+    const testDb = new Database(':memory:');
+    migrate(testDb);
+    const testRepos = createRepositories(testDb);
+    const phone = '573002240007';
+    const exp = getActiveExperience(getSkills());
+    const originalPricing = exp.pricing;
+    exp.pricing = {
+      currency: 'COP', lastUpdated: '2026-01-01',
+      items: [
+        { id: 'individual', planId: '2d1n_mining', label: 'Individual', pricePerPerson: 550000, publiclyShow: true },
+        { id: 'couple', planId: '2d1n_mining', label: 'Pareja', couplePrice: 1000000, publiclyShow: true },
+      ],
+      botRules: [], businessRules: [],
+    };
+    mockLlmComplete.mockReset();
+    mockLlmComplete.mockResolvedValueOnce(fromOld({ response: { reply: 'El tour cuesta $700,000 COP.' } }));
+
+    try {
+      const result = await processMessage({
+        repos: testRepos,
+        customerPhone: phone,
+        message: 'Buen día, ¿cómo es el plan de Chivor y qué costo tiene?',
+      });
+
+      expect(result.reply).toContain('$550,000 COP');
+      expect(result.reply).not.toContain('$700,000 COP');
+      expect(result.reply).toMatch(/ser[ií]a para ti solo, en pareja o para un grupo/i);
+      expect(result.priceJustGiven).toBe(false);
+      expect(testRepos.conversation.getByPhone(phone)?.price_given_at).toBeNull();
+    } finally {
+      exp.pricing = originalPricing;
+      testDb.close();
+    }
+  });
+
+  it('quotes the exact group total after a starting-price teaser', async () => {
+    const testDb = new Database(':memory:');
+    migrate(testDb);
+    const testRepos = createRepositories(testDb);
+    const phone = '573002240008';
+    const exp = getActiveExperience(getSkills());
+    const originalPricing = exp.pricing;
+    exp.pricing = {
+      currency: 'COP', lastUpdated: '2026-01-01',
+      items: [
+        { id: 'individual', planId: '2d1n_mining', label: 'Individual', pricePerPerson: 550000, publiclyShow: true },
+        { id: 'couple', planId: '2d1n_mining', label: 'Pareja', couplePrice: 1000000, publiclyShow: true },
+      ],
+      botRules: [], businessRules: [],
+    };
+    mockLlmComplete.mockReset();
+    mockLlmComplete.mockResolvedValueOnce(fromOld({ response: { reply: 'El tour cuesta $700,000 COP.' } }));
+    mockLlmComplete.mockResolvedValueOnce(fromOld({ response: { reply: '¿Sería para ti solo, en pareja o para un grupo?' } }));
+
+    try {
+      const first = await processMessage({
+        repos: testRepos,
+        customerPhone: phone,
+        message: 'Buen día, ¿cómo es el plan de Chivor y qué costo tiene?',
+      });
+      testRepos.message.addMessage({
+        customer_phone: phone, direction: 'outbound', message_type: 'text', body: first.reply,
+        created_at: new Date().toISOString(),
+      });
+
+      const result = await processMessage({ repos: testRepos, customerPhone: phone, message: 'Para 3 personas' });
+
+      expect(result.reply).toContain('$1,550,000 COP');
+      expect(result.reply).not.toMatch(/ser[ií]a para ti solo, en pareja o para un grupo|cu[aá]ntas personas/i);
+      expect(result.priceJustGiven).toBe(true);
+      expect(testRepos.conversation.getByPhone(phone)?.price_given_at).not.toBeNull();
+    } finally {
+      exp.pricing = originalPricing;
+      testDb.close();
+    }
+  });
+
+  it('strips textual price leaks without persisting price state', async () => {
+    const testDb = new Database(':memory:');
+    migrate(testDb);
+    const testRepos = createRepositories(testDb);
+    const phone = '573002240002';
+    mockLlmComplete.mockReset();
+    mockLlmComplete.mockResolvedValueOnce(fromOld({ response: { reply: 'El precio es 550 mil COP. ¿Te interesa?' } }));
+
+    try {
+      const result = await processMessage({ repos: testRepos, customerPhone: phone, message: 'Hola' });
+
+      expect(result.reply).not.toMatch(/550\s*mil/i);
+      expect(result.priceJustGiven).toBe(false);
+      expect(testRepos.conversation.getBookedAt(phone)).toBeNull();
+      expect(testRepos.conversation.getByPhone(phone)?.price_given_at).toBeNull();
+    } finally {
+      testDb.close();
+    }
+  });
+
+  it('strips unformatted numeric price leaks without persisting price state', async () => {
+    const testDb = new Database(':memory:');
+    migrate(testDb);
+    const testRepos = createRepositories(testDb);
+    const phone = '573002240006';
+    mockLlmComplete.mockReset();
+    mockLlmComplete.mockResolvedValueOnce(fromOld({ response: { reply: 'El precio es 550000 COP. ¿Te interesa?' } }));
+
+    try {
+      const result = await processMessage({ repos: testRepos, customerPhone: phone, message: 'Hola' });
+
+      expect(result.reply).not.toMatch(/550000\s*COP/i);
+      expect(result.priceJustGiven).toBe(false);
+      expect(testRepos.conversation.getByPhone(phone)?.price_given_at).toBeNull();
+    } finally {
+      testDb.close();
+    }
+  });
+
+  it('strips written-out price leaks without persisting price state', async () => {
+    const testDb = new Database(':memory:');
+    migrate(testDb);
+    const testRepos = createRepositories(testDb);
+    const phone = '573002240005';
+    mockLlmComplete.mockReset();
+    mockLlmComplete.mockResolvedValueOnce(fromOld({ response: { reply: 'El precio es quinientos cincuenta mil pesos. ¿Te interesa?' } }));
+
+    try {
+      const result = await processMessage({ repos: testRepos, customerPhone: phone, message: 'Hola' });
+
+      expect(result.reply).not.toMatch(/quinientos\s+cincuenta\s+mil/i);
+      expect(result.priceJustGiven).toBe(false);
+      expect(testRepos.conversation.getByPhone(phone)?.price_given_at).toBeNull();
+    } finally {
+      testDb.close();
+    }
+  });
+
+  it('does not quote a zero deposit when qualification cannot produce a quote', async () => {
+    const testDb = new Database(':memory:');
+    migrate(testDb);
+    const testRepos = createRepositories(testDb);
+    const phone = '573002240003';
+    testRepos.conversation.upsert(phone, { price_given_at: new Date().toISOString() });
+    mockLlmComplete.mockReset();
+    mockLlmComplete.mockResolvedValueOnce(fromOld({ response: { reply: 'Te explico los medios de pago.' } }));
+    const restorePayments = installPaymentData();
+
+    try {
+      const result = await processMessage({
+        repos: testRepos,
+        customerPhone: phone,
+        message: '¿Se paga por partes o todo de una vez?',
+      });
+
+      expect(result.reply).toContain('15%');
+      expect(result.reply).not.toMatch(/\$\s*0\b|0\s*COP/i);
+    } finally {
+      restorePayments();
+      testDb.close();
+    }
+  });
+
+  it('does not append a second qualification question to an existing CTA', async () => {
+    const testDb = new Database(':memory:');
+    migrate(testDb);
+    const testRepos = createRepositories(testDb);
+    const phone = '573002240004';
+    mockLlmComplete.mockReset();
+    mockLlmComplete.mockResolvedValueOnce(fromOld({ response: { reply: 'Claro. ¿Qué te gustaría conocer primero?' } }));
+
+    try {
+      const result = await processMessage({ repos: testRepos, customerPhone: phone, message: 'Quiero conocer el tour' });
+
+      expect(result.reply.match(/\?/g) ?? []).toHaveLength(1);
+      expect(result.reply).not.toContain(getSkills().fallbackReplies.es.enrichFirstContactQualification);
+    } finally {
+      testDb.close();
     }
   });
 });

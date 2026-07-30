@@ -40,6 +40,31 @@ describe('buildSystemPrompt', () => {
     expect(salesTacticsIndex).toBeGreaterThan(guardIndex);
   });
 
+  it('exposes only future available or limited dates to the LLM', () => {
+    const skills = loadSkills();
+    const exp = getActiveExperience(skills);
+    const original = exp.availability;
+    exp.availability = {
+      ...original,
+      botRule: 'Use published dates only.',
+      availableDates: [
+        { date: '2099-08-16', status: 'soldout', slotsApprox: 0 },
+        { date: '2099-08-17', status: 'available', slotsApprox: null },
+        { date: '2099-08-18', status: 'limited', slotsApprox: 2 },
+        { date: '2099-08-19', status: 'unavailable', slotsApprox: null },
+      ],
+    };
+    try {
+      const prompt = buildSystemPrompt(skills, 'es');
+      expect(prompt).toContain('17 ago 2099');
+      expect(prompt).toContain('18 ago 2099');
+      expect(prompt).not.toContain('16 ago 2099');
+      expect(prompt).not.toContain('19 ago 2099');
+    } finally {
+      exp.availability = original;
+    }
+  });
+
   it('surfaces durable business rules even when pricing is unavailable', () => {
     const skills = withUnavailablePricingAndAvailability(loadSkills());
     const prompt = buildSystemPrompt(skills);
@@ -128,6 +153,18 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('Transport mentioned: own_motorcycle');
     expect(prompt).toContain('Child ages mentioned: 5');
     expect(prompt).toContain('Group relationship: padre e hijo');
+  });
+
+  it('grounds public bus guidance and keeps it separate from the car ferry route', () => {
+    const prompt = buildSystemPrompt(loadSkills(), 'es');
+
+    expect(prompt).toContain('Terminal Salitre');
+    expect(prompt).toContain('aproximadamente a las 7:00 am');
+    expect(prompt).toContain('aproximadamente a las 5:00 am');
+    expect(prompt).toContain('$60.000 COP por persona y por trayecto');
+    expect(prompt).toContain('Flota Valle de Tenza o Flota La Macarena');
+    expect(prompt).toContain('no prometas mina la misma manana de llegada');
+    expect(prompt).toContain('no aplican automaticamente al bus publico');
   });
 });
 

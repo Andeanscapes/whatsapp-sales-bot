@@ -71,7 +71,7 @@
       "mockReply": "Podemos iniciar la reserva con el 15% mediante un enlace de pago seguro. Antes de enviarlo, te muestro el resumen y las condiciones de reprogramación.",
       "expect": {
         "shouldSendReply": true,
-        "usedAi": true,
+        "usedAi": false,
         "reservationReady": true,
         "shouldAlertOwner": false
       }

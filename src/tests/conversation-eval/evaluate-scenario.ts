@@ -5,7 +5,8 @@ import { calculatePriceQuote } from '../../services/pricing-calculator.js';
 import type { Criterion, CriterionResult, Scenario } from './schema.js';
 import type { TurnRecord } from './runner.js';
 
-const PRICE_PATTERN = /\b(\$\s*[\d.,]+\s*(?:COP|USD)?|[\d.,]+\s*COP|precio total|total.*COP|cuesta)\b/i;
+const STARTING_PRICE_PATTERN = /\b(?:desde|a\s+partir\s+de|starting\s+at)\s*\$?\s*[\d.,]+(?:\s*(?:COP|USD))?/i;
+const PRICE_AMOUNT_PATTERN = /\$\s*[\d.,]+(?:\s*(?:COP|USD))?|\b[\d.,]+\s*(?:COP|USD)\b/gi;
 const DATE_GIVEN_PATTERN = /\b(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|january|february|march|april|may|june|july|august|september|october|november|december|mañana|manana|tomorrow|fin de semana|weekend|s[aá]bado|domingo|\d{1,2}[/-]\d{1,2})\b/i;
 const PEOPLE_GIVEN_PATTERN = /(?:somos|ser[ií]amos?|para|grupo de)\s+\d+|\d+\s*(?:persona|people|pax)|\b(?:pareja|solo|sola|couple|alone|mi hijo y yo|my son and i)\b/i;
 const TRANSPORT_GIVEN_PATTERN = /\b(?:carro|moto|transporte propio|veh[ií]culo|4x4|desde bogot[aá]|bus|transport|motorcycle)\b/i;
@@ -110,7 +111,11 @@ function evaluateCriterion(criterion: Criterion, turns: TurnRecord[]): Criterion
   if (criterion.rule === 'output_count_at_most') {
     const max = criterion.expected as number;
     const selectedTurns = criterion.turn === undefined ? turns : turns.slice(criterion.turn - 1, criterion.turn);
-    const count = selectedTurns.filter(turn => turn.processOutput.shouldSendImage).length;
+    const count = selectedTurns.filter(turn => (
+      turn.processOutput.shouldSendImage
+      || turn.processOutput.shouldSendOwnerImage
+      || turn.processOutput.shouldSendGalleryImages
+    )).length;
     return criterionResult(criterion, count <= max, `${criterion.output}=${count} max=${max}`);
   }
 
@@ -132,7 +137,9 @@ function evaluateCriterion(criterion: Criterion, turns: TurnRecord[]): Criterion
   if (criterion.rule === 'price_after_min_fields') {
     const minimum = criterion.minFields ?? 2;
     for (let i = 0; i < turns.length; i++) {
-      if (PRICE_PATTERN.test(turns[i].reply) && fieldsBefore(turns, i + 1) < minimum) {
+      const amounts = turns[i].reply.match(PRICE_AMOUNT_PATTERN) ?? [];
+      const hasOnlyStartingPrice = STARTING_PRICE_PATTERN.test(turns[i].reply) && amounts.length === 1;
+      if (amounts.length > 0 && !hasOnlyStartingPrice && fieldsBefore(turns, i + 1) < minimum) {
         return criterionResult(criterion, false, `price before ${minimum} fields at turn ${i + 1}`);
       }
     }

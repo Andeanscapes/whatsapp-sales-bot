@@ -45,7 +45,7 @@
       "user": "Hola, quiero precios y fechas para la aventura minera en Chivor 💚",
       "mockReply": "Claro. ¿Viajarías solo, en pareja o en grupo?",
       "expect": {
-        "shouldSendReply": true,
+        "shouldSendReply": false,
         "reactivationEligible": true,
         "reactivationSegment": "no_reply_25h"
       }

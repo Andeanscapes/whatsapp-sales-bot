@@ -13,9 +13,9 @@ import { DeepSeekLlmClient } from './llm/deepseek-llm-client.js';
 import { analyzeLead, type LeadAnalysis } from './lead-analyzer.js';
 import type { LlmTurn } from './llm/llm-client.js';
 import type { MergedQualification, OutboundDateAction, ProcessMessageInput, ProcessMessageOutput } from './types.js';
-import { getActiveExperience, getCommonQuestions, getPlans, getPricingItems, getShortDescription, hasPublicPaymentFacts, isPricingAvailable, getPublicPaymentFacts } from './product-registry.js';
-import type { PublicPaymentFacts } from './product-registry.js';
-import { calculatePriceQuote, formatCop, type PriceQuote, type TransportNeed } from './pricing-calculator.js';
+import { getActiveExperience, getCommonQuestions, getFutureAvailableDates, getPlans, getPricingItems, getShortDescription, hasPublicPaymentFacts, isPricingAvailable, getPublicPaymentFacts, hasMultipleExperiences, getExperiences, scopeSkillsToExperience } from './product-registry.js';
+import type { ActiveExperience, PublicPaymentFacts } from './product-registry.js';
+import { calculatePriceQuote, formatCop, getStartingPrice, type PriceQuote, type TransportNeed } from './pricing-calculator.js';
 import {
   extractBookingFields,
   contextAwareExtract,
@@ -41,6 +41,7 @@ import {
   isReEngagementMessage,
   isReviewPause,
   isPartnerConsultPause,
+  isCustomerFollowUpPromise,
   getLastAssistantQuestion,
   detectsReservationIntent,
   detectsAvailabilityConfirmRequest,
@@ -68,6 +69,7 @@ import {
 
 import { assignLine, isReferralLine } from './lead-routing.js';
 import { normalizeText } from './language-service.js';
+import { enrichReply } from './reply-enrichment.js';
 import { INPUT_COST_PER_TOKEN, MONTH_NAMES, MS_72H, OUTPUT_COST_PER_TOKEN, SCORE_GALLERY_TRIGGER_THRESHOLD } from './constants.js';
 import type { RecentMessage, LeadPain } from '../db/repositories/types.js';
 
@@ -85,6 +87,21 @@ export type { ProcessMessageInput, ProcessMessageOutput };
 function isAmbiguousTransportRequest(message: string): boolean {
   if (!/\b(?:transporte|transport|recoger|pickup)\b/i.test(message)) return false;
   return !/\b(?:bus|publico|public|privado|private|carro propio|moto|own transport|own car)\b/i.test(message);
+}
+
+function isTransportPriceInquiry(message: string): boolean {
+  return /\b(?:transporte|transport)\b/i.test(message)
+    && (/\b(?:cu[aá]nto|qu[eé]\s+vale|valor|precio|cost|how much)\b/i.test(message)
+      || /^\s*(?:y|and)\s+(?:el\s+)?(?:transporte|transport)\b/i.test(message));
+}
+
+function wasAskedTransport(lastAssistantQuestion: string | null): boolean {
+  return lastAssistantQuestion != null
+    && /transporte propio|necesitan desde|vas (?:con|en)|por su cuenta|own transport|pickup|Bogot[aá]|llegar desde|how (?:are you|will you) (?:getting|coming)/i.test(lastAssistantQuestion);
+}
+
+function hasExplicitOwnTransport(message: string): boolean {
+  return /\b(?:carro|moto|veh[ií]culo|propio|own|driv(?:e|ing))\b/i.test(message);
 }
 
 function withConversationState(
@@ -161,6 +178,26 @@ function safetyPolicyReply(skills: Skills, lang: 'es' | 'en', message: string): 
   return questions.find(question => question.lang === lang && question.intent === intent)?.answer ?? null;
 }
 
+function matchExperienceFromReply(message: string, skills: Skills, allowPositional: boolean): ActiveExperience | null {
+  const norm = normalizeForKeywordMatch(message);
+  const trimmed = message.trim().slice(0, 80);
+  for (const exp of getExperiences(skills)) {
+    const normalizedName = normalizeForKeywordMatch(exp.name);
+    if (normalizedName.length > 3 && norm.includes(normalizedName)) return exp;
+    const expWords = exp.name.toLowerCase().split(/\s+/);
+    const matchCount = expWords.filter(w => w.length > 3 && norm.includes(w)).length;
+    if (matchCount >= 2) return exp;
+    // Single-letter picks: "A", "B" etc. for positional listing
+    const expIndex = getExperiences(skills).indexOf(exp);
+    if (allowPositional && trimmed === String(expIndex + 1)) return exp;
+    if (allowPositional && /^[a-z]$/i.test(trimmed)) {
+      const letterIndex = trimmed.toUpperCase().charCodeAt(0) - 65;
+      if (letterIndex === expIndex) return exp;
+    }
+  }
+  return null;
+}
+
 function isInclusionsQuestion(message: string, lang: 'es' | 'en'): boolean {
   const norm = normalizeForKeywordMatch(message);
   if (lang === 'es') return /\bque incluye\b|\bque trae\b|\bque viene incluido\b/.test(norm);
@@ -206,8 +243,7 @@ function buildInclusionsReply(skills: Skills, lang: 'es' | 'en'): string {
 }
 
 function buildAvailabilityListReply(skills: Skills, lang: 'es' | 'en'): string | null {
-  const dates = getActiveExperience(skills).availability.availableDates
-    .filter(item => item.status === 'available' || item.status === 'limited')
+  const dates = getFutureAvailableDates(getActiveExperience(skills))
     .map(item => new Date(`${item.date}T12:00:00Z`))
     .filter(date => !Number.isNaN(date.getTime()))
     .sort((a, b) => a.getTime() - b.getTime())
@@ -307,8 +343,7 @@ function buildLateMonthAvailabilityReply(skills: Skills, lang: 'es' | 'en', mess
   if (!month) return null;
 
   const exp = getActiveExperience(skills);
-  const monthDates = exp.availability.availableDates
-    .filter(item => item.status === 'available' || item.status === 'limited')
+  const monthDates = getFutureAvailableDates(exp)
     .map(item => ({ item, date: new Date(`${item.date}T12:00:00Z`) }))
     .filter(({ date }) => date.getUTCMonth() + 1 === month);
   const explicitYear = normalized.match(/\b(20\d{2})\b/)?.[1];
@@ -554,6 +589,11 @@ const OPT_OUT_KEYWORDS_ES = ['detener', 'cancelar mensajes', 'no me escriban', '
 const OPT_OUT_KEYWORDS_EN = ['stop', 'unsubscribe', 'no more messages', 'remove me', 'do not contact me', 'take me off', 'take me off the list', 'please stop', 'enough', "i'm done", 'i am done', 'unsubscribe me', 'do not text', 'do not message', 'stop messaging', 'leave me alone', 'do not disturb', 'block', 'report spam'];
 const ALL_OPT_OUT_KEYWORDS = [...OPT_OUT_KEYWORDS_ES, ...OPT_OUT_KEYWORDS_EN];
 
+export function isOptOutMessage(message: string): boolean {
+  const normalized = message.toLowerCase().trim();
+  return ALL_OPT_OUT_KEYWORDS.some(keyword => normalized.includes(keyword));
+}
+
 export const llmClient = new DeepSeekLlmClient(true);
 
 function getPlanPricing(planId: string | undefined | null, skills: Skills): { individualPrice: number | null; couplePrice: number | null; planName: string; duration: string } {
@@ -608,7 +648,7 @@ function isPriceQuestion(text: string): boolean {
   }
   if (norm.includes('how much')) return true;
   const tokens = new Set(norm.split(/[^a-z0-9]+/).filter(Boolean));
-  if (['precio', 'precios', 'valor', 'costo', 'cuesta', 'cuestan', 'price', 'prices', 'cost', 'costs'].some(t => tokens.has(t))) return true;
+  if (['precio', 'precios', 'valor', 'costo', 'cuesta', 'cuestan', 'price', 'prices', 'cost', 'costs', 'presupuesto', 'presupuestos'].some(t => tokens.has(t))) return true;
   // Colloquial "vale" (OK/agreed) is not a price word on its own.
   // Only treat it as price when paired with a price carrier.
   if (tokens.has('vale')) {
@@ -682,13 +722,13 @@ function formatDeterministicQuoteReply(
     .replace('{{currency}}', quote.currency);
   const nextStep = quoteCta(fb, { ...merged, personas: merged.personas ?? quote.people });
 
-  if (quote.requiresTransportConfirmation) {
-    return `${fit} ${valueStack} ${anchor} ${base}${fb.quoteTransportConfirm} ${nextStep}`.trim();
-  }
-
   const addon = quote.addonsTotal > 0
     ? fb.quoteAddons.replace('{{addonsTotal}}', formatCop(quote.addonsTotal)).replace('{{currency}}', quote.currency)
     : '';
+
+  if (quote.requiresTransportConfirmation) {
+    return `${fit} ${valueStack} ${anchor} ${base}${addon}${fb.quoteTransportConfirm} ${nextStep}`.trim();
+  }
   const transport = quote.transportTotal != null
     ? fb.quoteTransport.replace('{{transportTotal}}', formatCop(quote.transportTotal)).replace('{{currency}}', quote.currency)
     : '';
@@ -710,23 +750,69 @@ function frameDeterministicQuote(_llmReply: string, quoteReply: string, _fb: Fal
 /** First full price after explicit ask once party size is known (date does not gate base price). */
 function canPresentFirstPrice(message: string, merged: MergedQualification): boolean {
   if (typeof merged.personas !== 'number') return false;
-  if (isPriceQuestion(message)) return true;
+  if (isPriceQuestion(message)) {
+    const msgFields = extractBookingFields(message);
+    const mergedExtra = [merged.plan, merged.fecha, merged.transporte].filter(v => v != null).length;
+    const msgExtra = [msgFields.collected_people, msgFields.collected_date, msgFields.collected_transport_need]
+      .filter(v => v != null).length;
+    return (mergedExtra + msgExtra + 1) >= 2;
+  }
   if (/\bvale\s+la\s+pena\b/i.test(normalizeForKeywordMatch(message))) return false;
   if (isQualificationComplete(merged)) return false;
   return isConfirmedDate(merged.fecha) || merged.transporte != null;
 }
 
+// Known template placeholders used across fallback-replies.json and prompts.
+// Matched with single OR double braces so an LLM emitting `{planName}` is also
+// scrubbed. Kept explicit (not `[a-zA-Z]+`) so legitimate `{word}` copy is never
+// deleted. `plan` matches planName/planDuration/planSummary/planTotal via prefix.
+const KNOWN_TEMPLATE_TOKENS = /\{\{?(?:addonsTotal|age|agentName|continuation|count|couplePrice|coupleTotal|currency|date|dateClause|dates|deposit|depositAmount|displayNumber|duration|experienceName|experienceSummary|individualPrice|instagramUrl|itinerarySummary|label|maxGroupSize|methods|month|name|paymentUrl|people|peopleClause|plan[A-Za-z]*|plans|price|priceLine|soloTotal|startingPrice|statusClause|summary|total|transportTotal|unit|window|windowClause)\}?\}/g;
+
 function scrubInternalLeakTokens(reply: string, internalDatePending: string): string {
   return reply
+    .replace(KNOWN_TEMPLATE_TOKENS, '')
     .replace(/\btentative_unknown\b/gi, internalDatePending)
     .replace(/_relative_ordinal_[a-z0-9_]+/gi, internalDatePending);
 }
 
-function buildPriceGateTeaser(skills: Skills, lang: 'es' | 'en', planId: string | null | undefined): string {
+/** Final safety net: drop any known placeholder that survived substitution. */
+function stripUnsubstitutedTokens(reply: string): string {
+  return reply.replace(KNOWN_TEMPLATE_TOKENS, '').replace(/\s{2,}/g, ' ').trim();
+}
+
+/** Strip COP-format price numbers from reply text when price gating blocks them. */
+function stripPriceText(text: string): string {
+  return text
+    .replace(/\$?\s*\d{1,3}(?:[.,]\d{3})+\s*(?:COP|pesos)?/gi, '')
+    .replace(/\b\d{4,}\s*(?:COP|pesos)\b/gi, '')
+    .replace(/\b\d{2,3}\s*mil\b(?:\s*(?:COP|pesos))?/gi, '')
+    .replace(/\b\d\s*mill[oó]n\b(?:\s*(?:COP|pesos))?/gi, '')
+    .replace(/\b(?:cien|ciento|doscientos|trescientos|cuatrocientos|quinientos|seiscientos|setecientos|ochocientos|novecientos)(?:\s+(?:veinte|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa)(?:\s+y\s+\w+)?)?\s+mil(?:\s+(?:COP|pesos))?\b/gi, '')
+    .replace(/\b(?:un|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve)\s+mill[oó]n(?:es)?(?:\s+(?:COP|pesos))?\b/gi, '')
+    .replace(/\b(?:one|two|three|four|five|six|seven|eight|nine)\s+(?:hundred(?:\s+(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety))?\s+thousand|million)(?:\s+(?:COP|pesos))?\b/gi, '')
+    .replace(/\bcuesta\b.{0,40}\$?\s*\d{1,3}(?:[.,]\d{3})+/gi, '')
+    .replace(/\b(?:precio|price|valor|costo|total)\s+(?:es\b|ser[ií]a\b|de\b|desde\b)\s+\$?\s*\d{1,3}(?:[.,]\d{3})+/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+function buildPriceGateTeaser(skills: Skills, lang: 'es' | 'en', planId: string | null | undefined): string | null {
   const exp = getActiveExperience(skills);
   const plan = planId ? getPlans(exp).find(p => p.id === planId) : undefined;
+  const startingPrice = getStartingPrice(exp, plan?.id);
+  if (!startingPrice) return null;
+  const startingPlan = getPlans(exp).find(candidate => candidate.id === startingPrice.planId);
+  if (!startingPlan) return null;
   // Only used when party size is missing — never imply date changes base price.
-  return applyPlanTokens(skills.fallbackReplies[lang].priceGateTeaser, plan ?? getPlans(exp)[0]);
+  return applyPlanTokens(skills.fallbackReplies[lang].priceGateTeaser, startingPlan)
+    .replace('{{startingPrice}}', formatCop(startingPrice.amount))
+    .replace('{{currency}}', startingPrice.currency);
+}
+
+function isPriceRequestContinuation(recentMessages: RecentMessage[], peopleFromCurrentMessage: unknown): boolean {
+  if (typeof peopleFromCurrentMessage !== 'number') return false;
+  const lastCustomerMessage = [...recentMessages].reverse().find(message => message.role === 'user');
+  return lastCustomerMessage != null && isPriceQuestion(lastCustomerMessage.content);
 }
 
 function detectOutboundDateAction(reply: string, merged: MergedQualification): OutboundDateAction | undefined {
@@ -773,7 +859,7 @@ function availabilityEntryForDate(skills: Skills, fecha: unknown): { status: str
   if (typeof fecha !== 'string') return null;
   const normalized = normalizeForKeywordMatch(fecha);
   const explicitYear = normalized.match(/\b(20\d{2})\b/)?.[1];
-  return getActiveExperience(skills).availability.availableDates.find(entry => {
+  return getFutureAvailableDates(getActiveExperience(skills)).find(entry => {
     if (normalized === entry.date) return true;
     const date = new Date(`${entry.date}T12:00:00Z`);
     if (Number.isNaN(date.getTime())) return false;
@@ -806,8 +892,7 @@ function selectedDateFromAvailabilityReply(
   const assistantNorm = normalizeForKeywordMatch(lastAssistantQuestion);
   const messageNorm = normalizeForKeywordMatch(message);
   const selectedDay = messageNorm.match(/\b(?:el\s+)?([1-9]|[12]\d|3[01])\b/)?.[1];
-  const candidates = getActiveExperience(skills).availability.availableDates.filter(entry => {
-    if (entry.status !== 'available' && entry.status !== 'limited') return false;
+  const candidates = getFutureAvailableDates(getActiveExperience(skills)).filter(entry => {
     const date = new Date(`${entry.date}T12:00:00Z`);
     if (Number.isNaN(date.getTime())) return false;
     const day = String(date.getUTCDate());
@@ -843,12 +928,34 @@ function buildCloseReply(
     : availability?.status === 'limited' ? fb.reservationClosingLimited
     : fb.reservationClosing;
 
+  let priceLine = '';
+  if (typeof merged.personas === 'number') {
+    const quote = calculatePriceQuote(getActiveExperience(skills), {
+      planId: typeof merged.plan === 'string' ? merged.plan : undefined,
+      people: merged.personas,
+      transportNeed: typeof merged.transporte === 'string' ? merged.transporte as TransportNeed : undefined,
+    });
+    if (quote) {
+      const total = quote.requiresTransportConfirmation ? quote.planTotal : (quote.total ?? quote.planTotal);
+      const depositAmount = Math.round(total * facts.depositPercent / 100);
+      priceLine = fb.closeDepositPriceLine
+        .replace('{{total}}', formatCop(total))
+        .replaceAll('{{currency}}', quote.currency)
+        .replace('{{deposit}}', String(facts.depositPercent))
+        .replace('{{depositAmount}}', formatCop(depositAmount));
+      if (quote.requiresTransportConfirmation) {
+        priceLine += fb.quoteTransportConfirm;
+      }
+    }
+  }
+
   return template
     .replaceAll('{{name}}', displayName(merged.nombre, lang))
     .replaceAll('{{summary}}', qualificationSummary(merged, lang, fb))
     .replaceAll('{{date}}', displayDate(merged.fecha, lang))
     .replaceAll('{{deposit}}', String(facts.depositPercent))
-    .replaceAll('{{methods}}', formatMethods(facts.methodNames, lang));
+    .replaceAll('{{methods}}', formatMethods(facts.methodNames, lang))
+    .replace('{{priceLine}}', priceLine);
 }
 
 function buildCloseAck(skills: Skills, lang: 'es' | 'en', merged: MergedQualification): string {
@@ -888,8 +995,17 @@ function inferCloseStage(recentMessages: RecentMessage[]): CloseStage {
   return 'none';
 }
 
-function buildDeterministicQuote(message: string, merged: MergedQualification, lang: 'es' | 'en', skills: Skills): string | null {
-  if (!isPriceQuestion(message)) return null;
+function buildDeterministicQuote(
+  message: string,
+  merged: MergedQualification,
+  lang: 'es' | 'en',
+  skills: Skills,
+  priceRequestContinuation: boolean = false,
+): string | null {
+  if (!isPriceQuestion(message) && !priceRequestContinuation) return null;
+  if (/\b(?:ni[ñn]os?|ni[ñn]as?|children|kids?)\b/i.test(message)) return null;
+  if (/\b(?:presupuestos?|ambos|dos\b|\d+\s*presupuestos?|comparar\s+(?:precios?|presupuestos?))\b/i.test(message)) return null;
+  if (isExplicitDateDeferral(message)) return null;
   const exp = getActiveExperience(skills);
   if (!isPricingAvailable(exp)) return null;
   const quote = calculatePriceQuote(exp, {
@@ -899,6 +1015,28 @@ function buildDeterministicQuote(message: string, merged: MergedQualification, l
     includeApiaryCattle: wantsApiaryCattle(message),
   });
   return quote ? formatDeterministicQuoteReply(quote, skills, lang, merged) : null;
+}
+
+function buildTransportPriceInquiryReply(
+  message: string,
+  merged: MergedQualification,
+  skills: Skills,
+  lang: 'es' | 'en',
+): string | null {
+  if (!isTransportPriceInquiry(message) || typeof merged.personas !== 'number') return null;
+  const exp = getActiveExperience(skills);
+  if (!isPricingAvailable(exp)) return null;
+  const quote = calculatePriceQuote(exp, {
+    planId: typeof merged.plan === 'string' ? merged.plan : undefined,
+    people: merged.personas,
+    transportNeed: 'from_bogota',
+  });
+  if (!quote?.transportTotal || quote.total == null) return null;
+  return skills.fallbackReplies[lang].transportPriceInquiry
+    .replace('{{transportTotal}}', formatCop(quote.transportTotal))
+    .replace('{{total}}', formatCop(quote.total))
+    .replace('{{people}}', peopleLabel(quote.people, lang))
+    .replaceAll('{{currency}}', quote.currency);
 }
 
 function instagramUrl(skills: Skills): string {
@@ -1052,6 +1190,8 @@ function isLowInformationMessage(message: string): boolean {
 
 const HOLDING_REPLY_NO_QUESTION = /\b(?:te escribo|te confirmo|quedo atento|en un momento|dejame validar|me encargo|no enviaremos|estoy validando|te respondo en breve|te escribo enseguida|te escribo en un toque|te contactar[aá]|i(?:'| wi)?ll (?:write|confirm|get back|handle|review)|i am already validating)\b/i;
 
+const SOFT_CLOSE_REPLY_NO_QUESTION = /\b(?:sin problema|sin compromiso|abrazos?|cuando quieras retomarl[oa]|me escribes sin compromiso|aqu[ií] estoy|cuando gustes|un abrazos?|no hay problema|no te preocupes|cuando quieras|a tus [oó]rdenes|no problem|whenever you want|reach out any time|feel free to write|here for you|take care|no worries|anytime you like|when you feel like it)\b/i;
+
 function isDeferredDate(fecha: unknown, dateStatus?: MergedQualification['dateStatus']): boolean {
   if (dateStatus === 'deferred' || dateStatus === 'options_offered') return true;
   return typeof fecha === 'string' && (fecha === 'tentative_unknown' || fecha.startsWith('_'));
@@ -1090,6 +1230,7 @@ function ensureAdvanceQuestion(
   const trimmed = stripReaskedQuestions(reply, merged).trim();
   if (!trimmed) return reply;
   if (HOLDING_REPLY_NO_QUESTION.test(trimmed)) return trimmed;
+  if (SOFT_CLOSE_REPLY_NO_QUESTION.test(trimmed)) return trimmed;
   if (INVITES_RESPONSE_WITHOUT_Q.test(trimmed)) return trimmed;
   if (FACTUAL_NO_FORCE_CTA.test(trimmed)) return trimmed;
   if (/instagram\.com/i.test(trimmed)) return trimmed;
@@ -1117,7 +1258,7 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     });
   };
 
-  if (repos.isPaused()) {
+  if (repos.isPaused() && !isOptOutMessage(message)) {
     return { reply: '', shouldSendReply: false, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
   }
 
@@ -1132,14 +1273,11 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   } else {
     await refreshSkills(false);
   }
-  const skills = getSkills();
-
-  const handedOffRow = repos.conversation.getHandedOffAt(customerPhone);
-  if (handedOffRow) {
-    return { reply: buildHandedOffReply(repos, customerPhone, message, skills), shouldSendReply: true, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
-  }
+  let skills = getSkills();
+  const multipleExperiences = hasMultipleExperiences(skills);
 
   const lang = resolveLanguage(repos, customerPhone, message);
+  const normalized = message.toLowerCase().trim();
 
   if (isAdcodeNoise(message)) {
     return { reply: '', shouldSendReply: false, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
@@ -1149,11 +1287,14 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     return { reply: '', shouldSendReply: false, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
   }
 
-  const normalized = message.toLowerCase().trim();
-  const optOutKeywords = lang === 'es' ? OPT_OUT_KEYWORDS_ES : OPT_OUT_KEYWORDS_EN;
-  if (optOutKeywords.some(k => normalized.includes(k)) || ALL_OPT_OUT_KEYWORDS.some(k => normalized.includes(k))) {
+  if (isOptOutMessage(message)) {
     if (!repos.optOut.isOptedOut(customerPhone)) repos.optOut.setOptOut(customerPhone);
     return { reply: skills.fallbackReplies[lang].optOutConfirmation, shouldSendReply: true, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
+  }
+
+  const handedOffRow = repos.conversation.getHandedOffAt(customerPhone);
+  if (handedOffRow) {
+    return { reply: buildHandedOffReply(repos, customerPhone, message, skills), shouldSendReply: true, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendGalleryImages: false, shouldSendOwnerImage: false, shouldSendImage: false, priceJustGiven: false };
   }
 
   // Terminal state: a booked (converted) lead gets no bot reply. Placed after
@@ -1165,11 +1306,67 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     return { reply: '', shouldSendReply: false, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
   }
 
-  const softClosedAt = repos.conversation.getSoftClosedAt(customerPhone);
+  let softClosedAt = repos.conversation.getSoftClosedAt(customerPhone);
 
   const isFirstContact = isNewConversation;
 
   persistInbound();
+
+  // ── Multi-experience selection (deterministic) ────────────────────────
+  // The bot never assumes an experience when multiple exist. First contact
+  // lists them all; subsequent replies that match an experience name store
+  // the selection so subsequent prompts have the right data.
+  let experienceSwitched = false;
+  if (multipleExperiences) {
+    let selectedId = repos.conversation.getSelectedExperienceId(customerPhone);
+    if (!selectedId) {
+      const collectedPlan = repos.conversation.getCollectedPlan(customerPhone);
+      const matchingExperiences = collectedPlan
+        ? getExperiences(skills).filter(experience => getPlans(experience).some(plan => plan.id === collectedPlan))
+        : [];
+      if (matchingExperiences.length === 1) {
+        selectedId = matchingExperiences[0].id;
+        repos.conversation.setSelectedExperienceId(customerPhone, selectedId);
+      }
+    }
+    const matchedExp = matchExperienceFromReply(message, skills, selectedId == null);
+    if (matchedExp) {
+      if (matchedExp.id !== selectedId) {
+        experienceSwitched = selectedId != null;
+        repos.conversation.setSelectedExperienceId(customerPhone, matchedExp.id);
+        repos.conversation.resetExperienceSalesState(customerPhone);
+        softClosedAt = null;
+      }
+      const normalizedMessage = normalizeForKeywordMatch(message);
+      const normalizedName = normalizeForKeywordMatch(matchedExp.name);
+      const isChoiceOnly = /^\s*(?:\d+|[a-z])\s*$/i.test(message) || normalizedMessage === normalizedName;
+      if (isChoiceOnly) {
+        return {
+          reply: skills.fallbackReplies[lang].experienceSelected.replace('{{name}}', matchedExp.name),
+          shouldSendReply: true, leadScore: 5, usedAi: false,
+          shouldAlertOwner: false, shouldSendOwnerImage: false,
+          shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false,
+        };
+      }
+    } else if (!selectedId) {
+        const list = getExperiences(skills)
+          .map((exp, i) => {
+            const firstSentence = exp.shortDescription.split(/\.(?:\s|$)/, 1)[0].trim();
+            const tagline = firstSentence.length > 90 ? firstSentence.slice(0, 87) + '...' : firstSentence;
+            return `  ${i + 1}. ${exp.name}\n     ${tagline}`;
+          })
+          .join('\n\n');
+        return {
+          reply: skills.fallbackReplies[lang].multiExperienceIntro.replace('{{experiences}}', list),
+          shouldSendReply: true, leadScore: 0, usedAi: false,
+          shouldAlertOwner: false, shouldSendOwnerImage: false,
+          shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false,
+        };
+    }
+  }
+  const selectedExperienceId = repos.conversation.getSelectedExperienceId(customerPhone);
+  skills = scopeSkillsToExperience(skills, selectedExperienceId);
+  const activeExperience = getActiveExperience(skills);
 
   // ── Follow-up pain reply detection ──────────────────────────────────────
   // When the customer replies after receiving the pain-question follow-up,
@@ -1259,12 +1456,12 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   }
 
   const ambiguousPartyComparison = isAmbiguousPartyComparison(message);
-  const bookingFields = extractBookingFields(message);
+  const bookingFields = extractBookingFields(message, activeExperience);
   if (futureWindow) {
     delete bookingFields.collected_date;
     delete bookingFields._relative_date_token;
   }
-  const contextFields = contextAwareExtract(message, repos, customerPhone, bookingFields);
+  const contextFields = contextAwareExtract(message, repos, customerPhone, bookingFields, activeExperience);
   if (!contextFields.collected_date) {
     const selectedDate = selectedDateFromAvailabilityReply(message, getLastAssistantQuestion(repos, customerPhone), skills);
     if (selectedDate) contextFields.collected_date = selectedDate;
@@ -1298,17 +1495,18 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     && contextFields.collected_people > skills.salesStrategy.maxGroupSizePerDate;
 
   const rawCollected = getCollectedFields(repos, customerPhone);
-  const richCollected = reconstructFromHistory(repos, customerPhone, rawCollected);
+  const richCollected = reconstructFromHistory(repos, customerPhone, rawCollected, activeExperience);
   const missingFromDb: Record<string, unknown> = {};
   if (!rawCollected.nombre && richCollected.nombre) missingFromDb.collected_name = richCollected.nombre;
   if (!rawCollected.personas && richCollected.personas) missingFromDb.collected_people = richCollected.personas;
   if (!activeDateWindow && !rawCollected.fecha && richCollected.fecha) missingFromDb.collected_date = richCollected.fecha;
   if (!rawCollected.transporte && richCollected.transporte) missingFromDb.collected_transport_need = richCollected.transporte;
   if (!rawCollected.mascota && richCollected.mascota) missingFromDb.collected_pet = richCollected.mascota;
-  if (richCollected.plan && richCollected.plan !== rawCollected.plan) missingFromDb.collected_plan = richCollected.plan;
+  if (!experienceSwitched && richCollected.plan && richCollected.plan !== rawCollected.plan) missingFromDb.collected_plan = richCollected.plan;
   if (Object.keys(missingFromDb).length > 0) repos.conversation.upsert(customerPhone, missingFromDb);
 
-  const collectedFields = reconstructFromHistory(repos, customerPhone, getCollectedFields(repos, customerPhone));
+  const collectedFields = reconstructFromHistory(repos, customerPhone, getCollectedFields(repos, customerPhone), activeExperience);
+  if (experienceSwitched && typeof contextFields.collected_plan !== 'string') delete collectedFields.plan;
   if (activeDateWindow) delete collectedFields.fecha;
   const dbQualification = buildDbQualification(collectedFields);
   const recentMessages = repos.message.getRecentMessages(customerPhone, 21).filter((_, i, arr) => i < arr.length - 1);
@@ -1349,7 +1547,9 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   if (!hasSafetyOverride && /\b(?:precio|valor|cuesta).{0,50}\bdepende.{0,50}\bfecha|\bdepende.{0,50}\bfecha/i.test(message)) {
     return fallbackOutput(skills.fallbackReplies[lang].priceDependsOnGroup);
   }
-  if (!hasSafetyOverride && /\b(?:precios?|valores?).{0,40}\b(?:fechas?|disponibilidad)|\b(?:fechas?|disponibilidad).{0,40}\b(?:precios?|valores?)/i.test(message)) {
+  if (!hasSafetyOverride && /\b(?:precios?|valores?).{0,40}\b(?:fechas?|disponibilidad)|\b(?:fechas?|disponibilidad).{0,40}\b(?:precios?|valores?)/i.test(message)
+    && !/\b(?:mina|minera|minero|esmeralda|emerald|mining|chivor|hacienda|apicultura|ganader[ií]a)\b/i.test(message)
+    && !isExplicitDateDeferral(message)) {
     return fallbackOutput(skills.fallbackReplies[lang].priceAndDatesIntro);
   }
   if (!hasSafetyOverride
@@ -1386,7 +1586,8 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     const lastQForDate = getLastAssistantQuestion(repos, customerPhone);
     const otherExplicitQuestion = isPlanListQuestion(message)
       || isStandaloneInclusionsQuestion(message, lang)
-      || hasActionableUserQuestion(message);
+      || hasActionableUserQuestion(message)
+      || isPriceQuestion(message);
     const dateDeferredNow = !otherExplicitQuestion && (
       isExplicitDateDeferral(message)
       || ((dateStatusNow === 'asked' || isDateAskQuestion(lastQForDate)) && isUncertainDateAnswer(message))
@@ -1414,10 +1615,23 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
       return fallbackOutput(skills.fallbackReplies[lang].dateDeferredAcknowledgement);
     }
   }
-  if (!hasSafetyOverride && customerContext.transport === 'own_motorcycle' && dbQualification.personas != null && isConfirmedDate(dbQualification.fecha)) {
-    return fallbackOutput(skills.fallbackReplies[lang].motorcycleContext
+  if (!hasSafetyOverride && isDynamicDataFresh() && customerContext.transport === 'own_motorcycle' && dbQualification.personas != null && isConfirmedDate(dbQualification.fecha)) {
+    const motoPrice = calculatePriceQuote(getActiveExperience(skills), {
+      planId: typeof dbQualification.plan === 'string' ? dbQualification.plan : undefined,
+      people: dbQualification.personas,
+      transportNeed: isTransportNeed(dbQualification.transporte) ? dbQualification.transporte : undefined,
+    });
+    const motoPriceLine = motoPrice
+      ? skills.fallbackReplies[lang].quoteTotal
+        .replace('{{total}}', formatCop(motoPrice.total ?? motoPrice.planTotal))
+        .replace('{{currency}}', motoPrice.currency).trimStart()
+      : '';
+    const motoBase = skills.fallbackReplies[lang].motorcycleContext
       .replace('{{people}}', String(dbQualification.personas))
-      .replaceAll('{{date}}', displayDate(dbQualification.fecha, lang)));
+      .replaceAll('{{date}}', displayDate(dbQualification.fecha, lang));
+    const motoQuestionSuffix = skills.fallbackReplies[lang].motorcycleAvailabilityCta;
+    const motoReply = motoBase.replace(/¿Revisamos un fin de semana de[^?]*\?/, motoQuestionSuffix);
+    return fallbackOutput(motoPriceLine ? motoReply.replace('La ruta', `${motoPriceLine}La ruta`) : motoReply);
   }
   if (!hasSafetyOverride && /\b(?:todav[ií]a hay cupo|a[uú]n hay cupo|hay cupo)\b/i.test(message)) {
     const rawDate = customerContext.date ?? (isConfirmedDate(dbQualification.fecha) ? dbQualification.fecha : null);
@@ -1433,6 +1647,15 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   }
   if (!hasSafetyOverride && dbQualification.personas === 1 && /\b(?:muy caro|demasiado caro)\b/i.test(message)) {
     return fallbackOutput(skills.fallbackReplies[lang].priceObjectionBusAlternative);
+  }
+  const transportPriceAskedAfterChoice = isTransportPriceInquiry(message)
+    && wasAskedTransport(getLastAssistantQuestion(repos, customerPhone));
+  if (!hasSafetyOverride && isDynamicDataFresh() && (dbQualification.transporte == null || (transportPriceAskedAfterChoice && !hasExplicitOwnTransport(message)))) {
+    if (transportPriceAskedAfterChoice && dbQualification.transporte != null) {
+      repos.conversation.clearCollectedTransport(customerPhone);
+    }
+    const transportPriceReply = buildTransportPriceInquiryReply(message, dbQualification, skills, lang);
+    if (transportPriceReply) return fallbackOutput(transportPriceReply);
   }
   if (!hasSafetyOverride
     && dbQualification.transporte == null
@@ -1460,7 +1683,7 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     // Price objections with qualification data are recoverable: let the LLM
     // handle them instead of hard-closing with the IG soft-close.
     const hasQualData = dbQualification.personas != null || dbQualification.fecha != null || dbQualification.nombre != null;
-    const isPriceObj = /por ese precio no|por ese valor no|muy caro|esta caro|algo caro|me parece caro|carisimo|se sale del presupuesto|fuera de presupuesto|no me alcanza|consultarlo|lo consulto|lo hablo|lo pienso|consultar/i.test(normalized);
+    const isPriceObj = /por ese precio no|por ese valor no|muy caro|tan caro|por qu[eé]\s+(?:tan\s+)?caro|porque\s+(?:tan\s+)?caro|esta caro|algo caro|me parece caro|carisimo|se sale del presupuesto|fuera de presupuesto|no me alcanza|consultarlo|lo consulto|lo hablo|lo pienso|consultar/i.test(normalized);
     if (hasQualData && isPriceObj && !softClosedAt) {
       // Don't soft-close — let the objection fall through to the LLM for handling.
     } else {
@@ -1588,6 +1811,31 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   }
 
   if (!hasSafetyOverride && preLimitPriceRow && isReviewPause(message) && !/[?¿]|\b(?:que|qué|como|cómo|cual|cuál|where|what|how)\b/i.test(message)) {
+    if (isPartnerConsultPause(message) && /\b(?:consulto|consultarlo|consultar[eé]|lo consulto|lo consult[eé]|consult|consults?)\b/i.test(message) && !isCustomerFollowUpPromise(message)) {
+      const pcName = typeof dbQualification.nombre === 'string' ? dbQualification.nombre.trim() : '';
+      const pcPlan = getPlans(getActiveExperience(skills)).find(p => p.id === (typeof dbQualification.plan === 'string' ? dbQualification.plan : undefined));
+      const pcExpSummary = pcPlan?.shortDescription ?? getShortDescription(getActiveExperience(skills));
+      let pcPriceLine = '';
+      if (typeof dbQualification.personas === 'number') {
+        const pcQuote = calculatePriceQuote(getActiveExperience(skills), {
+          planId: typeof dbQualification.plan === 'string' ? dbQualification.plan : undefined,
+          people: dbQualification.personas,
+          transportNeed: isTransportNeed(dbQualification.transporte) ? dbQualification.transporte : undefined,
+        });
+        if (pcQuote) {
+          pcPriceLine = skills.fallbackReplies[lang].quoteTotal
+            .replace('{{total}}', formatCop(pcQuote.total ?? pcQuote.planTotal))
+            .replace('{{currency}}', pcQuote.currency)
+            .trim();
+        }
+      }
+      const pcFilled = skills.fallbackReplies[lang].partnerConsultSummary
+        .replace('{{name}}', pcName)
+        .replace('{{experienceSummary}}', pcExpSummary)
+        .replace('{{priceLine}}', pcPriceLine);
+      const pcReply = pcName ? pcFilled : pcFilled.replace(/^(\w+)\s+,/, '$1');
+      return fallbackOutput(pcReply);
+    }
     return { reply: skills.fallbackReplies[lang].reviewPauseAcknowledgement, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
   }
 
@@ -1664,7 +1912,7 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   const salesPhase = repos.conversation.getSalesPhase(customerPhone);
   const safeCollected = sanitizeCollectedFields(collectedFields, skills.fallbackReplies[lang].internalDatePending);
   if (activeDateWindow) safeCollected.datePreference = activeDateWindow;
-  const systemPrompt = buildSystemPrompt(skills, lang, safeCollected, salesPhase ?? undefined, extractCustomerContext(message));
+  const systemPrompt = buildSystemPrompt(skills, lang, safeCollected, salesPhase ?? undefined, extractCustomerContext(message), repos.conversation.getSelectedExperienceId(customerPhone));
   const llmHistory = recentMessages.map(m => ({ role: m.role, content: m.content }));
   const llmMessage = message.length > MAX_INBOUND_CHARS ? message.slice(0, MAX_INBOUND_CHARS) : message;
 
@@ -1735,7 +1983,7 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   }
   if (activeDateWindow) repos.conversation.clearCollectedDate(customerPhone);
 
-  const updatedCollected = reconstructFromHistory(repos, customerPhone, getCollectedFields(repos, customerPhone));
+  const updatedCollected = reconstructFromHistory(repos, customerPhone, getCollectedFields(repos, customerPhone), activeExperience);
   if (activeDateWindow) delete updatedCollected.fecha;
   let merged = buildMergedQualification(updatedCollected, llmTurn);
   const deferredDateLowInformation = merged.fecha === 'tentative_unknown' && isLowInformationMessage(message);
@@ -1823,7 +2071,7 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   // When the DB has no collected_plan but the customer's message clearly picks
   // one (ordinal, duration), persist it. Never infer plan from assistant text.
   if (merged.plan == null) {
-    const userPlan = detectPlan(message);
+    const userPlan = detectPlan(message, activeExperience);
     if (userPlan) {
       repos.conversation.upsert(customerPhone, { collected_plan: userPlan });
       merged = { ...merged, plan: userPlan };
@@ -1855,15 +2103,20 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
       : skills.fallbackReplies[lang].priceUnavailable;
     llmTurn.img = false;
   }
-  const priceUnlocked = !!prePriceRow || canPresentFirstPrice(message, merged);
+  const priceRequestContinuation = isPriceRequestContinuation(recentMessages, contextFields.collected_people);
+  const priceUnlocked = !!prePriceRow || canPresentFirstPrice(message, merged) || priceRequestContinuation;
 
   let deterministicQuote: string | null = null;
+  let usedStartingPriceTeaser = false;
   if (priceUnlocked) {
-    deterministicQuote = buildDeterministicQuote(message, merged, lang, skills);
+    deterministicQuote = buildDeterministicQuote(message, merged, lang, skills, priceRequestContinuation);
 
     // Calculator is source of truth. Always wrap numbers in the value package.
     // Skip override when price already given — re-engagement, not first present.
-    if (!prePriceRow && !deterministicQuote && typeof merged.personas === 'number' && replyMentionsPrice(replyText) && pricingAvailable) {
+    if (!prePriceRow && !deterministicQuote && typeof merged.personas === 'number' && replyMentionsPrice(replyText) && pricingAvailable
+      && !/\b(?:ni[ñn]os?|ni[ñn]as?|children|kids?)\b/i.test(message)
+      && !/\b(?:presupuestos?|ambos|\d+\s*presupuestos?|comparar\s+(?:precios?|presupuestos?))\b/i.test(message)
+      && !isExplicitDateDeferral(message)) {
       const priceOverrideQuote = calculatePriceQuote(exp, {
         planId: typeof merged.plan === 'string' ? merged.plan : undefined,
         people: merged.personas,
@@ -1872,13 +2125,22 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
       });
       if (priceOverrideQuote) deterministicQuote = formatDeterministicQuoteReply(priceOverrideQuote, skills, lang, merged);
     }
-  } else if (replyMentionsPrice(replyText)) {
-    // Group size alone is not enough — sell package value first, ask one depth question.
+  } else if (isPriceQuestion(message) || replyMentionsPrice(replyText)) {
+    // Group size is unknown: give a truthful starting value, then ask one question.
     const teaser = buildPriceGateTeaser(skills, lang, typeof merged.plan === 'string' ? merged.plan : undefined);
-    replyText = recentMessages.some(message => message.role === 'assistant' && message.content === teaser)
-      ? skipRepeated(nextQualificationQuestion(merged, skills.fallbackReplies[lang]), recentMessages, merged, skills.fallbackReplies[lang])
-      : teaser;
+    if (teaser) {
+      replyText = recentMessages.some(message => message.role === 'assistant' && message.content === teaser)
+        ? skipRepeated(nextQualificationQuestion(merged, skills.fallbackReplies[lang]), recentMessages, merged, skills.fallbackReplies[lang])
+        : teaser;
+      usedStartingPriceTeaser = replyText === teaser;
+    }
     llmTurn.img = false;
+  }
+
+  // Deterministic price gate: strip any price numbers the LLM may have produced
+  // when the engine decided price should not be unlocked yet.
+  if (!priceUnlocked && pricingAvailable && !usedStartingPriceTeaser) {
+    replyText = stripPriceText(replyText);
   }
 
   const usedDeterministicQuote = deterministicQuote != null;
@@ -1891,16 +2153,20 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   const lateMonthAvailabilityReply = buildLateMonthAvailabilityReply(skills, lang, message);
   if (safetyOverrideReply) {
     replyText = safetyOverrideReply;
+    usedStartingPriceTeaser = false;
     llmTurn.img = false;
   } else if (ambiguousPartyComparison) {
     const knownPlan = getCollectedFields(repos, customerPhone).plan ?? merged.plan;
     replyText = buildPartyComparisonReply(skills, lang, typeof knownPlan === 'string' ? knownPlan : null);
+    usedStartingPriceTeaser = false;
     llmTurn.img = false;
   } else if (isStandaloneInclusionsQuestion(message, lang)) {
     replyText = buildInclusionsReply(skills, lang);
+    usedStartingPriceTeaser = false;
     llmTurn.img = false;
   } else if (isAvailabilityRecommendQuestion(message)) {
     replyText = buildAvailabilityRecommendReply(skills, lang, merged, message);
+    usedStartingPriceTeaser = false;
     llmTurn.img = false;
   }
 
@@ -1919,9 +2185,30 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     };
   }
 
-  const initialPriceJustGiven = replyMentionsPrice(replyText);
-  const pricePresented = !!(initialPriceJustGiven || prePriceRow);
-  if (initialPriceJustGiven && !prePriceRow) repos.conversation.upsert(customerPhone, { price_given_at: new Date().toISOString() });
+  const initialPriceJustGiven = !usedStartingPriceTeaser && replyMentionsPrice(replyText);
+
+  // Only mark price as officially given when enough qualification exists.
+  // Prevents the unlock chain where an LLM price leak at turn 1 unblocks
+  // the deterministic quote gate at turn 3 with only 1 field.
+  const priceQualFields = [merged.nombre, merged.plan, merged.personas, merged.fecha, merged.transporte]
+    .filter(v => v != null).length;
+  const msgPriceFields = extractBookingFields(message);
+  const msgPriceExtra = [msgPriceFields.collected_people, msgPriceFields.collected_date, msgPriceFields.collected_transport_need]
+    .filter(v => v != null).length;
+  const mergedPriceExtra = [merged.plan, merged.fecha, merged.transporte].filter(v => v != null).length;
+  const legalPrice = (mergedPriceExtra + msgPriceExtra) >= 1 || isConfirmedDate(merged.fecha) || merged.transporte != null;
+
+  const pricePresented = !!((initialPriceJustGiven && legalPrice) || prePriceRow);
+
+  if (initialPriceJustGiven && !prePriceRow) {
+    if (legalPrice) {
+      repos.conversation.upsert(customerPhone, { price_given_at: new Date().toISOString() });
+    } else {
+      // Price leaked through — strip it and don't mark as given.
+      replyText = stripPriceText(replyText);
+      logger.info({ phone: customerPhone, fieldCount: priceQualFields + msgPriceExtra + 1 }, '[BOT] price stripped — insufficient qualification');
+    }
+  }
 
   // ── Phase progression (inferred, not LLM-dependent) ──────────────────────
   // The LLM runs in plain-text mode so the structured sales_phase field always
@@ -1953,6 +2240,9 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   const paymentQ = isPaymentMethodsQuestion(message);
   const availabilityConfirm = detectsAvailabilityConfirmRequest(message);
   const closeIntent = reservationIntent || recentReservation || llmReadyToBook || availabilityConfirm;
+  if (reservationIntent || availabilityConfirm) {
+    repos.conversation.setLeadIntent(customerPhone, 'ready_to_book');
+  }
   const closeStage = inferCloseStage(recentMessages);
   const paymentFacts = getPublicPaymentFacts(skills);
   const hasConfirmedDate = isConfirmedDate(merged.fecha);
@@ -1974,12 +2264,34 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   // High commercial intent. Sets human_pending (bot still answers; agent must
   // /bridge for exclusive control). Never expose phone numbers / payment links.
   if (!hasSafetyOverride && paymentQ && (pricePresented || conversationMode === 'human_pending')) {
-    replyText = conversationMode === 'human_pending'
-      ? skills.fallbackReplies[lang].humanPendingPaymentAck
+    if (conversationMode === 'human_pending') {
+      replyText = skills.fallbackReplies[lang].humanPendingPaymentAck
         .replaceAll('{{methods}}', formatMethods(paymentFacts.methodNames, lang))
         .replaceAll('{{deposit}}', String(paymentFacts.depositPercent))
-        .replaceAll('{{date}}', displayDate(merged.fecha, lang))
-      : buildCloseReply(skills, lang, merged, 'payment_methods', paymentFacts);
+        .replaceAll('{{date}}', displayDate(merged.fecha, lang));
+    } else if (/\b(?:de qu[eé] forma|por partes|se paga todo)\b/i.test(message)) {
+      const quote = calculatePriceQuote(getActiveExperience(skills), {
+        planId: typeof merged.plan === 'string' ? merged.plan : undefined,
+        people: merged.personas,
+        transportNeed: isTransportNeed(merged.transporte) ? merged.transporte : undefined,
+      });
+      const methodsList = formatMethods(paymentFacts.methodNames, lang);
+      if (!quote) {
+        replyText = buildCloseReply(skills, lang, merged, 'payment_methods', paymentFacts);
+      } else {
+        const depositAmount = Math.round((quote.requiresTransportConfirmation ? quote.planTotal : (quote.total ?? quote.planTotal)) * paymentFacts.depositPercent / 100);
+        replyText = skills.fallbackReplies[lang].installmentPaymentReply
+          .replace('{{deposit}}', String(paymentFacts.depositPercent))
+          .replace('{{depositAmount}}', formatCop(depositAmount))
+          .replace('{{currency}}', quote.currency)
+          .replaceAll('{{methods}}', methodsList);
+        if (quote.requiresTransportConfirmation) {
+          replyText += skills.fallbackReplies[lang].quoteTransportConfirm;
+        }
+      }
+    } else {
+      replyText = buildCloseReply(skills, lang, merged, 'payment_methods', paymentFacts);
+    }
     needsHumanEffective = true;
     shouldSendGallery = false;
     llmTurn.img = false;
@@ -2005,7 +2317,8 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   const canEnterHumanPending =
     (qComplete && pricePresented && (shouldBridgeByScore || deterministicBridgeFallback))
     || strongAvailabilityConfirm
-    || (reservationIntent && pricePresented && !hasConfirmedDate);
+    || (reservationIntent && pricePresented && !hasConfirmedDate)
+    || (reservationIntent && qComplete && pricePresented);
   const policyFactsAvailable = hasPublicPaymentFacts(skills);
   if (!hasSafetyOverride && closeIntent && !policyFactsAvailable) {
     replyText = buildReservationPolicyUnavailableReply(skills, lang);
@@ -2205,7 +2518,11 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     replyText = ensureAdvanceQuestion(replyText, skills.fallbackReplies[lang], merged);
   }
 
-  const finalPriceJustGiven = replyMentionsPrice(replyText);
+  if (replyText.includes('{')) {
+    replyText = stripUnsubstitutedTokens(replyText);
+  }
+
+  const finalPriceJustGiven = !usedStartingPriceTeaser && legalPrice && replyMentionsPrice(replyText);
   if (finalPriceJustGiven && !prePriceRow) repos.conversation.upsert(customerPhone, { price_given_at: new Date().toISOString() });
   const outputPriceJustGiven = !needsHumanEffective && finalPriceJustGiven;
   const llmAlreadyGaveDetailedPrice = initialPriceJustGiven && replyText.length > 150;
@@ -2244,16 +2561,33 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     logger.warn({ phone: customerPhone, replyLen: replyText.length }, '[LLM] reply may be truncated');
   }
 
+  if (!hasSafetyOverride && /\b(?:presupuestos?|ambos|comparar)\b/i.test(message)) {
+    const unlabeledTransportAmount = /(\b(?:transporte|transport)\b[^.!?]{0,35}\b(?:suma|adds?|cuesta|costs?)\b[^.!?]{0,15}\$?\s*\d{1,3}(?:[.,]\d{3})+\s*(?:COP|pesos)?)(?![^.!?]{0,30}(?:adicional|additional))/i;
+    replyText = replyText.replace(unlabeledTransportAmount, `$1${skills.fallbackReplies[lang].transportAdditionalLabel}`);
+  }
+
+  // Deterministic reply completions: append missing required phrases
+  // when the LLM output is incomplete. Extracted to reply-enrichment.ts.
+  replyText = enrichReply({
+    replyText, message, lang, hasSafetyOverride, needsHumanEffective,
+    unsafeReservationBlocked, pricePresented, closeIntent, isNewConversation,
+    merged, skills,
+  });
+
   return {
     reply: replyText, shouldSendReply: true,
     leadScore: finalScore, usedAi: true,
     shouldAlertOwner, ownerAlertType, shouldSendImage,
-    shouldSendOwnerImage: !hasSafetyOverride && isFirstContact && !needsHumanEffective && !unsafeReservationBlocked && !repos.mediaSend.hasRecentSameImage(customerPhone, 'owner_intro', new Date(Date.now() - MS_72H).toISOString()),
+    shouldSendOwnerImage: !hasSafetyOverride && isFirstContact && !needsHumanEffective && !unsafeReservationBlocked && !multipleExperiences && !repos.mediaSend.hasRecentSameImage(customerPhone, 'owner_intro', new Date(Date.now() - MS_72H).toISOString()),
     shouldSendGalleryImages: shouldSendGallery,
     priceJustGiven: outputPriceJustGiven, priceFollowUpText: outputPriceFollowUpText,
     reservationReady: closeIntent && hasCoreBooking && pricePresented,
     mediaPlanId: typeof merged.plan === 'string' ? merged.plan : null,
     outboundDateAction: detectOutboundDateAction(replyText, merged),
+    bookingIntent: !!needsHumanEffective || (paymentQ && pricePresented),
+    handoffCreated: false,
+    leadLifecycle: needsHumanEffective ? 'human_pending' : undefined,
+    suppressGenericFollowups: needsHumanEffective,
   };
   } catch (err) {
     logSystemError('process_message', 'error', err, {

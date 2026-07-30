@@ -71,7 +71,7 @@
       "mockReply": "Te entiendo. Viajando solo, el transporte privado pesa mucho en el total. Puedes llegar en bus hasta Chivor y allí te recogemos para continuar con el plan. ¿Esa opción te hace más sentido?",
       "expect": {
         "shouldSendReply": true,
-        "usedAi": true
+        "usedAi": false
       }
     }
   ]
