@@ -63,6 +63,8 @@ export const bridgeMessages = {
       : `Imagen de ${phone}`,
   newCustomerAudio: (phone: string): string => `Audio de ${phone}`,
   newCustomerVideo: (phone: string): string => `Video de ${phone}`,
+  relayFailed: (phone: string, messageType: string): string =>
+    `No se pudo entregar al agente el mensaje ${messageType} de ${phone}. El mensaje quedo guardado y el bridge sigue activo.`,
   dormantBridgeNotice: (phone: string, text: string): string =>
     `${customerMessageBody(phone, text)}\n\nUsa /bridge ${phone} para tomar control.`,
   dormantBridgeImageNotice: (phone: string): string =>
@@ -92,4 +94,7 @@ export const bridgeMessages = {
   returnbotUsage: 'Uso: /returnbot <telefono>',
   returnbotBooked: 'Lead confirmado (booked). No se puede devolver al modo bot.',
   returnbotDone: (phone: string): string => `${phone} devuelto al modo bot.`,
+  stopbotUsage: 'Uso: /stopbot <telefono>',
+  stopbotBooked: 'Lead confirmado (booked). No se puede silenciar.',
+  stopbotDone: (phone: string): string => `Bot silenciado para ${phone}. Chat humano activo; usa /end para cerrarlo o /returnbot ${phone} para reactivar el bot.`,
 } as const;

@@ -1,10 +1,33 @@
 import { describe, expect, it } from 'vitest';
 import { loadSkills } from '../services/skill-loader.js';
 import { getActiveExperience } from '../services/product-registry.js';
-import { calculatePriceQuote } from '../services/pricing-calculator.js';
+import { calculatePriceQuote, getStartingPrice } from '../services/pricing-calculator.js';
 import { ADDON_ID_APIARY_CATTLE, ADDON_ID_PRIVATE_TRANSPORT } from '../services/dynamic-data-service.js';
 
 describe('calculatePriceQuote', () => {
+  it('uses the lowest one-person package total for a starting price', () => {
+    const exp = getActiveExperience(loadSkills());
+    const originalPricing = exp.pricing;
+    exp.pricing = {
+      currency: 'COP', lastUpdated: '2026-01-01',
+      items: [
+        { id: '2d1n_mining_individual', planId: '2d1n_mining', label: 'Individual', pricePerPerson: 550000, publiclyShow: true },
+        { id: '2d1n_mining_couple', planId: '2d1n_mining', label: 'Pareja', couplePrice: 1000000, peopleIncluded: 2, publiclyShow: true },
+        { id: 'hidden_individual', planId: '3d2n_rural', label: 'Individual', pricePerPerson: 300000, publiclyShow: false },
+        { id: '3d2n_rural_individual', planId: '3d2n_rural', label: 'Individual', pricePerPerson: 650000, publiclyShow: true },
+        { id: 'cheap_optional_extra', kind: 'addon', planId: '2d1n_mining', label: 'Optional extra', pricePerPerson: 10000, publiclyShow: true },
+      ],
+      botRules: [], businessRules: [],
+    };
+
+    try {
+      expect(getStartingPrice(exp)).toEqual({ amount: 550000, currency: 'COP', planId: '2d1n_mining' });
+      expect(getStartingPrice(exp, '3d2n_rural')).toEqual({ amount: 650000, currency: 'COP', planId: '3d2n_rural' });
+    } finally {
+      exp.pricing = originalPricing;
+    }
+  });
+
   it('calculates 5+ people from couple / 2 x people', () => {
     const exp = getActiveExperience(loadSkills());
     exp.pricing = {

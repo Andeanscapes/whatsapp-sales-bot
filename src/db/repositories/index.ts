@@ -15,6 +15,7 @@ import {
   SqliteCustomerDataRepo,
   SqliteTranscriptRepo,
   SqliteFollowUpEventRepo,
+  SqlitePaymentReservationRepo,
 } from './sqlite-repos.js';
 
 export function createRepositories(db: Database.Database): Repositories {
@@ -33,12 +34,16 @@ export function createRepositories(db: Database.Database): Repositories {
     aiUsage: new SqliteAiUsageRepo(db),
     ownerAlert: new SqliteOwnerAlertRepo(db),
     mediaSend: new SqliteMediaSendRepo(db),
+    paymentReservation: new SqlitePaymentReservationRepo(db),
     bridgeSession: new SqliteBridgeSessionRepo(db),
     stats: new SqliteStatsRepo(db),
     systemErrors: new SqliteSystemErrorRepo(db),
     customerData: new SqliteCustomerDataRepo(db),
     transcripts: new SqliteTranscriptRepo(db),
     followUpEvent: new SqliteFollowUpEventRepo(db),
+    runInTransaction(operation: () => void): void {
+      db.transaction(operation)();
+    },
     isPaused(): boolean {
       const row = db.prepare("SELECT value FROM bot_config WHERE key = 'paused'").get() as { value: string } | undefined;
       return row?.value === 'true';

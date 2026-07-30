@@ -1,0 +1,45 @@
+{
+  "id": "followup-cap-prevents-overmessaging",
+  "source": "2026-whatsapp-tourism-conversion-strategy",
+  "tags": [
+    "follow-up",
+    "frequency-cap",
+    "quality",
+    "regression"
+  ],
+  "lang": "es",
+  "runner": "follow_up",
+  "liveRuns": 3,
+  "seedSystem": {
+    "withinCustomerServiceWindow": true,
+    "priorAutomatedFollowUps": 2,
+    "meaningfulSecondInbound": false,
+    "hoursSinceLastInbound": 22
+  },
+  "criteria": [
+    {
+      "id": "suppressed-after-cap",
+      "rule": "output_flag_equals",
+      "flag": "shouldSendReply",
+      "expected": false,
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "marks-reactivation-candidate",
+      "rule": "output_flag_equals",
+      "flag": "queueForReactivationAfterWindow",
+      "expected": true,
+      "turn": 2,
+      "weight": 1,
+      "critical": false
+    }
+  ],
+  "turns": [
+    {
+      "user": "Hola, quiero información.",
+      "mockReply": "Claro, ¿para cuántas personas sería?"
+    }
+  ]
+}

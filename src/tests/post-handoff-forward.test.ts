@@ -321,7 +321,7 @@ describe('forwardBridgeMessage', () => {
     expect(repos.conversation.getMode(PHONE)).toBe('bot');
   });
 
-  it('reopens the bot path when active bridge Telegram delivery fails', async () => {
+  it('closes the bridge and resumes bot when Telegram delivery fails', async () => {
     repos.conversation.upsert(PHONE, { language: 'es' });
     repos.conversation.setAssignment(PHONE, { assignedLineId: 'line1_bridge', assignedAgentChat: '111' });
     repos.conversation.setMode(PHONE, 'bridge_active');
@@ -332,10 +332,40 @@ describe('forwardBridgeMessage', () => {
     const forwarded = await forwardBridgeMessage(repos, msg('Hola agente', 'wamid-bridge-fail'));
 
     expect(forwarded).toBe(false);
-    expect(repos.conversation.getMode(PHONE)).toBe('bot');
     expect(repos.bridgeSession.getByAgentChat('111')).toBeNull();
-    const inbound = repos.message.getLastInboundBodies(PHONE, 10).filter(m => m.body === 'Hola agente');
-    expect(inbound).toHaveLength(1);
+    expect(repos.conversation.getMode(PHONE)).toBe('bot');
+    expect(repos.ownerAlert.wasAlertedToday(PHONE, 'bridge_relay_failed')).toBe(true);
+    expect(mockSendTelegram).toHaveBeenLastCalledWith('owner-chat', expect.stringContaining('No se pudo entregar'));
+  });
+
+  it('closes the bridge and restores return mode when Telegram delivery fails', async () => {
+    repos.conversation.upsert(PHONE, { language: 'es' });
+    repos.conversation.setMode(PHONE, 'bridge_active');
+    repos.bridgeSession.open('111', PHONE, 'human_only');
+    mockSendTelegram.mockRejectedValueOnce(new Error('telegram down'));
+
+    const forwarded = await forwardBridgeMessage(repos, msg('Hola agente', 'wamid-human-only-bridge-fail'));
+
+    expect(forwarded).toBe(false);
+    expect(repos.conversation.getMode(PHONE)).toBe('human_only');
+    expect(repos.bridgeSession.getByAgentChat('111')).toBeNull();
+  });
+
+  it('closes the reassigned bridge when Telegram delivery fails', async () => {
+    const replacementPhone = '573009998888';
+    repos.conversation.upsert(PHONE, { language: 'es' });
+    repos.conversation.setMode(PHONE, 'bridge_active');
+    repos.bridgeSession.open('111', PHONE);
+    mockSendTelegram.mockImplementationOnce(async () => {
+      repos.bridgeSession.open('111', replacementPhone, 'human_only');
+      throw new Error('telegram down');
+    });
+
+    const forwarded = await forwardBridgeMessage(repos, msg('Hola agente', 'wamid-reassigned-bridge-fail'));
+
+    expect(forwarded).toBe(false);
+    expect(repos.bridgeSession.getByAgentChat('111')).toBeNull();
+    expect(repos.conversation.getMode(PHONE)).toBe('bot');
   });
 
   it('forwards a customer image to the agent as a Telegram photo during an active bridge', async () => {

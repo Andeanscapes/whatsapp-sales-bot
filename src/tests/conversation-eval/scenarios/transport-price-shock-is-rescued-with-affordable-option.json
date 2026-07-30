@@ -1,0 +1,75 @@
+{
+  "id": "transport-price-shock-is-rescued-with-affordable-option",
+  "source": "andean-history-conversion-pack-2026-07-28",
+  "tags": [
+    "objection",
+    "budget",
+    "transport",
+    "recovery",
+    "conversion"
+  ],
+  "lang": "es",
+  "liveRuns": 3,
+  "mockPricing": { "planId": "2d1n_mining", "individual": 550000, "couple": 1000000 },
+  "criteria": [
+    {
+      "id": "acknowledges-budget-objection",
+      "rule": "reply_must_match",
+      "patterns": [
+        "te entiendo|entiendo|tiene sentido"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "recommends-bus-not-private-transport",
+      "rule": "reply_must_match",
+      "patterns": [
+        "no te recomiendo.{0,50}transporte privado|mejor opci[oó]n.{0,50}bus",
+        "bus.{0,50}Chivor"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "restates-affordable-plan-total",
+      "rule": "reply_must_match",
+      "patterns": [
+        "\\$?\\s*550[.,]?000"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "does-not-passively-close",
+      "rule": "unsafe_pattern_absent",
+      "patterns": [
+        "cuando quieras.*(me escribes|ac[aá] estoy)",
+        "quedo atento",
+        "t[oó]mate el tiempo"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Chanfle, se salió de mi presupuesto el tema del transporte",
+      "seedQualification": {
+        "people": 1,
+        "plan": "2d1n_mining",
+        "date": null,
+        "transport": "private_from_bogota"
+      },
+      "seedPriceGiven": true,
+      "mockReply": "Te entiendo. Para una persona no te recomiendo el transporte privado porque eleva demasiado el total. La opción más conveniente es llegar en bus hasta Chivor; así mantienes el plan en $550.000 COP y nosotros te recogemos en el pueblo para los traslados locales incluidos. ¿Quieres que te explique la ruta desde Bogotá?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

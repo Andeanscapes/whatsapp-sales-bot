@@ -14,15 +14,19 @@ import { endHandler } from '../commands/end.command.js';
 import { phasesHandler } from '../commands/phases.command.js';
 import { blockHandler } from '../commands/block.command.js';
 import { bookingHandler } from '../commands/booking.command.js';
+import { paymentHandler } from '../commands/payment.command.js';
 import { pauseHandler } from '../commands/pause.command.js';
 import { resumeHandler } from '../commands/resume.command.js';
 import { statusHandler } from '../commands/status.command.js';
 import { statsHandler } from '../commands/stats.command.js';
 import { deleteHandler } from '../commands/delete.command.js';
 import { daysummaryHandler } from '../commands/daysummary.command.js';
+import { metaLeadsHandler } from '../commands/meta-leads.command.js';
+import { metaConsentHandler } from '../commands/meta-consent.command.js';
 import { versionHandler } from '../commands/version.command.js';
 import { retryflowHandler } from '../commands/retryflow.command.js';
 import { returnbotHandler } from '../commands/returnbot.command.js';
+import { stopbotHandler } from '../commands/stopbot.command.js';
 import { isAllowedTelegramChat, isBridgeTelegramChat, isOwnerChat } from './lead-routing.js';
 import { sendBridgeReply, sendBridgeMedia } from './bridge-service.js';
 import { bridgeMessages } from './bridge-messages.js';
@@ -292,7 +296,7 @@ export async function processUpdate(update: TelegramUpdate, repos: Repositories)
     return;
   }
 
-  if (cmd.ownerOnly && !isOwnerChat(chatIdStr)) {
+  if (cmd.ownerOnly && (msg.chat.type !== 'private' || !isOwnerChat(String(msg.from.id)))) {
     await sendTelegramMessage(msg.chat.id, bridgeMessages.ownerOnlyCommand);
     return;
   }
@@ -408,6 +412,14 @@ export function registerCommands(): void {
   });
 
   registerCommand({
+    name: 'payment',
+    description: 'Crear y enviar enlace Mercado Pago despues de validar disponibilidad',
+    usage: '<telefono> confirm',
+    ownerOnly: true,
+    handler: paymentHandler,
+  });
+
+  registerCommand({
     name: 'pause',
     description: 'Pausar respuestas del bot a clientes',
     usage: '',
@@ -461,6 +473,14 @@ export function registerCommands(): void {
   });
 
   registerCommand({
+    name: 'stopbot',
+    description: 'Silenciar bot para un cliente (solo responde humano)',
+    usage: '<telefono>',
+    ownerOnly: true,
+    handler: stopbotHandler,
+  });
+
+  registerCommand({
     name: 'summary',
     description: 'Resumen de conversaciones (texto + JSON)',
     usage: '<hoy|ayer|week|month|todo>',
@@ -474,6 +494,22 @@ export function registerCommands(): void {
     usage: '<hoy|ayer|week|month|todo>',
     ownerOnly: true,
     handler: daysummaryHandler,
+  });
+
+  registerCommand({
+    name: 'metaleads',
+    description: 'Exportar leads sin reserva para Meta (CSV)',
+    usage: '',
+    ownerOnly: true,
+    handler: metaLeadsHandler,
+  });
+
+  registerCommand({
+    name: 'metaconsent',
+    description: 'Registrar consentimiento documentado para audiencia Meta',
+    usage: '<telefono> <fuente>',
+    ownerOnly: true,
+    handler: metaConsentHandler,
   });
 
   registerCommand({

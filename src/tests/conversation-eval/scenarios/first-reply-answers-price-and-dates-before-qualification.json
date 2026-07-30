@@ -1,0 +1,67 @@
+{
+  "id": "first-reply-answers-price-and-dates-before-qualification",
+  "source": "andean-history-conversion-pack-2026-07-28",
+  "tags": [
+    "opening",
+    "price",
+    "availability",
+    "conversion",
+    "regression"
+  ],
+  "lang": "es",
+  "liveRuns": 3,
+  "mockPricing": { "planId": "2d1n_mining", "individual": 550000, "couple": 1000000 },
+  "seedSystem": {
+    "dynamicSkillAvailable": true,
+    "currentDate": "2026-07-28",
+    "availability": [
+      { "date": "2026-08-15", "status": "available" },
+      { "date": "2026-09-26", "status": "available" }
+    ]
+  },
+  "criteria": [
+    {
+      "id": "answers-price-immediately",
+      "rule": "reply_must_match",
+      "patterns": [
+        "\\$?\\s*550[.,]?000"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "advances-to-date-selection",
+      "rule": "reply_must_match",
+      "patterns": [
+        "fecha"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "does-not-reask-known-party-size",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "solo.{0,30}pareja",
+        "pareja.{0,30}grupo"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Hola, quiero precios y fechas para la aventura minera en Chivor 💚",
+      "seedQualification": {
+        "people": 1
+      },
+      "mockReply": "¡Hola! Claro 💚 El plan de 2 días y 1 noche cuesta $550.000 COP para una persona y $1.000.000 COP para pareja. Incluye alojamiento, tres comidas y la experiencia en una mina real con equipo y guía local. Las próximas fechas son el 15 de agosto y el 26 de septiembre. ¿Viajarías solo, en pareja o en grupo?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

@@ -7,6 +7,8 @@ import { resetRoutingConfigCache, type RoutingConfig } from '../services/lead-ro
 import { bridgeMessages } from '../services/bridge-messages.js';
 import { chatHandler } from '../commands/chat.command.js';
 import { endHandler } from '../commands/end.command.js';
+import { stopbotHandler } from '../commands/stopbot.command.js';
+import { returnbotHandler } from '../commands/returnbot.command.js';
 
 const PHONE = '573001112233';
 
@@ -151,6 +153,78 @@ describe('/end command', () => {
 
     expect(reply).toBe(bridgeMessages.chatClosed(PHONE));
     expect(repos.bridgeSession.getByAgentChat('111')).toBeNull();
+    expect(repos.conversation.getMode(PHONE)).toBe('bot');
+  });
+
+  it('restores human_only after ending a bridge opened by /stopbot', async () => {
+    repos.conversation.upsert(PHONE, { language: 'es' });
+    repos.bridgeSession.open('111', PHONE, 'human_only');
+    repos.conversation.setMode(PHONE, 'bridge_active');
+
+    const reply = await endHandler({ repos, chatId: 111, args: [] });
+
+    expect(reply).toBe(bridgeMessages.chatClosed(PHONE));
+    expect(repos.bridgeSession.getByAgentChat('111')).toBeNull();
+    expect(repos.conversation.getMode(PHONE)).toBe('human_only');
+  });
+});
+
+describe('/stopbot command', () => {
+  it('returns usage when no phone is provided', async () => {
+    const reply = await stopbotHandler({ repos, chatId: 333, args: [] });
+    expect(reply).toBe(bridgeMessages.stopbotUsage);
+  });
+
+  it('returns leadNotFound for unknown phone', async () => {
+    const reply = await stopbotHandler({ repos, chatId: 333, args: [PHONE] });
+    expect(reply).toBe(bridgeMessages.leadNotFound(PHONE));
+  });
+
+  it('rejects booked leads', async () => {
+    repos.conversation.upsert(PHONE, { language: 'es' });
+    repos.conversation.setBooked(PHONE);
+
+    const reply = await stopbotHandler({ repos, chatId: 333, args: [PHONE] });
+
+    expect(reply).toBe(bridgeMessages.stopbotBooked);
+  });
+
+  it('opens a human bridge that returns to human_only and clears handoff', async () => {
+    repos.conversation.upsert(PHONE, { language: 'es' });
+    repos.conversation.setAssignment(PHONE, { assignedLineId: 'line1_bridge', assignedAgentChat: '111' });
+    repos.conversation.setHandedOff(PHONE);
+
+    const reply = await stopbotHandler({ repos, chatId: 333, args: [PHONE] });
+
+    expect(reply).toBe(bridgeMessages.stopbotDone(PHONE));
+    expect(repos.conversation.getMode(PHONE)).toBe('bridge_active');
+    expect(repos.conversation.getHandedOffAt(PHONE)).toBeNull();
+    expect(repos.conversation.getAssignment(PHONE)).toBeNull();
+    expect(repos.bridgeSession.getByCustomer(PHONE)?.agentChatId).toBe('333');
+    expect(repos.bridgeSession.getByCustomer(PHONE)?.returnMode).toBe('human_only');
+  });
+
+  it('takes over an active bridge and keeps human routing active', async () => {
+    repos.conversation.upsert(PHONE, { language: 'es' });
+    repos.conversation.setMode(PHONE, 'bridge_active');
+    repos.bridgeSession.open('111', PHONE);
+
+    await stopbotHandler({ repos, chatId: 333, args: [PHONE] });
+
+    expect(repos.conversation.getMode(PHONE)).toBe('bridge_active');
+    expect(repos.bridgeSession.getByCustomer(PHONE)?.agentChatId).toBe('333');
+    expect(repos.bridgeSession.getByCustomer(PHONE)?.returnMode).toBe('human_only');
+  });
+});
+
+describe('/returnbot from human_only', () => {
+  it('reverts human_only mode back to bot', async () => {
+    repos.conversation.upsert(PHONE, { language: 'es' });
+    repos.conversation.setMode(PHONE, 'human_only');
+
+    const reply = await returnbotHandler({ repos, chatId: 333, args: [PHONE] });
+
+    expect(reply).toBe(bridgeMessages.returnbotDone(PHONE));
     expect(repos.conversation.getMode(PHONE)).toBe('bot');
   });
 });

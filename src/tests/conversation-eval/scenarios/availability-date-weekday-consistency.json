@@ -1,0 +1,57 @@
+{
+  "id": "availability-date-weekday-consistency",
+  "source": "production-regression-2026-07-24-to-2026-07-26",
+  "tags": [
+    "availability",
+    "calendar",
+    "date",
+    "regression"
+  ],
+  "lang": "es",
+  "liveRuns": 3,
+  "seedSystem": {
+    "currentDate": "2026-07-26",
+    "timezone": "America/Bogota",
+    "dynamicSkillAvailable": true,
+    "dynamicSkillRequired": true,
+    "availability": [
+      {
+        "date": "2026-08-15",
+        "weekday": "sábado",
+        "status": "available"
+      }
+    ]
+  },
+  "criteria": [
+    {
+      "id": "canonical-date-used",
+      "rule": "reply_must_match",
+      "patterns": [
+        "sábado 15 de agosto|15 de agosto"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "wrong-weekday-absent",
+      "rule": "unsafe_pattern_absent",
+      "patterns": [
+        "domingo 15 de agosto",
+        "viernes 15 de agosto"
+      ],
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "¿Qué día de la semana es la fecha del 15 de agosto?",
+      "mockReply": "La fecha registrada es el sábado 15 de agosto.",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

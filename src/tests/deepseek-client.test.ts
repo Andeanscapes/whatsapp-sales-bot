@@ -1,7 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { buildSystemPrompt } from '../services/deepseek-client.js';
+import { buildFollowUpPrompt, buildSystemPrompt } from '../services/deepseek-client.js';
 import { loadSkills, type Skills } from '../services/skill-loader.js';
 import { AVAILABILITY_NOT_AVAILABLE, PRICING_NOT_AVAILABLE } from '../services/dynamic-data-service.js';
+import { getActiveExperience, getShortDescription } from '../services/product-registry.js';
+import { containsClosingDelay } from '../services/reply-guard.js';
+
+describe('buildFollowUpPrompt', () => {
+  it('derives supported experience context from the product registry', () => {
+    const skills = loadSkills();
+    const experience = getActiveExperience(skills);
+    const prompt = buildFollowUpPrompt({ skills, lang: 'es', phase: 'greeting', stage: 'first_nudge' });
+
+    expect(prompt).toContain(`Supported experience: ${experience.name}`);
+    expect(prompt).toContain(`Description: ${getShortDescription(experience)}`);
+    expect(prompt).not.toContain('This business has ONE core experience');
+  });
+});
 
 describe('buildSystemPrompt', () => {
   it('injects sales tactics from skill data', () => {
@@ -13,17 +27,42 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain(`Invisible qualification: ${skills.salesStrategy.salesTactics.invisibleQualification}`);
   });
 
-  it('keeps unavailable pricing and availability guard ahead of sales tactics', () => {
+  it('keeps unavailable pricing and availability guards ahead of sales tactics', () => {
     const skills = withUnavailablePricingAndAvailability(loadSkills());
     const prompt = buildSystemPrompt(skills);
 
-    const guardIndex = prompt.indexOf('[CRITICAL RULE] NO hay precios ni fechas disponibles');
+    const guardIndex = prompt.indexOf('[CRITICAL RULE] NO hay precios actualizados');
     const priceContextIndex = prompt.indexOf('Price with context:');
     const salesTacticsIndex = prompt.indexOf('Sales attitude:');
 
     expect(guardIndex).toBeGreaterThanOrEqual(0);
     expect(priceContextIndex).toBe(-1);
     expect(salesTacticsIndex).toBeGreaterThan(guardIndex);
+  });
+
+  it('exposes only future available or limited dates to the LLM', () => {
+    const skills = loadSkills();
+    const exp = getActiveExperience(skills);
+    const original = exp.availability;
+    exp.availability = {
+      ...original,
+      botRule: 'Use published dates only.',
+      availableDates: [
+        { date: '2099-08-16', status: 'soldout', slotsApprox: 0 },
+        { date: '2099-08-17', status: 'available', slotsApprox: null },
+        { date: '2099-08-18', status: 'limited', slotsApprox: 2 },
+        { date: '2099-08-19', status: 'unavailable', slotsApprox: null },
+      ],
+    };
+    try {
+      const prompt = buildSystemPrompt(skills, 'es');
+      expect(prompt).toContain('17 ago 2099');
+      expect(prompt).toContain('18 ago 2099');
+      expect(prompt).not.toContain('16 ago 2099');
+      expect(prompt).not.toContain('19 ago 2099');
+    } finally {
+      exp.availability = original;
+    }
   });
 
   it('surfaces durable business rules even when pricing is unavailable', () => {
@@ -101,6 +140,32 @@ describe('buildSystemPrompt', () => {
     expect(prompt).not.toContain('3000000000');
     expect(prompt).not.toContain('Transfiere al');
   });
+
+  it('includes explicit family and transport context without inventing facts', () => {
+    const prompt = buildSystemPrompt(loadSkills(), 'es', undefined, undefined, {
+      date: 'octubre',
+      transport: 'own_motorcycle',
+      childAges: [5],
+      groupRelationship: 'padre e hijo',
+    });
+
+    expect(prompt).toContain('Date mentioned: octubre');
+    expect(prompt).toContain('Transport mentioned: own_motorcycle');
+    expect(prompt).toContain('Child ages mentioned: 5');
+    expect(prompt).toContain('Group relationship: padre e hijo');
+  });
+
+  it('grounds public bus guidance and keeps it separate from the car ferry route', () => {
+    const prompt = buildSystemPrompt(loadSkills(), 'es');
+
+    expect(prompt).toContain('Terminal Salitre');
+    expect(prompt).toContain('aproximadamente a las 7:00 am');
+    expect(prompt).toContain('aproximadamente a las 5:00 am');
+    expect(prompt).toContain('$60.000 COP por persona y por trayecto');
+    expect(prompt).toContain('Flota Valle de Tenza o Flota La Macarena');
+    expect(prompt).toContain('no prometas mina la misma manana de llegada');
+    expect(prompt).toContain('no aplican automaticamente al bus publico');
+  });
 });
 
 function withUnavailablePricingAndAvailability(skills: Skills): Skills {
@@ -128,3 +193,45 @@ function withUnavailablePricingAndAvailability(skills: Skills): Skills {
     },
   };
 }
+
+describe('containsClosingDelay', () => {
+  it('detects "mañana te envío" postponement', () => {
+    expect(containsClosingDelay('Perfecto, mañana te envío los datos de pago.')).toBe(true);
+  });
+
+  it('detects "déjame saber si te gustaría" stall', () => {
+    expect(containsClosingDelay('Déjame saber si te gustaría dejar tu reserva en firme.')).toBe(true);
+  });
+
+  it('detects "luego te confirmo" delay', () => {
+    expect(containsClosingDelay('Luego te confirmo disponibilidad para esa fecha.')).toBe(true);
+  });
+
+  it('detects "let me know if you would like" English', () => {
+    expect(containsClosingDelay('Let me know if you would like to book this date.')).toBe(true);
+  });
+
+  it('detects "I will send the link tomorrow"', () => {
+    expect(containsClosingDelay('Great, I will send the link tomorrow morning.')).toBe(true);
+  });
+
+  it('detects "cuando quieras seguimos" indefinite deferral', () => {
+    expect(containsClosingDelay('Cuando quieras seguimos con la reserva.')).toBe(true);
+  });
+
+  it('normal closing message passes (no delay)', () => {
+    expect(containsClosingDelay('¿Quieres que valide disponibilidad para el 15 de agosto?')).toBe(false);
+  });
+
+  it('value-only description passes (no delay)', () => {
+    expect(containsClosingDelay('Incluye alojamiento, comidas, guía local y experiencia en la mina.')).toBe(false);
+  });
+
+  it('booking intent passes (no delay)', () => {
+    expect(containsClosingDelay('Perfecto, inicia la reserva con el 15% de anticipo.')).toBe(false);
+  });
+
+  it('legitimate operational confirm passes (no delay)', () => {
+    expect(containsClosingDelay('Te escribo y luego te confirmo el resultado de la validación.')).toBe(false);
+  });
+});
