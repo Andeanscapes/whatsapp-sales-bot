@@ -62,7 +62,7 @@ jobs:
       DEEPSEEK_API_KEY: test
       OWNER_PERSONAL_WHATSAPP_NUMBER: "573001112233"
       AI_ENABLED: "false"
-      MIN_CONVERSATION_SCORE: "80"
+      MIN_CONVERSATION_SCORE: "90"
       MAX_SCORE_DROP: "5"
     steps:
       - uses: actions/checkout@v4
