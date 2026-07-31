@@ -62,7 +62,7 @@ jobs:
       DEEPSEEK_API_KEY: test
       OWNER_PERSONAL_WHATSAPP_NUMBER: "573001112233"
       AI_ENABLED: "false"
-      MIN_CONVERSATION_SCORE: "80"
+      MIN_CONVERSATION_SCORE: "90"
       MAX_SCORE_DROP: "5"
     steps:
       - uses: actions/checkout@v4
@@ -103,7 +103,7 @@ jobs:
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
       OWNER_PERSONAL_WHATSAPP_NUMBER: "573001112233"
       AI_ENABLED: "true"
-      MIN_CONVERSATION_SCORE: "65"
+      MIN_CONVERSATION_SCORE: "90"
       MAX_SCORE_DROP: "8"
     steps:
       - uses: actions/checkout@v4
@@ -115,6 +115,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run eval:conversations:llm-bot
+        continue-on-error: true
       - run: npm run eval:conversations:compare -- --baseline src/tests/conversation-eval/baselines/master-llm-bot.json --current artifacts/conversation-eval-llm-bot.json --min-average $MIN_CONVERSATION_SCORE --max-drop $MAX_SCORE_DROP
       - uses: actions/upload-artifact@v4
         if: always()
