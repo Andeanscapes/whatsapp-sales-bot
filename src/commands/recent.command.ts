@@ -12,13 +12,15 @@ function formatRecent(conversations: ConversationSummary[]): string {
     const phase = c.phase ?? '—';
     const ts = new Date(c.lastSeenAt);
     const time = ts.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
-    lines.push(`${c.customerPhone} | ${name} | ${c.score} | ${phase} | ${time}`);
+    const entry = c.entryMarker ? ` | ${c.entryMarker}/${c.entryTemperature ?? 'unknown'}` : '';
+    lines.push(`${c.customerPhone} | ${name} | ${c.score} | ${phase} | ${time}${entry}`);
   }
   return lines.join('\n');
 }
 
 export async function recentHandler(ctx: CommandContext): Promise<string> {
-  const limit = parseInt(ctx.args[0], 10) || 5;
+  const requestedLimit = parseInt(ctx.args[0], 10);
+  const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 25) : 5;
   const lineId = resolveCallerLineId(ctx.chatId);
   const conversations = ctx.repos.stats.getRecentInboundAfterFirstReply(limit, lineId, getReportExcludedPhones());
   return formatRecent(conversations);

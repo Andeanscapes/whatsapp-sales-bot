@@ -40,7 +40,11 @@ function main(): void {
   }
 
   console.log(`Average ${baseline.suite.average} -> ${current.suite.average}; hard fails ${current.suite.hardFails}`);
-  if (current.suite.average < minAverage) failed = true;
+  if (current.suite.count === 0) {
+    console.log('No scenarios in current run — average gate skipped');
+  } else if (current.suite.average < minAverage) {
+    failed = true;
+  }
   if (failed) process.exit(1);
 }
 

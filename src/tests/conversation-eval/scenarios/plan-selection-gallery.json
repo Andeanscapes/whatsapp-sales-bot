@@ -1,0 +1,18 @@
+{
+  "id": "plan-selection-gallery",
+  "source": "regression: first concrete plan choice should demonstrate with gallery",
+  "tags": ["gallery", "live"],
+  "lang": "es",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    { "id": "gallery-on-plan-choice", "rule": "output_flag_equals", "flag": "shouldSendGalleryImages", "expected": true, "turn": 2, "weight": 2, "critical": true },
+    { "id": "marker-hidden", "rule": "reply_must_not_match", "patterns": ["\\[\\[\\s*FOTOS|FOTOS\\s*:|marcador"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 2, "weight": 1, "critical": true },
+    { "id": "no-gallery-announcement", "rule": "reply_must_not_match", "patterns": ["te comparto|te mando|aqui van|aquí van"], "turn": 2, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "Somos una pareja", "mockReply": "¡Buenísimo! ¿Buscan una aventura intensa o algo más tranquilo y rural?", "expect": { "shouldSendReply": true, "shouldSendGalleryImages": false }, "seedQualification": { "people": 2 } },
+    { "user": "El plan de la mina", "mockReply": "Es una experiencia minera real y auténtica. Para 2 personas queda en $1.000.000 COP. ¿En qué mes les gustaría viajar?\n[[FOTOS:mine]]", "expect": { "shouldSendReply": true, "shouldSendGalleryImages": true, "priceJustGiven": true } }
+  ]
+}

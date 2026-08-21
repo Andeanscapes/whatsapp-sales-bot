@@ -1,0 +1,18 @@
+{
+  "id": "entry-funnel-H02-car",
+  "source": "funnel campaign marker (4x4 variant)",
+  "tags": ["marker", "live"],
+  "lang": "es",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "criteria": [
+    { "id": "marker-hidden", "rule": "reply_must_not_match", "patterns": ["H02|marcador|codigo de campana"], "turn": 1, "weight": 2, "critical": true },
+    { "id": "no-brand-restart", "rule": "reply_must_not_match", "patterns": ["soy .{0,30}cofundador|somos Andean Scapes|te presento Andean Scapes"], "turn": 1, "weight": 2, "critical": true },
+    { "id": "vehicle-specific", "rule": "reply_must_match", "patterns": ["4x4|vehiculo|vehiculo propio|tu auto"], "turn": 1, "weight": 2, "critical": true },
+    { "id": "route-context", "rule": "reply_must_match", "patterns": ["ruta|camino|destapada"], "turn": 1, "weight": 1 },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 1, "weight": 2, "critical": true }
+  ],
+  "turns": [
+    { "user": "H02 - Nos interesa hacer la ruta en 4x4", "mockReply": "Excelente. La ruta a Chivor es un reto 4x4: carretera destapada y caminos que preparan bien las suspensiones. ¿Traen su 4x4 para vivir la ruta completa, o llevan un auto normal?", "expect": { "shouldSendReply": true } }
+  ]
+}

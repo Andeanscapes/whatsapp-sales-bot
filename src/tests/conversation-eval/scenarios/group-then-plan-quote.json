@@ -1,0 +1,25 @@
+{
+  "id": "group-then-plan-quote",
+  "source": "couple → diagnosis → plan → quote path (diagnosis-first funnel)",
+  "tags": ["qualification", "live"],
+  "lang": "es",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "mockPricing": { "planId": "2d1n_mining", "individual": 500000, "couple": 900000 },
+  "criteria": [
+    { "id": "diagnosis-after-group", "rule": "reply_must_match", "patterns": ["ritmo|intens|relaj|tranquil|objetivo|qu[eé].{0,40}busc|tipo de experiencia|aventura|vida rural"], "turn": 1, "weight": 2, "critical": true },
+    { "id": "no-plan-on-diagnosis", "rule": "reply_must_not_match", "patterns": ["2\\s*d[ií]as|3\\s*d[ií]as|plan de|\\$|COP"], "turn": 1, "weight": 2, "critical": true },
+    { "id": "plan-after-diagnosis", "rule": "reply_must_match", "patterns": ["plan|d[ií]as|noche"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "price-after-fields", "rule": "price_after_min_fields", "minFields": 1, "weight": 2, "critical": true },
+    { "id": "couple-total-exact", "rule": "reply_must_match", "patterns": ["900[.,]000"], "turn": 3, "weight": 2, "critical": true },
+    { "id": "no-wrong-couple-total", "rule": "reply_must_not_match", "patterns": ["1[.,]000[.,]000|1[.,]800[.,]000"], "turn": 3, "weight": 2, "critical": true },
+    { "id": "no-reask-group", "rule": "known_field_not_reasked", "field": "people", "suppliedTurn": 1, "weight": 1, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 4, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "Pareja", "mockReply": "Perfecto para ustedes dos. ¿Buscan un ritmo más intenso o uno más relajado?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2 } },
+    { "user": "Más intenso", "mockReply": "Ese ritmo calza con el plan de 2 días. ¿Qué fecha tienen en mente?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2, "plan": "2d1n_mining" } },
+    { "user": "Cuánto vale?", "mockReply": "Buena elección. Para ustedes dos el valor es de $900.000 COP, todo incluido. ¿Qué fecha tienen en mente?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2, "plan": "2d1n_mining" } },
+    { "user": "En agosto, el segundo fin de semana", "mockReply": "Perfecto. El siguiente paso es validar esa fecha con el equipo para asegurar el cupo. ¿Quieres que la confirme?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2, "plan": "2d1n_mining", "date": "agosto" } }
+  ]
+}

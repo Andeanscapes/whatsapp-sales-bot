@@ -7,9 +7,11 @@ import { DynamicDataService, shouldStripStaticPricing } from './services/dynamic
 import { logger } from './config/logger.js';
 import { startTelegramBot } from './services/telegram-bot.js';
 import { getRoutingConfig } from './services/lead-routing.js';
+import { getSalesComposition } from './services/sales-composition.js';
 import { setupGlobalErrorHandlers, setErrorRepos, pruneOldErrors } from './services/error-logger.js';
-import { startFollowUpScheduler } from './services/follow-up-service.js';
 import { checkWhatsAppApiHealth, sendStartupStatus, startOperationalHealthMonitor } from './services/whatsapp-operational-health.js';
+import { startFollowupScheduler } from './services/followup-service.js';
+import { startFollowupDigestScheduler } from './services/followup-digest.js';
 
 async function runStartupDiagnostics(dynamicDataAvailable: boolean): Promise<void> {
   const whatsapp = await checkWhatsAppApiHealth();
@@ -31,6 +33,9 @@ async function start() {
 
   loadSkills();
   getRoutingConfig();
+  // Fail at boot (like loadSkills) if a referent pack or the sales profile is
+  // missing/invalid, instead of throwing later inside the reply path.
+  getSalesComposition();
 
   if (shouldStripStaticPricing(env.DYNAMIC_SKILL_URL, hasDynamicData)) {
     stripSkillsPricing();
@@ -50,17 +55,28 @@ async function start() {
   logger.info({ host: env.HOST, port: env.PORT }, 'server started');
 
   let telegramInterval: ReturnType<typeof setInterval> | undefined;
-  let followUpInterval: ReturnType<typeof setInterval> | undefined;
   let opsMonitorInterval: ReturnType<typeof setInterval> | undefined;
+  let followupInterval: ReturnType<typeof setInterval> | undefined;
+  let digestInterval: ReturnType<typeof setInterval> | undefined;
   try {
     telegramInterval = await startTelegramBot(repos);
   } catch (err) {
     logger.error(err, '[INIT] failed to start Telegram bot');
   }
+
   try {
-    followUpInterval = startFollowUpScheduler(repos);
+    followupInterval = startFollowupScheduler(repos);
   } catch (err) {
     logger.error(err, '[INIT] failed to start follow-up scheduler');
+  }
+
+  try {
+    // Operator report only: reads state and writes to the owner's Telegram chat,
+    // never to a customer. Kept separate from the follow-up tick above so a
+    // reporting change cannot touch the sending path.
+    digestInterval = startFollowupDigestScheduler(repos);
+  } catch (err) {
+    logger.error(err, '[INIT] failed to start follow-up digest scheduler');
   }
 
   if (env.NODE_ENV === 'production' || env.STARTUP_DIAGNOSTICS_ENABLED) {
@@ -69,16 +85,24 @@ async function start() {
     opsMonitorInterval = startOperationalHealthMonitor();
   }
 
-  process.on('SIGTERM', gracefulShutdown('SIGTERM', db, app, telegramInterval, followUpInterval, opsMonitorInterval));
-  process.on('SIGINT', gracefulShutdown('SIGINT', db, app, telegramInterval, followUpInterval, opsMonitorInterval));
+  const intervals = { telegramInterval, opsMonitorInterval, followupInterval, digestInterval };
+  process.on('SIGTERM', gracefulShutdown('SIGTERM', db, app, intervals));
+  process.on('SIGINT', gracefulShutdown('SIGINT', db, app, intervals));
 }
 
-function gracefulShutdown(signal: string, db: { close: () => void }, app: { close: () => Promise<void> }, telegramInterval?: ReturnType<typeof setInterval>, followUpInterval?: ReturnType<typeof setInterval>, opsMonitorInterval?: ReturnType<typeof setInterval>) {
+interface ShutdownIntervals {
+  telegramInterval?: ReturnType<typeof setInterval>;
+  opsMonitorInterval?: ReturnType<typeof setInterval>;
+  followupInterval?: ReturnType<typeof setInterval>;
+  digestInterval?: ReturnType<typeof setInterval>;
+}
+
+function gracefulShutdown(signal: string, db: { close: () => void }, app: { close: () => Promise<void> }, intervals: ShutdownIntervals) {
   return async () => {
     logger.info({ signal }, 'shutting down gracefully');
-    if (telegramInterval) clearInterval(telegramInterval);
-    if (followUpInterval) clearInterval(followUpInterval);
-    if (opsMonitorInterval) clearInterval(opsMonitorInterval);
+    for (const interval of Object.values(intervals)) {
+      if (interval) clearInterval(interval);
+    }
     try {
       await app.close();
     } catch (err) {

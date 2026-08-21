@@ -9,6 +9,9 @@
 /data/
 /exports/
 /artifacts/
+scripts/bot-dynamic.corrected.json
+scripts/bot-dynamic.json
+scripts/bot-dynamic-dev.json
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
@@ -23,3 +26,4 @@ node_modules/
 .idea/
 .claude/settings.local.json
 *.log
+.opencode/plans/
