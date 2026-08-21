@@ -41,7 +41,10 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
-      - run: npm run validate:dynamic -- scripts/bot-dynamic.json
+      - run: npm run validate:skills
+      - run: npm run validate:prompt
+      - run: npm run validate:dynamic -- scripts/bot-dynamic.ci.json
+      - run: npm run measure:prompt
       - run: npm run scan:secrets
 
   conversation-eval:

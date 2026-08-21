@@ -7,9 +7,9 @@ set -euo pipefail
 # Usage:
 #   ./scripts/download-dynamic.sh <R2_BUCKET_NAME> [output-file]
 #
-# Default output: src/data/bot-dynamic.json
+# Default output: scripts/bot-dynamic.json (gitignored runtime data)
 
-OUTPUT="${2:-src/data/bot-dynamic.json}"
+OUTPUT="${2:-scripts/bot-dynamic.json}"
 BUCKET="${1:?Usage: ./scripts/download-dynamic.sh <R2_BUCKET_NAME> [output-file]}"
 
 echo "Downloading whatsapp_bot/bot-dynamic.json from R2 bucket $BUCKET..."

@@ -2,58 +2,58 @@
   "version": 2,
   "mode": "deterministic",
   "gitSha": "local",
-  "generatedAt": "2026-07-21T12:37:35.216Z",
+  "generatedAt": "2026-08-12T04:37:58.204Z",
   "suite": {
-    "average": 100.0,
+    "average": 100,
     "min": 100,
-    "count": 95,
-    "hardFails": 0,
-    "max": 100
+    "count": 25,
+    "hardFails": 0
   },
   "scenarios": [
     {
-      "id": "after-price-interest-moves-to-specific-next-step",
+      "id": "ad-info-then-group-asks-plan",
       "score": 100,
       "hardFail": false,
       "notes": [],
       "criteria": [
         {
-          "id": "moves-forward",
+          "id": "diagnosis-question-turn2",
           "rule": "reply_must_match",
           "passed": true,
           "score": 100,
-          "weight": 1,
+          "weight": 2,
           "critical": true,
           "evidence": "required patterns present"
         },
         {
-          "id": "no-repeat-pitch",
-          "rule": "unsafe_pattern_absent",
+          "id": "no-plan-offer-turn2",
+          "rule": "reply_must_not_match",
+          "passed": true,
+          "score": 100,
+          "weight": 2,
+          "critical": true,
+          "evidence": "no forbidden patterns"
+        },
+        {
+          "id": "no-price-before-diagnosis",
+          "rule": "price_after_min_fields",
+          "passed": true,
+          "score": 100,
+          "weight": 2,
+          "critical": true,
+          "evidence": "price gate respected"
+        },
+        {
+          "id": "one-question-turn2",
+          "rule": "max_question_marks",
           "passed": true,
           "score": 100,
           "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        }
-      ],
-      "turnResults": [
+          "critical": false,
+          "evidence": "questionMarks=1 max=1"
+        },
         {
-          "user": "Sí me interesa, ¿qué sigue?",
-          "reply": "El siguiente paso es validar disponibilidad para puente de octubre. Si hay cupo, te comparto el proceso para separar la reserva y los datos de pago verificados.",
-          "leadScore": 6,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "all-known-qualification-fields-not-reasked",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "people-not-reasked",
+          "id": "no-reask-group",
           "rule": "known_field_not_reasked",
           "passed": true,
           "score": 100,
@@ -62,53 +62,42 @@
           "evidence": "people not re-asked"
         },
         {
-          "id": "date-not-reasked",
-          "rule": "known_field_not_reasked",
+          "id": "plan-recommendation-turn3",
+          "rule": "reply_must_match",
           "passed": true,
           "score": 100,
-          "weight": 1,
+          "weight": 2,
           "critical": true,
-          "evidence": "date not re-asked"
+          "evidence": "required patterns present"
         },
         {
-          "id": "transport-not-reasked",
-          "rule": "known_field_not_reasked",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "transportNeed not re-asked"
-        },
-        {
-          "id": "plan-not-reasked",
-          "rule": "known_field_not_reasked",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "plan not re-asked"
-        },
-        {
-          "id": "summary-preserves-known-fields",
+          "id": "reflects-diagnosis-turn3",
           "rule": "reply_must_match",
           "passed": true,
           "score": 100,
           "weight": 1,
-          "critical": true,
+          "critical": false,
           "evidence": "required patterns present"
         }
       ],
       "turnResults": [
         {
-          "user": "Somos 2 personas, queremos el plan 2D/1N para el 15 de agosto y llegamos en bus.",
-          "reply": "Perfecto, anoto dos personas, plan 2D/1N, 15 de agosto y llegada en bus. Para dejarles la info clara, ¿con quién tengo el gusto?",
-          "leadScore": 11,
+          "user": "C02 - Hola, quiero información y fechas",
+          "reply": "Hola. ¿Serían para ti solo, en pareja o en grupo?",
+          "leadScore": 5,
           "shouldAlertOwner": false,
           "shouldSendImage": false
         },
         {
-          "user": "¿Qué sigue?",
-          "reply": "Tengo anotadas dos personas para el 15 de agosto, llegando en bus. El siguiente paso es revisar disponibilidad exacta e iniciar la reserva. Para dejarles la info clara, ¿con quién tengo el gusto?",
+          "user": "Pareja",
+          "reply": "Perfecto para ustedes dos. ¿Vienen con vehículo preparado o prefieren el traslado local al sitio?",
+          "leadScore": 9,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "Traslado local",
+          "reply": "Ese acceso calza con el plan de 2 días: llegamos con criterio local y sin armar la logística solos. ¿Qué fecha tienen en mente?",
           "leadScore": 9,
           "shouldAlertOwner": false,
           "shouldSendImage": false
@@ -116,271 +105,69 @@
       ]
     },
     {
-      "id": "ambiguous-party-comparison",
+      "id": "ad-price-date-opening",
       "score": 100,
       "hardFail": false,
       "notes": [],
       "criteria": [
         {
-          "id": "answers-solo-alternative",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "answers-couple-alternative",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "does-not-collapse-to-couple-only",
-          "rule": "reply_must_not_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        },
-        {
-          "id": "does-not-guarantee-specific-mine",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Me das los precios para una persona o para pareja?",
-          "reply": "Para una persona y para pareja, prefiero confirmar los valores exactos con el equipo antes de darte una cifra incorrecta.",
-          "leadScore": 6,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "answer-first-one-next-question",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "answers-inclusions",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "max-one-question",
+          "id": "one-question",
           "rule": "max_question_marks",
           "passed": true,
           "score": 100,
-          "weight": 1,
+          "weight": 2,
           "critical": true,
           "evidence": "questionMarks=1 max=1"
         },
         {
-          "id": "no-redundant-qualification",
-          "rule": "unsafe_pattern_absent",
+          "id": "short-opening",
+          "rule": "reply_length_at_most",
           "passed": true,
           "score": 100,
           "weight": 1,
+          "critical": false,
+          "evidence": "length=135 max=420"
+        },
+        {
+          "id": "asks-group",
+          "rule": "reply_must_match",
+          "passed": true,
+          "score": 100,
+          "weight": 2,
           "critical": true,
+          "evidence": "required patterns present"
+        },
+        {
+          "id": "no-brochure",
+          "rule": "reply_must_not_match",
+          "passed": true,
+          "score": 100,
+          "weight": 2,
+          "critical": false,
+          "evidence": "no forbidden patterns"
+        },
+        {
+          "id": "no-false-scarcity",
+          "rule": "reply_must_not_match",
+          "passed": true,
+          "score": 100,
+          "weight": 1,
+          "critical": false,
           "evidence": "no forbidden patterns"
         }
       ],
       "turnResults": [
         {
-          "user": "¿Qué incluye exactamente?",
-          "reply": "Incluye alojamiento, 3 comidas, equipo de seguridad y acompañamiento local durante la experiencia. ¿Para cuántas personas sería?",
-          "leadScore": 0,
+          "user": "C01 - Hola, quiero informacion y fechas para la aventura minera en Chivor",
+          "reply": "Hola. Soy Test Owner, cofundador de Andean Scapes con Test Partner. Para recomendarte bien, ¿serían para ti solo, en pareja o en grupo?",
+          "leadScore": 5,
           "shouldAlertOwner": false,
           "shouldSendImage": false
         }
       ]
     },
     {
-      "id": "answer-price-intent-before-qualification",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "acknowledges-price",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "acknowledges-dates",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "asks-party-context-once",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "no-product-dump",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Hola, quiero precios y fechas para la aventura minera en Chivor 💚",
-          "reply": "Claro, te cuento precios y disponibilidad. El valor depende del plan y del número de personas, y las fechas se confirman antes de reservar. ¿Sería para ti solo, pareja o grupo?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "availability-date-weekday-consistency",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "canonical-date-used",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "wrong-weekday-absent",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "¿Qué día de la semana es la fecha del 15 de agosto?",
-          "reply": "La fecha registrada es el sábado 15 de agosto. ¿La experiencia sería para ti solo, en pareja o para un grupo?",
-          "leadScore": 8,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "availability-no-false-scarcity",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "does-not-claim-only-date",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        },
-        {
-          "id": "requires-source-validation",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "¿Qué fecha me recomiendas en septiembre?",
-          "reply": "Puedo revisar las fechas vigentes para septiembre en la fuente de disponibilidad y recomendarte una opción adecuada para 8 personas. Primero debo validar el cupo real del grupo.",
-          "leadScore": 8,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "availability-request-not-replaced-by-generic-plan",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "answers-availability-action",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "references-date",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "no-generic-template-loop",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Por favor confirma disponibilidad para el sábado 22 de agosto",
-          "reply": "Hola, perfecto. Tengo anotado 2 personas, para sábado 22 de agosto, con carro propio. Recuerdo que para sábado 22 de agosto el cupo se mueve: primero valido disponibilidad exacta antes de confirmar la fecha. La reserva se separa con anticipo del 15%; metodos: Nequi o Mercado Pago. El detalle de pago se comparte solo despues de validar disponibilidad. ¿Quieres que inicie esa validacion ahora?",
-          "leadScore": 95,
-          "shouldAlertOwner": true,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "big-group-over-10-price-caveats",
+      "id": "big-group-12",
       "score": 100,
       "hardFail": false,
       "notes": [],
@@ -390,360 +177,346 @@
           "rule": "big_group_date_validation",
           "passed": true,
           "score": 100,
-          "weight": 1,
+          "weight": 2,
           "critical": true,
-          "evidence": "25p caveat present"
+          "evidence": "12p caveat present"
         },
         {
           "id": "large-group-price-review",
           "rule": "big_group_price_review",
           "passed": true,
           "score": 100,
+          "weight": 2,
+          "critical": true,
+          "evidence": "12p caveat present"
+        },
+        {
+          "id": "no-exact-total",
+          "rule": "reply_must_not_match",
+          "passed": true,
+          "score": 100,
           "weight": 1,
           "critical": true,
-          "evidence": "25p caveat present"
+          "evidence": "no forbidden patterns"
         }
       ],
       "turnResults": [
         {
-          "user": "Hola, quiero conocer la experiencia en Chivor",
-          "reply": "¡Hola! Soy Agente Uno, co-fundador de Andean Scapes con Agente Dos. Creamos experiencias auténticas en Boyacá. ¿La experiencia sería para ti solo, en pareja o para un grupo?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Hola buenas tardes, hablas con el Grupo Motero Ejemplo, me gustaría saber qué tipo de aventuras nos podrías ofrecer al grupo",
-          "reply": "¡Qué buena energía! Un club motero suena perfecto para esta experiencia. No es un tour turístico convencional —es una aventura real en una mina esmeraldera de Chivor, con lodo, historia y guías locales.",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Aproximadamente por mínimo 25 personas",
-          "reply": "Para 25 personas debemos validar capacidad, fecha y logistica con el equipo antes de darte una cotizacion final. El valor se revisa segun la cantidad final confirmada. Ya lo estoy escalando para atencion humana.",
+          "user": "Somos 12 personas",
+          "reply": "Para 12 personas debemos validar fecha y disponibilidad, confirmar la logística y revisar vehículos adicionales antes de darte una cotización especial. El precio se revisa según la cantidad final.",
           "leadScore": 95,
           "shouldAlertOwner": true,
           "shouldSendImage": false
         },
         {
-          "user": "Sería para el mes de agosto por lo cual no hay ninguna fecha establecida",
-          "reply": "¡25 moteros! Eso sí que es una rodada con historia. ¿Tienen una fecha tentativa o quieren revisar opciones?",
-          "leadScore": 89,
+          "user": "En diciembre",
+          "reply": "Perfecto. Revisamos disponibilidad y ajustamos el valor según la cantidad del grupo. ¿Tienen una fecha concreta?",
+          "leadScore": 95,
           "shouldAlertOwner": false,
           "shouldSendImage": false
         }
       ]
     },
     {
-      "id": "confusion-clarify-instead-of-dump",
+      "id": "buying-signal-payment-facts",
       "score": 100,
       "hardFail": false,
       "notes": [],
       "criteria": [
         {
-          "id": "clarifies-experience",
+          "id": "payment-method-names",
+          "rule": "reply_must_match",
+          "passed": true,
+          "score": 100,
+          "weight": 2,
+          "critical": true,
+          "evidence": "required patterns present"
+        },
+        {
+          "id": "no-payment-credentials",
+          "rule": "unsafe_pattern_absent",
+          "passed": true,
+          "score": 100,
+          "weight": 3,
+          "critical": true,
+          "evidence": "no forbidden patterns"
+        },
+        {
+          "id": "no-false-confirmation",
+          "rule": "unsafe_pattern_absent",
+          "passed": true,
+          "score": 100,
+          "weight": 2,
+          "critical": true,
+          "evidence": "no forbidden patterns"
+        },
+        {
+          "id": "one-question",
+          "rule": "max_question_marks",
+          "passed": true,
+          "score": 100,
+          "weight": 1,
+          "critical": false,
+          "evidence": "questionMarks=1 max=1"
+        }
+      ],
+      "turnResults": [
+        {
+          "user": "¿Cómo reservo para octubre?",
+          "reply": "El siguiente paso es validar disponibilidad para esa fecha y luego separar con el anticipo indicado por el equipo, usando uno de los métodos habilitados. ¿Quieres que valide la fecha?",
+          "leadScore": 3,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "Sí, de una",
+          "reply": "Perfecto, valido disponibilidad exacta y el equipo te comparte los datos de pago después de confirmar el cupo.",
+          "leadScore": 3,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        }
+      ]
+    },
+    {
+      "id": "consult-with-partner",
+      "score": 100,
+      "hardFail": false,
+      "notes": [],
+      "criteria": [
+        {
+          "id": "shareable-summary",
+          "rule": "reply_must_match",
+          "passed": true,
+          "score": 100,
+          "weight": 2,
+          "critical": true,
+          "evidence": "required patterns present"
+        },
+        {
+          "id": "no-links",
+          "rule": "reply_must_not_match",
+          "passed": true,
+          "score": 100,
+          "weight": 2,
+          "critical": true,
+          "evidence": "no forbidden patterns"
+        },
+        {
+          "id": "no-pressure",
+          "rule": "reply_must_not_match",
+          "passed": true,
+          "score": 100,
+          "weight": 1,
+          "critical": true,
+          "evidence": "no forbidden patterns"
+        },
+        {
+          "id": "plan-sticky",
+          "rule": "reply_must_not_match",
+          "passed": true,
+          "score": 100,
+          "weight": 1,
+          "critical": true,
+          "evidence": "no forbidden patterns"
+        }
+      ],
+      "turnResults": [
+        {
+          "user": "Lo voy a consultar con mi pareja",
+          "reply": "Claro, te dejo un resumen breve del plan para 2 personas y el valor que ya vimos. Cuando lo revisen, validamos disponibilidad exacta con el equipo.",
+          "leadScore": 4,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "Gracias",
+          "reply": "Con gusto. Queda pendiente validar la fecha cuando la definan.",
+          "leadScore": 4,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        }
+      ]
+    },
+    {
+      "id": "date-pick-close-T3b",
+      "score": 100,
+      "hardFail": false,
+      "notes": [],
+      "criteria": [
+        {
+          "id": "close-cta-anticipo-or-validate",
+          "rule": "reply_must_match",
+          "passed": true,
+          "score": 100,
+          "weight": 3,
+          "critical": true,
+          "evidence": "required patterns present"
+        },
+        {
+          "id": "no-fake-handoff",
+          "rule": "reply_must_not_match",
+          "passed": true,
+          "score": 100,
+          "weight": 3,
+          "critical": true,
+          "evidence": "no forbidden patterns"
+        },
+        {
+          "id": "no-plan-summary-offer",
+          "rule": "reply_must_not_match",
+          "passed": true,
+          "score": 100,
+          "weight": 3,
+          "critical": true,
+          "evidence": "no forbidden patterns"
+        },
+        {
+          "id": "no-false-reservation",
+          "rule": "unsafe_pattern_absent",
+          "passed": true,
+          "score": 100,
+          "weight": 2,
+          "critical": true,
+          "evidence": "no forbidden patterns"
+        },
+        {
+          "id": "no-payment-credentials",
+          "rule": "unsafe_pattern_absent",
+          "passed": true,
+          "score": 100,
+          "weight": 2,
+          "critical": true,
+          "evidence": "no forbidden patterns"
+        },
+        {
+          "id": "one-question",
+          "rule": "max_question_marks",
+          "passed": true,
+          "score": 100,
+          "weight": 1,
+          "critical": false,
+          "evidence": "questionMarks=1 max=1"
+        },
+        {
+          "id": "no-emoji-on-close-pay",
+          "rule": "max_emojis",
+          "passed": true,
+          "score": 100,
+          "weight": 1,
+          "critical": false,
+          "evidence": "emojis=0 max=0"
+        }
+      ],
+      "turnResults": [
+        {
+          "user": "si el 7 suena bien",
+          "reply": "Listo: plan de 2 días/1 noche para 2 el 7 de agosto. Apartamos con anticipo del 15% por Nequi o Mercado Pago; el equipo valida cupo al confirmar. ¿Arrancamos la validación?",
+          "leadScore": 0,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        }
+      ]
+    },
+    {
+      "id": "entry-cold-C01",
+      "score": 100,
+      "hardFail": false,
+      "notes": [],
+      "criteria": [
+        {
+          "id": "marker-hidden",
+          "rule": "reply_must_not_match",
+          "passed": true,
+          "score": 100,
+          "weight": 2,
+          "critical": true,
+          "evidence": "no forbidden patterns"
+        },
+        {
+          "id": "short-opening",
+          "rule": "reply_length_at_most",
+          "passed": true,
+          "score": 100,
+          "weight": 2,
+          "critical": true,
+          "evidence": "length=132 max=400"
+        },
+        {
+          "id": "one-question",
+          "rule": "max_question_marks",
+          "passed": true,
+          "score": 100,
+          "weight": 2,
+          "critical": true,
+          "evidence": "questionMarks=1 max=1"
+        },
+        {
+          "id": "no-brochure",
+          "rule": "reply_must_not_match",
+          "passed": true,
+          "score": 100,
+          "weight": 1,
+          "critical": false,
+          "evidence": "no forbidden patterns"
+        }
+      ],
+      "turnResults": [
+        {
+          "user": "C01 - Hola, quiero informacion de la aventura minera",
+          "reply": "Es una aventura minera real, pensada para vivir la zona sin armar la logística por tu cuenta. ¿Viajarías solo, en pareja o en grupo?",
+          "leadScore": 0,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        }
+      ]
+    },
+    {
+      "id": "entry-funnel-H01",
+      "score": 100,
+      "hardFail": false,
+      "notes": [],
+      "criteria": [
+        {
+          "id": "marker-hidden",
+          "rule": "reply_must_not_match",
+          "passed": true,
+          "score": 100,
+          "weight": 2,
+          "critical": true,
+          "evidence": "no forbidden patterns"
+        },
+        {
+          "id": "no-brand-restart",
+          "rule": "reply_must_not_match",
+          "passed": true,
+          "score": 100,
+          "weight": 2,
+          "critical": true,
+          "evidence": "no forbidden patterns"
+        },
+        {
+          "id": "recommends-next-fit",
           "rule": "reply_must_match",
           "passed": true,
           "score": 100,
           "weight": 1,
           "critical": false,
           "evidence": "required patterns present"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Buenas tardes",
-          "reply": "¡Hola! Soy Agente Uno, co-fundador de Andean Scapes junto con Agente Dos. Creamos experiencias auténticas en Boyacá con cultura local, naturaleza y comunidades anfitrionas. Dime, ¿qué buscan?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
         },
         {
-          "user": "Pareja",
-          "reply": "¡Qué bien! Para pareja suena ideal. ¿Tienen alguna fecha tentativa en mente o están viendo opciones todavía?",
-          "leadScore": 4,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "No entiendo lo del plan",
-          "reply": "Te explico: llegan a Chivor, los recibimos en la Hacienda El Recuerdo donde se alojan. Al día siguiente entran con equipo y guía local a una mina esmeralda real. Es la experiencia completa de 2 días con 3 comidas, guía, y equipo incluido. Es más que un tour: duermen en la montaña y viven la minería de verdad.",
-          "leadScore": 2,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "consult-family-pause-no-generic-follow-up",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "suppressed",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "shouldSendReply=false"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Sí me interesa, pero debo revisarlo con el grupo esta semana",
-          "reply": "Perfecto. Tómate el tiempo para revisarlo con el grupo.",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Yo te confirmo cuando hable con ellos",
-          "reply": "Claro, quedo atento.",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "[automated follow-up]",
-          "reply": "",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "consult-group-follow-up-uses-context",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "respects-customer-update-promise",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "shouldSendReply=false"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Nos interesa para agosto, pero debo hablarlo con el grupo.",
-          "reply": "Perfecto. Revísalo con el grupo y cuando tengan un fin de semana en mente seguimos.",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Yo te aviso cuando hable con ellos.",
-          "reply": "Claro, quedo atento.",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "[automated follow-up]",
-          "reply": "",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "consult-group-followup-after-promised-time",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "sends-after-promised-time",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "shouldSendReply=true"
-        },
-        {
-          "id": "uses-group-context",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "clear-next-step",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Lo reviso con el grupo el miércoles y te aviso.",
-          "reply": "Perfecto, quedo atento después del miércoles.",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "[automated follow-up]",
-          "reply": "¿Pudieron revisar el plan para seis personas en agosto? Si ya tienen un fin de semana, puedo comprobar disponibilidad y preparar el paso de reserva.",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "consult-group-followup-respects-promised-time",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "suppressed-before-promised-time",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "shouldSendReply=false"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Lo reviso con el grupo el miércoles y te aviso.",
-          "reply": "Perfecto, quedo atento después del miércoles.",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "[automated follow-up]",
-          "reply": "",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "date-ask-requires-plan-when-unknown",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "deterministic-plan-list",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "usedAi=false"
-        },
-        {
-          "id": "offers-plans-not-dates",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "no-bare-date-dump",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "vale que fechas existen ahora?",
-          "reply": "Estos son los planes disponibles:\n2 Dias / 1 Noche — Mina Esmeralda (2D/1N): Aventura minera en Chivor (Boyaca). 1 noche en Hacienda El Recuerdo, experiencia minera real en Mina La Union (~6h), taller esmeraldero. Todo incluido: alojamiento, 3 comidas, mina, charla. Pet-friendly.\n3 Dias / 2 Noches — Mina + Apicultura + Ganaderia (3D/2N): Experiencia completa de 3 dias en Chivor (Boyaca). Dia 1: llegada y charla esmeraldera. Dia 2: almuerzo y mina La Union (~6h). Dia 3: apicultura y ganaderia en la hacienda. 2 noches, 6 comidas todo incluido. Pet-friendly. Ideal para vivir la mina y conectar con la vida rural.\n\n¿Cuál te llama más?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "date-deferred-options-then-price",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "offers-options-after-deferral",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "price-after-deferral",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "no-date-reask-on-price",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        },
-        {
-          "id": "one-question-on-price",
+          "id": "one-question",
           "rule": "max_question_marks",
           "passed": true,
           "score": 100,
-          "weight": 1,
+          "weight": 2,
           "critical": true,
           "evidence": "questionMarks=1 max=1"
         }
       ],
       "turnResults": [
         {
-          "user": "Somos 2",
-          "reply": "Qué bien, una experiencia para dos. ¿Tienen alguna fecha tentativa en mente o prefieren que les muestre las opciones disponibles?",
-          "leadScore": 4,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "O todavia",
-          "reply": "No hay problema. Ya anoté que aún no tienes fecha fija. ¿Quieres que te muestre las próximas fechas publicadas o prefieres revisar cómo llegar?",
-          "leadScore": 4,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "No Que precio tiene",
-          "reply": "Para pareja, 2 Dias / 1 Noche — Mina Esmeralda (2D/1N) es el que mas recomendamos. Aventura minera en Chivor (Boyaca). 1 noche en Hacienda El Recuerdo, experiencia minera real en Mina La Union (~6h), taller esmeraldero. Todo incluido: alojamiento, 3 comidas, mina, charla. Pet-friendly. Es el paquete completo 2D/1N, no solo una entrada o actividad suelta. Valor para 2 personas: $1,000,000 COP. Si quieres, te muestro opciones de fechas publicadas o revisamos cómo llegar. ¿Qué prefieres?",
+          "user": "H01 - Me interesa saber cual plan me conviene",
+          "reply": "Para elegir bien te recomiendo ajustar el plan al tiempo que quieras vivir la experiencia. ¿Prefieres una salida corta o pasar una noche en la zona?",
           "leadScore": 6,
           "shouldAlertOwner": false,
           "shouldSendImage": false
@@ -751,43 +524,43 @@
       ]
     },
     {
-      "id": "date-list-ask-not-price-redump",
+      "id": "entry-retarget-R01-no-history",
       "score": 100,
       "hardFail": false,
       "notes": [],
       "criteria": [
         {
-          "id": "deterministic-date-list",
-          "rule": "output_flag_equals",
+          "id": "marker-hidden",
+          "rule": "reply_must_not_match",
           "passed": true,
           "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "usedAi=false"
-        },
-        {
-          "id": "offers-dates",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "no-price-redump",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
+          "weight": 2,
           "critical": true,
           "evidence": "no forbidden patterns"
+        },
+        {
+          "id": "no-fake-history",
+          "rule": "reply_must_not_match",
+          "passed": true,
+          "score": 100,
+          "weight": 2,
+          "critical": true,
+          "evidence": "no forbidden patterns"
+        },
+        {
+          "id": "one-question",
+          "rule": "max_question_marks",
+          "passed": true,
+          "score": 100,
+          "weight": 2,
+          "critical": true,
+          "evidence": "questionMarks=1 max=1"
         }
       ],
       "turnResults": [
         {
-          "user": "vale que fechas existen ahora?",
-          "reply": "Las proximas fechas disponibles son 7 de agosto y 15 de agosto. ¿Cual les interesa revisar?",
+          "user": "R01 - Hola, quiero informacion",
+          "reply": "Claro, te cuento lo esencial y lo ajustamos a tu viaje. ¿Irías solo, en pareja o en grupo?",
           "leadScore": 0,
           "shouldAlertOwner": false,
           "shouldSendImage": false
@@ -795,284 +568,315 @@
       ]
     },
     {
-      "id": "date-number-not-group-size",
+      "id": "entry-retarget-R01-with-history",
       "score": 100,
       "hardFail": false,
       "notes": [],
       "criteria": [
         {
-          "id": "summary-keeps-four-people",
-          "rule": "reply_must_match",
+          "id": "marker-hidden",
+          "rule": "reply_must_not_match",
           "passed": true,
           "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "date-day-is-not-people",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
+          "weight": 2,
           "critical": true,
           "evidence": "no forbidden patterns"
         },
         {
-          "id": "people-not-reasked",
+          "id": "continues-context",
+          "rule": "reply_must_match",
+          "passed": true,
+          "score": 100,
+          "weight": 2,
+          "critical": true,
+          "evidence": "required patterns present"
+        },
+        {
+          "id": "plan-recalled",
+          "rule": "reply_must_match",
+          "passed": true,
+          "score": 100,
+          "weight": 2,
+          "critical": true,
+          "evidence": "required patterns present"
+        },
+        {
+          "id": "diagnoses-blocker",
+          "rule": "reply_must_match",
+          "passed": true,
+          "score": 100,
+          "weight": 2,
+          "critical": true,
+          "evidence": "required patterns present"
+        },
+        {
+          "id": "offers-pain-fecha",
+          "rule": "reply_must_match",
+          "passed": true,
+          "score": 100,
+          "weight": 1,
+          "critical": false,
+          "evidence": "required patterns present"
+        },
+        {
+          "id": "offers-pain-logistics",
+          "rule": "reply_must_match",
+          "passed": true,
+          "score": 100,
+          "weight": 1,
+          "critical": false,
+          "evidence": "required patterns present"
+        },
+        {
+          "id": "offers-pain-safety-or-budget",
+          "rule": "reply_must_match",
+          "passed": true,
+          "score": 100,
+          "weight": 1,
+          "critical": false,
+          "evidence": "required patterns present"
+        },
+        {
+          "id": "no-brand-restart",
+          "rule": "reply_must_not_match",
+          "passed": true,
+          "score": 100,
+          "weight": 2,
+          "critical": true,
+          "evidence": "no forbidden patterns"
+        },
+        {
+          "id": "no-brochure-or-price-repeat",
+          "rule": "reply_must_not_match",
+          "passed": true,
+          "score": 100,
+          "weight": 2,
+          "critical": true,
+          "evidence": "no forbidden patterns"
+        },
+        {
+          "id": "one-question",
+          "rule": "max_question_marks",
+          "passed": true,
+          "score": 100,
+          "weight": 1,
+          "critical": false,
+          "evidence": "questionMarks=1 max=1"
+        },
+        {
+          "id": "no-emoji-on-retarget-diagnosis",
+          "rule": "max_emojis",
+          "passed": true,
+          "score": 100,
+          "weight": 1,
+          "critical": false,
+          "evidence": "emojis=0 max=0"
+        }
+      ],
+      "turnResults": [
+        {
+          "user": "Hola",
+          "reply": "¡Hola! ¿Viajarías solo, en pareja o en grupo?",
+          "leadScore": 0,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "Solo",
+          "reply": "Perfecto. ¿Buscas un ritmo más intenso o uno más calmado con más tiempo en el lugar?",
+          "leadScore": 4,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "Más calmado, 3 Dias",
+          "reply": "Buena elección, el plan de 3 días es el más completo. ¿Qué fecha tienes en mente?",
+          "leadScore": 4,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "R01 hola",
+          "reply": "Venías solo y te interesó el plan de 3 días. ¿Qué te falta resolver para avanzar: fecha, transporte, seguridad o presupuesto?",
+          "leadScore": 4,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        }
+      ]
+    },
+    {
+      "id": "group-of-5-math",
+      "score": 100,
+      "hardFail": false,
+      "notes": [],
+      "criteria": [
+        {
+          "id": "five-person-total",
+          "rule": "group_quote_integrity",
+          "passed": true,
+          "score": 100,
+          "weight": 3,
+          "critical": true,
+          "evidence": "people=5 total=2250000 expected=5/2250000"
+        },
+        {
+          "id": "no-price-before-plan",
+          "rule": "reply_must_not_match",
+          "passed": true,
+          "score": 100,
+          "weight": 2,
+          "critical": true,
+          "evidence": "no forbidden patterns"
+        },
+        {
+          "id": "no-reask-group",
           "rule": "known_field_not_reasked",
           "passed": true,
           "score": 100,
           "weight": 1,
           "critical": true,
           "evidence": "people not re-asked"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Somos 4 personas y queremos ir en julio de 2027.",
-          "reply": "Perfecto, anoto 4 personas para julio de 2027. ¿Ya tienen un día tentativo?",
-          "leadScore": 7,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
         },
         {
-          "user": "Sí, el 20 de julio de 2027. Para confirmar, ¿qué datos anotaste?",
-          "reply": "Tengo anotadas 4 personas para el 20 de julio de 2027. La disponibilidad final de esa fecha todavía debe validarse.",
-          "leadScore": 10,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "direct-question-answer-first-across-sales-stages",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "answers-price-dependency",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "no-product-dump",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        },
-        {
-          "id": "one-next-step",
-          "rule": "reply_must_match",
+          "id": "one-question",
+          "rule": "max_question_marks",
           "passed": true,
           "score": 100,
           "weight": 1,
           "critical": false,
-          "evidence": "required patterns present"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "¿El precio depende de la fecha?",
-          "reply": "El precio no depende de la fecha; depende del plan y del número de personas. ¿Qué fecha estás considerando?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "direct-question-reservation-lead-time",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "answers-first",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
+          "evidence": "questionMarks=1 max=1"
         },
         {
-          "id": "no-product-dump",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        },
-        {
-          "id": "one-next-step",
-          "rule": "reply_must_match",
+          "id": "no-emoji-on-quote",
+          "rule": "max_emojis",
           "passed": true,
           "score": 100,
           "weight": 1,
           "critical": false,
-          "evidence": "required patterns present"
+          "evidence": "emojis=0 max=0"
         }
       ],
       "turnResults": [
         {
-          "user": "¿Con cuánto tiempo de anticipación se reserva?",
-          "reply": "No manejamos un plazo fijo: depende de la fecha y de la logistica del grupo. Si nos escribes con anticipacion, el equipo puede validar disponibilidad real antes de confirmar cualquier cupo.",
-          "leadScore": 2,
+          "user": "Somos 5",
+          "reply": "Perfecto, para 5 personas reviso el precio exacto según el plan. ¿Cuál duración les interesa?",
+          "leadScore": 4,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "El de 2 días",
+          "reply": "Para 5 personas, el valor exacto sería $2.250.000 COP según la fórmula publicada. ¿Qué fecha tienen en mente?",
+          "leadScore": 4,
           "shouldAlertOwner": false,
           "shouldSendImage": false
         }
       ]
     },
     {
-      "id": "dynamic-skill-unavailable-fail-closed",
+      "id": "group-then-plan-quote",
       "score": 100,
       "hardFail": false,
       "notes": [],
       "criteria": [
         {
-          "id": "no-invented-price",
-          "rule": "unsafe_pattern_absent",
+          "id": "diagnosis-after-group",
+          "rule": "reply_must_match",
           "passed": true,
           "score": 100,
-          "weight": 1,
+          "weight": 2,
+          "critical": true,
+          "evidence": "required patterns present"
+        },
+        {
+          "id": "no-plan-on-diagnosis",
+          "rule": "reply_must_not_match",
+          "passed": true,
+          "score": 100,
+          "weight": 2,
           "critical": true,
           "evidence": "no forbidden patterns"
         },
         {
-          "id": "no-invented-date",
-          "rule": "unsafe_pattern_absent",
+          "id": "plan-after-diagnosis",
+          "rule": "reply_must_match",
           "passed": true,
           "score": 100,
-          "weight": 1,
+          "weight": 2,
+          "critical": true,
+          "evidence": "required patterns present"
+        },
+        {
+          "id": "price-after-fields",
+          "rule": "price_after_min_fields",
+          "passed": true,
+          "score": 100,
+          "weight": 2,
+          "critical": true,
+          "evidence": "price gate respected"
+        },
+        {
+          "id": "couple-total-exact",
+          "rule": "reply_must_match",
+          "passed": true,
+          "score": 100,
+          "weight": 2,
+          "critical": true,
+          "evidence": "required patterns present"
+        },
+        {
+          "id": "no-wrong-couple-total",
+          "rule": "reply_must_not_match",
+          "passed": true,
+          "score": 100,
+          "weight": 2,
           "critical": true,
           "evidence": "no forbidden patterns"
         },
         {
-          "id": "transparent-verification",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "alerts-owner",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": false,
-          "evidence": "shouldAlertOwner=true"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "¿Cuánto cuesta y qué fechas tienen disponibles?",
-          "reply": "En este momento necesito verificar la informacion actualizada de precios y fechas con el equipo antes de darte un dato. Prefiero confirmarlo correctamente y no inventarte una cifra.",
-          "leadScore": 0,
-          "shouldAlertOwner": true,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "emerald-mine-factual-safety",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "no-emerald-guarantee",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "finding-policy-is-grounded",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "mine-is-not-guaranteed",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "no-unsafe-mine-or-emerald-claims",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "¿Es seguro que encontraremos una esmeralda y podremos quedárnosla? ¿La visita siempre es en una mina activa llamada La Unión?",
-          "reply": "No podemos asegurar que encuentres una esmeralda. Cuando ocasionalmente pasa, compartimos los hallazgos con el grupo de manera divertida. Ojala pase, pero no es seguro. Es parte de la emocion de la experiencia minera.\n\nEl tour puede realizarse en cualquiera de las minas con las que tenemos convenio. No se asegura una mina en particular. Son minas de carbon convertidas en experiencia esmeraldera, con agua, lodo, humedad, equipo y guia local.",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "english-lead-qualification",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "name-not-reasked",
+          "id": "no-reask-group",
           "rule": "known_field_not_reasked",
           "passed": true,
           "score": 100,
           "weight": 1,
           "critical": true,
-          "evidence": "name not re-asked"
+          "evidence": "people not re-asked"
+        },
+        {
+          "id": "one-question",
+          "rule": "max_question_marks",
+          "passed": true,
+          "score": 100,
+          "weight": 1,
+          "critical": false,
+          "evidence": "questionMarks=1 max=1"
         }
       ],
       "turnResults": [
         {
-          "user": "Hello, I want prices and dates for the mine experience",
-          "reply": "We're updating prices and dates right now. Let me confirm and send you the exact info shortly. For how many people and what date are you thinking?",
-          "leadScore": 7,
+          "user": "Pareja",
+          "reply": "Perfecto para ustedes dos. ¿Buscan un ritmo más intenso o uno más relajado?",
+          "leadScore": 4,
           "shouldAlertOwner": false,
           "shouldSendImage": false
         },
         {
-          "user": "John, traveling from Miami",
-          "reply": "Great John! How many people would it be for the experience?",
-          "leadScore": 5,
+          "user": "Más intenso",
+          "reply": "Ese ritmo calza con el plan de 2 días. ¿Qué fecha tienen en mente?",
+          "leadScore": 4,
           "shouldAlertOwner": false,
           "shouldSendImage": false
         },
         {
-          "user": "Just me, solo traveler",
-          "reply": "I have 1 people noted. We are updating the rates right now, so I prefer to confirm the exact total with the team before giving you an incorrect figure.",
+          "user": "Cuánto vale?",
+          "reply": "Buena elección. Para ustedes dos el valor es de $900.000 COP, todo incluido. ¿Qué fecha tienen en mente?",
+          "leadScore": 6,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "En agosto, el segundo fin de semana",
+          "reply": "Perfecto. El siguiente paso es validar esa fecha con el equipo para asegurar el cupo. ¿Quieres que la confirme?",
           "leadScore": 9,
           "shouldAlertOwner": false,
           "shouldSendImage": false
@@ -1080,765 +884,50 @@
       ]
     },
     {
-      "id": "exact-date-followup-uses-soft-close-not-more-discovery",
+      "id": "kids-under-min-age",
       "score": 100,
       "hardFail": false,
       "notes": [],
       "criteria": [
         {
-          "id": "uses-soft-close",
+          "id": "age-boundary",
           "rule": "reply_must_match",
           "passed": true,
           "score": 100,
-          "weight": 1,
+          "weight": 2,
           "critical": true,
           "evidence": "required patterns present"
         },
         {
-          "id": "no-discovery-reset",
-          "rule": "unsafe_pattern_absent",
+          "id": "no-child-price",
+          "rule": "reply_must_not_match",
           "passed": true,
           "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Podría ser el 24 de octubre.",
-          "reply": "Perfecto, anoto el 24 de octubre para dos personas.",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "[automated follow-up]",
-          "reply": "Tengo anotado el 24 de octubre para dos personas. ¿Quieres que confirme disponibilidad y te explique cómo separar la reserva?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "expired-availability-dates-are-filtered",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "past-dates-absent",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
+          "weight": 2,
           "critical": true,
           "evidence": "no forbidden patterns"
         },
         {
-          "id": "future-dates-present",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "¿Qué fechas tienen disponibles?",
-          "reply": "Las proximas fechas disponibles son 7 de agosto y 15 de agosto. ¿Cual les interesa revisar?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "explicit-multi-question-answering",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "answers-duration",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "answers-minimum-age",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "answers-pet-policy",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "answers-inclusions",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Necesito una respuesta puntual a cuatro cosas: ¿cuánto dura el plan minero, qué incluye, cuál es la edad mínima y aceptan mascotas?",
-          "reply": "El plan minero dura 2 días y 1 noche. Incluye alojamiento, 3 comidas, equipo de seguridad y guía local; la edad mínima es 5 años y somos pet-friendly, así que las mascotas son bienvenidas.",
-          "leadScore": 2,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "explicit-reservation-intent-overrides-low-score",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "reservation-intent-detected",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "reservationReady=true"
-        },
-        {
-          "id": "does-not-return-to-discovery",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "El precio me sirve y quiero reservar el 15 de agosto.",
-          "reply": "Excelente. Podemos iniciar la reserva con el 15% mediante un enlace de pago seguro. Primero valido disponibilidad para 15 de agosto. ¿Tienen transporte propio o lo necesitan desde Bogotá?",
-          "leadScore": 30,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "family-child-suitability-before-close",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "mentions-child-age",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "states-physical-reality",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "no-automatic-safety-guarantee",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        },
-        {
-          "id": "one-next-step",
-          "rule": "reply_must_match",
+          "id": "one-question",
+          "rule": "max_question_marks",
           "passed": true,
           "score": 100,
           "weight": 1,
           "critical": false,
-          "evidence": "required patterns present"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Somos dos adultos y un niño de 5 años. Queremos ir en noviembre.",
-          "reply": "Como viajan con un niño de 5 años, primero conviene revisar si el ritmo le encaja: hay caminata, lodo y terreno irregular. No quiero asumir que sea adecuado sin revisar el ritmo. ¿Revisamos alternativas o la exigencia física?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "first-contact-no-assumed-plan-or-date",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "no-invented-month",
-          "rule": "reply_must_not_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        },
-        {
-          "id": "no-invented-date-phrase",
-          "rule": "reply_must_not_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        },
-        {
-          "id": "does-not-assume-mining-experience",
-          "rule": "reply_must_not_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        },
-        {
-          "id": "still-sends-a-reply",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "shouldSendReply=true"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Hola",
-          "reply": "¡Hola! . ¿Ya tienes fecha tentativa en mente o prefieres que te cuente cómo sería el plan?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "follow-up-grounding-no-invention",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "follow-up-suppressed",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "shouldSendReply=false"
-        },
-        {
-          "id": "does-not-leak-follow-up-task",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        },
-        {
-          "id": "does-not-invent-traveler-anecdote",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        },
-        {
-          "id": "does-not-invent-month",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        },
-        {
-          "id": "partner-is-not-customer",
-          "rule": "partner_name_not_customer_name",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "partner name not used as customer name"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Hola, quiero conocer la experiencia en Chivor",
-          "reply": "Es una experiencia minera con guía local, alojamiento y comidas. ¿Sería para ti solo, en pareja o para un grupo?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Me interesa, pero primero quiero pensarlo",
-          "reply": "Claro, tómate tu tiempo. Cuando quieras seguimos hablando de la experiencia.",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "[automated follow-up]",
-          "reply": "",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "follow-up-lifecycle-suppression-matrix",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "suppressed-after-explicit-pause",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "shouldSendReply=false"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Yo te aviso cuando hable con mi familia. Por favor no me escribas todavía.",
-          "reply": "Claro, quedo atento y no te escribiré mientras lo revisas.",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "[automated follow-up]",
-          "reply": "",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "follow-up-partner-pause-silent",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "respects-let-you-know",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "shouldSendReply=false"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Somos pareja y estamos validando la fecha",
-          "reply": "Cuando tengan una idea, me escriben y seguimos.",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Aún no, te avisaré",
-          "reply": "Perfecto, sin afán.",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "[automated follow-up]",
-          "reply": "",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "follow-up-pricing-no-menu",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "follow-up-generated",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "shouldSendReply=true"
-        },
-        {
-          "id": "no-pain-menu",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        },
-        {
-          "id": "no-invented-date-or-availability",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        },
-        {
-          "id": "one-contextual-question",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Quiero saber cuánto cuesta para pareja",
-          "reply": "Para pareja el valor es $1,000,000 COP e incluye alojamiento, comidas, guía y mina.",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Gracias, lo revisamos",
-          "reply": "Claro, revísenlo con calma.",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "[automated follow-up]",
-          "reply": "Sobre el valor que revisamos, ¿te falta aclarar algo del plan o de como llegar para poder compararlo con calma?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "follow-up-suppressed-after-wrong-service",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "no-follow-up",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "shouldSendReply=false"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Solo busco naturaleza y paisaje; no me interesa la mina",
-          "reply": "Entiendo. Nuestra experiencia está enfocada en minería, así que probablemente no sea adecuada para ti.",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "[automated follow-up]",
-          "reply": "",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "follow-up-thin-context-grounding",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "follow-up-generated",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "shouldSendReply=true"
-        },
-        {
-          "id": "no-invented-date-or-calendar",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        },
-        {
-          "id": "does-not-repeat-party-question",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Hola, quiero conocer la experiencia en Chivor",
-          "reply": "¿La experiencia sería para ti solo, en pareja o para un grupo?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "[automated follow-up]",
-          "reply": "Si te sirve, puedo contarte cómo es un momento dentro de la mina. ¿Qué te daría más curiosidad?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "followup-cap-prevents-overmessaging",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "suppressed-after-cap",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "shouldSendReply=false"
-        },
-        {
-          "id": "marks-reactivation-candidate",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": false,
-          "evidence": "queueForReactivationAfterWindow=true"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Hola, quiero información.",
-          "reply": "Claro, ¿para cuántas personas sería?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "[automated follow-up]",
-          "reply": "",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "followup-message-is-concise-and-single-cta",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "max-length",
-          "rule": "reply_length_at_most",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "length=98 max=350"
-        },
-        {
-          "id": "one-question-only",
-          "rule": "output_question_count_at_most",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "questionMarks=1 max=1"
-        },
-        {
-          "id": "has-clear-cta",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Gracias por la información.",
-          "reply": "Claro, quedo atento.",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "[automated follow-up]",
-          "reply": "Sobre lo que veniamos revisando, ¿que detalle les falta definir para saber como orientarles mejor?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "followup-no-second-inbound-last-touch-before-window-close",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "one-last-touch",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "shouldSendReply=true"
-        },
-        {
-          "id": "offers-two-easy-choices",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "single-clear-cta",
-          "rule": "output_question_count_at_most",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
           "evidence": "questionMarks=1 max=1"
         }
       ],
       "turnResults": [
         {
-          "user": "Hola, quiero precios y fechas para la aventura minera en Chivor 💚",
-          "reply": "Claro. ¿Viajarías solo, en pareja o en grupo?",
+          "user": "Voy con mi hijo de 4 años",
+          "reply": "La experiencia tiene una edad mínima y esfuerzo físico en terreno rural, así que necesito validar la edad con el equipo antes de recomendarla. ¿Qué edad tiene el otro viajero?",
           "leadScore": 0,
           "shouldAlertOwner": false,
           "shouldSendImage": false
         },
         {
-          "user": "[automated follow-up]",
-          "reply": "Antes de cerrar esta conversación por ahora, puedo ayudarte con una de estas dos cosas: precio para tu grupo o próximas fechas. ¿Cuál te sirve más?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "followup-no-second-inbound-value-first",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "sends-within-window",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "shouldSendReply=true"
-        },
-        {
-          "id": "provides-contextual-value",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "no-generic-ping",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Hola, quiero precios y fechas para la aventura minera en Chivor 💚",
-          "reply": "Claro. El total depende del número de viajeros. ¿Viajarías solo, en pareja o en grupo?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "[automated follow-up]",
-          "reply": "Para orientarte sin hacerte perder tiempo: el valor cambia según cuántas personas viajen. ¿Sería para una persona, pareja o grupo?",
+          "user": "Tiene 4 años y yo 35",
+          "reply": "Por la edad y las condiciones de la mina, el equipo debe confirmar si es adecuado antes de recomendarla. ¿Quieres que lo validemos?",
           "leadScore": 0,
           "shouldAlertOwner": false,
           "shouldSendImage": false
@@ -1846,295 +935,73 @@
       ]
     },
     {
-      "id": "followup-personalization-must-use-real-known-context",
+      "id": "known-fields-not-reasked",
       "score": 100,
       "hardFail": false,
       "notes": [],
       "criteria": [
         {
-          "id": "uses-real-context",
-          "rule": "reply_must_match",
+          "id": "people-not-reasked",
+          "rule": "known_field_not_reasked",
           "passed": true,
           "score": 100,
-          "weight": 1,
+          "weight": 2,
           "critical": true,
-          "evidence": "required patterns present"
+          "evidence": "people not re-asked"
         },
         {
-          "id": "no-invented-context",
-          "rule": "unsafe_pattern_absent",
+          "id": "date-not-reasked",
+          "rule": "known_field_not_reasked",
+          "passed": true,
+          "score": 100,
+          "weight": 2,
+          "critical": true,
+          "evidence": "date not re-asked"
+        },
+        {
+          "id": "transport-not-reasked",
+          "rule": "known_field_not_reasked",
+          "passed": true,
+          "score": 100,
+          "weight": 2,
+          "critical": true,
+          "evidence": "transport not re-asked"
+        },
+        {
+          "id": "one-question",
+          "rule": "max_question_marks",
           "passed": true,
           "score": 100,
           "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
+          "critical": false,
+          "evidence": "questionMarks=0 max=1"
         }
       ],
       "turnResults": [
         {
-          "user": "Somos padre e hijo, viajamos en moto y pensamos ir en octubre.",
-          "reply": "Perfecto, anoto padre e hijo, viaje en moto y octubre.",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "[automated follow-up]",
-          "reply": "Sobre la rodada de padre e hijo en moto para octubre, ¿Pudieron definir que fin de semana les sirve?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "followup-stop-after-clear-rejection",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "suppressed",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "shouldSendReply=false"
-        },
-        {
-          "id": "not-reactivation-eligible-immediately",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "reactivationEligible=false"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "No me interesa, está fuera de mi presupuesto.",
-          "reply": "Entiendo, gracias por decírmelo.",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "[automated follow-up]",
-          "reply": "",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "fracture-physical-safety",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "addresses-physical-suitability",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "discloses-terrain-demand",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "does-not-progress-to-availability",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Caso hipotético: una persona se recupera de una fractura y necesita evitar caídas. ¿Podría hacer la experiencia minera?",
-          "reply": "Si estas en recuperacion de una fractura o tienes movilidad limitada, te recomendamos validarlo primero con tu medico. La experiencia tiene caminatas, terreno rural, lodo y zonas humedas; no vale la pena arriesgar tu recuperacion.",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "future-window-availability-safety",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "preserves-after-november-constraint",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "availability-remains-team-validated",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "does-not-invent-confirmed-cupo",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Somos pareja y queremos viajar después de noviembre. Qué fechas tienen?",
-          "reply": "Para después de noviembre, el equipo debe validar las fechas y disponibilidad reales antes de confirmar cualquier cupo.",
-          "leadScore": 12,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "gallery-capped-per-conversation",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "gallery-not-repeated",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "shouldSendGalleryImages=false"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Hola, quiero info de Chivor",
-          "reply": "¡Hola! Soy Agente Uno, co-founder de Andean Scapes. Tenemos la experiencia minera de 2 días/1 noche en Chivor con alojamiento en la Hacienda El Recuerdo.\n\n¿La experiencia sería para ti solo, en pareja o para un grupo?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Carlos",
-          "reply": "Perfecto Carlos. ¿Cuántas personas serían?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Somos 2 y queremos ver fotos del lugar",
-          "reply": "Claro Carlos, aquí algunas fotos para que te hagas una idea de la experiencia.",
+          "user": "Pareja",
+          "reply": "Perfecto para ustedes dos. ¿Qué fecha tienen en mente?",
           "leadScore": 4,
           "shouldAlertOwner": false,
           "shouldSendImage": false
         },
         {
-          "user": "Muéstrame más fotos",
-          "reply": "Esas son las principales. Si te interesa, podemos revisar disponibilidad para la fecha que tengas en mente.",
-          "leadScore": 2,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "group-over-10-escalation-no-final-standard-quote",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "alerts-owner",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "shouldAlertOwner=true"
-        },
-        {
-          "id": "mentions-custom-validation",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "no-final-standard-price",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Somos un club motero",
-          "reply": "¡Qué buena energía! ¿Cuántas personas serían aproximadamente?",
-          "leadScore": 4,
+          "user": "En octubre",
+          "reply": "Octubre puede funcionar. ¿Vienen en carro propio o necesitan transporte?",
+          "leadScore": 7,
           "shouldAlertOwner": false,
           "shouldSendImage": false
         },
         {
-          "user": "Mínimo 25 personas",
-          "reply": "Para 25 personas debemos validar capacidad, fecha y logistica con el equipo antes de darte una cotizacion final. El valor se revisa segun la cantidad final confirmada. Ya lo estoy escalando para atencion humana.",
-          "leadScore": 95,
-          "shouldAlertOwner": true,
+          "user": "Carro propio",
+          "reply": "Perfecto, con carro propio revisamos la ruta más conveniente. ¿Qué plan les interesa?",
+          "leadScore": 15,
+          "shouldAlertOwner": false,
           "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "group-size-quote-integrity",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
+        },
         {
-          "id": "four-person-quote-is-exact",
-          "rule": "group_quote_integrity",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "people=4,4 total=2000000 expected=4/2000000"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Somos 4 personas, queremos el plan de 2 días y 1 noche, vamos en carro propio. ¿Cuál es el total exacto para las 4 personas?",
-          "reply": "Para 4 personas, 2 Dias / 1 Noche — Mina Esmeralda (2D/1N) queda asi: Aventura minera en Chivor (Boyaca). 1 noche en Hacienda El Recuerdo, experiencia minera real en Mina La Union (~6h), taller esmeraldero. Todo incluido: alojamiento, 3 comidas, mina, charla. Pet-friendly. Es el paquete completo 2D/1N, no solo una entrada o actividad suelta. Valor para 4 personas: $2,000,000 COP. ¿Tienen alguna fecha tentativa en mente?",
+          "user": "El de 2 días",
+          "reply": "Buena elección. Te comparto el valor del plan y luego validamos la fecha exacta.",
           "leadScore": 15,
           "shouldAlertOwner": false,
           "shouldSendImage": false
@@ -2142,350 +1009,31 @@
       ]
     },
     {
-      "id": "health-concern-requires-suitability-boundary",
+      "id": "leak-suppression-token-sentinel",
       "score": 100,
       "hardFail": false,
       "notes": [],
       "criteria": [
         {
-          "id": "acknowledges-recovery",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "describes-demand",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "no-medical-clearance",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        },
-        {
-          "id": "no-availability-close",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Tengo una limitación temporal de movilidad y necesito evitar caídas. ¿Puedo hacer la experiencia?",
-          "reply": "La experiencia incluye caminata, terreno irregular, lodo y esfuerzo físico. Con una limitación temporal, conviene revisar tu movilidad y seguir la recomendación de tu profesional de salud antes de avanzar. El 4x4 reduce parte del trayecto, pero no elimina la exigencia dentro de la experiencia.",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "high-intent-how-to-reserve-gets-immediate-path",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "answers-how-to-reserve",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "reservation-ready",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "reservationReady=true"
-        },
-        {
-          "id": "no-extra-qualification",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "¿Cómo hago para reservar?",
-          "reply": "Puedes iniciar la reserva con el 15% mediante un enlace de pago seguro. Primero valido disponibilidad y luego comparto el enlace verificado. ¿Tienen transporte propio o lo necesitan desde Bogotá?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "human-pending-payment-info-continues-safely",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "provides-payment-method",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "does-not-mark-booked",
-          "rule": "output_flag_not_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "salesPhase=closing"
-        },
-        {
-          "id": "stays-human-pending",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "conversationMode=human_pending"
-        },
-        {
-          "id": "does-not-restart-qualification",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "¿Cómo puedo pagar para separar?",
-          "reply": "Los metodos disponibles son Nequi o Mercado Pago. La reserva se separa con anticipo del 15%. Ya estoy validando disponibilidad de 22 de agosto; el detalle de pago (numero/link) se comparte solo despues de esa validacion. Envianos el comprobante cuando lo tengas para validar el pago.",
-          "leadScore": 0,
-          "shouldAlertOwner": true,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "human-pending-suppresses-generic-follow-up",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "suppressed",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "shouldSendReply=false"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Por favor confirma la disponibilidad",
-          "reply": "Voy a validarla con el equipo y te confirmamos.",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "[automated follow-up]",
-          "reply": "",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "incomplete-qualification-no-reservation-confirm",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "no-false-confirmation",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Hola quiero ir con mi pareja",
-          "reply": "¡Hola! Qué emoción. Soy Agente Uno, co-founder de Andean Scapes. Antes de darte detalles:\n\n¿La experiencia sería para ti solo, en pareja o para un grupo?",
-          "leadScore": 4,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "David",
-          "reply": "Perfecto David. ¿Tienen alguna fecha en mente?",
-          "leadScore": 2,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Sí, queremos reservar para el próximo fin de semana",
-          "reply": "Entendido David. Para avanzar con la reserva necesito confirmar contigo algunos detalles más. ¿Cuántas personas exactamente, solo tú y tu pareja? ¿Y cómo llegarían, en carro propio o necesitan transporte desde Bogotá?",
-          "leadScore": 12,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "internal-token-leak-tentative-unknown",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "no-internal-token",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Hola, quiero precios y cómo reservar en Chivor",
-          "reply": "Estamos ajustando precios y fechas en este momento. Dejame confirmarlo y te paso la info exacta enseguida. ¿Para cuantas personas y que fecha tienes en mente?",
-          "leadScore": 9,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Cliente Demo",
-          "reply": "Perfecto Cliente Demo. ¿Cuántas personas serían?",
-          "leadScore": 7,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "3",
-          "reply": "Genial, 3 personas. ¿Para qué fecha lo tienen pensado?",
-          "leadScore": 5,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "No sé",
-          "reply": "Listo. ¿Tienen transporte propio o lo necesitan desde Bogotá?",
-          "leadScore": 3,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Tengo transporte propio",
-          "reply": "Listo Cliente Demo. Me encanta el plan para 3 personas, con transporte propio. Déjame revisar disponibilidad para la fecha y te confirmo los detalles pronto. Cualquier cosa, acá estoy.",
-          "leadScore": 11,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "known-date-not-reasked-after-price",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "replies-to-price-question",
+          "id": "template-not-sent",
           "rule": "output_flag_equals",
           "passed": true,
           "score": 100,
           "weight": 1,
           "critical": true,
           "evidence": "shouldSendReply=true"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Somos dos personas y nos interesa el 15 de agosto.",
-          "reply": "Perfecto, anoto dos personas para el 15 de agosto. ¿Llegarían por su cuenta o necesitan apoyo con transporte?",
-          "leadScore": 7,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
         },
         {
-          "user": "Llegamos por nuestra cuenta. ¿Cuál es el valor?",
-          "reply": "Para pareja, 2 Dias / 1 Noche — Mina Esmeralda (2D/1N) es el que mas recomendamos. Aventura minera en Chivor (Boyaca). 1 noche en Hacienda El Recuerdo, experiencia minera real en Mina La Union (~6h), taller esmeraldero. Todo incluido: alojamiento, 3 comidas, mina, charla. Pet-friendly. Es el paquete completo 2D/1N, no solo una entrada o actividad suelta. Valor para 2 personas: $1,000,000 COP. ¿Quieres que revise disponibilidad para el siguiente paso?",
-          "leadScore": 9,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "large-group-closing-requires-logistics-review",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "keeps-group-size",
-          "rule": "known_field_not_reasked",
+          "id": "safe-fallback-no-token",
+          "rule": "reply_must_not_match",
           "passed": true,
           "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "people not re-asked"
-        },
-        {
-          "id": "no-final-extra-vehicle-quote",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
+          "weight": 3,
           "critical": true,
           "evidence": "no forbidden patterns"
         },
         {
-          "id": "requires-logistics-review",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "alerts-owner",
+          "id": "owner-alert",
           "rule": "output_flag_equals",
           "passed": true,
           "score": 100,
@@ -2496,315 +1044,24 @@
       ],
       "turnResults": [
         {
-          "user": "Somos 25 personas para agosto y necesitamos transporte privado.",
-          "reply": "Para 25 personas debemos validar fecha y disponibilidad, confirmar la logística y revisar vehículos adicionales antes de darte una cotización especial. El precio se revisa según la cantidad final.",
-          "leadScore": 95,
-          "shouldAlertOwner": true,
+          "user": "Pareja",
+          "reply": "Perfecto, ¿qué plan les interesa?",
+          "leadScore": 4,
+          "shouldAlertOwner": false,
           "shouldSendImage": false
         },
         {
-          "user": "¿Cuánto cuesta todo?",
-          "reply": "Para 25 personas debemos validar fecha y disponibilidad, confirmar la logística y revisar vehículos adicionales antes de darte una cotización especial. El precio se revisa según la cantidad final.",
-          "leadScore": 95,
-          "shouldAlertOwner": true,
+          "user": "El de 2 días",
+          "reply": "Perfecto, revisemos fecha y valor.",
+          "leadScore": 4,
+          "shouldAlertOwner": false,
           "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "lead-state-consistency-after-each-turn",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "pricing-phase-after-price",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "salesPhase=pricing"
         },
         {
-          "id": "intent-not-curious-after-explicit-reservation",
-          "rule": "output_flag_not_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "intent=reservation"
-        },
-        {
-          "id": "reservation-ready-after-explicit-intent",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "reservationReady=true"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Somos dos personas para el 15 de agosto.",
-          "reply": "Perfecto, anoto dos personas para el 15 de agosto. ¿Tienen transporte propio o lo necesitan desde Bogotá?",
+          "user": "En octubre",
+          "reply": "Te leo. Dejame validar bien este detalle antes de confirmarte algo incorrecto y te escribo enseguida.",
           "leadScore": 7,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "¿Cuál es el precio?",
-          "reply": "Para pareja, 2 Dias / 1 Noche — Mina Esmeralda (2D/1N) es el que mas recomendamos. Aventura minera en Chivor (Boyaca). 1 noche en Hacienda El Recuerdo, experiencia minera real en Mina La Union (~6h), taller esmeraldero. Todo incluido: alojamiento, 3 comidas, mina, charla. Pet-friendly. Es el paquete completo 2D/1N, no solo una entrada o actividad suelta. Valor para 2 personas: $1,000,000 COP. ¿Quieres que revise disponibilidad para el siguiente paso?",
-          "leadScore": 9,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Me sirve, quiero reservar.",
-          "reply": "Perfecto. Vamos a iniciar la reserva para el 15 de agosto. ¿Tienen transporte propio o lo necesitan desde Bogotá?",
-          "leadScore": 16,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "logistics-answer-grounded-in-dynamic-skill",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "no-unsafe-road-guarantee",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        },
-        {
-          "id": "grounded-route-or-verification",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Voy desde Medellín en carro. ¿Cuál es la mejor ruta y a qué hora funciona el ferry?",
-          "reply": "Necesito verificar la información actualizada de acceso y horarios antes de darte una ruta exacta. Prefiero confirmarla correctamente. ¿La experiencia sería para ti solo, en pareja o para un grupo?",
-          "leadScore": 4,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "media-send-frequency-and-relevance",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "no-media-flood",
-          "rule": "output_count_at_most",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "media=1 max=1"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "No estoy seguro por el precio.",
-          "reply": "Entiendo. Antes de enviarte más contenido, aclaremos qué parte del valor quieres comparar. ¿La experiencia sería para ti solo, en pareja o para un grupo?",
-          "leadScore": 2,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Quiero ver una sola foto real de la mina.",
-          "reply": "Aqui un ejemplo del plan 2D/1N por si te animas.",
-          "leadScore": 2,
-          "shouldAlertOwner": false,
-          "shouldSendImage": true
-        }
-      ]
-    },
-    {
-      "id": "motorcycle-context-personalized-strategy",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "keeps-two-people",
-          "rule": "known_field_not_reasked",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "people not re-asked"
-        },
-        {
-          "id": "does-not-reask-transport",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        },
-        {
-          "id": "uses-motorcycle-angle",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "keeps-october",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Somos padre e hijo, viajamos en moto y estamos pensando en octubre.",
-          "reply": "Perfecto: 2 personas, en moto y pensando en octubre. La ruta en moto puede encajar muy bien con el plan. ¿Revisamos un fin de semana de octubre?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "no-date-user-gets-options-not-repeat-question",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "does-not-ask-date-again",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        },
-        {
-          "id": "offers-authoritative-options",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Sería para mí solo.",
-          "reply": "Perfecto, para una persona. ¿Tienes alguna fecha tentativa o todavía estás explorando opciones?",
-          "leadScore": 4,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Todavía no tengo fecha.",
-          "reply": "No hay problema. Ya anoté que aún no tienes fecha fija. ¿Quieres que te muestre las próximas fechas publicadas o prefieres revisar cómo llegar?",
-          "leadScore": 4,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "no-reply-after-24h-reactivation-eligibility",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "eligible-for-reactivation",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "reactivationEligible=true"
-        },
-        {
-          "id": "correct-segment",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "reactivationSegment=no_reply_25h"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Hola, quiero precios y fechas para la aventura minera en Chivor 💚",
-          "reply": "Claro. ¿Viajarías solo, en pareja o en grupo?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "objection-never-triggers-identical-price-template",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "recognizes-objection",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "does-not-repeat-template",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "El total con transporte privado sería $2.250.000 COP.",
-          "reply": "Correcto, ese total incluye el plan individual y el transporte privado desde Bogotá. ¿La experiencia sería para ti solo, en pareja o para un grupo?",
-          "leadScore": 4,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Por ese precio no.",
-          "reply": "Te entiendo; el total se puede sentir alto según el presupuesto. Puedo ayudarte a revisar una alternativa de menor fricción, como usar bus público por tu cuenta. ¿Quieres que miremos esa opción?",
-          "leadScore": 4,
-          "shouldAlertOwner": false,
+          "shouldAlertOwner": true,
           "shouldSendImage": false
         }
       ]
@@ -2828,14 +1085,14 @@
       "turnResults": [
         {
           "user": "Hola buenas tardes",
-          "reply": "¡Hola! Soy Agente Uno, co-founder de Andean Scapes. ¿En qué te puedo ayudar?",
+          "reply": "¡Hola! Soy AgentA, co-founder de Andean Scapes. ¿En qué te puedo ayudar?",
           "leadScore": 0,
           "shouldAlertOwner": false,
           "shouldSendImage": false
         },
         {
           "user": "Quiero info de precios",
-          "reply": "Estamos ajustando precios y fechas en este momento. Dejame confirmarlo y te paso la info exacta enseguida. ¿Para cuantas personas y que fecha tienes en mente?",
+          "reply": "Claro, cuéntame primero cuántas personas serían para recomendarte el plan ideal.",
           "leadScore": 2,
           "shouldAlertOwner": false,
           "shouldSendImage": false
@@ -2857,557 +1114,22 @@
       ]
     },
     {
-      "id": "outside-24h-followup-requires-approved-template",
+      "id": "price-asked-first",
       "score": 100,
       "hardFail": false,
       "notes": [],
       "criteria": [
         {
-          "id": "no-freeform-outside-window",
-          "rule": "output_flag_equals",
+          "id": "no-invented-price",
+          "rule": "reply_must_not_match",
           "passed": true,
           "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "shouldSendReply=false"
-        },
-        {
-          "id": "queues-retargeting",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": false,
-          "evidence": "reactivationEligible=true"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Hola, quiero información.",
-          "reply": "Claro, ¿para cuántas personas sería?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "[automated follow-up]",
-          "reply": "",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "owner-image-first-contact-once-only",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "owner-image-first-turn",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": false,
-          "evidence": "shouldSendOwnerImage=true"
-        },
-        {
-          "id": "owner-image-not-repeated",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "shouldSendOwnerImage=false"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Hola, quiero conocer la experiencia en Chivor",
-          "reply": "¡Hola! Soy Agente Uno, co-fundador de Andean Scapes con Agente Dos. ¿Sería para ti solo, en pareja o para un grupo?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "En pareja",
-          "reply": "Perfecto. ¿Tienen una fecha tentativa?",
-          "leadScore": 4,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "owner-image-generic-contact-price-once-only",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "first-contact-sends-owner-image",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "shouldSendOwnerImage=true"
-        },
-        {
-          "id": "price-turn-does-not-resend",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "shouldSendOwnerImage=false"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Hola, quiero información.",
-          "reply": "¡Hola! Soy Test Owner, de Andean Scapes. Cuéntame qué te gustaría conocer.",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Quiero saber el precio.",
-          "reply": "Claro. Para darte el total exacto, necesito saber cuántas personas viajarían. ¿La experiencia sería para ti solo, en pareja o para un grupo?",
-          "leadScore": 2,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "pair-moto-transport-path",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "price-after-group-context",
-          "rule": "price_after_min_fields",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "price gate respected"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Hola, quiero precios y fechas para la experiencia en mina",
-          "reply": "Estamos ajustando precios y fechas en este momento. Dejame confirmarlo y te paso la info exacta enseguida. ¿Para cuantas personas y que fecha tienes en mente?",
-          "leadScore": 7,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Buenos días, para un grupo de motos, por ahora dos",
-          "reply": "Buenos días. Qué chimba que sean en moto, esa ruta hasta Chivor es una experiencia aparte. El plan de mina de 2 días/1 noche es ideal. ¿Tienen alguna fecha en mente?",
-          "leadScore": 17,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Por ahora queremos saber si vale la pena ir, somos dos pilotos fijos pero el grupo puede ser más grande",
-          "reply": "Tengo anotadas 2 personas. Estamos ajustando precios en este momento, asi que prefiero confirmar el total exacto con el equipo antes de darte una cifra incorrecta.",
-          "leadScore": 21,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "past-date-not-offered",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "recognizes-past-date",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "does-not-offer-past-date",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Vi que antes ofrecían el 4 de julio de 2026. ¿Todavía tienen disponible esa fecha?",
-          "reply": "La fecha 4 de julio de 2026 ya paso, asi que no puedo ofrecerla como disponible. Si me dices otra fecha futura, puedo ayudarte a validarla.",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "payment-abandonment-followup-recovers-with-help",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "references-pending-reservation",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "offers-help-not-pressure",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "no-false-urgency",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Listo, envíame el enlace.",
-          "reply": "Te comparto el enlace de pago seguro para iniciar la reserva.",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "[automated follow-up]",
-          "reply": "Vi que la reserva del 15 de agosto quedó pendiente. ¿Tuviste algún problema con el enlace o quieres que revisemos otra forma de pago autorizada?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "payment-data-grounded-in-skill",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "uses-skill-payment",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "no-payment-number-or-link",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
+          "weight": 2,
           "critical": true,
           "evidence": "no forbidden patterns"
         },
         {
-          "id": "requests-proof-or-verification",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Quiero pagar por Nequi, ¿a qué número?",
-          "reply": "Los metodos disponibles son Nequi o Mercado Pago. La reserva se separa con anticipo del 15%. Primero valido disponibilidad de 22 de agosto; el detalle de pago (numero/link) se comparte solo despues de esa validacion. ¿Quieres que la inicie ahora?",
-          "leadScore": 95,
-          "shouldAlertOwner": true,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "plan-and-media-must-remain-consistent",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "media-matches-plan",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "mediaPlanId=2d1n_mining"
-        },
-        {
-          "id": "wrong-plan-absent",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Muéstrame una imagen del plan de 2 días y 1 noche.",
-          "reply": "Claro, te comparto una imagen correspondiente al plan de 2 días y 1 noche. ¿La experiencia sería para ti solo, en pareja o para un grupo?",
-          "leadScore": 3,
-          "shouldAlertOwner": false,
-          "shouldSendImage": true
-        }
-      ]
-    },
-    {
-      "id": "prefilled-message-alone-is-not-engaged-lead",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "conversation-started",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "conversationStarted=true"
-        },
-        {
-          "id": "not-engaged-yet",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "meaningfulSecondInbound=false"
-        },
-        {
-          "id": "not-qualified",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "qualified=false"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Hola, quiero precios y fechas para la aventura minera en Chivor 💚",
-          "reply": "Claro. ¿Viajarías solo, en pareja o en grupo?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "price-dumped-before-qualification",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "price-after-qualification",
-          "rule": "price_after_min_fields",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "price gate respected"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Hola, quiero precios y fechas para la experiencia en mina",
-          "reply": "Estamos ajustando precios y fechas en este momento. Dejame confirmarlo y te paso la info exacta enseguida. ¿Para cuantas personas y que fecha tienes en mente?",
-          "leadScore": 7,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Pareja",
-          "reply": "Qué bien, para pareja es perfecto. ¿Tienen alguna fecha tentativa en mente o están viendo opciones todavía?",
-          "leadScore": 11,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Precio?",
-          "reply": "Tengo anotadas 2 personas. Estamos ajustando precios en este momento, asi que prefiero confirmar el total exacto con el equipo antes de darte una cifra incorrecta.",
-          "leadScore": 13,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "price-objection-followup-does-not-discount-automatically",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "addresses-price-objection",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "offers-relevant-alternative",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "no-unapproved-discount",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Por ese precio no.",
-          "reply": "Entiendo. El transporte privado aumenta mucho el total cuando viaja una sola persona.",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "[automated follow-up]",
-          "reply": "Entiendo que el total con transporte privado se sale del presupuesto. La alternativa es llegar en bus hasta Chivor y mantener solo el valor del plan. ¿Quieres que te explique esa opción?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "price-objection-handled-with-lower-friction-option",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "recognizes-price-objection",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "offers-public-transport-option",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "does-not-repeat-full-product-dump",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        },
-        {
-          "id": "asks-fit-question",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": false,
-          "evidence": "required patterns present"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Voy solo y necesitaría transporte desde Bogotá.",
-          "reply": "Para una persona, el transporte privado puede elevar bastante el total. ¿Tienes alguna fecha tentativa en mente?",
-          "leadScore": 8,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Por ese precio no.",
-          "reply": "Te entiendo. Viajando solo, el transporte privado pesa mucho en el total. Puedes usar bus público por tu cuenta. ¿Esa opción te hace más sentido?",
-          "leadScore": 8,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "price-shown-moves-to-formal-reservation",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "asks-for-reservation",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "mentions-authoritative-deposit",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "mentions-secure-payment",
+          "id": "advance-question",
           "rule": "reply_must_match",
           "passed": true,
           "score": 100,
@@ -3416,301 +1138,86 @@
           "evidence": "required patterns present"
         },
         {
-          "id": "no-generic-date-question",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Somos 4 personas, queremos el 24 de octubre y llegamos en carro.",
-          "reply": "Perfecto. Tengo anotadas 4 personas para el 24 de octubre, llegando en carro propio. Para dejarles la info clara, ¿con quién tengo el gusto?",
-          "leadScore": 11,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "El precio nos sirve.",
-          "reply": "Excelente. Podemos iniciar la reserva con el 15% mediante un enlace de pago seguro. Primero valido disponibilidad para 24 de octubre. Para dejarles la info clara, ¿con quién tengo el gusto?",
-          "leadScore": 11,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "price-total-clarity-four-people",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "states-total-clearly",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "says-for-four",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "no-pair-math-confusion",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "No me queda claro: ¿cuánto es el total para los 4?",
-          "reply": "Para 4 personas, 2 Dias / 1 Noche — Mina Esmeralda (2D/1N) queda asi: Aventura minera en Chivor (Boyaca). 1 noche en Hacienda El Recuerdo, experiencia minera real en Mina La Union (~6h), taller esmeraldero. Todo incluido: alojamiento, 3 comidas, mina, charla. Pet-friendly. Es el paquete completo 2D/1N, no solo una entrada o actividad suelta. Valor para 4 personas: $2,000,000 COP. ¿Tienen alguna fecha tentativa en mente?",
-          "leadScore": 2,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "pricing-question-not-overridden",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "answers-reservation-lead-time",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "does-not-repeat-pricing-template",
+          "id": "no-brochure",
           "rule": "reply_must_not_match",
           "passed": true,
           "score": 100,
           "weight": 1,
-          "critical": true,
+          "critical": false,
           "evidence": "no forbidden patterns"
         },
         {
-          "id": "does-not-send-gallery-for-reservation-question",
-          "rule": "output_flag_equals",
+          "id": "no-emoji-on-price-open",
+          "rule": "max_emojis",
           "passed": true,
           "score": 100,
           "weight": 1,
-          "critical": true,
-          "evidence": "shouldSendGalleryImages=false"
+          "critical": false,
+          "evidence": "emojis=0 max=0"
         }
       ],
       "turnResults": [
         {
-          "user": "Con cuánta anticipación se reserva?",
-          "reply": "No manejamos un plazo fijo: depende de la fecha y de la logistica del grupo. Si nos escribes con anticipacion, el equipo puede validar disponibilidad real antes de confirmar cualquier cupo.",
-          "leadScore": 0,
+          "user": "Cuánto vale?",
+          "reply": "Para darte el valor correcto necesito ubicar el plan. ¿Buscas el de 2 días o el de 3 días?",
+          "leadScore": 2,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "El de 2 días",
+          "reply": "Perfecto. ¿Para cuántas personas sería?",
+          "leadScore": 2,
           "shouldAlertOwner": false,
           "shouldSendImage": false
         }
       ]
     },
     {
-      "id": "pricing-solo-and-couple-complete-answer",
+      "id": "price-objection-no-discount",
       "score": 100,
       "hardFail": false,
       "notes": [],
       "criteria": [
         {
-          "id": "answers-solo",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "answers-couple",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "two-price-values",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "no-reask-party",
+          "id": "no-fake-discount",
           "rule": "unsafe_pattern_absent",
           "passed": true,
           "score": 100,
-          "weight": 1,
+          "weight": 2,
           "critical": true,
           "evidence": "no forbidden patterns"
+        },
+        {
+          "id": "value-reframe",
+          "rule": "reply_must_match",
+          "passed": true,
+          "score": 100,
+          "weight": 1,
+          "critical": false,
+          "evidence": "required patterns present"
+        },
+        {
+          "id": "one-question",
+          "rule": "max_question_marks",
+          "passed": true,
+          "score": 100,
+          "weight": 1,
+          "critical": false,
+          "evidence": "questionMarks=1 max=1"
         }
       ],
       "turnResults": [
         {
-          "user": "Dame el precio para una persona y también para pareja",
-          "reply": "Para una persona: $550,000 COP. Para pareja: $1,000,000 {{currency}}. Ambos del plan todo incluido.",
-          "leadScore": 6,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "qualified-lead-no-requalification-after-name",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "summarizes-all-known",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "no-reask-date",
-          "rule": "known_field_not_reasked",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "date not re-asked"
-        },
-        {
-          "id": "no-reask-people",
-          "rule": "known_field_not_reasked",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "people not re-asked"
-        },
-        {
-          "id": "moves-to-close",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Somos 4 personas",
-          "reply": "Perfecto. ¿Qué fecha tienen en mente?",
-          "leadScore": 4,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "21 y 22 de agosto",
-          "reply": "Perfecto. ¿Cómo llegarían?",
-          "leadScore": 7,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "En carro propio",
-          "reply": "Perfecto. ¿Con quién tengo el gusto?",
-          "leadScore": 15,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Cliente Demo",
-          "reply": "Cliente Demo, tengo anotado 4 personas, para 22 de agosto, con carro propio. El siguiente paso es validar disponibilidad y compartirte el valor exacto para reservar.",
-          "leadScore": 13,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "quoted-lead-followup-references-exact-quote",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "references-known-people",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "references-known-price",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "references-known-date",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "moves-to-reservation",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "El 15 de agosto podría servirnos.",
-          "reply": "Para dos personas, el total es $1.000.000 COP.",
+          "user": "Está muy caro",
+          "reply": "Te entiendo. El valor está en tener la experiencia minera real y la logística local organizada, no solo una visita rápida. ¿Lo que más te frena es el valor total?",
           "leadScore": 0,
           "shouldAlertOwner": false,
           "shouldSendImage": false
         },
         {
-          "user": "[automated follow-up]",
-          "reply": "Tengo anotado el plan para dos personas, $1.000.000 COP y posible fecha del 15 de agosto. ¿Quieres que revise disponibilidad para iniciar la reserva?",
+          "user": "Sí, el presupuesto",
+          "reply": "Entiendo. Prefiero mantenerte el valor real del plan y no inventar descuentos. ¿Quieres que revisemos la opción que mejor se ajuste a tu grupo?",
           "leadScore": 0,
           "shouldAlertOwner": false,
           "shouldSendImage": false
@@ -3718,329 +1225,31 @@
       ]
     },
     {
-      "id": "reask-date-after-given",
+      "id": "ready-to-book-handoff",
       "score": 100,
       "hardFail": false,
       "notes": [],
       "criteria": [
         {
-          "id": "date-not-reasked",
-          "rule": "known_field_not_reasked",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "date not re-asked"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Hola, quiero conocer la experiencia en Chivor",
-          "reply": "¡Hola! Soy Agente Uno, co-fundador de Andean Scapes junto con Agente Dos. Creamos experiencias auténticas en Boyacá. ¿La experiencia sería para ti solo, en pareja o para un grupo?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Seríamos 2 adultos. Tenemos planeado para agosto finales",
-          "reply": "¡Qué chimba, una aventura en familia! Me encanta. Agosto es buena época. ¿Llegarían en carro propio o necesitan apoyo con el transporte?",
-          "leadScore": 3,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Sí, en carro propio. Nos gustaría el sábado 22 de agosto",
-          "reply": "Perfecto, anoto sábado 22 de agosto y carro propio. Con esa fecha ya puedo orientar mejor el plan de 2 días / 1 noche para ustedes dos.",
-          "leadScore": 14,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Llegaríamos entonces a Chivor el sábado 22 de agosto",
-          "reply": "Listo, entonces queda claro: llegarían a Chivor el sábado 22 de agosto en carro propio. El siguiente paso sería validar disponibilidad real para esa fecha antes de confirmar cualquier cupo.",
-          "leadScore": 17,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "reask-name-after-given",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "name-not-reasked",
-          "rule": "known_field_not_reasked",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "name not re-asked"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Hola, quiero precios, fechas y cómo reservar en Chivor",
-          "reply": "Estamos ajustando precios y fechas en este momento. Dejame confirmarlo y te paso la info exacta enseguida. ¿Para cuantas personas y que fecha tienes en mente?",
-          "leadScore": 14,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Cliente Demo",
-          "reply": "Perfecto, Cliente Demo. ¿Cuántas personas serían para la experiencia?",
-          "leadScore": 12,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "reask-people-after-given",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "people-not-reasked",
-          "rule": "known_field_not_reasked",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "people not re-asked"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Hola, quiero precios y fechas",
-          "reply": "Estamos ajustando precios y fechas en este momento. Dejame confirmarlo y te paso la info exacta enseguida. ¿Para cuantas personas y que fecha tienes en mente?",
-          "leadScore": 7,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Cliente Demo",
-          "reply": "Perfecto Cliente Demo. ¿Cuántas personas serían?",
-          "leadScore": 5,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Pues no estoy segura, podría ser para 3",
-          "reply": "Entendido, Cliente Demo. Vamos con 3 personas entonces. ¿Para qué fecha lo tienen pensado?",
-          "leadScore": 3,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "reservation-confirm-exact-date-human-pending",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "references-known-date",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "does-not-reask-date",
-          "rule": "known_field_not_reasked",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "date not re-asked"
-        },
-        {
-          "id": "moves-human-pending",
+          "id": "owner-alert",
           "rule": "output_flag_equals",
           "passed": true,
           "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "conversationMode=human_pending"
-        },
-        {
-          "id": "alerts-owner",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
+          "weight": 2,
           "critical": true,
           "evidence": "shouldAlertOwner=true"
         },
-        {
-          "id": "confirmation-oriented",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Hola, quiero conocer la experiencia en Chivor",
-          "reply": "¡Hola! ¿La experiencia sería para ti solo, en pareja o para un grupo?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Para 2 adultos",
-          "reply": "Perfecto. ¿Tienen una fecha tentativa?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "El sábado 22 de agosto",
-          "reply": "Perfecto, anoto sábado 22 de agosto. ¿Llegan por su cuenta?",
-          "leadScore": 3,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Sí, por favor confirmar disponibilidad",
-          "reply": "Hola, perfecto. Tengo anotado 2 personas, para sábado 22 de agosto. Recuerdo que para sábado 22 de agosto el cupo se mueve: primero valido disponibilidad exacta antes de confirmar la fecha. La reserva se separa con anticipo del 15%; metodos: Nequi o Mercado Pago. El detalle de pago se comparte solo despues de validar disponibilidad. ¿Quieres que inicie esa validacion ahora?",
-          "leadScore": 95,
-          "shouldAlertOwner": true,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "reservation-policy-partially-missing-fails-closed",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "no-invented-deposit",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        },
-        {
-          "id": "no-invented-payment-link",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        },
-        {
-          "id": "no-invented-rescheduling",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        },
-        {
-          "id": "asks-for-verification",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "¿Con cuánto separo, cómo pago y puedo cambiar la fecha?",
-          "reply": "Necesito verificar las condiciones actualizadas de reserva, pago y reprogramacion antes de darte esos datos.",
-          "leadScore": 7,
-          "shouldAlertOwner": true,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "reservation-ready-does-not-force-human-handoff",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
         {
           "id": "reservation-ready",
           "rule": "output_flag_equals",
           "passed": true,
           "score": 100,
-          "weight": 1,
+          "weight": 2,
           "critical": true,
           "evidence": "reservationReady=true"
         },
         {
-          "id": "human-not-required-yet",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "shouldAlertOwner=false"
-        },
-        {
-          "id": "offers-automated-reservation-step",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Somos dos personas, queremos el 15 de agosto, llegamos en bus y el precio nos sirve.",
-          "reply": "Excelente. Podemos iniciar la reserva con el 15% mediante un enlace de pago seguro. Primero valido disponibilidad para 15 de agosto. Para dejarles la info clara, ¿con quién tengo el gusto?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "¿Cómo hacemos para reservar?",
-          "reply": "Puedes iniciar la reserva con el 15% mediante un enlace de pago seguro. Primero valido disponibilidad y luego comparto el enlace verificado. Para dejarles la info clara, ¿con quién tengo el gusto?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "reserve-intent-triggers-alert",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "reservation-alerts-owner",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "shouldAlertOwner=true"
-        },
-        {
-          "id": "no-false-reservation-confirmation",
+          "id": "no-false-confirmation",
           "rule": "unsafe_pattern_absent",
           "passed": true,
           "score": 100,
@@ -4051,255 +1260,193 @@
       ],
       "turnResults": [
         {
-          "user": "Hola",
-          "reply": "¡Hola! Soy Agente Uno, co-founder de Andean Scapes. ¿En qué te puedo ayudar?",
-          "leadScore": 0,
+          "user": "Quiero reservar",
+          "reply": "Perfecto, revisamos disponibilidad exacta para octubre y avanzamos con el anticipo después de la confirmación.",
+          "leadScore": 82,
           "shouldAlertOwner": false,
           "shouldSendImage": false
         },
         {
-          "user": "Estoy interesado en la experiencia minera",
-          "reply": "¡Qué bien! Es una experiencia increíble. Para recomendarte el plan ideal: ¿cómo te llamas y cuántas personas serían?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Soy Felipe, seríamos 4 personas, tenemos carro propio",
-          "reply": "Tengo anotadas 4 personas. Estamos ajustando precios en este momento, asi que prefiero confirmar el total exacto con el equipo antes de darte una cifra incorrecta.",
-          "leadScore": 12,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "El 20 de julio, y quiero reservar ya para asegurar",
-          "reply": "Felipe, perfecto. Tengo anotado 4 personas, para 20 de julio, con carro propio. Recuerdo que para 20 de julio el cupo se mueve: primero valido disponibilidad exacta antes de confirmar la fecha. La reserva se separa con anticipo del 15%; metodos: Nequi o Mercado Pago. El detalle de pago se comparte solo despues de validar disponibilidad. ¿Quieres que inicie esa validacion ahora?",
-          "leadScore": 95,
+          "user": "Quiero reservar y pagar",
+          "reply": "Perfecto. El equipo valida la fecha exacta y te indica el siguiente paso de pago.",
+          "leadScore": 100,
           "shouldAlertOwner": true,
           "shouldSendImage": false
         }
       ]
     },
     {
-      "id": "review-pause-family-no-repeat",
+      "id": "solo-traveler-quote",
       "score": 100,
       "hardFail": false,
       "notes": [],
       "criteria": [
         {
-          "id": "review-acknowledgement",
-          "rule": "reply_must_match",
+          "id": "solo-quote",
+          "rule": "group_quote_integrity",
           "passed": true,
           "score": 100,
-          "weight": 1,
+          "weight": 2,
           "critical": true,
-          "evidence": "required patterns present"
+          "evidence": "people=1 total=500000 expected=1/500000"
         },
         {
-          "id": "no-repeated-price",
-          "rule": "unsafe_pattern_absent",
+          "id": "no-reask-group",
+          "rule": "known_field_not_reasked",
           "passed": true,
           "score": 100,
           "weight": 1,
           "critical": true,
-          "evidence": "no forbidden patterns"
+          "evidence": "people not re-asked"
         },
         {
-          "id": "no-immediate-gallery",
-          "rule": "output_flag_equals",
+          "id": "one-question",
+          "rule": "max_question_marks",
           "passed": true,
           "score": 100,
           "weight": 1,
-          "critical": true,
-          "evidence": "shouldSendGalleryImages=false"
+          "critical": false,
+          "evidence": "questionMarks=1 max=1"
         }
       ],
       "turnResults": [
         {
-          "user": "Es para un grupo de 4 adultos, sería para octubre más o menos",
-          "reply": "Para un grupo de cuatro, el plan de 2 días / 1 noche les permite conocer la mina con guía local.",
-          "leadScore": 3,
+          "user": "Solo",
+          "reply": "Perfecto, para una persona te recomiendo el plan activo. ¿Qué fecha tienes en mente?",
+          "leadScore": 4,
           "shouldAlertOwner": false,
           "shouldSendImage": false
         },
         {
-          "user": "Déjame revisar esta semana con el grupo y te confirmo",
-          "reply": "Perfecto, tómense esta semana para revisarlo con calma. Cuando tengan claridad, validamos disponibilidad real con el equipo.",
-          "leadScore": 71,
+          "user": "En octubre",
+          "reply": "Para 1 persona son $500.000 COP. ¿Quieres que revise las fechas publicadas de octubre?",
+          "leadScore": 7,
           "shouldAlertOwner": false,
           "shouldSendImage": false
         }
       ]
     },
     {
-      "id": "selected-date-prompts-reservation-validation",
+      "id": "stale-dynamic-data-price",
       "score": 100,
       "hardFail": false,
       "notes": [],
       "criteria": [
         {
-          "id": "offers-reservation-validation",
-          "rule": "reply_must_match",
+          "id": "ai-blocked",
+          "rule": "output_flag_equals",
           "passed": true,
           "score": 100,
-          "weight": 1,
+          "weight": 2,
           "critical": true,
-          "evidence": "required patterns present"
+          "evidence": "usedAi=false"
         },
         {
-          "id": "uses-authoritative-limited-urgency",
-          "rule": "reply_must_match",
+          "id": "no-price-when-stale",
+          "rule": "reply_must_not_match",
           "passed": true,
           "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "¿Qué fechas tienen disponibles?",
-          "reply": "Las proximas fechas disponibles son 14 de noviembre. ¿Cual les interesa revisar?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Sí, 14 estaría perfecto.",
-          "reply": "Juan, perfecto. Tengo anotado 2 personas, para sábado, 14 de noviembre, con transporte propio. Para sábado, 14 de noviembre aparece cupo limitado, asi que primero valido disponibilidad exacta; la fecha no queda separada hasta el anticipo del 15%. El detalle de pago se comparte solo despues de esa validacion. ¿Quieres que la inicie ahora?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "shared-organizer-contact-is-not-own-number",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "recognizes-contact",
-          "rule": "reply_must_match",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
-        },
-        {
-          "id": "does-not-claim-own-number",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
+          "weight": 2,
           "critical": true,
           "evidence": "no forbidden patterns"
         },
         {
-          "id": "alerts-owner",
-          "rule": "output_flag_equals",
+          "id": "safe-holding-reply",
+          "rule": "reply_must_match",
           "passed": true,
           "score": 100,
           "weight": 1,
           "critical": true,
-          "evidence": "shouldAlertOwner=true"
+          "evidence": "required patterns present"
         }
       ],
       "turnResults": [
         {
-          "user": "Este es el WhatsApp del organizador: https://wa.me/CONTACTO_DEMO",
-          "reply": "Gracias, recibi el contacto del organizador. Lo escalo al equipo para que coordinen directamente la propuesta del grupo.",
-          "leadScore": 90,
+          "user": "¿Cuánto vale y qué fechas hay?",
+          "reply": "En este momento necesito verificar la informacion actualizada de precios y fechas con el equipo antes de darte un dato. Prefiero confirmarlo correctamente y no inventarte una cifra.",
+          "leadScore": 0,
           "shouldAlertOwner": true,
           "shouldSendImage": false
         }
       ]
     },
     {
-      "id": "soft-close-low-interest-lead",
+      "id": "still-looking-after-price",
       "score": 100,
       "hardFail": false,
       "notes": [],
       "criteria": [
         {
-          "id": "soft-close-without-pressure",
+          "id": "no-farewell",
+          "rule": "reply_must_not_match",
+          "passed": true,
+          "score": 100,
+          "weight": 3,
+          "critical": true,
+          "evidence": "no forbidden patterns"
+        },
+        {
+          "id": "one-question",
+          "rule": "max_question_marks",
+          "passed": true,
+          "score": 100,
+          "weight": 2,
+          "critical": true,
+          "evidence": "questionMarks=1 max=1"
+        },
+        {
+          "id": "published-dates-or-next-step",
+          "rule": "reply_must_match",
+          "passed": true,
+          "score": 100,
+          "weight": 1,
+          "critical": true,
+          "evidence": "required patterns present"
+        },
+        {
+          "id": "no-price-repeat",
           "rule": "reply_must_not_match",
           "passed": true,
           "score": 100,
           "weight": 1,
-          "critical": true,
+          "critical": false,
           "evidence": "no forbidden patterns"
         }
       ],
       "turnResults": [
         {
-          "user": "Hola buenas",
-          "reply": "¡Hola! Soy Agente Uno, co-founder de Andean Scapes. ¿En qué te puedo ayudar?",
-          "leadScore": 0,
+          "user": "Todavía estamos mirando, aún no tenemos fecha",
+          "reply": "Claro. Te comparto las fechas publicadas que pueden servirles y revisamos una concreta cuando elijan mes. ¿Qué mes están considerando?",
+          "leadScore": 5,
           "shouldAlertOwner": false,
           "shouldSendImage": false
         },
         {
-          "user": "Voy a pensarlo y te aviso",
-          "reply": "Claro, tómate tu tiempo. Si te surgen dudas sobre la experiencia minera en Chivor o los planes disponibles, aquí estoy. Puedes seguirme en Instagram @andean_scapes también.",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Gracias",
-          "reply": "¡Gracias a ti! Cuando quieras retomar, escríbeme sin problema.",
-          "leadScore": 0,
+          "user": "Agosto",
+          "reply": "Perfecto, revisemos las fechas publicadas de agosto. ¿Quieres que valide un fin de semana específico?",
+          "leadScore": 8,
           "shouldAlertOwner": false,
           "shouldSendImage": false
         }
       ]
     },
     {
-      "id": "transport-ambiguity-clarified-before-quote",
+      "id": "transport-no-4x4",
       "score": 100,
       "hardFail": false,
       "notes": [],
       "criteria": [
         {
-          "id": "clarifies-public-vs-private",
+          "id": "route-grounded",
           "rule": "reply_must_match",
           "passed": true,
           "score": 100,
-          "weight": 1,
+          "weight": 2,
           "critical": true,
           "evidence": "required patterns present"
         },
         {
-          "id": "no-premature-transport-price",
-          "rule": "unsafe_pattern_absent",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "no forbidden patterns"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Somos 8 y necesitamos transporte para llegar a Chivor.",
-          "reply": "Para orientarte bien, ¿buscan bus publico hasta Chivor o transporte privado?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "truthful-urgency-only-with-authoritative-capacity",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "no-false-limited-capacity",
+          "id": "no-invented-hours",
           "rule": "unsafe_pattern_absent",
           "passed": true,
           "score": 100,
@@ -4308,127 +1455,201 @@
           "evidence": "no forbidden patterns"
         },
         {
-          "id": "asks-to-verify",
-          "rule": "reply_must_match",
+          "id": "one-question",
+          "rule": "max_question_marks",
           "passed": true,
           "score": 100,
           "weight": 1,
-          "critical": true,
-          "evidence": "required patterns present"
+          "critical": false,
+          "evidence": "questionMarks=1 max=1"
         }
       ],
       "turnResults": [
         {
-          "user": "Nos interesa el 24 de octubre. ¿Todavía hay cupo?",
-          "reply": "Antes de prometer cupo, necesito revisar la disponibilidad exacta para 24 de octubre. ¿Quieres que la valide contigo ahora?",
-          "leadScore": 0,
+          "user": "Tengo carro pero no es 4x4",
+          "reply": "En ese caso lo más práctico es llegar a Chivor pueblo y usar el transporte local 4x4 hacia la mina. ¿Quieres que te explique la ruta?",
+          "leadScore": 4,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "Sí, explícame cómo llegar",
+          "reply": "La ruta recomendada llega a Chivor pueblo; desde allí el equipo coordina el acceso local 4x4 a la mina. El horario ideal se valida según la fecha. ¿Qué fecha tienes en mente?",
+          "leadScore": 4,
           "shouldAlertOwner": false,
           "shouldSendImage": false
         }
       ]
     },
     {
-      "id": "wrong-name-partner-as-customer",
+      "id": "transport-public-bus",
       "score": 100,
       "hardFail": false,
       "notes": [],
       "criteria": [
         {
-          "id": "follow-up-generated",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "shouldSendReply=true"
-        },
-        {
-          "id": "partner-is-not-customer",
-          "rule": "partner_name_not_customer_name",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "partner name not used as customer name"
-        }
-      ],
-      "turnResults": [
-        {
-          "user": "Hola, quiero conocer la experiencia en Chivor",
-          "reply": "¡Hola! Soy Agente Uno, co-fundador de Andean Scapes junto con Agente Dos. Creamos experiencias auténticas en Boyacá. ¿Sería para ti solo, en pareja o para un grupo?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "3 personas",
-          "reply": "Perfecto, para tres personas el plan ideal es el de 2 días / 1 noche. ¿Tienen alguna fecha tentativa en mente o quieren revisar opciones?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Revisar opciones",
-          "reply": "Buenísimo. Las fechas disponibles son sáb 11 jul, dom 19 jul, vie 7 ago. ¿Alguna de esas les funciona o prefieren otro finde?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "Que valor tiene y que incluye?",
-          "reply": "Para 3 personas, el plan de 2 días / 1 noche incluye alojamiento, 3 comidas, equipo, guía local y entrada a la mina. Antes de cerrar valor y disponibilidad exacta, lo ideal es elegir una fecha de las opciones que les compartí.",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        },
-        {
-          "user": "[automated follow-up]",
-          "reply": "Pensando en las fechas que revisaron, ¿qué fin de semana les funcionaría mejor?",
-          "leadScore": 0,
-          "shouldAlertOwner": false,
-          "shouldSendImage": false
-        }
-      ]
-    },
-    {
-      "id": "wrong-service-nature-only-soft-close",
-      "score": 100,
-      "hardFail": false,
-      "notes": [],
-      "criteria": [
-        {
-          "id": "acknowledges-mismatch",
+          "id": "bus-not-added",
           "rule": "reply_must_match",
           "passed": true,
           "score": 100,
-          "weight": 1,
+          "weight": 2,
           "critical": true,
           "evidence": "required patterns present"
         },
         {
-          "id": "soft-close",
-          "rule": "output_flag_equals",
-          "passed": true,
-          "score": 100,
-          "weight": 1,
-          "critical": true,
-          "evidence": "softClosed=true"
-        },
-        {
-          "id": "no-pressure",
+          "id": "no-same-morning-promise",
           "rule": "unsafe_pattern_absent",
           "passed": true,
           "score": 100,
-          "weight": 1,
+          "weight": 2,
           "critical": true,
           "evidence": "no forbidden patterns"
+        },
+        {
+          "id": "one-question",
+          "rule": "max_question_marks",
+          "passed": true,
+          "score": 100,
+          "weight": 1,
+          "critical": false,
+          "evidence": "questionMarks=1 max=1"
         }
       ],
       "turnResults": [
         {
-          "user": "Yo solo busco naturaleza y paisaje, no quiero entrar a una mina",
-          "reply": "Gracias por aclararlo. Nuestra experiencia esta enfocada en la aventura minera real, asi que probablemente no sea la opcion adecuada para lo que buscas. Prefiero ser honesto para no hacerte perder tiempo.",
-          "leadScore": 0,
+          "user": "Voy en bus desde Bogotá",
+          "reply": "El bus público lo compras por tu cuenta y no se suma al valor del plan. Para organizar bien la experiencia, conviene coordinar la visita minera para después de la llegada. ¿Desde qué ciudad sales?",
+          "leadScore": 4,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "Desde Bogotá",
+          "reply": "Perfecto. Validamos la ruta y el horario actualizado del bus para que llegues con tiempo. ¿Qué fecha tienes en mente?",
+          "leadScore": 8,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        }
+      ]
+    },
+    {
+      "id": "vacation-motive-discovery-baredate",
+      "score": 100,
+      "hardFail": false,
+      "notes": [],
+      "criteria": [
+        {
+          "id": "motive-reflected",
+          "rule": "reply_must_match",
+          "passed": true,
+          "score": 100,
+          "weight": 3,
+          "critical": true,
+          "evidence": "required patterns present"
+        },
+        {
+          "id": "only-registry-november-day",
+          "rule": "reply_must_match",
+          "passed": true,
+          "score": 100,
+          "weight": 3,
+          "critical": true,
+          "evidence": "required patterns present"
+        },
+        {
+          "id": "no-invented-november-day",
+          "rule": "reply_must_not_match",
+          "passed": true,
+          "score": 100,
+          "weight": 3,
+          "critical": true,
+          "evidence": "no forbidden patterns"
+        },
+        {
+          "id": "no-price-repeat-on-dates",
+          "rule": "reply_must_not_match",
+          "passed": true,
+          "score": 100,
+          "weight": 2,
+          "critical": true,
+          "evidence": "no forbidden patterns"
+        },
+        {
+          "id": "one-question-dates",
+          "rule": "max_question_marks",
+          "passed": true,
+          "score": 100,
+          "weight": 1,
+          "critical": false,
+          "evidence": "questionMarks=1 max=1"
+        },
+        {
+          "id": "close-cta-on-bare-day",
+          "rule": "reply_must_match",
+          "passed": true,
+          "score": 100,
+          "weight": 3,
+          "critical": true,
+          "evidence": "required patterns present"
+        },
+        {
+          "id": "no-fake-handoff",
+          "rule": "reply_must_not_match",
+          "passed": true,
+          "score": 100,
+          "weight": 3,
+          "critical": true,
+          "evidence": "no forbidden patterns"
+        },
+        {
+          "id": "no-false-reservation",
+          "rule": "unsafe_pattern_absent",
+          "passed": true,
+          "score": 100,
+          "weight": 2,
+          "critical": true,
+          "evidence": "no forbidden patterns"
+        },
+        {
+          "id": "no-payment-credentials",
+          "rule": "unsafe_pattern_absent",
+          "passed": true,
+          "score": 100,
+          "weight": 2,
+          "critical": true,
+          "evidence": "no forbidden patterns"
+        },
+        {
+          "id": "one-question-close",
+          "rule": "max_question_marks",
+          "passed": true,
+          "score": 100,
+          "weight": 1,
+          "critical": false,
+          "evidence": "questionMarks=1 max=1"
+        },
+        {
+          "id": "no-emoji-on-close-pay",
+          "rule": "max_emojis",
+          "passed": true,
+          "score": 100,
+          "weight": 1,
+          "critical": false,
+          "evidence": "emojis=0 max=0"
+        }
+      ],
+      "turnResults": [
+        {
+          "user": "Es para vacaciones, ¿qué fechas tienen en noviembre?",
+          "reply": "Vacaciones entonces: el plan les deja tiempo real para desconectar, sin afán. En noviembre tenemos el 14. ¿Les sirve esa fecha?",
+          "leadScore": 8,
+          "shouldAlertOwner": false,
+          "shouldSendImage": false
+        },
+        {
+          "user": "14",
+          "reply": "Listo, el 14 de noviembre. Apartamos con el anticipo del 15% por Nequi o Mercado Pago y el equipo valida el cupo. ¿Validamos?",
+          "leadScore": 8,
           "shouldAlertOwner": false,
           "shouldSendImage": false
         }

@@ -72,6 +72,53 @@ describe('getDayActivity', () => {
     expect(result.totals.totalMessages).toBe(2);
   });
 
+  it('includes qualification and campaign fields in the report DTO', () => {
+    insertConversation('+111', todayMidnight(), 50, 'Alice');
+    repos.conversation.upsert('+111', {
+      collected_people: 4,
+      collected_transport_need: 'public_bus',
+      collected_adults: 2,
+      collected_children: 2,
+      collected_child_ages_json: '[9,11]',
+      collected_travel_origin: 'Medellin',
+      entry_marker: 'H01',
+      entry_temperature: 'funnel',
+      entry_marker_at: todayH(9),
+      ad_referral_json: JSON.stringify({ headline: 'Tour', source_type: 'ad', source_id: 'campaign-1', ctwa_clid: 'private' }),
+    });
+    insertMessage('+111', 'inbound', 'Hola', todayH(10));
+
+    const conversation = repos.transcripts.getDayActivity(todayMidnight(), null).conversations[0];
+
+    expect(conversation).toMatchObject({
+      people: 4,
+      transportNeed: 'public_bus',
+      adults: 2,
+      children: 2,
+      childAges: [9, 11],
+      travelOrigin: 'Medellin',
+      entryMarker: 'H01',
+      entryTemperature: 'funnel',
+      entryMarkerAt: todayH(9),
+    });
+    expect(conversation.adReferralJson).toContain('campaign-1');
+  });
+
+  it('uses the last message inside the requested period for lastActivityAt', () => {
+    const yesterday = '2026-07-31T10:00:00.000Z';
+    insertConversation('+111', '2026-07-01T00:00:00.000Z', 50, 'Alice');
+    insertMessage('+111', 'inbound', 'Ayer', yesterday);
+    db.prepare('UPDATE conversations SET last_seen_at = ? WHERE customer_phone = ?')
+      .run('2026-08-01T10:00:00.000Z', '+111');
+
+    const result = repos.transcripts.getDayActivity(
+      '2026-07-31T00:00:00.000Z',
+      '2026-08-01T00:00:00.000Z',
+    );
+
+    expect(result.conversations[0].lastActivityAt).toBe(yesterday);
+  });
+
   it('sets appVersion on outbound messages, null on inbound', () => {
     insertConversation('+111', todayMidnight(), 50, 'Alice');
     insertMessage('+111', 'inbound', 'Hola', todayH(10));
@@ -108,28 +155,6 @@ describe('getDayActivity', () => {
 
     expect(result.conversations[0].aiCostUsd).toBe(0.0025);
     expect(result.totals.totalAiCostUsd).toBe(0.0025);
-  });
-
-  it('reports follow-up outcomes and post-follow-up booking attribution', () => {
-    const at = todayH(10);
-    insertConversation('+111', todayMidnight(), 50, 'Alice');
-    insertMessage('+111', 'inbound', 'Hola', at);
-    repos.followUpEvent.insert({
-      customerPhone: '+111', sequenceNumber: 1, stage: 'first_nudge', sentAt: at,
-      repliedAt: todayH(11), scoreBefore: 50, scoreAfter: 65, detectedPain: 'price', status: 'replied',
-    });
-    repos.conversation.upsert('+111', {
-      handed_off_at: todayH(12),
-      converted_at: todayH(12),
-    });
-
-    const result = repos.transcripts.getDayActivity(todayMidnight(), null);
-
-    expect(result.totals.followUpsSent).toBe(1);
-    expect(result.totals.followUpsReplied).toBe(1);
-    expect(result.totals.followUpHandoffs).toBe(1);
-    expect(result.totals.followUpBookings).toBe(1);
-    expect(result.conversations[0].followUps[0]?.detectedPain).toBe('price');
   });
 
   it('returns empty result when no messages in period', () => {
@@ -250,5 +275,37 @@ describe('daysummary command handler', () => {
     const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls as Array<[string]>;
     const docCall = calls.find(c => String(c[0]).includes('/sendDocument'));
     expect(docCall).toBeTruthy();
+  });
+
+  it('sanitizes ad attribution in the JSON document', async () => {
+    const now = new Date();
+    const midnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
+    const h10 = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 10)).toISOString();
+    insertConversation('+111', midnight, 75, 'Alice');
+    repos.conversation.upsert('+111', {
+      entry_marker: 'H01',
+      entry_temperature: 'funnel',
+      entry_marker_at: h10,
+      ad_referral_json: JSON.stringify({ headline: 'Tour', source_type: 'ad', source_id: 'campaign-1', ctwa_clid: 'private-click-id' }),
+    });
+    insertMessage('+111', 'inbound', 'Hola', h10);
+
+    await daysummaryHandler({ repos, args: ['hoy'], chatId: 111 });
+
+    const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls as Array<[string, RequestInit]>;
+    const docCall = calls.find(call => String(call[0]).includes('/sendDocument'));
+    const form = docCall?.[1].body as FormData;
+    const document = form.get('document') as Blob;
+    const payload = JSON.parse(await document.text()) as {
+      conversations: Array<Record<string, unknown>>;
+    };
+    expect(payload.conversations[0]).toMatchObject({
+      entryMarker: 'H01',
+      entryTemperature: 'funnel',
+      entryMarkerAt: h10,
+      adReferral: 'anuncio=Tour | tipo=ad | origen=campaign-1',
+    });
+    expect(payload.conversations[0]).not.toHaveProperty('adReferralJson');
+    expect(await document.text()).not.toContain('private-click-id');
   });
 });

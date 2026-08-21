@@ -1,0 +1,37 @@
+{
+  "profileId": "andean-scapes-co",
+  "version": 1,
+  "referents": [
+    { "packId": "referent.b", "weight": 60 },
+    { "packId": "referent.g", "weight": 25 },
+    { "packId": "referent.i", "weight": 10 },
+    { "packId": "referent.d", "weight": 5 }
+  ],
+  "entryStrategies": {
+    "cold": [
+      { "packId": "referent.a", "weight": 60 },
+      { "packId": "referent.b", "weight": 25 },
+      { "packId": "referent.c", "weight": 10 },
+      { "packId": "referent.d", "weight": 5 }
+    ],
+    "funnel": [
+      { "packId": "referent.e", "weight": 60 },
+      { "packId": "referent.b", "weight": 25 },
+      { "packId": "referent.f", "weight": 10 },
+      { "packId": "referent.g", "weight": 5 }
+    ],
+    "retargeting": [
+      { "packId": "referent.h", "weight": 60 },
+      { "packId": "referent.b", "weight": 25 },
+      { "packId": "referent.g", "weight": 10 },
+      { "packId": "referent.i", "weight": 5 }
+    ]
+  },
+  "renderRules": {
+    "fullContentMinWeight": 10,
+    "maxReferents": 4
+  },
+  "tokenBudget": {
+    "systemPromptMaxTokens": 31500
+  }
+}

@@ -25,7 +25,7 @@ vi.mock('../services/telegram-bot.js', () => ({
 vi.mock('../services/whatsapp-client.js', () => ({
   downloadMedia: mockDownloadMedia,
   sendText: vi.fn(() => Promise.resolve()),
-  sendImageUrl: vi.fn(() => Promise.resolve()),
+  sendImageUrl: vi.fn(() => Promise.resolve({ whatsappMessageId: 'wamid.IMG' })),
 }));
 
 const PHONE = '573001112233';
@@ -151,9 +151,66 @@ describe('extractMessages', () => {
       timestamp: '',
     }]);
   });
+
+  it('preserves Meta click-to-WhatsApp referral metadata', () => {
+    const messages = extractMessages({
+      object: 'whatsapp_business_account',
+      entry: [{
+        id: 'entry-2',
+        changes: [{
+          field: 'messages',
+          value: {
+            messages: [{
+              from: PHONE,
+              id: 'wamid-referral',
+              type: 'text',
+              text: { body: 'C01 - Hola' },
+              referral: { ctwa_clid: 'clid-1', source_id: 'ad-1', source_type: 'ad', headline: 'Tour', unapproved: 'discard-me' },
+            }],
+          },
+        }],
+      }],
+    });
+
+    expect(messages?.[0]?.referral).toEqual({
+      ctwa_clid: 'clid-1', source_id: 'ad-1', source_type: 'ad', headline: 'Tour',
+    });
+  });
 });
 
 describe('formatLeadHistory', () => {
+  it('formats new qualification and acquisition fields safely', () => {
+    repos.conversation.upsert(PHONE, {
+      collected_adults: 2,
+      collected_children: 2,
+      collected_child_ages_json: '[9,11]',
+      collected_travel_origin: 'Medellin',
+      entry_marker: 'H01',
+      entry_temperature: 'funnel',
+      ad_referral_json: JSON.stringify({ headline: 'Tour', source_type: 'ad', source_id: 'campaign-1' }),
+    });
+    const conv = repos.conversation.getByPhone(PHONE);
+    if (!conv) throw new Error('missing conversation');
+
+    const history = formatLeadHistory(conv, []);
+
+    expect(history).toContain('Adults: 2');
+    expect(history).toContain('Children: 2');
+    expect(history).toContain('Child ages: 9, 11');
+    expect(history).not.toContain('[9,11]');
+    expect(history).toContain('Origin: Medellin');
+    expect(history).toContain('Entry: H01 (funnel)');
+    expect(history).toContain('campaign-1');
+  });
+
+  it('omits malformed child ages', () => {
+    repos.conversation.upsert(PHONE, { collected_child_ages_json: '{bad' });
+    const conv = repos.conversation.getByPhone(PHONE);
+    if (!conv) throw new Error('missing conversation');
+
+    expect(formatLeadHistory(conv, [])).not.toContain('Child ages:');
+  });
+
   it('caps long chat history to a Telegram-safe response', () => {
     repos.conversation.upsert(PHONE, { language: 'es' });
     for (let i = 0; i < 80; i++) {
@@ -190,7 +247,7 @@ describe('forwardPostHandoffMessage', () => {
     expect(repos.message.getLastInboundBodies(PHONE, 1)[0]?.body).toBe('Me das mas info?');
   });
 
-  it('notifies bridge agent with /bridge instructions when no live bridge session exists', async () => {
+  it('notifies bridge agent with /chat instructions when no live bridge session exists', async () => {
     seedHandedOff('line1_bridge', '111');
     repos.conversation.setMode(PHONE, 'bridge_active');
 
@@ -199,7 +256,7 @@ describe('forwardPostHandoffMessage', () => {
     expect(result).toBeTruthy();
     expect(mockSendTelegram).toHaveBeenCalledTimes(1);
     expect(mockSendTelegram.mock.calls[0][0]).toBe('111');
-    expect(mockSendTelegram.mock.calls[0][1]).toContain('/bridge 573001112233');
+    expect(mockSendTelegram.mock.calls[0][1]).toContain('/chat 573001112233');
   });
 
   it('does not notify opted-out customers', async () => {
@@ -522,7 +579,7 @@ describe('notifyAssignedLineIfDormant', () => {
     expect(result).toBe(false);
     expect(mockSendTelegram).toHaveBeenCalledTimes(1);
     expect(mockSendTelegram.mock.calls[0][0]).toBe('111');
-    expect(mockSendTelegram.mock.calls[0][1]).toContain('/bridge 573001112233');
+    expect(mockSendTelegram.mock.calls[0][1]).toContain('/chat 573001112233');
     expect(repos.message.getLastInboundBodies(PHONE, 1)).toHaveLength(0);
   });
 
@@ -545,7 +602,7 @@ describe('notifyAssignedLineIfDormant', () => {
     expect(result).toBe(false);
     expect(mockSendTelegram).toHaveBeenCalledTimes(1);
     expect(mockSendTelegram.mock.calls[0][0]).toBe('111');
-    expect(mockSendTelegram.mock.calls[0][1]).toContain('/bridge');
+    expect(mockSendTelegram.mock.calls[0][1]).toContain('/chat');
   });
 
   it('does not notify when opt-out', async () => {
@@ -597,7 +654,7 @@ describe('notifyAssignedLineIfDormant', () => {
     expect(mockSendTelegramPhoto).toHaveBeenCalledTimes(1);
     const [, , , caption] = mockSendTelegramPhoto.mock.calls[0];
     expect(caption).toContain('envio una imagen');
-    expect(caption).toContain('/bridge');
+    expect(caption).toContain('/chat');
     expect(history).toContain('📷 comprobante');
   });
 
@@ -612,7 +669,7 @@ describe('notifyAssignedLineIfDormant', () => {
     expect(mockSendTelegramPhoto).not.toHaveBeenCalled();
     expect(mockSendTelegram).toHaveBeenCalledTimes(1);
     expect(mockSendTelegram.mock.calls[0][1]).toContain('envio una imagen');
-    expect(mockSendTelegram.mock.calls[0][1]).toContain('/bridge');
+    expect(mockSendTelegram.mock.calls[0][1]).toContain('/chat');
   });
 
   it('downloads and sends dormant customer audio as Telegram voice + text notice', async () => {

@@ -1,5 +1,6 @@
 import type { Skills } from './skill-loader.js';
 import { MONTH_NAMES, SCORE_DECAY_PER_IDLE_TURN, SCORE_REENGAGE_BUMP, SCORE_REGEX_BACKUP_WEIGHT, SCORE_REGEX_BACKUP_THRESHOLD_MULTIPLIER, SCORE_CONFIDENCE_FLOOR, SCORE_HOT_THRESHOLD_MARGIN, SCORE_BLOCKER_PENALTY_FLOOR } from './constants.js';
+import { isReservationIntentNegated } from './reply-guard.js';
 
 export interface ScoreResult {
   score: number;
@@ -15,15 +16,25 @@ function matchesPattern(text: string, pattern: string): boolean {
   return false;
 }
 
+function includesKeyword(text: string, keyword: string): boolean {
+  const escaped = keyword.trim().toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (!escaped) return false;
+  return new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}(?=$|[^\\p{L}\\p{N}])`, 'u').test(text);
+}
+
 export function scoreMessage(text: string, skills: Skills): ScoreResult {
   const normalized = text.toLowerCase().trim();
+  const reservationNegated = isReservationIntentNegated(normalized);
   let score = 0;
   const matchedSignals: string[] = [];
 
   for (const signal of skills.salesStrategy.signals) {
     const keywords = signal.keywords ?? [];
     const patterns = signal.patterns ?? [];
-    const matched = keywords.some(k => normalized.includes(k)) || patterns.some(p => matchesPattern(normalized, p));
+    const blockedByReservationNegation = reservationNegated
+      && (signal.id === 'asks_reservation' || signal.id === 're_engaged');
+    const matched = !blockedByReservationNegation
+      && (keywords.some(k => includesKeyword(normalized, k)) || patterns.some(p => matchesPattern(normalized, p)));
     if (matched) {
       score += signal.score;
       matchedSignals.push(signal.id);
@@ -31,7 +42,7 @@ export function scoreMessage(text: string, skills: Skills): ScoreResult {
   }
 
   for (const neg of skills.salesStrategy.negativeSignals) {
-    const matched = (neg.keywords ?? []).some(k => normalized.includes(k));
+    const matched = (neg.keywords ?? []).some(k => includesKeyword(normalized, k));
     if (matched) {
       score += neg.score;
       matchedSignals.push(neg.id);
@@ -56,6 +67,20 @@ export interface HybridScoreResult {
   score: number;
   intent: string;
   isHot: boolean;
+}
+
+export function computeAnalyzerFallbackScore(
+  currentScore: number,
+  regexScoreDelta: number,
+  isReEngagement: boolean,
+  hotLeadThreshold = 90,
+): number {
+  const weightedRegex = Math.round(regexScoreDelta * SCORE_REGEX_BACKUP_WEIGHT);
+  if (weightedRegex < 0) return Math.max(0, currentScore + weightedRegex);
+  if (currentScore >= hotLeadThreshold) return currentScore;
+  const regexBump = Math.max(0, weightedRegex);
+  const delta = isReEngagement ? Math.max(regexBump, SCORE_REENGAGE_BUMP) : regexBump;
+  return Math.min(100, currentScore + delta);
 }
 
 export function computeHybridScore(
@@ -87,10 +112,13 @@ export function computeHybridScore(
   const intentIsBooking = llmInput.intent === 'ready_to_book';
   const softCap = intentIsBooking ? hotLeadThreshold + SCORE_HOT_THRESHOLD_MARGIN : hotLeadThreshold - 1;
 
-  const cappedScore = Math.min(rawScore, softCap);
+  // The soft cap limits growth; it must never retroactively erase an existing
+  // high score when the current turn is neutral or negative.
+  const growthCap = currentScore >= hotLeadThreshold ? 100 : softCap;
+  const cappedScore = rawScore > currentScore ? Math.min(rawScore, growthCap) : rawScore;
   const clampedScore = Math.max(0, Math.min(100, cappedScore));
 
-  if (delta <= 0 && llmInput.buyingSignals.length === 0 && !intentIsBooking) {
+  if (delta === 0 && llmInput.buyingSignals.length === 0 && !intentIsBooking) {
     const decayedScore = Math.max(0, clampedScore + SCORE_DECAY_PER_IDLE_TURN);
     return {
       score: decayedScore,

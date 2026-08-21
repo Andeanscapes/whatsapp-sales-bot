@@ -148,7 +148,7 @@ describe('WhatsApp operational alerts', () => {
   it('does not flap recovery when a later send succeeds after ignored 400', async () => {
     vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(new Response('{}', { status: 400 }))
-      .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+      .mockResolvedValueOnce(new Response('{"messages":[{"id":"wamid.OK"}]}', { status: 200 }));
 
     await expect(sendText('573001112233', 'hola')).rejects.toThrow('HTTP 400');
     await sendText('573001112233', 'hola');

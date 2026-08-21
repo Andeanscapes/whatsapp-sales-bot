@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { downloadMedia, uploadMedia, MAX_AUDIO_BYTES, MAX_MEDIA_BYTES } from '../services/whatsapp-client.js';
+import { downloadMedia, sendTemplate, sendText, sendTextWithId, uploadMedia, WhatsAppSendError, MAX_AUDIO_BYTES, MAX_MEDIA_BYTES } from '../services/whatsapp-client.js';
 
 const MEDIA_ID = 'media-123';
 
@@ -121,5 +121,114 @@ describe('uploadMedia type normalization', () => {
     expect(form.get('type')).toBe('audio/ogg');
     const file = form.get('file') as File;
     expect(file.name).toBe('upload.ogg');
+  });
+});
+
+describe('sendTemplate', () => {
+  it('sends an image header + body params and returns the wamid', async () => {
+    let capturedBody: Record<string, unknown> | undefined;
+    vi.spyOn(globalThis, 'fetch').mockImplementation((_input, init) => {
+      capturedBody = JSON.parse(init?.body as string);
+      return Promise.resolve(new Response(JSON.stringify({ messages: [{ id: 'wamid.123' }] }), { status: 200 }));
+    });
+
+    const result = await sendTemplate('573001112233', 'tour_followup_decide_v1', 'es_CO', ['2 dias / 1 noche', '17 de noviembre'], 'https://cdn.example.com/plan.jpg');
+
+    expect(result.whatsappMessageId).toBe('wamid.123');
+    expect(capturedBody).toMatchObject({
+      messaging_product: 'whatsapp',
+      to: '573001112233',
+      type: 'template',
+      template: {
+        name: 'tour_followup_decide_v1',
+        language: { code: 'es_CO' },
+      },
+    });
+    const components = (capturedBody!.template as { components: Array<{ type: string; parameters: unknown[] }> }).components;
+    expect(components[0]).toEqual({ type: 'header', parameters: [{ type: 'image', image: { link: 'https://cdn.example.com/plan.jpg' } }] });
+    expect(components[1]).toEqual({
+      type: 'body',
+      parameters: [{ type: 'text', text: '2 dias / 1 noche' }, { type: 'text', text: '17 de noviembre' }],
+    });
+  });
+
+  it('omits the header component when no image is supplied (single-variable band)', async () => {
+    let capturedBody: Record<string, unknown> | undefined;
+    vi.spyOn(globalThis, 'fetch').mockImplementation((_input, init) => {
+      capturedBody = JSON.parse(init?.body as string);
+      return Promise.resolve(new Response(JSON.stringify({ messages: [{ id: 'wamid.456' }] }), { status: 200 }));
+    });
+
+    await sendTemplate('573001112233', 'tour_followup_explore_v1', 'es_CO', ['17 de noviembre']);
+
+    const components = (capturedBody!.template as { components: Array<{ type: string }> }).components;
+    expect(components).toHaveLength(1);
+    expect(components[0].type).toBe('body');
+  });
+
+  it('throws a retryable WhatsAppSendError on HTTP 5xx', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('', { status: 500 }));
+
+    await expect(sendTemplate('573001112233', 'tour_followup_decide_v1', 'es_CO', ['a', 'b']))
+      .rejects.toMatchObject({ retryable: true });
+  });
+
+  it('throws a non-retryable WhatsAppSendError on HTTP 400 (e.g. unapproved template)', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('', { status: 400 }));
+
+    const err = await sendTemplate('573001112233', 'tour_followup_decide_v1', 'es_CO', ['a', 'b']).catch(e => e);
+    expect(err).toBeInstanceOf(WhatsAppSendError);
+    expect(err.retryable).toBe(false);
+  });
+
+  it('treats a malformed success response as delivery-uncertain', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ messages: [] }), { status: 200 }));
+
+    await expect(sendTemplate('573001112233', 'tour_followup_decide_v1', 'es_CO', ['a', 'b']))
+      .rejects.toMatchObject({ deliveryUncertain: true });
+  });
+});
+
+describe('sendText', () => {
+  it('returns the wamid on a normal success response', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ messages: [{ id: 'wamid.text' }] }), { status: 200 }));
+
+    await expect(sendText('573001112233', 'hola')).resolves.toEqual({ whatsappMessageId: 'wamid.text' });
+  });
+
+  // Every customer reply goes through sendText: a 2xx with an unexpected body must
+  // not turn a delivered message into a thrown error for ordinary reply paths.
+  it('does not fail an ordinary send when the success body carries no id', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ messages: [] }), { status: 200 }));
+
+    await expect(sendText('573001112233', 'hola')).resolves.toEqual({ whatsappMessageId: null });
+  });
+
+  it('throws delivery-uncertain from sendTextWithId when no id is returned', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ messages: [] }), { status: 200 }));
+
+    await expect(sendTextWithId('573001112233', 'hola'))
+      .rejects.toMatchObject({ deliveryUncertain: true });
+  });
+
+  it('propagates HTTP failures unchanged', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('', { status: 500 }));
+
+    await expect(sendText('573001112233', 'hola')).rejects.toMatchObject({ retryable: true });
+  });
+
+  // A bare "HTTP 403" is undiagnosable: 190 (expired token), 368 (policy block) and
+  // 131030 (recipient not allowlisted on a test number) all surface the same status.
+  it('surfaces the Meta error code on a failed send', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
+      JSON.stringify({ error: { message: 'Permissions error', code: 200, error_subcode: 2534061 } }),
+      { status: 403 },
+    ));
+
+    const err = await sendText('573001112233', 'hola').catch(e => e);
+    expect(err).toBeInstanceOf(WhatsAppSendError);
+    expect(err.metaCode).toBe('200:2534061');
+    expect(err.message).toContain('meta 200:2534061');
+    expect(err.retryable).toBe(false);
   });
 });

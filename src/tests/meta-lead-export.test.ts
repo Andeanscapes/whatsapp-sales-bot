@@ -15,19 +15,16 @@ describe('Meta audience lead export', () => {
     tempRoot = undefined;
   });
 
-  it('exports consented active unbooked leads and excludes missing consent, opt-outs, and booked customers', () => {
+  it('exports active Meta referral leads and excludes non-Meta, opt-outs, and booked customers', () => {
     const db = new Database(':memory:');
     migrate(db);
     const repos = createRepositories(db);
-    repos.conversation.upsert('573001112233', { collected_name: 'Ana Maria' });
-    repos.conversation.upsert('573001112234', { collected_name: 'Luis' });
-    repos.conversation.upsert('14155551234', { collected_name: 'Taylor Swift' });
-    repos.conversation.upsert('573001112235', { collected_name: 'Booked Person' });
-    repos.conversation.upsert('573001112236', { collected_name: 'No Consent' });
-    repos.conversation.recordMetaAudienceConsent('573001112233', 'whatsapp_explicit_opt_in', '2026-07-29T10:00:00.000Z');
-    repos.conversation.recordMetaAudienceConsent('573001112234', 'whatsapp_explicit_opt_in');
-    repos.conversation.recordMetaAudienceConsent('14155551234', 'booking_checkout_opt_in');
-    repos.conversation.recordMetaAudienceConsent('573001112235', 'documented_lawful_basis');
+    const referral = JSON.stringify({ source_type: 'ad', source_id: 'campaign-1' });
+    repos.conversation.upsert('573001112233', { collected_name: 'Ana Maria', ad_referral_json: referral });
+    repos.conversation.upsert('573001112234', { collected_name: 'Luis', ad_referral_json: referral });
+    repos.conversation.upsert('14155551234', { collected_name: 'Taylor Swift', ad_referral_json: referral });
+    repos.conversation.upsert('573001112235', { collected_name: 'Booked Person', ad_referral_json: referral });
+    repos.conversation.upsert('573001112236', { collected_name: 'No Meta Referral' });
     repos.optOut.setOptOut('573001112234');
     repos.conversation.setBooked('573001112235');
 
@@ -42,10 +39,6 @@ describe('Meta audience lead export', () => {
     expect(csv).not.toContain('573001112235');
     expect(csv).not.toContain('573001112234');
     expect(csv).not.toContain('573001112236');
-    expect(repos.conversation.getByPhone('573001112233')).toMatchObject({
-      meta_audience_consent_at: '2026-07-29T10:00:00.000Z',
-      meta_audience_consent_source: 'whatsapp_explicit_opt_in',
-    });
     expect(skipped).toBe(0);
     db.close();
   });

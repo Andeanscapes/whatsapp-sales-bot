@@ -1,6 +1,7 @@
 import type { DayActivityResult } from '../db/repositories/types.js';
 import { sendTelegramDocument } from '../services/telegram-document.js';
 import { getReportExcludedPhones } from '../services/report-exclusions.js';
+import { formatAdReferral } from '../services/ad-referral.js';
 import type { CommandContext } from './index.js';
 
 function md(text: string): string {
@@ -58,7 +59,6 @@ function formatSummary(result: DayActivityResult, label: string, documentSent: b
     `👥 Conversaciones: ${totals.totalConversations}`,
     `📨 Mensajes: ${totals.totalMessages} (← ${totals.totalInbound} | → ${totals.totalOutbound})`,
     `💰 IA: $${totals.totalAiCostUsd.toFixed(4)}`,
-    `🔁 Seguimientos: ${totals.followUpsSent} enviados | ${totals.followUpsReplied} respondidos | ${totals.followUpHandoffs} handoffs | ${totals.followUpBookings} reservas`,
     '',
   ];
 
@@ -79,7 +79,13 @@ function formatSummary(result: DayActivityResult, label: string, documentSent: b
 }
 
 function buildJson(result: DayActivityResult, label: string): string {
-  const payload = { ...result };
+  const payload = {
+    ...result,
+    conversations: result.conversations.map(({ adReferralJson, ...conversation }) => ({
+      ...conversation,
+      adReferral: formatAdReferral(adReferralJson),
+    })),
+  };
   payload.totals.label = label;
   return JSON.stringify(payload, null, 2);
 }

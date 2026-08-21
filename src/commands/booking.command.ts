@@ -2,10 +2,11 @@ import { logger } from '../config/logger.js';
 import { broadcastToAllLines } from '../services/broadcast.js';
 import { getLineByTelegramChat, isReferralLine } from '../services/lead-routing.js';
 import { bridgeMessages } from '../services/bridge-messages.js';
+import { normalizeCommandPhone } from './phone.js';
 import type { CommandContext } from './index.js';
 
 export async function bookingHandler(ctx: CommandContext): Promise<string> {
-  const phone = ctx.args[0];
+  const phone = normalizeCommandPhone(ctx.args[0]);
   if (!phone) return bridgeMessages.bookingUsage;
 
   const conv = ctx.repos.conversation.getByPhone(phone);

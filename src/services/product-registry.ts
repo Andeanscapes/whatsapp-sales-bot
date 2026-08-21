@@ -1,22 +1,37 @@
 import type { Skills, AndeanScapesSkill } from './skill-loader.js';
-import { PRICING_NOT_AVAILABLE, AVAILABILITY_NOT_AVAILABLE } from './dynamic-data-service.js';
-import type { InternalPlanImage, InternalGalleryImage, InternalPaymentData } from './dynamic-data-service.js';
+import { PRICING_NOT_AVAILABLE, AVAILABILITY_NOT_AVAILABLE, mediaSiteKey } from './dynamic-data-service.js';
+import type { InternalPlanImage, InternalGalleryImage, InternalPaymentData, InternalEntrySegment } from './dynamic-data-service.js';
 
 type Experience = AndeanScapesSkill['experiences'][number];
 
 export type ActiveExperience = Experience;
 
+export function findActiveExperience(skills: Skills, selectedId?: string | null): ActiveExperience | null {
+  const active = getExperiences(skills);
+  if (selectedId) return active.find(experience => experience.id === selectedId) ?? null;
+  return active[0] ?? null;
+}
+
 export function getActiveExperience(skills: Skills): ActiveExperience {
-  // Skill schema enforces experiences.min(1) at load time, so [0] is always defined.
-  return skills.andeanScapes.experiences[0];
+  const experience = findActiveExperience(skills);
+  if (!experience) throw new Error('No active product experience is available');
+  return experience;
 }
 
 export function getExperiences(skills: Skills): ActiveExperience[] {
-  return skills.andeanScapes.experiences;
+  return skills.andeanScapes.experiences.filter(exp => isExperienceActive(exp));
 }
 
 export function hasMultipleExperiences(skills: Skills): boolean {
-  return skills.andeanScapes.experiences.length > 1;
+  return getExperiences(skills).length > 1;
+}
+
+export function isExperienceActive(exp: ActiveExperience): boolean {
+  return exp.status !== 'inactive';
+}
+
+export function hasActiveExperience(skills: Skills): boolean {
+  return getExperiences(skills).length > 0;
 }
 
 /**
@@ -27,11 +42,7 @@ export function hasMultipleExperiences(skills: Skills): boolean {
  * experience and nothing sets a selection yet.
  */
 export function resolveExperience(skills: Skills, selectedId?: string | null): ActiveExperience {
-  if (selectedId) {
-    const match = skills.andeanScapes.experiences.find(exp => exp.id === selectedId);
-    if (match) return match;
-  }
-  return skills.andeanScapes.experiences[0];
+  return findActiveExperience(skills, selectedId) ?? getActiveExperience(skills);
 }
 
 /** Create a request-local skill view whose active experience is the selected one. */
@@ -89,6 +100,31 @@ export function getFutureAvailableDates(exp: ActiveExperience, today = new Date(
     entry.date >= todayIso && (entry.status === 'available' || entry.status === 'limited'));
 }
 
+export function getFutureAvailableDatesForPlan(
+  skills: Skills,
+  exp: ActiveExperience,
+  planId?: string | null,
+  today = new Date(),
+): ActiveExperience['availability']['availableDates'] {
+  const plan = planId ? exp.plans.find(candidate => candidate.id === planId) : undefined;
+  const dynamicExperience = skills.dynamicData?.experiences[exp.id];
+  const siteAvailability = plan?.siteId ? dynamicExperience?.sites[plan.siteId]?.availability : undefined;
+
+  if (siteAvailability) {
+    if (siteAvailability.botRule === AVAILABILITY_NOT_AVAILABLE) return [];
+    const todayIso = localDateIso(today, siteAvailability.timezone || 'America/Bogota');
+    return siteAvailability.availableDates
+      .filter(entry => entry.date >= todayIso && (entry.status === 'available' || entry.status === 'limited'))
+      .map(entry => ({
+        ...entry,
+        status: entry.status as ActiveExperience['availability']['availableDates'][number]['status'],
+      }));
+  }
+
+  const siteIds = new Set(exp.plans.map(candidate => candidate.siteId).filter(Boolean));
+  return siteIds.size > 1 ? [] : getFutureAvailableDates(exp, today);
+}
+
 export function getOwnerImage(skills: Skills): { url: string; caption: string } | null {
   return skills.dynamicMedia?.ownerImage ?? null;
 }
@@ -102,6 +138,34 @@ export function getGalleryImages(skills: Skills, experienceId?: string | null): 
   if (!experienceId) return images;
   const allowUnscoped = skills.andeanScapes.experiences.length === 1;
   return images.filter(image => image.experienceId === experienceId || (allowUnscoped && !image.experienceId));
+}
+
+export function getMediaTypes(skills: Skills, experienceId?: string | null, siteId?: string): string[] {
+  const siteTypes = skills.dynamicMedia?.siteTypes ?? {};
+  if (experienceId && siteId) return siteTypes[mediaSiteKey(experienceId, siteId)] ?? [];
+  const entries = experienceId
+    ? Object.entries(siteTypes).filter(([key]) => key.startsWith(`${experienceId}/`))
+    : Object.entries(siteTypes);
+  return [...new Set(entries.flatMap(([, types]) => types))];
+}
+
+export function getTypeKeywords(
+  skills: Skills,
+  experienceId?: string | null,
+  siteId?: string,
+): Record<string, string[]> {
+  const typeKeywords = skills.dynamicMedia?.typeKeywords ?? {};
+  if (experienceId && siteId) return typeKeywords[mediaSiteKey(experienceId, siteId)] ?? {};
+  const entries = experienceId
+    ? Object.entries(typeKeywords).filter(([key]) => key.startsWith(`${experienceId}/`))
+    : Object.entries(typeKeywords);
+  const merged: Record<string, string[]> = {};
+  for (const [, site] of entries) {
+    for (const [type, keywords] of Object.entries(site)) {
+      merged[type] = [...new Set([...(merged[type] ?? []), ...keywords])];
+    }
+  }
+  return merged;
 }
 
 export function getPaymentInfo(skills: Skills): InternalPaymentData | null {
@@ -133,4 +197,30 @@ export function hasPublicPaymentFacts(skills: Skills): boolean {
   }
   const fallback = skills.andeanScapes.business.publicPaymentFallback;
   return fallback.depositPercent > 0 && fallback.methodNames.length > 0;
+}
+
+/**
+ * Retrieves an entry segment for a given entry marker code from the dynamic data.
+ * Returns the segment if found, or null if the code doesn't map to a defined segment
+ * or the site has no entry segments defined.
+ */
+export function getEntrySegment(
+  skills: Skills,
+  experienceId: string,
+  entryMarkerCode: string,
+  preferredSiteId?: string | null,
+): { siteId: string; segment: InternalEntrySegment } | null {
+  const experience = skills.dynamicData?.experiences[experienceId];
+  if (!experience) return null;
+
+  if (preferredSiteId) {
+    const segment = experience.sites[preferredSiteId]?.entrySegments?.[entryMarkerCode];
+    return segment ? { siteId: preferredSiteId, segment } : null;
+  }
+
+  const matches = Object.entries(experience.sites).flatMap(([siteId, site]) => {
+    const segment = site.entrySegments?.[entryMarkerCode];
+    return segment ? [{ siteId, segment }] : [];
+  });
+  return matches.length === 1 ? matches[0] : null;
 }

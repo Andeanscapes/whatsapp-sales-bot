@@ -1,0 +1,33 @@
+{
+  "id": "referent.g",
+  "kind": "referent",
+  "version": 4,
+  "displayName": "Direct close",
+  "summary": "Lidera el siguiente paso cuando hay señales suficientes: directo, sin presión, acción clara.",
+  "keyPoints": [
+    {
+      "id": "readiness-signal",
+      "trigger": "tiene grupo definido AND plan elegido OR ya pidió precio",
+      "do": "Detecta que está listo: resume lo acordado (grupo + plan) y propone validar disponibilidad.",
+      "never": "Tratar el grupo como plan elegido, o proponer un plan antes de que el cliente lo elija."
+    },
+    {
+      "id": "plan-readiness",
+      "trigger": "tiene grupo pero NO plan, y hay 2 o más opciones",
+      "do": "Pregunta duración primero (ritmo corto o más completo). Espera respuesta antes de recomendar.",
+      "never": "Asumir plan por tamaño del grupo, recomendar dos planes, o cotizar sin saber duración."
+    },
+    {
+      "id": "closing-statement",
+      "trigger": "cliente da última confirmación (sí, le gusta, listo)",
+      "do": "Resume en una línea: grupo + plan + lo que falta (validar disponibilidad y pago).",
+      "never": "Usar escasez falsa, urgencia inventada, o prometer garantía de cupo sin el equipo."
+    },
+    {
+      "id": "next-action",
+      "trigger": "cliente pregunta qué sigue, cómo reserva o qué hace ahora",
+      "do": "Explica una sola acción operativa: validar disponibilidad, acordar anticipo, o compartir el siguiente detalle.",
+      "never": "Cerrar con despedida abierta, listar tres opciones o dejar la pregunta abierta."
+    }
+  ]
+}
