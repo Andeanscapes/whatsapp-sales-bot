@@ -11,12 +11,12 @@ export function checkTimeWindow(repos: Repositories, phone: string): TimeWindowR
   const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
   const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
 
-  const hourCount = repos.message.countOutboundSince(phone, oneHourAgo);
+  const hourCount = repos.message.countOutboundSince(phone, oneHourAgo, 'text');
   if (hourCount >= env.MAX_BOT_MESSAGES_PER_CUSTOMER_PER_HOUR) {
     return { isLimited: true, reason: 'hourly_limit' };
   }
 
-  const dayCount = repos.message.countOutboundSince(phone, oneDayAgo);
+  const dayCount = repos.message.countOutboundSince(phone, oneDayAgo, 'text');
   if (dayCount >= env.MAX_BOT_MESSAGES_PER_CUSTOMER_PER_DAY) {
     return { isLimited: true, reason: 'daily_limit' };
   }
@@ -24,7 +24,8 @@ export function checkTimeWindow(repos: Repositories, phone: string): TimeWindowR
   return { isLimited: false };
 }
 
-const CUSTOMER_SERVICE_WINDOW_MS = 24 * 60 * 60 * 1000;
+/** WhatsApp's customer-service window: free-form messages are only allowed inside it. */
+export const CUSTOMER_SERVICE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /**
  * WhatsApp only allows free-form (non-template) messages within 24h of the

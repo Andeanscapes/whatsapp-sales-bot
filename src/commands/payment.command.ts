@@ -1,14 +1,17 @@
 import { randomUUID } from 'crypto';
 import { env } from '../config/env.js';
 import { getSkills, isDynamicDataFresh, type Skills } from '../services/skill-loader.js';
-import { getActiveExperience, getPlans, getPublicPaymentFacts, hasPublicPaymentFacts, isPricingAvailable } from '../services/product-registry.js';
+import { findActiveExperience, getPlans, getPublicPaymentFacts, hasPublicPaymentFacts, isPricingAvailable } from '../services/product-registry.js';
 import { calculatePriceQuote, type TransportNeed } from '../services/pricing-calculator.js';
 import { createMercadoPagoPreference } from '../services/mercadopago-service.js';
 import { sendBridgeReply } from '../services/bridge-service.js';
+import { normalizeCommandPhone } from './phone.js';
 import type { CommandContext } from './index.js';
 
 function transportNeed(value: string | null): TransportNeed | undefined {
-  return value === 'own' || value === 'from_bogota' || value === 'public_bus' ? value : undefined;
+  return value === 'own' || value === 'from_bogota' || value === 'public_bus' || value === 'yes'
+    ? value
+    : undefined;
 }
 
 function paymentLinkReply(
@@ -25,7 +28,7 @@ function paymentLinkReply(
 }
 
 export async function paymentHandler(ctx: CommandContext): Promise<string> {
-  const phone = ctx.args[0];
+  const phone = normalizeCommandPhone(ctx.args[0]);
   if (!phone || ctx.args[1]?.toLowerCase() !== 'confirm') {
     return 'Uso: /payment <telefono> confirm. Usa confirm solo despues de validar disponibilidad.';
   }
@@ -55,7 +58,8 @@ export async function paymentHandler(ctx: CommandContext): Promise<string> {
 
   if (!isDynamicDataFresh()) return 'No puedo crear el enlace: precios o disponibilidad requieren verificacion.';
   if (!hasPublicPaymentFacts(skills)) return 'No hay condiciones de anticipo autorizadas para crear el enlace.';
-  const experience = getActiveExperience(skills);
+  const experience = findActiveExperience(skills, ctx.repos.conversation.getSelectedExperienceId(phone));
+  if (!experience) return 'No hay una experiencia activa para crear el enlace.';
   if (!isPricingAvailable(experience)) return 'No hay precios actualizados para crear el enlace.';
   const paymentFacts = getPublicPaymentFacts(skills);
 
@@ -77,11 +81,13 @@ export async function paymentHandler(ctx: CommandContext): Promise<string> {
     people,
     transportNeed: transportNeed(conversation.collected_transport_need),
   });
-  if (!quote || paymentFacts.depositPercent <= 0) return 'No pude calcular un anticipo autorizado.';
+  if (!quote || quote.total == null || paymentFacts.depositPercent <= 0) {
+    return 'No pude calcular un anticipo autorizado.';
+  }
 
   const plan = getPlans(experience).find(item => item.id === planId);
   if (!plan) return 'El plan seleccionado ya no esta disponible.';
-  const amountCop = Math.round((quote.total ?? quote.planTotal) * paymentFacts.depositPercent / 100);
+  const amountCop = Math.round(quote.total * paymentFacts.depositPercent / 100);
   const preference = await createMercadoPagoPreference({
     customerPhone: phone,
     title: `Reserva Andean Scapes - ${plan.name}`,

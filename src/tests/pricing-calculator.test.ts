@@ -110,7 +110,7 @@ describe('calculatePriceQuote', () => {
     expect(Number.isInteger(quote?.planTotal)).toBe(true);
   });
 
-  it('drops transport silently to plan-only if the remote addon key is renamed', () => {
+  it('requires confirmation if the requested transport price is unavailable', () => {
     const exp = getActiveExperience(loadSkills());
     exp.pricing = {
       currency: 'COP',
@@ -125,12 +125,72 @@ describe('calculatePriceQuote', () => {
       businessRules: [],
     };
 
-    // Documents current behavior: with a renamed key, transport is not added.
-    // The shared const guards against this in normal operation; this test pins
-    // the failure mode so a future rename that breaks it is caught here.
     const quote = calculatePriceQuote(exp, { planId: '2d1n_mining', people: 2, transportNeed: 'from_bogota' });
 
     expect(quote?.transportTotal).toBeNull();
-    expect(quote?.total).toBe(1000000);
+    expect(quote?.total).toBeNull();
+    expect(quote?.requiresTransportConfirmation).toBe(true);
+  });
+
+  it('uses plan and addon prices from the selected plan site only', () => {
+    const exp = getActiveExperience(loadSkills());
+    const originalPlans = exp.plans;
+    const originalPricing = exp.pricing;
+    exp.plans = [{ ...originalPlans[0], id: 'coscuez_plan', siteId: 'coscuez' }];
+    exp.pricing = {
+      currency: 'COP',
+      lastUpdated: '2026-01-01',
+      items: [
+        { id: 'chivor_individual', siteId: 'chivor', planId: 'coscuez_plan', label: 'Wrong individual', pricePerPerson: 900000, publiclyShow: true },
+        { id: 'chivor_couple', siteId: 'chivor', planId: 'coscuez_plan', label: 'Wrong couple', couplePrice: 1700000, publiclyShow: true },
+        { id: 'coscuez_individual', siteId: 'coscuez', planId: 'coscuez_plan', label: 'Coscuez individual', pricePerPerson: 480000, publiclyShow: true },
+        { id: 'coscuez_couple', siteId: 'coscuez', planId: 'coscuez_plan', label: 'Coscuez couple', couplePrice: 900000, publiclyShow: true },
+        { id: ADDON_ID_PRIVATE_TRANSPORT, siteId: 'chivor', label: 'Wrong transport', couplePrice: 1700000, publiclyShow: true },
+        { id: ADDON_ID_PRIVATE_TRANSPORT, siteId: 'coscuez', label: 'Coscuez transport', couplePrice: 700000, publiclyShow: true },
+      ],
+      botRules: [],
+      businessRules: [],
+    };
+
+    try {
+      const quote = calculatePriceQuote(exp, { planId: 'coscuez_plan', people: 2, transportNeed: 'from_bogota' });
+      expect(quote?.planTotal).toBe(900000);
+      expect(quote?.transportTotal).toBe(700000);
+      expect(quote?.total).toBe(1600000);
+    } finally {
+      exp.plans = originalPlans;
+      exp.pricing = originalPricing;
+    }
+  });
+
+  it('does not use transport scoped to another plan on the same site', () => {
+    const exp = getActiveExperience(loadSkills());
+    const originalPlans = exp.plans;
+    const originalPricing = exp.pricing;
+    exp.plans = [
+      { ...originalPlans[0], id: 'plan_a', siteId: 'chivor' },
+      { ...originalPlans[0], id: 'plan_b', siteId: 'chivor' },
+    ];
+    exp.pricing = {
+      currency: 'COP',
+      lastUpdated: '2026-01-01',
+      items: [
+        { id: 'plan_b_individual', siteId: 'chivor', planId: 'plan_b', label: 'Individual', pricePerPerson: 500000, publiclyShow: true },
+        { id: 'plan_b_couple', siteId: 'chivor', planId: 'plan_b', label: 'Pareja', couplePrice: 900000, publiclyShow: true },
+        { id: ADDON_ID_PRIVATE_TRANSPORT, siteId: 'chivor', planId: 'plan_a', label: 'Transport plan A', couplePrice: 700000, publiclyShow: true },
+      ],
+      botRules: [],
+      businessRules: [],
+    };
+
+    try {
+      const quote = calculatePriceQuote(exp, { planId: 'plan_b', people: 2, transportNeed: 'from_bogota' });
+      expect(quote?.transportTotal).toBeNull();
+      expect(quote?.total).toBeNull();
+      expect(quote?.requiresTransportConfirmation).toBe(true);
+    } finally {
+      exp.plans = originalPlans;
+      exp.pricing = originalPricing;
+    }
   });
 });

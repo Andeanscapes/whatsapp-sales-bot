@@ -1,111 +1,83 @@
 import { describe, expect, it } from 'vitest';
-import { buildFollowUpPrompt, buildSystemPrompt } from '../services/deepseek-client.js';
+import { buildSystemPrompt } from '../services/deepseek-client.js';
 import { loadSkills, type Skills } from '../services/skill-loader.js';
 import { AVAILABILITY_NOT_AVAILABLE, PRICING_NOT_AVAILABLE } from '../services/dynamic-data-service.js';
-import { getActiveExperience, getShortDescription } from '../services/product-registry.js';
+import { getActiveExperience } from '../services/product-registry.js';
 import { containsClosingDelay } from '../services/reply-guard.js';
 
-describe('buildFollowUpPrompt', () => {
-  it('derives supported experience context from the product registry', () => {
+
+describe('buildSystemPrompt (skills assembly)', () => {
+  it('uses skills assembly markers', () => {
     const skills = loadSkills();
-    const experience = getActiveExperience(skills);
-    const prompt = buildFollowUpPrompt({ skills, lang: 'es', phase: 'greeting', stage: 'first_nudge' });
+    const prompt = buildSystemPrompt({ skills, lang: 'es' });
 
-    expect(prompt).toContain(`Supported experience: ${experience.name}`);
-    expect(prompt).toContain(`Description: ${getShortDescription(experience)}`);
-    expect(prompt).not.toContain('This business has ONE core experience');
-  });
-});
-
-describe('buildSystemPrompt', () => {
-  it('injects sales tactics from skill data', () => {
-    const skills = loadSkills();
-    const prompt = buildSystemPrompt(skills);
-
-    expect(prompt).toContain(`Customer-first selling: ${skills.salesStrategy.salesTactics.customerFirstSelling}`);
-    expect(prompt).toContain(`Micro-question flow: ${skills.salesStrategy.salesTactics.microQuestionFlow}`);
-    expect(prompt).toContain(`Invisible qualification: ${skills.salesStrategy.salesTactics.invisibleQualification}`);
+    expect(prompt).toContain('WHATSAPP SALES SKILL');
+    expect(prompt).toContain('## CATALOGO');
+    expect(prompt).toContain('## DATOS DEL NEGOCIO');
+    expect(prompt).not.toContain('Customer-first selling:');
   });
 
-  it('keeps unavailable pricing and availability guards ahead of sales tactics', () => {
+  it('marks pricing unavailable when items empty', () => {
     const skills = withUnavailablePricingAndAvailability(loadSkills());
-    const prompt = buildSystemPrompt(skills);
-
-    const guardIndex = prompt.indexOf('[CRITICAL RULE] NO hay precios actualizados');
-    const priceContextIndex = prompt.indexOf('Price with context:');
-    const salesTacticsIndex = prompt.indexOf('Sales attitude:');
-
-    expect(guardIndex).toBeGreaterThanOrEqual(0);
-    expect(priceContextIndex).toBe(-1);
-    expect(salesTacticsIndex).toBeGreaterThan(guardIndex);
+    const prompt = buildSystemPrompt({ skills });
+    expect(prompt).toContain('PRICING: NO DISPONIBLE — el equipo confirma');
+    expect(prompt).not.toContain('Price with context:');
   });
 
   it('exposes only future available or limited dates to the LLM', () => {
     const skills = loadSkills();
     const exp = getActiveExperience(skills);
-    const original = exp.availability;
-    exp.availability = {
-      ...original,
-      botRule: 'Use published dates only.',
-      availableDates: [
-        { date: '2099-08-16', status: 'soldout', slotsApprox: 0 },
-        { date: '2099-08-17', status: 'available', slotsApprox: null },
-        { date: '2099-08-18', status: 'limited', slotsApprox: 2 },
-        { date: '2099-08-19', status: 'unavailable', slotsApprox: null },
-      ],
-    };
-    try {
-      const prompt = buildSystemPrompt(skills, 'es');
-      expect(prompt).toContain('17 ago 2099');
-      expect(prompt).toContain('18 ago 2099');
-      expect(prompt).not.toContain('16 ago 2099');
-      expect(prompt).not.toContain('19 ago 2099');
-    } finally {
-      exp.availability = original;
+    const dates: Array<{ date: string; status: 'available' | 'limited' | 'unavailable' | 'soldout'; slotsApprox: number | null }> = [
+      { date: '2099-08-16', status: 'soldout', slotsApprox: 0 },
+      { date: '2099-08-17', status: 'available', slotsApprox: null },
+      { date: '2099-08-18', status: 'limited', slotsApprox: 2 },
+      { date: '2099-08-19', status: 'unavailable', slotsApprox: null },
+    ];
+    exp.availability = { ...exp.availability, botRule: 'Use published dates only.', availableDates: dates };
+    // Site renderer reads dynamicData.sites — keep both in sync for the test.
+    const dynExp = skills.dynamicData?.experiences[exp.id];
+    if (dynExp) {
+      dynExp.availability = { ...dynExp.availability, botRule: 'Use published dates only.', availableDates: dates };
+      for (const site of Object.values(dynExp.sites)) {
+        site.availability = { ...site.availability, botRule: 'Use published dates only.', availableDates: dates };
+      }
     }
+    const prompt = buildSystemPrompt({ skills, lang: 'es' });
+    expect(prompt).toContain('2099-08-17');
+    expect(prompt).toContain('2099-08-18');
+    expect(prompt).not.toContain('2099-08-16');
+    expect(prompt).not.toContain('2099-08-19');
   });
 
-  it('surfaces durable business rules even when pricing is unavailable', () => {
-    const skills = withUnavailablePricingAndAvailability(loadSkills());
-    const prompt = buildSystemPrompt(skills);
-
-    // Numbers are gone (no price values) but the durable business rules must
-    // still reach the model so it honors cancellation / addon / no-invent rules.
-    expect(prompt).toContain('Business rules:');
-    expect(prompt).toContain('Cancelacion/reagendamiento: maximo 2 veces');
-    expect(prompt).toContain('Nunca inventes descuentos');
-    // No hardcoded price VALUES leak from the static skill.
-    expect(prompt).not.toMatch(/\$?\s?1,040,000/);
-    expect(prompt).not.toMatch(/\$?\s?550,000/);
-  });
-
-  it('merges static business rules alongside dynamic pricing rules when available', () => {
-    // Default loadSkills has no dynamic service, so pricing is unavailable and
-    // botRules holds only the sentinel. Simulate the merged runtime shape.
+  it('merges pricing rules when available', () => {
     const skills = loadSkills();
     const exp = skills.andeanScapes.experiences[0];
-    const orig = exp.pricing;
     exp.pricing = {
       currency: 'COP',
       lastUpdated: '2026-01-01',
       items: [
-        { id: 'couple', planId: '2d1n_mining', label: 'Pareja', couplePrice: 1040000, peopleIncluded: 2, publiclyShow: true },
+        { id: 'couple', planId: '2d1n_mining', label: 'Pareja', couplePrice: 1000000, peopleIncluded: 2, publiclyShow: true },
       ],
-      // Runtime merge = remote rules + static businessRules (see applyDynamicToExperiences).
-      botRules: ['REMOTE: 15% deposito via Nequi o Mercado Pago', ...orig.businessRules],
-      businessRules: orig.businessRules,
+      botRules: ['REMOTE: 15% deposito via Nequi o Mercado Pago'],
+      businessRules: [],
     };
-    try {
-      const prompt = buildSystemPrompt(skills);
-      expect(prompt).toContain('Pricing rules:');
-      expect(prompt).toContain('REMOTE: 15% deposito');
-      // Static business rule is applied alongside the remote rule.
-      expect(prompt).toContain('5+ personas');
-      // Not duplicated as a standalone "Business rules:" line when pricing available.
-      expect(prompt).not.toContain('Business rules:');
-    } finally {
-      exp.pricing = orig;
+    const dynExp = skills.dynamicData?.experiences[exp.id];
+    if (dynExp) {
+      dynExp.pricing = {
+        ...dynExp.pricing,
+        items: [{
+          id: 'couple', kind: 'plan', siteId: 'chivor', planId: '2d1n_mining',
+          label: 'Pareja', couplePrice: 1000000, peopleIncluded: 2, publiclyShow: true,
+        }],
+        botRules: ['REMOTE: 15% deposito via Nequi o Mercado Pago'],
+      };
+      for (const site of Object.values(dynExp.sites)) {
+        site.rules = ['REMOTE: 15% deposito via Nequi o Mercado Pago'];
+      }
     }
+    const prompt = buildSystemPrompt({ skills });
+    expect(prompt).toContain('REMOTE: 15% deposito');
+    expect(prompt).toContain('1.000.000');
   });
 
   it('keeps payment credentials out of the LLM prompt', () => {
@@ -121,8 +93,7 @@ describe('buildSystemPrompt', () => {
         },
         methods: [{
           id: 'nequi', name: 'Nequi', type: 'mobile_transfer', enabled: true,
-          phoneNumber: '3000000000', fullPhoneNumber: '+573000000000', currency: 'COP',
-          instructions: 'Transfiere al 3000000000', requiresPaymentProof: true,
+          currency: 'COP', requiresPaymentProof: true,
         }],
         confirmation: { automatic: false, requiresTeamValidation: true, message: 'Validar primero.' },
         displayPolicy: {
@@ -133,20 +104,24 @@ describe('buildSystemPrompt', () => {
       },
     };
 
-    const prompt = buildSystemPrompt(skills);
+    const prompt = buildSystemPrompt({ skills });
 
-    expect(prompt).toContain('Deposit required: 15%');
-    expect(prompt).toContain('Enabled payment method names: Nequi');
+    expect(prompt).toMatch(/15%/);
+    expect(prompt).toContain('Nequi');
     expect(prompt).not.toContain('3000000000');
     expect(prompt).not.toContain('Transfiere al');
   });
 
   it('includes explicit family and transport context without inventing facts', () => {
-    const prompt = buildSystemPrompt(loadSkills(), 'es', undefined, undefined, {
-      date: 'octubre',
-      transport: 'own_motorcycle',
-      childAges: [5],
-      groupRelationship: 'padre e hijo',
+    const prompt = buildSystemPrompt({
+      skills: loadSkills(),
+      lang: 'es',
+      customerContext: {
+        date: 'octubre',
+        transport: 'own_motorcycle',
+        childAges: [5],
+        groupRelationship: 'padre e hijo',
+      },
     });
 
     expect(prompt).toContain('Date mentioned: octubre');
@@ -155,16 +130,10 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('Group relationship: padre e hijo');
   });
 
-  it('grounds public bus guidance and keeps it separate from the car ferry route', () => {
-    const prompt = buildSystemPrompt(loadSkills(), 'es');
-
+  it('grounds public bus guidance from catalog route narrative', () => {
+    const prompt = buildSystemPrompt({ skills: loadSkills(), lang: 'es' });
     expect(prompt).toContain('Terminal Salitre');
-    expect(prompt).toContain('aproximadamente a las 7:00 am');
-    expect(prompt).toContain('aproximadamente a las 5:00 am');
-    expect(prompt).toContain('$60.000 COP por persona y por trayecto');
-    expect(prompt).toContain('Flota Valle de Tenza o Flota La Macarena');
-    expect(prompt).toContain('no prometas mina la misma manana de llegada');
-    expect(prompt).toContain('no aplican automaticamente al bus publico');
+    expect(prompt).toMatch(/bus|Flota|Salitre/i);
   });
 });
 

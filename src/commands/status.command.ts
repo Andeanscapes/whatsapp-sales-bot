@@ -1,6 +1,7 @@
 import { env } from '../config/env.js';
 import type { LineLeadCount } from '../db/repositories/types.js';
 import { getLineById, getRoutingConfig } from '../services/lead-routing.js';
+import { getReportExcludedPhones } from '../services/report-exclusions.js';
 import type { CommandContext } from './index.js';
 
 function lineLabel(lineId: string): string {
@@ -36,8 +37,9 @@ export async function statusHandler(ctx: CommandContext): Promise<string> {
     todayUtc.getUTCDate(),
   )).toISOString();
 
-  const stats = ctx.repos.stats.getDailyStats(todayStart, env.HOT_LEAD_THRESHOLD);
-  const byLine = ctx.repos.stats.getLeadCountsByLine(env.HOT_LEAD_THRESHOLD);
+  const excluded = getReportExcludedPhones();
+  const stats = ctx.repos.stats.getDailyStats(todayStart, env.HOT_LEAD_THRESHOLD, excluded);
+  const byLine = ctx.repos.stats.getLeadCountsByLine(env.HOT_LEAD_THRESHOLD, excluded);
   const linesConfigured = getRoutingConfig()?.salesLines.length ?? 0;
 
   const parts = [

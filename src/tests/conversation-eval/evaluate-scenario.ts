@@ -2,18 +2,24 @@ import { env } from '../../config/env.js';
 import { getSkills } from '../../services/skill-loader.js';
 import { getActiveExperience } from '../../services/product-registry.js';
 import { calculatePriceQuote } from '../../services/pricing-calculator.js';
+import { countEmojis } from '../../services/reply-guard.js';
 import type { Criterion, CriterionResult, Scenario } from './schema.js';
 import type { TurnRecord } from './runner.js';
 
 const STARTING_PRICE_PATTERN = /\b(?:desde|a\s+partir\s+de|starting\s+at)\s*\$?\s*[\d.,]+(?:\s*(?:COP|USD))?/i;
 const PRICE_AMOUNT_PATTERN = /\$\s*[\d.,]+(?:\s*(?:COP|USD))?|\b[\d.,]+\s*(?:COP|USD)\b/gi;
+/** Grouped thousands or 6+ digits carrying a currency marker: "$2.500.000" or "2500000 COP". */
+const GROUP_QUOTE_AMOUNT_PATTERN =
+  /\$\s*(\d{1,3}(?:[.,]\d{3})+|\d{6,})|(\d{1,3}(?:[.,]\d{3})+|\d{6,})\s*COP\b/gi;
 const DATE_GIVEN_PATTERN = /\b(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|january|february|march|april|may|june|july|august|september|october|november|december|mañana|manana|tomorrow|fin de semana|weekend|s[aá]bado|domingo|\d{1,2}[/-]\d{1,2})\b/i;
 const PEOPLE_GIVEN_PATTERN = /(?:somos|ser[ií]amos?|para|grupo de)\s+\d+|\d+\s*(?:persona|people|pax)|\b(?:pareja|solo|sola|couple|alone|mi hijo y yo|my son and i)\b/i;
 const TRANSPORT_GIVEN_PATTERN = /\b(?:carro|moto|transporte propio|veh[ií]culo|4x4|desde bogot[aá]|bus|transport|motorcycle)\b/i;
 const NAME_GIVEN_PATTERN = /(?:me llamo|mi nombre es|hola soy|hello i'?m|my name is)\s+\S+|^\s*[a-záéíóúñ]{2,}(?:\s+[a-záéíóúñ]{2,})?\s*(?:,\s*(?:from|traveling)|$)/i;
 const FIELD_ASK_PATTERNS = {
   name: /\b(c[óo]mo te llamas|cu[aá]l (es )?tu nombre|what'?s your name|what is your name|con qui[eé]n tengo)\b/i,
-  people: /\b(cu[aá]ntas personas|how many people|para cu[aá]ntos|ser[ií]an|vienes?\s*solo|is the experience for you alone)\b/i,
+  // A bare `serían` also matches price copy ("para 5 personas serían $2.250.000"),
+  // so it must stay bound to a group question, not float free.
+  people: /\b(cu[aá]ntas personas|how many people|para cu[aá]ntos|ser[ií]an\s+(?:cu[aá]nt|para\s+cu[aá]nt)|vienes?\s*solo|is the experience for you alone)\b/i,
   date: /\b(tienen .{0,30} fecha|(?:alguna|cual|qué|que|c[uú]al) fecha|fecha en mente|para cu[aá]ndo|fecha preferida|en mente.*fecha)\b/i,
   transport: /\b(?:llegar[ií]an|llegan|llegar)\s+(?:por su cuenta|en carro|en moto)|(?:necesitan|necesitas).{0,20}(?:transporte|transport)\b/i,
   transportNeed: /\b(?:llegar[ií]an|llegan|llegar)\s+(?:por su cuenta|en carro|en moto)|(?:necesitan|necesitas).{0,20}(?:transporte|transport)\b/i,
@@ -97,6 +103,12 @@ function evaluateCriterion(criterion: Criterion, turns: TurnRecord[]): Criterion
     return criterionResult(criterion, count <= max, `questionMarks=${count} max=${max}`);
   }
 
+  if (criterion.rule === 'max_emojis') {
+    const max = criterion.max ?? 1;
+    const count = countEmojis(replyText);
+    return criterionResult(criterion, count <= max, `emojis=${count} max=${max}`);
+  }
+
   if (criterion.rule === 'reply_length_at_most') {
     const max = criterion.expected as number;
     return criterionResult(criterion, replyText.length <= max, `length=${replyText.length} max=${max}`);
@@ -170,6 +182,11 @@ function evaluateCriterion(criterion: Criterion, turns: TurnRecord[]): Criterion
 
   if (criterion.rule === 'group_quote_integrity') {
     const expectedPeople = criterion.people!;
+    // Derived from whatever pricing is loaded at evaluation time, so the expectation
+    // always matches the state the run actually saw. This requires the scenario's
+    // `mockPricing.planId` to be a REAL catalog plan id — otherwise the engine
+    // resolves the customer's plan to a real id, the quote lookup misses, and no
+    // QUOTE LOCK reaches the model.
     const quote = calculatePriceQuote(getActiveExperience(getSkills()), {
       planId: criterion.planId,
       people: expectedPeople,
@@ -177,16 +194,18 @@ function evaluateCriterion(criterion: Criterion, turns: TurnRecord[]): Criterion
     });
     const expectedTotal = quote?.planTotal ?? criterion.expectedTotal!;
 
-    const peopleCounts = [...replyText.matchAll(/\b(\d+)\s*(?:personas|people|pax)\b/gi)].map(match => Number(match[1]));
-    const amounts = [...replyText.matchAll(/\$?\s*(\d[\d.,]*)\s*COP\b/gi)]
-      .map(match => Number(match[1].replace(/[.,]/g, '')));
+    const peopleCounts = [...replyText.matchAll(/\b(\d+)\s*(?:persona(?:s)?|people|pax)\b/gi)].map(match => Number(match[1]));
+    // A currency marker is required ($ prefix OR COP suffix) so plain counts like
+    // "5 personas" are never read as money. Requiring BOTH produced false
+    // negatives: the model routinely writes "$2.500.000" with no "COP".
+    const amounts = [...replyText.matchAll(GROUP_QUOTE_AMOUNT_PATTERN)]
+      .map(match => Number((match[1] ?? match[2]).replace(/[.,]/g, '')));
     const peopleMatch = peopleCounts.includes(expectedPeople) && peopleCounts.every(count => count === expectedPeople);
-    const totalMatch = amounts.includes(expectedTotal);
-    const safelyWithheld = amounts.length === 0 && /(?:confirm|valid|revis|ajust).{0,50}(?:precio|valor|cifra)|(?:precio|valor|cifra).{0,50}(?:confirm|valid|revis|ajust)/i.test(replyText);
+    const totalMatch = amounts.length === 1 && amounts[0] === expectedTotal;
     return criterionResult(
       criterion,
-      peopleMatch && (totalMatch || safelyWithheld),
-      `people=${peopleCounts.join(',') || 'missing'} total=${amounts.join(',') || (safelyWithheld ? 'safely withheld' : 'missing')} expected=${expectedPeople}/${expectedTotal}`,
+      peopleMatch && totalMatch,
+      `people=${peopleCounts.join(',') || 'missing'} total=${amounts.join(',') || 'missing'} expected=${expectedPeople}/${expectedTotal}`,
     );
   }
 

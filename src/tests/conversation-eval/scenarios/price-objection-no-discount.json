@@ -1,0 +1,17 @@
+{
+  "id": "price-objection-no-discount",
+  "source": "history: 11 price objections",
+  "tags": ["objection"],
+  "lang": "es",
+  "seedConversation": { "phase": "pricing", "priceGiven": true, "qualification": { "people": 2, "plan": "2d1n_mining" } },
+  "seedQualification": { "people": 2, "plan": "2d1n_mining" },
+  "criteria": [
+    { "id": "no-fake-discount", "rule": "unsafe_pattern_absent", "patterns": ["descuento.{0,30}\\$|gratis|rebaja"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "value-reframe", "rule": "reply_must_match", "patterns": ["experiencia|log[ií]stica|equipo|mina|plan|valor"], "turn": 2, "weight": 1 },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 2, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "Está muy caro", "mockReply": "Te entiendo. El valor está en tener la experiencia minera real y la logística local organizada, no solo una visita rápida. ¿Lo que más te frena es el valor total?" },
+    { "user": "Sí, el presupuesto", "mockReply": "Entiendo. Prefiero mantenerte el valor real del plan y no inventar descuentos. ¿Quieres que revisemos la opción que mejor se ajuste a tu grupo?" }
+  ]
+}

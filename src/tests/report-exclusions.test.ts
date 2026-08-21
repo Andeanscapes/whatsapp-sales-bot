@@ -6,6 +6,9 @@ import { env } from '../config/env.js';
 import { resetRoutingConfigCache } from '../services/lead-routing.js';
 import { statsHandler } from '../commands/stats.command.js';
 import { recentHandler } from '../commands/recent.command.js';
+import { reportHandler } from '../commands/report.command.js';
+import { statusHandler } from '../commands/status.command.js';
+import { leadsHandler } from '../commands/leads.command.js';
 import { getReportExcludedPhones, normalizePhone } from '../services/report-exclusions.js';
 
 const TEST_PHONE = '573009998888';
@@ -77,6 +80,60 @@ describe('/stats excludes test numbers (json_each path)', () => {
 
     expect(out).toContain('Total conversaciones: 1');
     expect(out).toContain('Entrantes: 1');
+  });
+
+  it('applies the same exclusions to /report and /status, including per-line totals', async () => {
+    repos.conversation.upsert(REAL_PHONE, { language: 'es', lead_score: 95 });
+    repos.conversation.upsert(TEST_PHONE, { language: 'es', lead_score: 95 });
+    insertMessage(REAL_PHONE, 'inbound', 'hola', nowIso());
+    insertMessage(TEST_PHONE, 'inbound', 'prueba api', nowIso());
+    env.REPORT_EXCLUDED_PHONES = TEST_PHONE;
+
+    const report = await reportHandler({ repos, args: [], chatId: 111 });
+    const status = await statusHandler({ repos, args: [], chatId: 111 });
+
+    expect(report).toContain('Total conversaciones: 1');
+    expect(report).toMatch(/Sin asignar: 1 total/);
+    expect(status).toContain('Conversaciones: 1');
+    expect(status).toMatch(/Sin asignar: 1 total/);
+  });
+
+  it('excludes test numbers from /leads', async () => {
+    repos.conversation.upsert(REAL_PHONE, { collected_name: 'Real', lead_score: 95 });
+    repos.conversation.upsert(TEST_PHONE, { collected_name: 'Test', lead_score: 100 });
+    env.REPORT_EXCLUDED_PHONES = TEST_PHONE;
+
+    const output = await leadsHandler({ repos, args: ['10'], chatId: 111 });
+
+    expect(output).toContain(REAL_PHONE);
+    expect(output).not.toContain(TEST_PHONE);
+  });
+});
+
+describe('summary projections include branch qualification fields', () => {
+  it('returns campaign and group details for /leads and /recent formatters', () => {
+    repos.conversation.upsert(REAL_PHONE, {
+      collected_name: 'Alice',
+      lead_score: 95,
+      collected_people: 4,
+      collected_adults: 2,
+      collected_children: 2,
+      collected_child_ages_json: '[9,11]',
+      collected_travel_origin: 'Medellin',
+      collected_transport_need: 'public_bus',
+      entry_marker: 'H01',
+      entry_temperature: 'funnel',
+    });
+
+    expect(repos.stats.getTopLeads(1, 90)[0]).toMatchObject({
+      adults: 2,
+      children: 2,
+      childAges: [9, 11],
+      travelOrigin: 'Medellin',
+      transportNeed: 'public_bus',
+      entryMarker: 'H01',
+      entryTemperature: 'funnel',
+    });
   });
 });
 

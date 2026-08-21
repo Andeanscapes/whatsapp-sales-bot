@@ -7,11 +7,11 @@ import type { ConversationMode, Repositories } from '../../db/repositories/index
 import type { LlmResult, LlmTurn } from '../../services/llm/llm-client.js';
 import type { LlmClientInput } from '../../services/llm/llm-client.js';
 import type { Scenario, ScenarioTurn } from './schema.js';
-import { recordGalleryNudge } from '../../services/media-service.js';
 import { getDynamicService, getSkills, loadSkills, setDynamicService } from '../../services/skill-loader.js';
 import { getActiveExperience } from '../../services/product-registry.js';
 import { DynamicDataService, PRICING_NOT_AVAILABLE } from '../../services/dynamic-data-service.js';
 import type { InternalDynamicData, InternalPaymentData } from '../../services/dynamic-data-service.js';
+import { DEFAULT_SITE_ID } from '../../services/dynamic-data-schema.js';
 
 export interface TurnRecord {
   turnNumber: number;
@@ -80,7 +80,7 @@ function createDynamicData(scenario: Scenario): InternalDynamicData {
       },
       methods: policy.securePaymentLinkAvailable ? [{
         id: 'secure_link', name: 'Secure payment link', type: 'link', enabled: true,
-        currency: experience.pricing.currency, instructions: 'Test scenario payment link', paymentLink: 'https://payments.example.test', requiresPaymentProof: false,
+        currency: experience.pricing.currency, requiresPaymentProof: false,
       }] : [],
       confirmation: { automatic: false, requiresTeamValidation: true, message: 'Test scenario confirmation' },
       displayPolicy: {
@@ -90,14 +90,33 @@ function createDynamicData(scenario: Scenario): InternalDynamicData {
       },
     }
     : null;
+  const availabilityBlock = {
+    lastUpdated: seed?.currentDate ?? '2026-01-01',
+    timezone: seed?.timezone ?? 'America/Bogota',
+    availableDates: availability,
+    botRule: seed?.availabilityVerified ? 'Availability is authoritative for this test scenario.' : 'Confirm availability with the team.',
+  };
+
   return {
     experiences: {
       [experience.id]: {
+        plans: experience.plans.map(plan => ({
+          id: plan.id,
+          siteId: DEFAULT_SITE_ID,
+          name: plan.name,
+          duration: plan.duration,
+          shortDescription: plan.shortDescription,
+          benefits: plan.benefits,
+          keywords: plan.keywords,
+          clarifications: plan.clarifications ?? [],
+          imageId: plan.imageId,
+        })),
         pricing: {
           currency: experience.pricing.currency,
           lastUpdated: seed?.currentDate ?? '2026-01-01',
           items: experience.pricing.items.map(item => ({
             id: item.id,
+            siteId: DEFAULT_SITE_ID,
             planId: item.planId,
             label: item.label,
             pricePerPerson: item.pricePerPerson,
@@ -107,11 +126,14 @@ function createDynamicData(scenario: Scenario): InternalDynamicData {
           })),
           botRules: experience.pricing.botRules,
         },
-        availability: {
-          lastUpdated: seed?.currentDate ?? '2026-01-01',
-          timezone: seed?.timezone ?? 'America/Bogota',
-          availableDates: availability,
-          botRule: seed?.availabilityVerified ? 'Availability is authoritative for this test scenario.' : 'Confirm availability with the team.',
+        availability: availabilityBlock,
+        sites: {
+          [DEFAULT_SITE_ID]: {
+            id: DEFAULT_SITE_ID,
+            clarifications: [],
+            rules: experience.pricing.botRules,
+            availability: availabilityBlock,
+          },
         },
       },
     },
@@ -209,7 +231,6 @@ export async function runTurn(
   turnNumber: number,
 ): Promise<TurnRecord> {
   if (turnDef.seedPriceGiven) ctx.repos.conversation.setPriceGiven(ctx.customerPhone);
-  if (turnDef.seedGalleryNudge) recordGalleryNudge(ctx.repos, ctx.customerPhone);
   if (turnDef.seedLeadScore !== undefined) ctx.repos.conversation.updateLeadScore(ctx.customerPhone, turnDef.seedLeadScore);
   applyQualificationSeed(ctx.repos, ctx.customerPhone, turnDef.seedQualification);
   const input: ProcessMessageInput = {

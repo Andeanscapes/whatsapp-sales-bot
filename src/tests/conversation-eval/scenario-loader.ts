@@ -27,9 +27,33 @@ export function loadScenarios(scenariosDir: string): Scenario[] {
   return scenarios;
 }
 
-export function partitionLiveScenarios(scenarios: Scenario[]): { supported: Scenario[]; skipped: Scenario[] } {
+export const LIVE_TAG = 'live';
+
+export interface LivePartition {
+  /** Scenarios that will actually be sent to the provider. */
+  supported: Scenario[];
+  /** Skipped because their runner cannot drive a real provider turn. */
+  skipped: Scenario[];
+  /** Message scenarios excluded because they are not part of the bounded live subset. */
+  deselected: Scenario[];
+}
+
+/**
+ * Live runs cost provider tokens, so only scenarios tagged `live` are sent by
+ * default. Every scenario still runs for free in the deterministic suite.
+ * `includeAll` opts into the full message set (explicit `--scenario` / `--all`).
+ */
+export function partitionLiveScenarios(scenarios: Scenario[], options?: { includeAll?: boolean }): LivePartition {
+  const message = scenarios.filter(scenario => scenario.runner === 'message');
+  const skipped = scenarios.filter(scenario => scenario.runner !== 'message');
+  const tagged = message.filter(scenario => scenario.tags?.includes(LIVE_TAG));
+
+  if (options?.includeAll || tagged.length === 0) {
+    return { supported: message, skipped, deselected: [] };
+  }
   return {
-    supported: scenarios.filter(scenario => scenario.runner === 'message'),
-    skipped: scenarios.filter(scenario => scenario.runner !== 'message'),
+    supported: tagged,
+    skipped,
+    deselected: message.filter(scenario => !scenario.tags?.includes(LIVE_TAG)),
   };
 }

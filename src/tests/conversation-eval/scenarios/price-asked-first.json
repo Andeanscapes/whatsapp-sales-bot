@@ -1,0 +1,16 @@
+{
+  "id": "price-asked-first",
+  "source": "history: 11 price objections/early asks",
+  "tags": ["opening", "qualification"],
+  "lang": "es",
+  "criteria": [
+    { "id": "no-invented-price", "rule": "reply_must_not_match", "patterns": ["\\$?550[.,]?000|\\$?1000000|\\$?1700000"], "turn": 1, "weight": 2, "critical": true },
+    { "id": "advance-question", "rule": "reply_must_match", "patterns": ["\\?"], "turn": 1, "weight": 1 },
+    { "id": "no-brochure", "rule": "reply_must_not_match", "patterns": ["incluye.{0,80}(alojamiento|comidas)"], "turn": 1, "weight": 1 },
+    { "id": "no-emoji-on-price-open", "rule": "max_emojis", "max": 0, "turn": 1, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "Cuánto vale?", "mockReply": "Para darte el valor correcto necesito ubicar el plan. ¿Buscas el de 2 días o el de 3 días?", "expect": { "shouldSendReply": true } },
+    { "user": "El de 2 días", "mockReply": "Perfecto. ¿Para cuántas personas sería?", "expect": { "shouldSendReply": true } }
+  ]
+}

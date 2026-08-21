@@ -30,6 +30,18 @@ function requireLiveLlmConfig(): void {
   if (!env.AI_ENABLED) throw new Error('AI_ENABLED=true is required');
 }
 
+/**
+ * Safety ceiling for a live pass, not a target. Measured on 2026-08-02: a reply
+ * turn costs ~17k prompt tokens plus a ~1k analyzer call, so the 8-scenario live
+ * subset lands near $0.05 and the full 19-scenario message set near $0.12.
+ * Default leaves room for `--all` and `--runs 2` without silently truncating a run.
+ */
+function maxEvaluationCostUsd(): number {
+  const raw = Number(process.env.EVAL_MAX_COST_USD ?? '0.50');
+  if (!Number.isFinite(raw) || raw <= 0) throw new Error('EVAL_MAX_COST_USD must be a positive number');
+  return raw;
+}
+
 function buildResult(scenario: Scenario, evaluation: ReturnType<typeof evaluateScenario>, turns: ScenarioResult['turnResults'], runs: { total: number; passed: number }, expectationErrors: string[]): ScenarioResult {
   const minimumFailure = scenario.minLiveScore !== undefined && evaluation.score < scenario.minLiveScore;
   return {
@@ -52,11 +64,20 @@ async function main(): Promise<void> {
   const requestedRuns = Number(option('--runs') ?? 1);
   if (!Number.isInteger(requestedRuns) || requestedRuns < 1 || requestedRuns > 5) throw new Error('--runs must be an integer from 1 to 5');
 
-  const selectedScenarios = loadScenarios(scenariosDir).filter(scenario => !selectedId || scenario.id === selectedId);
+  const allScenarios = loadScenarios(scenariosDir);
+  if (allScenarios.length === 0) {
+    console.log('[LLM_BOT_EVAL] no scenarios registered — nothing to run');
+    process.exit(0);
+  }
+  const selectedScenarios = allScenarios.filter(scenario => !selectedId || scenario.id === selectedId);
   if (selectedScenarios.length === 0) throw new Error(`No scenario found for ${selectedId}`);
-  const { supported: scenarios, skipped } = partitionLiveScenarios(selectedScenarios);
+  const includeAll = process.argv.includes('--all') || selectedId !== undefined;
+  const { supported: scenarios, skipped, deselected } = partitionLiveScenarios(selectedScenarios, { includeAll });
   if (skipped.length > 0) {
     console.log(`[LLM_BOT_EVAL] skipped ${skipped.length} unsupported synthetic scenarios: ${skipped.map(scenario => scenario.id).join(', ')}`);
+  }
+  if (deselected.length > 0) {
+    console.log(`[LLM_BOT_EVAL] not in live subset (deterministic only, use --all to include): ${deselected.map(scenario => scenario.id).join(', ')}`);
   }
   if (scenarios.length === 0) {
     if (selectedId) throw new Error(`Scenario ${selectedId} uses an unsupported synthetic runner`);
@@ -65,6 +86,7 @@ async function main(): Promise<void> {
   }
 
   requireLiveLlmConfig();
+  const maxCostUsd = maxEvaluationCostUsd();
   if (env.DYNAMIC_SKILL_URL) {
     const service = new DynamicDataService(env.DYNAMIC_SKILL_URL, env.DYNAMIC_SKILL_REFRESH_MS);
     setDynamicService(service);
@@ -118,6 +140,12 @@ async function main(): Promise<void> {
         result.runs = { total: 1, passed: result.hardFail ? 0 : 1 };
         runResults.push(result);
         totalCostUsd += ctx.repos.aiUsage.getDailyCost(todayStart);
+        if (totalCostUsd > maxCostUsd) {
+          throw new Error(
+            `Live conversation eval cost $${totalCostUsd.toFixed(4)} exceeded EVAL_MAX_COST_USD=$${maxCostUsd.toFixed(4)} `
+            + `after ${scenarioIndex + 1}/${scenarios.length} scenarios. Raise the cap or narrow the run with --scenario.`,
+          );
+        }
       } finally {
         try {
           restoreSeeds();
@@ -131,7 +159,7 @@ async function main(): Promise<void> {
 
     const aggregated = aggregateRuns(runResults);
     results.push(runCount > 1 ? aggregated : { ...aggregated, runs: undefined });
-    console.log(`${progressLabel(scenarioIndex + 1, scenarios.length)} finished ${scenario.id} score=${aggregated.score}`);
+    console.log(`${progressLabel(scenarioIndex + 1, scenarios.length)} finished ${scenario.id} score=${aggregated.score} cost=$${totalCostUsd.toFixed(4)}`);
   }
 
   const report = buildReport('live', results, totalCostUsd);

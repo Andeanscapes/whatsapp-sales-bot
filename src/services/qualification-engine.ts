@@ -5,21 +5,78 @@ import type { MergedQualification } from './types.js';
 import { getPlans, type ActiveExperience } from './product-registry.js';
 import { MONTH_NAMES } from './constants.js';
 import { env } from '../config/env.js';
+import { parseChildAges } from './qualification-format.js';
 
 function isForbiddenCustomerName(name: string): boolean {
   const n = name.toLowerCase().trim();
   return n === env.OWNER_NAME.toLowerCase().trim() || n === env.PARTNER_NAME.toLowerCase().trim();
 }
 
-export const NAME_PATTERNS = [
-  /soy ([A-ZÁÉÍÓÚÜÑ][a-záéíóúüñ]+)/i,
-  /me llamo ([A-ZÁÉÍÓÚÜÑ][a-záéíóúüñ]+)/i,
-  /mi nombre es ([A-ZÁÉÍÓÚÜÑ][a-záéíóúüñ]+)/i,
-  /i am ([A-Z][a-z]+)/i,
-  /my name is ([A-Z][a-z]+)/i,
+// Expanded from production history (2026-08-02 dump): plural/accented diversions
+// ("Precios", "Que fechas") were slipping past the original singular-only list
+// and getting stored as the customer's name.
+export const NAME_BLACKLIST = /^(?:hola|buenas|hello|hi|hey|ok|si|no|yes|ya|gracias|thanks|quiero|cual|cuál|como|cómo|cuanto|cuánto|donde|dónde|cuando|cuándo|que|qué|precio|precios|fecha|fechas|itinerario|itinerarios|agenda|agendas|actividades|opcion|opción|opciones|informacion|información|what|how|where|when|porque|por qu[eé]|me|te|se|el|la|los|las|es|own|solo|sola|bien|listo|dias|días|tarde|tardes|noche|noches|mañana|persona|person|interesado|interesada|interested|looking)$/i;
+
+const NAME_TOKEN = String.raw`[A-ZÁÉÍÓÚÜÑ][a-záéíóúüñ]+`;
+const NAME_PHRASE = String.raw`((?:${NAME_TOKEN})(?:\s+${NAME_TOKEN}){0,4})`;
+const NAME_TOKEN_EN = String.raw`[A-Z][a-z]+`;
+const NAME_PHRASE_EN = String.raw`((?:${NAME_TOKEN_EN})(?:\s+${NAME_TOKEN_EN}){0,4})`;
+
+export const NAME_PATTERNS: Array<{ pattern: RegExp; ambiguousCopula: boolean }> = [
+  { pattern: new RegExp(String.raw`\bsoy ${NAME_PHRASE}`, 'i'), ambiguousCopula: true },
+  { pattern: new RegExp(String.raw`\bme llamo ${NAME_PHRASE}`, 'i'), ambiguousCopula: false },
+  { pattern: new RegExp(String.raw`\bmi nombre es ${NAME_PHRASE}`, 'i'), ambiguousCopula: false },
+  { pattern: new RegExp(String.raw`\bi am ${NAME_PHRASE_EN}`, 'i'), ambiguousCopula: true },
+  { pattern: new RegExp(String.raw`\bmy name is ${NAME_PHRASE_EN}`, 'i'), ambiguousCopula: false },
 ];
 
-export const NAME_BLACKLIST = /^(?:hola|buenas|hello|hi|hey|ok|si|no|yes|ya|gracias|thanks|quiero|cual|como|cuanto|donde|cuando|que|qué|cual|cuál|precio|itinerario|agenda|actividades|what|how|where|when|porque|por qu[eé]|me|te|se|el|la|los|las|es|own|solo|sola|bien|listo)$/i;
+function titleCaseName(raw: string): string {
+  return raw
+    .trim()
+    .split(/\s+/)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ');
+}
+
+const DECLARATION_TAIL = /\s+(?=(?:buscando|viendo|consultando|revisando|actualmente|ahora|por ahora|porque|para|pero|y|con|desde|from|with|quiero|queremos|interesad[oa]s?|necesito|necesitamos)\b)/i;
+
+function cleanNameCandidate(raw: string): string | null {
+  if (/^(?:de|desde|en|from|in)\b/i.test(raw.trim())) return null;
+  const candidate = raw.split(DECLARATION_TAIL)[0]?.trim();
+  return candidate || null;
+}
+
+function isValidCustomerName(raw: string): boolean {
+  const trimmed = raw.trim().replace(/\s+/g, ' ');
+  if (trimmed.length < 2 || trimmed.length > 40) return false;
+  const parts = trimmed.split(' ');
+  if (parts.length < 1 || parts.length > 5) return false;
+  return parts.every((part, index) => {
+    const isInternalParticle = index > 0
+      && index < parts.length - 1
+      && /^(?:de|del|la|las|los)$/i.test(part);
+    return isInternalParticle || (
+      !NAME_BLACKLIST.test(part)
+      && !isForbiddenCustomerName(part)
+      && /^[A-ZÁÉÍÓÚÜÑa-záéíóúüñ]+$/u.test(part)
+    );
+  });
+}
+
+function hasNameCapitalization(raw: string): boolean {
+  const parts = raw.trim().split(/\s+/);
+  return parts.every((part, index) => {
+    const isInternalParticle = index > 0
+      && index < parts.length - 1
+      && /^(?:de|del|la|las|los)$/i.test(part);
+    return isInternalParticle || /^[A-ZÁÉÍÓÚÜÑ]/u.test(part);
+  });
+}
+
+function isWholeSingleNameDeclaration(text: string, candidate: string): boolean {
+  return !candidate.includes(' ')
+    && /^\s*(?:hola[,.]?\s+)?(?:soy|i am)\s+[A-ZÁÉÍÓÚÜÑa-záéíóúüñ]+[.!]?\s*$/iu.test(text);
+}
 
 /** True when customer compares solo vs couple without settling one size. */
 export function isAmbiguousPartyComparison(text: string): boolean {
@@ -52,18 +109,107 @@ export const TRANSPORT_OWN_CONTEXT_PATTERNS = [
 
 export const PET_KEYWORDS = /\b(?:perro|perrito|mascota|mascotas|gato|gatos|perra|perros|gatito|pet|dog|cat|dogs|cats|puppy|kitten)\b/i;
 
+/**
+ * True when the customer explicitly negates transport/pet/lodging near the
+ * matched keyword ("no cuento con transporte propio", "no llevo mascota").
+ * Production history (2026-08-02 dump) showed bare keyword matching storing
+ * the opposite of what the customer said.
+ */
+function isNegatedNear(text: string, keywordSource: string): boolean {
+  const norm = normalizeText(text);
+  return new RegExp(String.raw`\bno\b[^.!?]{0,25}\b(?:${keywordSource})\b`, 'i').test(norm)
+    || new RegExp(String.raw`\b(?:${keywordSource})\b[^.!?]{0,10}\bno\b`, 'i').test(norm);
+}
+
+function isUncertainNear(text: string, keywordSource: string): boolean {
+  const norm = normalizeText(text);
+  const uncertainty = String.raw`(?:no se|no estoy segur[oa]|not sure|i don'?t know)`;
+  return new RegExp(String.raw`\b${uncertainty}\b[^.!?]{0,35}\b(?:${keywordSource})\b`, 'i').test(norm)
+    || new RegExp(String.raw`\b(?:${keywordSource})\b[^.!?]{0,35}\b${uncertainty}\b`, 'i').test(norm);
+}
+
+function isNeedQuestion(text: string, keywordSource: string): boolean {
+  const norm = normalizeText(text);
+  return new RegExp(String.raw`^\s*(?:necesito|necesitamos|puedo|podemos|podria|podriamos|se puede|aceptan|permiten|can i|can we|could i|could we|do i need|do we need)\b[^.!?]{0,35}\b(?:${keywordSource})\b`, 'i').test(norm);
+}
+
+/** Negates OWN transport only — must not block bus/from_bogota classification. */
+const OWN_TRANSPORT_NEGATION_KEYWORDS =
+  'transporte\\s+propio|carro\\s+propio|veh[ií]culo\\s+propio|moto\\s+propia|propio|own(?:\\s+transport|\\s+car)?';
+export function isNegatedTransportAnswer(text: string): boolean {
+  return isNegatedNear(text, OWN_TRANSPORT_NEGATION_KEYWORDS)
+    || /\b(?:en\s+propio\s+no|propio\s+no|no\s+propio)\b/i.test(normalizeText(text));
+}
+
+const LODGING_NEGATION_KEYWORDS = 'hotel|hospedaje|alojamiento|lodging|stay|overnight';
+function isNegatedLodgingAnswer(text: string): boolean {
+  return isNegatedNear(text, LODGING_NEGATION_KEYWORDS);
+}
+
+const PET_NEGATION_KEYWORDS = 'mascota|mascotas|perro|perra|perros|gato|gatos|pet|dog|cat';
+function isNegatedPetAnswer(text: string): boolean {
+  return isNegatedNear(text, PET_NEGATION_KEYWORDS);
+}
+
+const COUNT_TOKEN = String.raw`(\d+|un[oa]?|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|one|two|three|four|five|six|seven|eight|nine|ten)`;
+const CHILD_COUNT_WORDS: Record<string, number> = {
+  un: 1, uno: 1, una: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5,
+  seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10,
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+};
+const ADULT_COUNT_RE = new RegExp(String.raw`\b${COUNT_TOKEN}\s*(?:adulto(?:s)?|adulta(?:s)?|adults?)\b`, 'i');
+const CHILD_COUNT_RE = new RegExp(String.raw`\b${COUNT_TOKEN}\s*(?:ninos?|ninas?|child(?:ren)?|kids)\b`, 'i');
+
+function parseCountWord(raw: string): number | null {
+  const n = CHILD_COUNT_WORDS[raw.toLowerCase()] ?? parseInt(raw, 10);
+  return Number.isInteger(n) && n > 0 && n <= 100 ? n : null;
+}
+
+/** Self-declared travel origin ("estamos en Medellín", "vivimos en Duitama"). */
+const ORIGIN_CITY = String.raw`([A-Za-zÁÉÍÓÚÜÑñ]{2,30}(?:\s+[A-Za-zÁÉÍÓÚÜÑñ]{2,30}){0,4})`;
+const ORIGIN_DECLARATIVE_PATTERNS = [
+  new RegExp(String.raw`\b(?:estamos ubicados en|estamos en|vivimos en|somos de|salimos de)\s+${ORIGIN_CITY}`, 'i'),
+  new RegExp(String.raw`\b(?:we (?:are|live) in|coming from|departing from)\s+${ORIGIN_CITY}`, 'i'),
+];
+
+function cleanOriginCandidate(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const trimmed = raw.split(DECLARATION_TAIL)[0]?.trim().replace(/[.,!?]+$/, '') ?? '';
+  if (trimmed.length < 3 || trimmed.length > 30) return null;
+  return trimmed
+    .split(/\s+/)
+    .map((part, index) => index > 0 && /^(?:de|del|la|las|los)$/i.test(part)
+      ? part.toLowerCase()
+      : part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function extractDeclaredOrigin(text: string): string | null {
+  for (const pattern of ORIGIN_DECLARATIVE_PATTERNS) {
+    const match = text.match(pattern);
+    const origin = cleanOriginCandidate(match?.[1]);
+    if (origin) return origin;
+  }
+  return null;
+}
+
+/** "niño de 5 años" / "child of 5 years old" — single explicit age mention. */
+const CHILD_AGE_INLINE_RE = /\b(?:ni[ñn][oa]|child|kid)\s+(?:de\s+)?(\d{1,2})\s*(?:a[ñn]os|years?\s*old)\b/i;
+
 export function detectPlan(message: string, experience: ActiveExperience): string | null {
   const norm = normalizeText(message);
   const plans = getPlans(experience);
   if (!plans.length) return null;
 
+  // Nights beat bare ordinals: "el de 2 noches" → 3d2n, not 2d1n.
   const durationBoosts = new Map<string, RegExp>([
     ['3d2n_rural', /\b(3\s*d|3\s*dias|3\s*días|tres\s+dias|tres\s+días|2\s*noches|dos\s+noches)\b/],
     ['2d1n_mining', /\b(2\s*d|2\s*dias|2\s*días|dos\s+dias|dos\s+días|1\s*noche|una\s+noche)\b/],
   ]);
 
+  // Negative lookahead prevents "el de 2 noches" from matching 2d1n.
   const ordinalPlanBoosts = new Map<string, RegExp>([
-    ['2d1n_mining', /\b(?:el\s+primer[oa]?|el\s+de\s+2|el\s+de\s+dos|el\s+corto|plan\s+de\s+2|plan\s+de\s+dos)\b/],
+    ['2d1n_mining', /\b(?:el\s+primer[oa]?|el\s+de\s+2(?!\s*noches)|el\s+de\s+dos(?!\s+noches)|el\s+corto|plan\s+de\s+2(?!\s*noches)|plan\s+de\s+dos(?!\s+noches))\b/],
     ['3d2n_rural', /\b(?:el\s+segundo[oa]?|el\s+de\s+3|el\s+de\s+tres|el\s+largo|plan\s+de\s+3|plan\s+de\s+tres)\b/],
   ]);
 
@@ -76,7 +222,7 @@ export function detectPlan(message: string, experience: ActiveExperience): strin
     }, 0);
 
     const durationBoost = durationBoosts.get(plan.id);
-    if (durationBoost?.test(norm)) score += 10;
+    if (durationBoost?.test(norm)) score += 15;
 
     const ordinalBoost = ordinalPlanBoosts.get(plan.id);
     if (ordinalBoost?.test(norm)) score += 12;
@@ -101,7 +247,7 @@ export function isCorrectionMessage(text: string): boolean {
 }
 
 export function getLastAssistantQuestion(repos: Repositories, phone: string): string | null {
-  return repos.message.getLastOutboundBody(phone);
+  return repos.message.getLastOutboundTextBody(phone);
 }
 
 export function isConfirmedDate(value: unknown): boolean {
@@ -182,11 +328,10 @@ export function nextQualificationQuestion(q: MergedQualification, fb: FallbackRe
 }
 
 export function extractStandaloneName(text: string): string | null {
-  const cleaned = text.trim().replace(/[^\p{L}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
-  const first = cleaned.split(' ')[0];
-  if (!first || first.length < 2 || first.length > 20 || NAME_BLACKLIST.test(first)) return null;
-  if (!/^[A-ZÁÉÍÓÚÜÑ][a-záéíóúüñ]+$/u.test(first)) return null;
-  return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
+  const firstClause = text.trim().split(/[,.;!?]/, 1)[0]?.replace(/\s+/g, ' ').trim();
+  const candidate = firstClause ? cleanNameCandidate(firstClause) : null;
+  if (!candidate || !/^[A-ZÁÉÍÓÚÜÑ]/u.test(candidate) || !isValidCustomerName(candidate)) return null;
+  return titleCaseName(candidate);
 }
 
 const ORDINAL_MAP: Record<string, number> = {
@@ -249,14 +394,35 @@ export function extractBookingFields(text: string, experience?: ActiveExperience
   }
 
   const normalized = normalizeText(text);
-  const hasAdultCount = /\b\d+\s*(?:adulto(?:s)?|adulta(?:s)?|adult|adults)\b/i.test(normalized);
-  const childCount = String.raw`(?:\d+|un[oa]?|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|one|two|three|four|five|six|seven|eight|nine|ten)`;
-  const hasChildCount = new RegExp(String.raw`\b${childCount}\s*(?:ninos?|ninas?|child(?:ren)?|kids)\b`, 'i').test(normalized);
+  const adultsMatch = normalized.match(ADULT_COUNT_RE);
+  const childMatch = normalized.match(CHILD_COUNT_RE);
+  const adultsNum = adultsMatch ? parseCountWord(adultsMatch[1]) : null;
+  const childrenNum = childMatch ? parseCountWord(childMatch[1]) : null;
+  const explicitlyNoChildren = /\b(?:sin|no (?:hay|van|vamos con|tenemos|llevamos))\s+(?:ninos?|ninas?|hijos?|children|kids)\b/i.test(normalized);
+  const hasAdultCount = adultsNum != null;
+  const hasChildCount = childrenNum != null;
   const mixedAdultsAndChildren = hasAdultCount && hasChildCount;
   const peopleMatch = mixedAdultsAndChildren
     ? null
     : text.match(/(\d+)\s*(?:people|person|persons|personas|pax|adulto(?:s)?|adulta(?:s)?|adult|adults)/i);
   if (peopleMatch) fields.collected_people = parseInt(peopleMatch[1], 10);
+  if (adultsNum != null) fields.collected_adults = adultsNum;
+  if (childrenNum != null) fields.collected_children = childrenNum;
+  if (explicitlyNoChildren) {
+    fields.collected_children = 0;
+    fields.collected_child_ages_json = JSON.stringify([]);
+  }
+
+  // Mixed group ("2 adultos y 2 niños"): record the adult/child breakdown and
+  // the total headcount for logistics. Production history (2026-08-02 dump)
+  // showed these families never got a collected_people total at all — the
+  // contextual fallback then grabbed the wrong single digit on a later turn.
+  if (mixedAdultsAndChildren) {
+    if (adultsNum != null && childrenNum != null) {
+      const total = adultsNum + childrenNum;
+      if (total > 0) fields.collected_people = total;
+    }
+  }
 
   const simpleNumberMatch = text.match(/\b(?:somos|van|vamos|seriamos|serian|somos como|van como)\s+(\d+)\b/i);
   if (simpleNumberMatch && !fields.collected_people && !mixedAdultsAndChildren) {
@@ -279,25 +445,28 @@ export function extractBookingFields(text: string, experience?: ActiveExperience
     fields.collected_people = 3;
   }
 
-  for (const p of NAME_PATTERNS) {
-    const m = text.match(p);
-    if (m && m[1].length >= 2 && m[1].length <= 20) {
-      const name = m[1];
-      if (!NAME_BLACKLIST.test(name) && !isForbiddenCustomerName(name)) {
-        fields.collected_name = name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
+  for (const { pattern, ambiguousCopula } of NAME_PATTERNS) {
+    const m = text.match(pattern);
+    const candidate = m?.[1] ? cleanNameCandidate(m[1]) : null;
+    const hasUnambiguousForm = candidate
+      && (!ambiguousCopula || hasNameCapitalization(candidate) || isWholeSingleNameDeclaration(text, candidate));
+    if (candidate && hasUnambiguousForm && isValidCustomerName(candidate)) {
+      fields.collected_name = titleCaseName(candidate);
+      break;
+    }
+  }
+
+  // Own-transport negation must not block bus / from_bogota classification.
+  if (!isNegatedTransportAnswer(text)) {
+    for (const p of TRANSPORT_OWN_PATTERNS) {
+      if (p.test(text)) {
+        fields.collected_transport_need = 'own';
         break;
       }
     }
   }
 
-  for (const p of TRANSPORT_OWN_PATTERNS) {
-    if (p.test(text)) {
-      fields.collected_transport_need = 'own';
-      break;
-    }
-  }
-
-  if (/\b(?:transporte privado|private transport|recoger(?:nos)? desde Bogot[aá])\b/i.test(text)) {
+  if (/\b(?:transporte privado|private transport|recog(?:er(?:nos)?|en|ernos)?\s+desde\s+Bogot[aá])\b/i.test(text)) {
     if (!fields.collected_transport_need) {
       fields.collected_transport_need = 'from_bogota';
     }
@@ -308,12 +477,33 @@ export function extractBookingFields(text: string, experience?: ActiveExperience
   }
 
   if (/lodging|hotel|stay|overnight|hospedaje|alojamiento/i.test(text)) {
-    fields.collected_lodging_need = 'yes';
+    if (!isUncertainNear(text, LODGING_NEGATION_KEYWORDS) && !isNeedQuestion(text, LODGING_NEGATION_KEYWORDS)) {
+      fields.collected_lodging_need = isNegatedLodgingAnswer(text) ? 'no' : 'yes';
+    }
   }
 
   if (PET_KEYWORDS.test(text)) {
-    fields.collected_pet = 'yes';
+    const affirmativePet = text.split(/[,.!?;]/).some(clause =>
+      /\b(?:llevo|llevamos|vamos con|viajo con|viajamos con)\b[^.!?]{0,20}\b(?:mascotas?|perr(?:o|a|os|as)|gatos?|pet|dogs?|cats?)\b/i.test(clause)
+      && !isNegatedPetAnswer(clause),
+    );
+    if (affirmativePet) {
+      fields.collected_pet = 'yes';
+    } else if (!isUncertainNear(text, PET_NEGATION_KEYWORDS) && !isNeedQuestion(text, PET_NEGATION_KEYWORDS)) {
+      fields.collected_pet = !isNegatedPetAnswer(text) ? 'yes' : 'no';
+    }
   }
+
+  const childAge = text.match(CHILD_AGE_INLINE_RE);
+  if (childAge) {
+    const age = Number(childAge[1]);
+    if (Number.isInteger(age) && age >= 0 && age <= 17) {
+      fields.collected_child_ages_json = JSON.stringify([age]);
+    }
+  }
+
+  const origin = extractDeclaredOrigin(text);
+  if (origin) fields.collected_travel_origin = origin;
 
   if (experience) {
     const detectedPlan = detectPlan(text, experience);
@@ -374,10 +564,13 @@ function extractPeopleFromReply(text: string): number | null {
 export function contextAwareExtract(message: string, repos: Repositories, phone: string, existing: Record<string, unknown>, experience?: ActiveExperience): Record<string, unknown> {
   const fields = { ...existing };
   const lastQuestion = getLastAssistantQuestion(repos, phone);
+  // Accent-stripped so a real LLM question ("¿Cómo te llamas?") matches the
+  // same ask-detection regex as the unaccented fallback template.
+  const normQuestion = lastQuestion ? normalizeText(lastQuestion) : null;
   const norm = message.trim();
 
   if (lastQuestion && !fields.collected_people) {
-    const askedPeople = /cu[aá]ntas personas|cu[aá]ntos ser[ií]an|how many people/i.test(lastQuestion);
+    const askedPeople = normQuestion != null && /cu[aá]ntas personas|cu[aá]ntos ser[ií]an|how many people/i.test(normQuestion);
     if (askedPeople) {
       const people = extractPeopleFromReply(norm);
       if (people != null) fields.collected_people = people;
@@ -385,7 +578,7 @@ export function contextAwareExtract(message: string, repos: Repositories, phone:
   }
 
   if (lastQuestion && !fields.collected_name) {
-    const askedName = /como te llamas|cual es tu nombre|con quien tengo/i.test(lastQuestion);
+    const askedName = normQuestion != null && /como te llamas|cual es tu nombre|con quien tengo/i.test(normQuestion);
     if (askedName) {
       const standaloneName = extractStandaloneName(norm);
       if (standaloneName && !isForbiddenCustomerName(standaloneName)) fields.collected_name = standaloneName;
@@ -397,11 +590,52 @@ export function contextAwareExtract(message: string, repos: Repositories, phone:
     if (correctionName && !isForbiddenCustomerName(correctionName)) fields.collected_name = correctionName;
   }
 
-  if (lastQuestion && !fields.collected_transport_need) {
-    const askedTransport = /transporte propio|necesitan desde|vas (?:con|en)|por su cuenta|own transport|pickup|Bogot[aá]|llegar desde|how (?:are you|will you) (?:getting|coming)/i.test(lastQuestion);
+  if (lastQuestion && !fields.collected_transport_need && !isNegatedTransportAnswer(norm)) {
+    const askedTransport = normQuestion != null && /transporte propio|necesitan desde|vas (?:con|en)|por su cuenta|own transport|pickup|bogot[aá]|llegar desde|how (?:are you|will you) (?:getting|coming)/i.test(normQuestion);
     if (askedTransport) {
       const hasOwn = TRANSPORT_OWN_PATTERNS.some(p => p.test(norm)) || TRANSPORT_OWN_CONTEXT_PATTERNS.some(p => p.test(norm));
       if (hasOwn) fields.collected_transport_need = 'own';
+    }
+  }
+
+  if (lastQuestion && !fields.collected_child_ages_json) {
+    const askedAge = normQuestion != null
+      && /(?:ni[ñn]os?|hijos?|kids?|children|cu[aá]ntos?\s+a[ñn]os|how old|what age)/i.test(normQuestion);
+    if (askedAge) {
+      const ageReply = norm.replace(
+        /^\s*(?:si|sí)?[, ]*(?:los\s+\d+\s+)?(?:tienen?|son|are)?\s*/i,
+        '',
+      );
+      const isAgeRange = /\bentre\s+\d{1,2}\s+y\s+\d{1,2}\s*(?:a[ñn]os|years?)\b/i.test(norm)
+        || /\b\d{1,2}\s*(?:-|a|to)\s*\d{1,2}\s*(?:a[ñn]os|years?)\b/i.test(norm);
+      const bareAgeList = !isAgeRange
+        && /^\s*\d{1,2}(?:\s*(?:,|y|and)\s*\d{1,2})*\s*(?:a[ñn]os|years?)?\s*$/i.test(ageReply);
+      const ageSource = isAgeRange
+        ? ''
+        : bareAgeList
+          ? ageReply
+          : [...norm.matchAll(/\b(\d{1,2})\s*(?:a[ñn]os|years?\s*old)\b/gi)]
+          .filter(match => !/(?:(?:mas|más|mayor(?:es)?)\s+de|(?:over|under))\s*$/i.test(norm.slice(Math.max(0, match.index - 15), match.index)))
+          .map(match => match[1])
+          .join(' ');
+      const ages = [...ageSource.matchAll(/\b(\d{1,2})\b/g)]
+        .map(m => Number(m[1]))
+        .filter(age => Number.isInteger(age) && age >= 0 && age <= 17)
+        .slice(0, 4);
+      if (ages.length > 0) fields.collected_child_ages_json = JSON.stringify(ages);
+    }
+  }
+
+  if (lastQuestion && !fields.collected_travel_origin) {
+    const askedOrigin = normQuestion != null
+      && /de d[oó]nde|que ciudad|qu[eé] ciudad|ubicados|a cuantas horas|a cu[aá]ntas horas|distancia desde|where are you (?:coming|traveling) from|which city/i.test(normQuestion);
+    if (askedOrigin) {
+      const declared = extractDeclaredOrigin(norm);
+      const bareReply = /^(?:desde\s+)?([A-Za-zÁÉÍÓÚÜÑñ]{3,30})\s*[.,!]?$/i.exec(norm.trim());
+      const candidate = declared ?? cleanOriginCandidate(bareReply?.[1]);
+      if (candidate && !NAME_BLACKLIST.test(candidate) && !TRANSPORT_OWN_PATTERNS.some(p => p.test(candidate))) {
+        fields.collected_travel_origin = candidate;
+      }
     }
   }
 
@@ -457,16 +691,31 @@ export function reconstructFromHistory(repos: Repositories, phone: string, curre
     fecha: !fields.fecha,
     transporte: !fields.transporte,
     mascota: !fields.mascota,
+    adultos: fields.adultos == null,
+    ninos: fields.ninos == null,
+    edadesNinos: fields.edadesNinos == null,
+    origen: !fields.origen,
   };
   let scannedPlan: string | null = null;
   for (const row of allInbound) {
-    if (!row.body || (!need.nombre && !need.personas && !need.fecha && !need.transporte && !need.mascota && !scannedPlan)) continue;
+    if (!row.body || (!need.nombre && !need.personas && !need.fecha && !need.transporte && !need.mascota
+      && !need.adultos && !need.ninos && !need.edadesNinos && !need.origen && !scannedPlan)) continue;
     const extracted = extractBookingFields(row.body, experience);
     if (need.nombre && extracted.collected_name) { fields.nombre = extracted.collected_name; need.nombre = false; }
     if (need.personas && extracted.collected_people) { fields.personas = extracted.collected_people; need.personas = false; }
     if (need.fecha && extracted.collected_date) { fields.fecha = extracted.collected_date; need.fecha = false; }
     if (need.transporte && extracted.collected_transport_need) { fields.transporte = extracted.collected_transport_need; need.transporte = false; }
     if (need.mascota && extracted.collected_pet) { fields.mascota = extracted.collected_pet; need.mascota = false; }
+    if (need.adultos && typeof extracted.collected_adults === 'number') { fields.adultos = extracted.collected_adults; need.adultos = false; }
+    if (need.ninos && typeof extracted.collected_children === 'number') { fields.ninos = extracted.collected_children; need.ninos = false; }
+    if (need.edadesNinos && typeof extracted.collected_child_ages_json === 'string') {
+      const ages = parseChildAges(extracted.collected_child_ages_json);
+      if (ages) { fields.edadesNinos = ages; need.edadesNinos = false; }
+    }
+    if (need.edadesNinos && typeof extracted.collected_children === 'number') {
+      need.edadesNinos = false;
+    }
+    if (need.origen && extracted.collected_travel_origin) { fields.origen = extracted.collected_travel_origin; need.origen = false; }
     if (typeof extracted.collected_plan === 'string' && !scannedPlan) scannedPlan = extracted.collected_plan;
   }
   if (scannedPlan && typeof fields.plan === 'string' && scannedPlan !== fields.plan) {
