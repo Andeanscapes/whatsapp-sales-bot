@@ -1,0 +1,27 @@
+{
+  "id": "entry-retarget-R01-with-history",
+  "source": "retargeting marker after an earlier local conversation",
+  "tags": ["marker", "live"],
+  "lang": "es",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    { "id": "marker-hidden", "rule": "reply_must_not_match", "patterns": ["R01|marcador|codigo de campana"], "turn": 4, "weight": 2, "critical": true },
+    { "id": "continues-context", "rule": "reply_must_match", "patterns": ["ven[ií]as.{0,40}solo|viajabas solo|para (?:ti|vos) solo|viajes solo|viajas solo"], "turn": 4, "weight": 2, "critical": true },
+    { "id": "plan-recalled", "rule": "reply_must_match", "patterns": ["3 dias|3 días|plan largo|plan completo"], "turn": 4, "weight": 2, "critical": true },
+    { "id": "diagnoses-blocker", "rule": "reply_must_match", "patterns": ["qu[eé] te falta|qu[eé] te fren(?:a|[oó])|qu[eé] quisieras resolver|qu[eé] resuelvo|qu[eé] necesitas|qu[eé] hace falta"], "turn": 4, "weight": 2, "critical": true },
+    { "id": "offers-pain-fecha", "rule": "reply_must_match", "patterns": ["fecha"], "turn": 4, "weight": 1 },
+    { "id": "offers-pain-logistics", "rule": "reply_must_match", "patterns": ["transporte|log[ií]stica"], "turn": 4, "weight": 1 },
+    { "id": "offers-pain-safety-or-budget", "rule": "reply_must_match", "patterns": ["seguridad|presupuesto|precio"], "turn": 4, "weight": 1 },
+    { "id": "no-brand-restart", "rule": "reply_must_not_match", "patterns": ["soy .{0,30}cofundador|somos Andean Scapes|te presento Andean Scapes"], "turn": 4, "weight": 2, "critical": true },
+    { "id": "no-brochure-or-price-repeat", "rule": "reply_must_not_match", "patterns": ["todo incluido|mina.{0,60}apicultura|\\$|COP"], "turn": 4, "weight": 2, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 4, "weight": 1 },
+    { "id": "emoji-restraint-on-retarget", "rule": "max_emojis", "max": 1, "turn": 4, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "Hola", "mockReply": "¡Hola! ¿Viajarías solo, en pareja o en grupo?", "expect": { "shouldSendReply": true } },
+    { "user": "Solo", "mockReply": "Perfecto. ¿Buscas un ritmo más intenso o uno más calmado con más tiempo en el lugar?", "expect": { "shouldSendReply": true } },
+    { "user": "Más calmado, 3 Dias", "mockReply": "Buena elección, el plan de 3 días es el más completo. ¿Qué fecha tienes en mente?", "expect": { "shouldSendReply": true } },
+    { "user": "R01 hola", "mockReply": "Venías solo y te interesó el plan de 3 días. ¿Qué te falta resolver para avanzar: fecha, transporte, seguridad o presupuesto?", "expect": { "shouldSendReply": true } }
+  ]
+}

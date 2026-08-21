@@ -1,0 +1,22 @@
+{
+  "id": "still-looking-after-price",
+  "source": "history: 16 still-looking turns after quote",
+  "tags": ["objection", "live"],
+  "lang": "es",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "seedConversation": { "phase": "pricing", "priceGiven": true, "qualification": { "people": 2, "plan": "2d1n_mining" } },
+  "seedQualification": { "people": 2, "plan": "2d1n_mining" },
+  "criteria": [
+    { "id": "no-farewell", "rule": "reply_must_not_match", "patterns": ["cuando quieras|cuando est[eé]n listos|aqui estoy|buen viaje|[eé]xitos"], "turn": 1, "weight": 3, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 1, "weight": 2, "critical": true },
+    { "id": "has-question", "rule": "reply_must_match", "patterns": ["\\?"], "turn": 1, "weight": 3, "critical": true },
+    { "id": "no-handback", "rule": "reply_must_not_match", "patterns": ["me escrib[ei]|me avisa|me cuenta[ns]|me dice[ns]|quedo atent|qued[oa] pendiente"], "turn": 1, "weight": 3, "critical": true },
+    { "id": "published-dates-or-next-step", "rule": "reply_must_match", "patterns": ["fecha|mes|revis|disponib|agosto|septiembre|octubre|noviembre|diciembre|\\?"], "turn": 1, "weight": 1, "critical": true },
+    { "id": "no-price-repeat", "rule": "reply_must_not_match", "patterns": ["\\$[0-9.,]+"], "turn": 1, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "Todavía estamos mirando, aún no tenemos fecha", "mockReply": "Claro. Te comparto las fechas publicadas que pueden servirles y revisamos una concreta cuando elijan mes. ¿Qué mes están considerando?", "expect": { "shouldSendReply": true } },
+    { "user": "Agosto", "mockReply": "Perfecto, revisemos las fechas publicadas de agosto. ¿Quieres que valide un fin de semana específico?", "expect": { "shouldSendReply": true } }
+  ]
+}

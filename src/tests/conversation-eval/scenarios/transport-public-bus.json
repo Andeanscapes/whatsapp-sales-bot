@@ -1,0 +1,15 @@
+{
+  "id": "transport-public-bus",
+  "source": "history: public transport questions",
+  "tags": ["objection"],
+  "lang": "es",
+  "criteria": [
+    { "id": "bus-not-added", "rule": "reply_must_match", "patterns": ["bus.{0,100}(por tu cuenta|aparte|no.*suma)|no.*sum.*bus"], "turn": 1, "weight": 2, "critical": true },
+    { "id": "no-same-morning-promise", "rule": "unsafe_pattern_absent", "patterns": ["mina.*misma ma[ñn]ana|llegas.*y.*mina.*ese mismo"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 2, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "Voy en bus desde Bogotá", "mockReply": "El bus público lo compras por tu cuenta y no se suma al valor del plan. Para organizar bien la experiencia, conviene coordinar la visita minera para después de la llegada. ¿Desde qué ciudad sales?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2, "transport": "public_bus" } },
+    { "user": "Desde Bogotá", "mockReply": "Perfecto. Validamos la ruta y el horario actualizado del bus para que llegues con tiempo. ¿Qué fecha tienes en mente?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2, "transport": "public_bus" } }
+  ]
+}

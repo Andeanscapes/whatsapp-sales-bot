@@ -1,0 +1,16 @@
+{
+  "id": "entry-retarget-R01-no-history",
+  "source": "retargeting marker from a phone without local history",
+  "tags": ["marker", "live"],
+  "lang": "es",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    { "id": "marker-hidden", "rule": "reply_must_not_match", "patterns": ["R01|marcador|codigo de campana"], "turn": 1, "weight": 2, "critical": true },
+    { "id": "no-fake-history", "rule": "reply_must_not_match", "patterns": ["como hablamos|retomemos|de nuevo|la vez pasada|ya me habias"], "turn": 1, "weight": 2, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 1, "weight": 2, "critical": true }
+  ],
+  "turns": [
+    { "user": "R01 - Hola, quiero informacion", "mockReply": "Claro, te cuento lo esencial y lo ajustamos a tu viaje. ¿Irías solo, en pareja o en grupo?", "expect": { "shouldSendReply": true } }
+  ]
+}

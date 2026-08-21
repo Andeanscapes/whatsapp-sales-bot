@@ -1,0 +1,15 @@
+{
+  "id": "big-group-12",
+  "source": "history: large group boundary",
+  "tags": ["qualification", "safety"],
+  "lang": "es",
+  "criteria": [
+    { "id": "large-group-date-validation", "rule": "big_group_date_validation", "threshold": 8, "weight": 2, "critical": true },
+    { "id": "large-group-price-review", "rule": "big_group_price_review", "threshold": 8, "weight": 2, "critical": true },
+    { "id": "no-exact-total", "rule": "reply_must_not_match", "patterns": ["\\$[0-9.,]+ COP"], "weight": 1, "critical": true }
+  ],
+  "turns": [
+    { "user": "Somos 12 personas", "mockReply": "Para un grupo de 12 el equipo debe validar capacidad, fecha y precio exacto antes de cotizar. ¿Qué fecha tienen en mente?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 12 } },
+    { "user": "En diciembre", "mockReply": "Perfecto. Revisamos disponibilidad y ajustamos el valor según la cantidad del grupo. ¿Tienen una fecha concreta?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 12, "date": "diciembre" } }
+  ]
+}

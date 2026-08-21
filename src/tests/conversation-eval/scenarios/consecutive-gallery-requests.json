@@ -1,0 +1,43 @@
+{
+  "id": "consecutive-gallery-requests",
+  "source": "regression 2026-08-20: second consecutive photo request delivered the text and zero photos once the close flipped needsHumanEffective. Photo COUNTS are deliberately not asserted: the live pass reads the real CDN feed while the deterministic pass reads the CI fixture, so an exact count fails on feed changes that are not defects. `shouldSendGalleryImages` is already `requestedGalleryImageUrls.length > 0`, so it covers the empty-list defect this scenario exists for.",
+  "tags": ["marker", "gallery", "live"],
+  "lang": "es",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "seedConversation": { "priceGiven": true, "qualification": { "people": 2, "plan": "2d1n_mining" } },
+  "criteria": [
+    { "id": "first-request-ships", "rule": "output_flag_equals", "flag": "shouldSendGalleryImages", "expected": true, "turn": 1, "weight": 2, "critical": true },
+    { "id": "second-request-ships", "rule": "output_flag_equals", "flag": "shouldSendGalleryImages", "expected": true, "turn": 2, "weight": 2, "critical": true },
+    { "id": "repeat-request-ships", "rule": "output_flag_equals", "flag": "shouldSendGalleryImages", "expected": true, "turn": 3, "weight": 2, "critical": true },
+    { "id": "multi-theme-request-ships", "rule": "output_flag_equals", "flag": "shouldSendGalleryImages", "expected": true, "turn": 4, "weight": 2, "critical": true },
+    { "id": "marker-hidden-first", "rule": "reply_must_not_match", "patterns": ["\\[\\[\\s*FOTOS|FOTOS\\s*:|marcador"], "turn": 1, "weight": 2, "critical": true },
+    { "id": "marker-hidden-second", "rule": "reply_must_not_match", "patterns": ["\\[\\[\\s*FOTOS|FOTOS\\s*:|marcador"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "no-announcement-first", "rule": "reply_must_not_match", "patterns": ["te comparto|te mando|aqui van|aquí van"], "turn": 1, "weight": 1 },
+    { "id": "no-announcement-second", "rule": "reply_must_not_match", "patterns": ["te comparto|te mando|aqui van|aquí van"], "turn": 2, "weight": 1 },
+    { "id": "one-question-first", "rule": "max_question_marks", "max": 1, "turn": 1, "weight": 1, "critical": true },
+    { "id": "one-question-second", "rule": "max_question_marks", "max": 1, "turn": 2, "weight": 1, "critical": true }
+  ],
+  "turns": [
+    {
+      "user": "¿Tienes fotos de la mina?",
+      "mockReply": "Se baja al socavón con guía y equipo completo. ¿Qué fecha tienen en mente?\n[[FOTOS:mine]]",
+      "expect": { "shouldSendReply": true, "shouldSendGalleryImages": true }
+    },
+    {
+      "user": "Y fotos con niños? vamos con los peques",
+      "mockReply": "La bajada se adapta al ritmo de los peques sin perder la experiencia. ¿Qué edades tienen?\n[[FOTOS:kids]]",
+      "expect": { "shouldSendReply": true, "shouldSendGalleryImages": true }
+    },
+    {
+      "user": "Otra vez fotos de la mina, por favor",
+      "mockReply": "Claro, revisemos otra parte de la experiencia. ¿Les sirve la fecha?\n[[FOTOS:mine]]",
+      "expect": { "shouldSendReply": true, "shouldSendGalleryImages": true }
+    },
+    {
+      "user": "Y muéstrame hospedaje y transporte",
+      "mockReply": "Así pueden revisar la Hacienda y el vehículo de la ruta. ¿Avanzamos?\n[[FOTOS:hotel,car]]",
+      "expect": { "shouldSendReply": true, "shouldSendGalleryImages": true }
+    }
+  ]
+}

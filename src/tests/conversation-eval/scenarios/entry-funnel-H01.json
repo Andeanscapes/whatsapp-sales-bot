@@ -1,0 +1,17 @@
+{
+  "id": "entry-funnel-H01",
+  "source": "funnel campaign marker",
+  "tags": ["marker", "live"],
+  "lang": "es",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    { "id": "marker-hidden", "rule": "reply_must_not_match", "patterns": ["H01|marcador|codigo de campana"], "turn": 1, "weight": 2, "critical": true },
+    { "id": "no-brand-restart", "rule": "reply_must_not_match", "patterns": ["soy .{0,30}cofundador|somos Andean Scapes|te presento Andean Scapes"], "turn": 1, "weight": 2, "critical": true },
+    { "id": "recommends-next-fit", "rule": "reply_must_match", "patterns": ["recomiend|encaja|ideal|calz|conviene|mejor te|ajust"], "turn": 1, "weight": 1 },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 1, "weight": 2, "critical": true }
+  ],
+  "turns": [
+    { "user": "H01 - Me interesa saber cual plan me conviene", "mockReply": "Para elegir bien te recomiendo ajustar el plan al tiempo que quieras vivir la experiencia. ¿Prefieres una salida corta o pasar una noche en la zona?", "expect": { "shouldSendReply": true } }
+  ]
+}

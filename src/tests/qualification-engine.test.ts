@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 import { loadSkills } from '../services/skill-loader.js';
 import { migrate } from '../db/migrate.js';
 import { createRepositories, type Repositories } from '../db/repositories/index.js';
-import { extractBookingFields, isAmbiguousPartyComparison, isCorrectionMessage, contextAwareExtract, detectPlan, isExplicitDateDeferral, isUncertainDateAnswer, isDateAskQuestion, isQualificationComplete, resolveLanguage } from '../services/qualification-engine.js';
+import { extractBookingFields, isAmbiguousPartyComparison, isCorrectionMessage, contextAwareExtract, detectPlan, isExplicitDateDeferral, isUncertainDateAnswer, isDateAskQuestion, isQualificationComplete, resolveLanguage, getLastAssistantQuestion, reconstructFromHistory } from '../services/qualification-engine.js';
 import { detectExplicitLanguageSwitch } from '../services/language-service.js';
 import { getActiveExperience } from '../services/product-registry.js';
 
@@ -41,15 +41,18 @@ describe('extractBookingFields — people detection', () => {
   });
 
   it.each([
-    'Somos 4 adultos y 2 niños',
-    'Somos 2 niños y 4 adultos',
-    'We are 4 adults and 2 children',
-    'We are 2 children and 4 adults',
-    'Somos 4 adultos y un niño',
-    'Somos 4 adultos y dos niñas',
-    'We are 4 adults and one child',
-  ])('does not guess a total for mixed adult and child counts from "%s"', (text) => {
-    expect(extractBookingFields(text).collected_people).toBeUndefined();
+    { text: 'Somos 4 adultos y 2 niños', adults: 4, children: 2, total: 6 },
+    { text: 'Somos 2 niños y 4 adultos', adults: 4, children: 2, total: 6 },
+    { text: 'We are 4 adults and 2 children', adults: 4, children: 2, total: 6 },
+    { text: 'We are 2 children and 4 adults', adults: 4, children: 2, total: 6 },
+    { text: 'Somos 4 adultos y un niño', adults: 4, children: 1, total: 5 },
+    { text: 'Somos 4 adultos y dos niñas', adults: 4, children: 2, total: 6 },
+    { text: 'We are 4 adults and one child', adults: 4, children: 1, total: 5 },
+  ])('derives adult/child breakdown and total headcount from "$text"', ({ text, adults, children, total }) => {
+    const fields = extractBookingFields(text);
+    expect(fields.collected_adults).toBe(adults);
+    expect(fields.collected_children).toBe(children);
+    expect(fields.collected_people).toBe(total);
   });
 
   it.each([
@@ -193,6 +196,243 @@ describe('isCorrectionMessage', () => {
   });
 });
 
+describe('extractBookingFields — name blacklist regressions (2026-08-02 history)', () => {
+  it.each([
+    'Precios',
+    'Que fechas',
+    'Cuánto vale',
+    'Opciones',
+  ])('does not store "%s" as a name', (text) => {
+    expect(extractBookingFields(text).collected_name).toBeUndefined();
+  });
+
+  it('does not store an origin declaration as a name', () => {
+    expect(extractBookingFields('Soy de Bogotá').collected_name).toBeUndefined();
+    expect(extractBookingFields('I am from London').collected_name).toBeUndefined();
+    expect(extractBookingFields('I am in Bogota').collected_name).toBeUndefined();
+  });
+
+  it.each([
+    'I am interested in the tour',
+    'I am planning a trip',
+    'I am ready to book',
+    'Soy una persona interesada',
+    'Soy turista buscando fechas',
+    'Soy viajero interesado',
+  ])('does not store ordinary prose from "%s" as a name', (text) => {
+    expect(extractBookingFields(text).collected_name).toBeUndefined();
+  });
+
+  it.each([
+    ['soy carlos', 'Carlos'],
+    ['i am john', 'John'],
+  ])('stores lowercase one-word declaration "%s"', (text, expected) => {
+    expect(extractBookingFields(text).collected_name).toBe(expected);
+  });
+});
+
+describe('extractBookingFields — transport/pet/lodging polarity', () => {
+  it('does not classify an explicit negation as own transport', () => {
+    expect(extractBookingFields('No cuento con transporte propio').collected_transport_need).toBeUndefined();
+  });
+
+  it('does not classify "en propio no" as own transport', () => {
+    expect(extractBookingFields('En propio no').collected_transport_need).toBeUndefined();
+  });
+
+  it('still captures public bus when own transport is negated', () => {
+    expect(extractBookingFields('No tengo carro, voy en bus').collected_transport_need).toBe('public_bus');
+  });
+
+  it('still captures from_bogota when own vehicle is negated', () => {
+    expect(extractBookingFields('no cuento con vehiculo, me recogen desde Bogota').collected_transport_need).toBe('from_bogota');
+  });
+
+  it('records a negated pet mention as "no"', () => {
+    expect(extractBookingFields('No llevo mascota').collected_pet).toBe('no');
+  });
+
+  it('still records an affirmative pet mention as "yes"', () => {
+    expect(extractBookingFields('Vamos con mi perro').collected_pet).toBe('yes');
+  });
+
+  it('records a negated lodging mention as "no"', () => {
+    expect(extractBookingFields('No necesito hotel').collected_lodging_need).toBe('no');
+  });
+
+  it('does not persist uncertain pet or lodging answers', () => {
+    expect(extractBookingFields('No sé si necesito hotel').collected_lodging_need).toBeUndefined();
+    expect(extractBookingFields('No sé si puedo llevar mascota').collected_pet).toBeUndefined();
+    expect(extractBookingFields('Hotel, no sé todavía').collected_lodging_need).toBeUndefined();
+    expect(extractBookingFields('Mascota, no estoy segura').collected_pet).toBeUndefined();
+  });
+
+  it('does not persist pet or lodging questions as affirmative facts', () => {
+    expect(extractBookingFields('¿Necesito hotel?').collected_lodging_need).toBeUndefined();
+    expect(extractBookingFields('¿Puedo llevar mascota?').collected_pet).toBeUndefined();
+  });
+
+  it('lets an affirmative pet mention override a different negated animal', () => {
+    expect(extractBookingFields('No tengo perro, llevo gato').collected_pet).toBe('yes');
+    expect(extractBookingFields('No sé, pero llevamos un gato').collected_pet).toBe('yes');
+  });
+});
+
+describe('extractBookingFields — travel origin and child age', () => {
+  it('captures a self-declared origin city', () => {
+    expect(extractBookingFields('Pero yo estamos ubicados en Medellín').collected_travel_origin).toBe('Medellín');
+  });
+
+  it.each([
+    { text: 'Estamos en Medellín', origin: 'Medellín' },
+    { text: 'Vivimos en Duitama', origin: 'Duitama' },
+    { text: 'Somos de Marinilla', origin: 'Marinilla' },
+  ])('captures capitalized origin from "$text"', ({ text, origin }) => {
+    expect(extractBookingFields(text).collected_travel_origin).toBe(origin);
+  });
+
+  it('does not include conversational context after the origin', () => {
+    expect(extractBookingFields('Estamos en Medellín buscando fechas').collected_travel_origin).toBe('Medellín');
+    expect(extractBookingFields('Estamos en Bogotá con mi familia').collected_travel_origin).toBe('Bogotá');
+    expect(extractBookingFields('Estamos en Bogotá actualmente').collected_travel_origin).toBe('Bogotá');
+    expect(extractBookingFields('Estamos en Bogotá por ahora').collected_travel_origin).toBe('Bogotá');
+  });
+
+  it.each([
+    'Santa Rosa de Viterbo',
+    'San José del Guaviare',
+  ])('preserves short particles in multi-word origin "%s"', origin => {
+    expect(extractBookingFields(`Estamos en ${origin}`).collected_travel_origin).toBe(origin);
+  });
+
+  it('captures an inline child age mention', () => {
+    const fields = extractBookingFields('Vamos con un niño de 9 años');
+    expect(JSON.parse(String(fields.collected_child_ages_json))).toEqual([9]);
+  });
+});
+
+describe('extractBookingFields — multi-word names and word adult counts', () => {
+  it('captures multi-word declarative names', () => {
+    expect(extractBookingFields('Me llamo Juan Carlos').collected_name).toBe('Juan Carlos');
+  });
+
+  it('does not include conversational context after the name', () => {
+    expect(extractBookingFields('Me llamo Juan Carlos y quiero fechas').collected_name).toBe('Juan Carlos');
+    expect(extractBookingFields('Me llamo Juan Carlos desde Medellin').collected_name).toBe('Juan Carlos');
+  });
+
+  it('preserves particles in a long declarative name', () => {
+    expect(extractBookingFields('Me llamo Ana María de la Cruz').collected_name).toBe('Ana María De La Cruz');
+  });
+
+  it('derives mixed group totals from word adult counts', () => {
+    const fields = extractBookingFields('cuatro adultos y 2 niños');
+    expect(fields.collected_adults).toBe(4);
+    expect(fields.collected_children).toBe(2);
+    expect(fields.collected_people).toBe(6);
+  });
+
+  it('derives mixed group totals above twenty for large-group escalation', () => {
+    const fields = extractBookingFields('25 adultos y 2 niños');
+    expect(fields.collected_adults).toBe(25);
+    expect(fields.collected_children).toBe(2);
+    expect(fields.collected_people).toBe(27);
+  });
+
+  it('keeps totals above one hundred for large-group escalation', () => {
+    expect(extractBookingFields('99 adultos y 2 niños').collected_people).toBe(101);
+  });
+});
+
+describe('reconstructFromHistory — extended qualification fields', () => {
+  it('recovers group breakdown, child ages, and origin from existing inbound history', () => {
+    const db = new Database(':memory:');
+    migrate(db);
+    const repos = createRepositories(db);
+    const phone = '573001112233';
+    repos.message.addMessage({
+      customer_phone: phone,
+      direction: 'inbound',
+      message_type: 'text',
+      body: 'Somos 2 adultos y 2 niños, uno es un niño de 9 años. Estamos en Medellín',
+      created_at: new Date().toISOString(),
+    });
+
+    try {
+      expect(reconstructFromHistory(repos, phone, {})).toMatchObject({
+        personas: 4,
+        adultos: 2,
+        ninos: 2,
+        edadesNinos: [9],
+        origen: 'Medellín',
+      });
+    } finally {
+      db.close();
+    }
+  });
+
+  it('uses the newest explicit no-children revision instead of stale child data', () => {
+    const db = new Database(':memory:');
+    migrate(db);
+    const repos = createRepositories(db);
+    const phone = '573001112234';
+    repos.message.addMessage({
+      customer_phone: phone,
+      direction: 'inbound',
+      message_type: 'text',
+      body: 'Somos 2 adultos y 2 niños, un niño de 9 años',
+      created_at: new Date(Date.now() - 60_000).toISOString(),
+    });
+    repos.message.addMessage({
+      customer_phone: phone,
+      direction: 'inbound',
+      message_type: 'text',
+      body: 'Cambio: ahora somos 2 adultos, sin niños',
+      created_at: new Date().toISOString(),
+    });
+
+    try {
+      expect(reconstructFromHistory(repos, phone, {})).toMatchObject({
+        personas: 2,
+        adultos: 2,
+        ninos: 0,
+        edadesNinos: [],
+      });
+    } finally {
+      db.close();
+    }
+  });
+
+  it('does not backfill child ages across a newer child-count revision', () => {
+    const db = new Database(':memory:');
+    migrate(db);
+    const repos = createRepositories(db);
+    const phone = '573001112235';
+    repos.message.addMessage({
+      customer_phone: phone,
+      direction: 'inbound',
+      message_type: 'text',
+      body: 'Somos 2 adultos y 2 niños, un niño de 9 años',
+      created_at: new Date(Date.now() - 60_000).toISOString(),
+    });
+    repos.message.addMessage({
+      customer_phone: phone,
+      direction: 'inbound',
+      message_type: 'text',
+      body: 'Ahora somos 2 adultos y 1 niño, no sé la edad',
+      created_at: new Date().toISOString(),
+    });
+
+    try {
+      const reconstructed = reconstructFromHistory(repos, phone, {});
+      expect(reconstructed.ninos).toBe(1);
+      expect(reconstructed.edadesNinos).toBeUndefined();
+    } finally {
+      db.close();
+    }
+  });
+});
+
 describe('contextAwareExtract — people reply parsing', () => {
   let repos: Repositories;
   let db: Database.Database;
@@ -303,6 +543,82 @@ describe('contextAwareExtract — people reply parsing', () => {
     const result = contextAwareExtract('somos 50 personas', repos, PHONE, {});
     expect(result.collected_people).toBeUndefined();
   });
+
+  it('captures a name after an accented LLM question ("¿Cómo te llamas?")', () => {
+    seedLastQuestion('¿Cómo te llamas?');
+    const result = contextAwareExtract('Carlos', repos, PHONE, {});
+    expect(result.collected_name).toBe('Carlos');
+  });
+
+  it('skips an image caption to find the real last question', () => {
+    seedLastQuestion('Antes de seguir, ¿como te llamas?');
+    repos.message.addMessage({
+      customer_phone: PHONE, direction: 'outbound', message_type: 'image',
+      body: 'Heinner y Alexandra - Andean Scapes', created_at: new Date().toISOString(),
+    });
+    expect(getLastAssistantQuestion(repos, PHONE)).toBe('Antes de seguir, ¿como te llamas?');
+    const result = contextAwareExtract('Carlos', repos, PHONE, {});
+    expect(result.collected_name).toBe('Carlos');
+  });
+
+  it('does not capture own transport from an explicit negation', () => {
+    seedLastQuestion('¿Tienen transporte propio o lo necesitan desde Bogota?');
+    const result = contextAwareExtract('No cuento con transporte propio', repos, PHONE, {});
+    expect(result.collected_transport_need).toBeUndefined();
+  });
+
+  it('captures child ages from a bare numeric reply after an age question', () => {
+    seedLastQuestion('¿Los niños tienen más de 5 años?');
+    const result = contextAwareExtract('Si tienen 9 y 11', repos, PHONE, {});
+    expect(JSON.parse(String(result.collected_child_ages_json))).toEqual([9, 11]);
+  });
+
+  it('does not treat child count or minimum threshold as exact ages', () => {
+    seedLastQuestion('¿Los niños tienen más de 5 años?');
+    const result = contextAwareExtract('Sí, los 2 tienen más de 5', repos, PHONE, {});
+    expect(result.collected_child_ages_json).toBeUndefined();
+  });
+
+  it('does not convert an age range into an exact child age', () => {
+    seedLastQuestion('¿Qué edades tienen los niños?');
+    const result = contextAwareExtract('Entre 8 y 12 años', repos, PHONE, {});
+    expect(result.collected_child_ages_json).toBeUndefined();
+  });
+
+  it('keeps a two-child age list with a trailing unit', () => {
+    seedLastQuestion('¿Qué edades tienen los niños?');
+    const result = contextAwareExtract('9 y 11 años', repos, PHONE, {});
+    expect(JSON.parse(String(result.collected_child_ages_json))).toEqual([9, 11]);
+  });
+
+  it('does not capture child ages after a non-child question', () => {
+    seedLastQuestion('¿Cuantas personas serian?');
+    const result = contextAwareExtract('Somos 9', repos, PHONE, {});
+    expect(result.collected_child_ages_json).toBeUndefined();
+  });
+
+  it('captures multi-word standalone name after a name ask', () => {
+    seedLastQuestion('¿Cómo te llamas?');
+    const result = contextAwareExtract('Ana Maria', repos, PHONE, {});
+    expect(result.collected_name).toBe('Ana Maria');
+  });
+
+  it('captures the name before additional prose after a name ask', () => {
+    seedLastQuestion('¿Cómo te llamas?');
+    const result = contextAwareExtract('Carlos, quiero reservar', repos, PHONE, {});
+    expect(result.collected_name).toBe('Carlos');
+  });
+
+  it('does not store lowercase prose as a name', () => {
+    seedLastQuestion('¿Cómo te llamas?');
+    expect(contextAwareExtract('estoy interesado', repos, PHONE, {}).collected_name).toBeUndefined();
+  });
+
+  it('captures travel origin from a bare city reply after a distance question', () => {
+    seedLastQuestion('¿A cuántas horas quedas de Bogotá?');
+    const result = contextAwareExtract('Desde Marinilla', repos, PHONE, {});
+    expect(result.collected_travel_origin).toBe('Marinilla');
+  });
 });
 
 describe('detectPlan — ordinal / duration choice', () => {
@@ -329,6 +645,15 @@ describe('detectPlan — ordinal / duration choice', () => {
     'el largo',
     'plan de 3 dias',
   ])('resolves "%s" to 3d2n_rural', (text) => {
+    expect(detectPlan(text, experience)).toBe('3d2n_rural');
+  });
+
+  it.each([
+    'el de 2 noches',
+    'el de dos noches',
+    '2 noches',
+    'dos noches',
+  ])('nights beat ordinals: "%s" → 3d2n_rural', (text) => {
     expect(detectPlan(text, experience)).toBe('3d2n_rural');
   });
 

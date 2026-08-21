@@ -37,7 +37,7 @@ describe('sendBridgeReply guards', () => {
   it('blocks when bot is paused', async () => {
     recordInbound(PHONE, new Date().toISOString());
     repos.setPaused(true);
-    const sendSpy = vi.spyOn(whatsappClient, 'sendText').mockResolvedValue();
+    const sendSpy = vi.spyOn(whatsappClient, 'sendText').mockResolvedValue({ whatsappMessageId: 'wamid.test' });
 
     const result = await sendBridgeReply(repos, PHONE, 'hi');
 
@@ -48,7 +48,7 @@ describe('sendBridgeReply guards', () => {
   it('blocks when the customer opted out', async () => {
     recordInbound(PHONE, new Date().toISOString());
     repos.optOut.setOptOut(PHONE);
-    const sendSpy = vi.spyOn(whatsappClient, 'sendText').mockResolvedValue();
+    const sendSpy = vi.spyOn(whatsappClient, 'sendText').mockResolvedValue({ whatsappMessageId: 'wamid.test' });
 
     const result = await sendBridgeReply(repos, PHONE, 'hi');
 
@@ -59,7 +59,7 @@ describe('sendBridgeReply guards', () => {
   it('blocks when outside the 24h service window', async () => {
     const old = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
     recordInbound(PHONE, old);
-    const sendSpy = vi.spyOn(whatsappClient, 'sendText').mockResolvedValue();
+    const sendSpy = vi.spyOn(whatsappClient, 'sendText').mockResolvedValue({ whatsappMessageId: 'wamid.test' });
 
     const result = await sendBridgeReply(repos, PHONE, 'hi');
 
@@ -69,7 +69,7 @@ describe('sendBridgeReply guards', () => {
 
   it('sends and stores outbound when within the window', async () => {
     recordInbound(PHONE, new Date().toISOString());
-    const sendSpy = vi.spyOn(whatsappClient, 'sendText').mockResolvedValue();
+    const sendSpy = vi.spyOn(whatsappClient, 'sendText').mockResolvedValue({ whatsappMessageId: 'wamid.test' });
 
     const result = await sendBridgeReply(repos, PHONE, 'hola desde el bridge');
 

@@ -5,6 +5,7 @@ export type TransportNeed = 'own' | 'public_bus' | 'from_bogota' | 'yes' | null 
 
 export interface PriceQuoteInput {
   planId: string | null | undefined;
+  siteId?: string | null;
   people: unknown;
   transportNeed?: TransportNeed;
   includeApiaryCattle?: boolean;
@@ -32,20 +33,27 @@ function toPeople(value: unknown): number | null {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
-function getPlanPrices(exp: ActiveExperience, planId: string): { individual: number; couple: number } | null {
-  const planItems = exp.pricing.items.filter(item => item.planId === planId);
+function getPlanPrices(exp: ActiveExperience, planId: string, siteId?: string): { individual: number; couple: number } | null {
+  const planItems = exp.pricing.items.filter(item => item.planId === planId
+    && (!siteId || !item.siteId || item.siteId === siteId));
   const individual = planItems.find(item => item.pricePerPerson != null)?.pricePerPerson;
   const couple = planItems.find(item => item.couplePrice != null)?.couplePrice;
   return individual != null && couple != null ? { individual, couple } : null;
 }
 
-function getPrivateTransportPrice(exp: ActiveExperience): number | null {
-  const item = exp.pricing.items.find(i => i.id === ADDON_ID_PRIVATE_TRANSPORT && i.couplePrice != null);
+function getPrivateTransportPrice(exp: ActiveExperience, planId: string, siteId?: string): number | null {
+  const item = exp.pricing.items.find(i => i.id === ADDON_ID_PRIVATE_TRANSPORT
+    && i.couplePrice != null
+    && (!i.planId || i.planId === planId)
+    && (!siteId || !i.siteId || i.siteId === siteId));
   return item?.couplePrice ?? null;
 }
 
-function getApiaryCattlePrice(exp: ActiveExperience, planId: string): number | null {
-  const item = exp.pricing.items.find(i => i.id === ADDON_ID_APIARY_CATTLE && i.planId === planId && i.pricePerPerson != null);
+function getApiaryCattlePrice(exp: ActiveExperience, planId: string, siteId?: string): number | null {
+  const item = exp.pricing.items.find(i => i.id === ADDON_ID_APIARY_CATTLE
+    && i.planId === planId
+    && i.pricePerPerson != null
+    && (!siteId || !i.siteId || i.siteId === siteId));
   return item?.pricePerPerson ?? null;
 }
 
@@ -63,20 +71,22 @@ function calculatePlanTotal(people: number, individual: number, couple: number):
 export function calculatePriceQuote(exp: ActiveExperience, input: PriceQuoteInput): PriceQuote | null {
   const planId = input.planId ?? exp.plans[0]?.id;
   if (!planId) return null;
+  const plan = exp.plans.find(candidate => candidate.id === planId);
+  const siteId = input.siteId ?? plan?.siteId;
 
   const people = toPeople(input.people);
   if (people == null) return null;
 
-  const prices = getPlanPrices(exp, planId);
+  const prices = getPlanPrices(exp, planId, siteId ?? undefined);
   if (!prices) return null;
 
   const planTotal = calculatePlanTotal(people, prices.individual, prices.couple);
-  const addonPrice = input.includeApiaryCattle ? getApiaryCattlePrice(exp, planId) : null;
+  const addonPrice = input.includeApiaryCattle ? getApiaryCattlePrice(exp, planId, siteId ?? undefined) : null;
   const addonsTotal = addonPrice != null ? addonPrice * people : 0;
 
   const wantsTransport = input.transportNeed === 'from_bogota' || input.transportNeed === 'yes';
-  const transportPrice = wantsTransport ? getPrivateTransportPrice(exp) : null;
-  const requiresTransportConfirmation = wantsTransport && people > 4;
+  const transportPrice = wantsTransport ? getPrivateTransportPrice(exp, planId, siteId ?? undefined) : null;
+  const requiresTransportConfirmation = wantsTransport && (people > 4 || transportPrice == null);
   const transportTotal = wantsTransport && !requiresTransportConfirmation ? transportPrice : null;
   const total = requiresTransportConfirmation ? null : planTotal + addonsTotal + (transportTotal ?? 0);
 

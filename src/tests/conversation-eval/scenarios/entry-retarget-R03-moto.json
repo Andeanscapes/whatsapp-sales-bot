@@ -1,0 +1,22 @@
+{
+  "id": "entry-retarget-R03-moto",
+  "source": "retargeting marker (moto variant)",
+  "tags": ["marker", "live"],
+  "lang": "es",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "criteria": [
+    { "id": "marker-hidden", "rule": "reply_must_not_match", "patterns": ["R03|marcador|codigo de campana"], "turn": 3, "weight": 2, "critical": true },
+    { "id": "recalls-context", "rule": "reply_must_match", "patterns": ["moto|ruta en moto|Ubala"], "turn": 3, "weight": 2, "critical": true },
+    { "id": "diagnoses-blocker", "rule": "reply_must_match", "patterns": ["qu[eé] te falta|qu[eé] (?:te|les|nos) fren|qu[eé] (?:les|nos) pas[oó]|qu[eé] cambio|qu[eé] te dej"], "turn": 3, "weight": 2, "critical": true },
+    { "id": "no-brand-restart", "rule": "reply_must_not_match", "patterns": ["soy .{0,30}cofundador|somos Andean Scapes|te presento Andean Scapes"], "turn": 3, "weight": 2, "critical": true },
+    { "id": "no-price-or-banned-emoji", "rule": "reply_must_not_match", "patterns": ["\\$|COP|🎉|❤️|🔥|💰"], "turn": 3, "weight": 1 },
+    { "id": "emoji-restraint", "rule": "max_emojis", "max": 1, "turn": 3, "weight": 1 },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 3, "weight": 2, "critical": true }
+  ],
+  "turns": [
+    { "user": "Hola", "mockReply": "¡Hola! ¿Viajarías solo, en pareja o en grupo?", "expect": { "shouldSendReply": true } },
+    { "user": "Dos, somos pareja; nos interesa la ruta intensa en moto", "mockReply": "Perfecto para dos y con la ruta en moto como prioridad. ¿Qué fecha tienen en mente?", "expect": { "shouldSendReply": true } },
+    { "user": "R03 hola de nuevo", "mockReply": "La ruta en moto te había gustado la última vez. ¿Qué nos frenó: fecha, precio, logística, o preocupación por la ruta?", "expect": { "shouldSendReply": true } }
+  ]
+}

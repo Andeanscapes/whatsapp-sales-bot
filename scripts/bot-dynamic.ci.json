@@ -1,0 +1,653 @@
+{
+  "v": 11,
+  "updated": "2026-08-07T00:00:00Z",
+  "referentAttribution": {
+    "profileId": "andean-scapes-co",
+    "version": 1,
+    "sources": {
+      "referent.a": {
+        "role": "cold-open",
+        "sourceLabel": "CI fixture"
+      },
+      "referent.b": {
+        "role": "sales-flow",
+        "sourceLabel": "CI fixture"
+      },
+      "referent.c": {
+        "role": "qualification",
+        "sourceLabel": "CI fixture"
+      },
+      "referent.d": {
+        "role": "safety",
+        "sourceLabel": "CI fixture"
+      },
+      "referent.e": {
+        "role": "funnel",
+        "sourceLabel": "CI fixture"
+      },
+      "referent.f": {
+        "role": "recommendation",
+        "sourceLabel": "CI fixture"
+      },
+      "referent.g": {
+        "role": "closing",
+        "sourceLabel": "CI fixture"
+      },
+      "referent.h": {
+        "role": "retargeting",
+        "sourceLabel": "CI fixture"
+      },
+      "referent.i": {
+        "role": "objections",
+        "sourceLabel": "CI fixture"
+      },
+      "referent.j": {
+        "role": "follow-up",
+        "sourceLabel": "CI fixture"
+      }
+    }
+  },
+  "reservationPolicy": {
+    "rescheduling": {
+      "allowed": true,
+      "freeUntilDaysBefore": 7,
+      "lateChangeRule": "Después de ese plazo, la reprogramación queda sujeta a los gastos ya causados, como seguro o comidas solicitadas para la experiencia."
+    }
+  },
+  "payments": {
+    "currency": "COP",
+    "deposit": {
+      "type": "percentage",
+      "value": 15,
+      "label": "Anticipo para confirmar la reserva",
+      "calculationRule": "depositAmount = totalReservationAmount * 0.15",
+      "remainingBalancePercentage": 85
+    },
+    "methods": [
+      {
+        "id": "nequi",
+        "name": "Nequi",
+        "type": "mobile_transfer",
+        "enabled": true,
+        "phoneNumber": "3000000000",
+        "formattedPhoneNumber": "300 000 0000",
+        "countryCode": "+57",
+        "fullPhoneNumber": "+573000000000",
+        "currency": "COP",
+        "instructions": "Realiza la transferencia por Nequi al número de prueba del fixture CI.",
+        "requiresPaymentProof": true
+      },
+      {
+        "id": "mercado_pago",
+        "name": "Mercado Pago",
+        "type": "payment_link",
+        "enabled": true,
+        "currency": "COP",
+        "paymentLink": null,
+        "instructions": "El enlace seguro se genera después de validar disponibilidad.",
+        "requiresPaymentProof": false
+      }
+    ],
+    "confirmation": {
+      "automatic": false,
+      "requiresTeamValidation": true,
+      "message": "La reserva queda confirmada cuando el equipo valide la disponibilidad y el pago del anticipo."
+    },
+    "displayPolicy": {
+      "showWhenCustomerWantsToReserve": true,
+      "showWhenCustomerAsksHowToPay": true,
+      "showAfterAvailabilityValidation": true,
+      "doNotRequestPaymentBeforeAvailabilityValidation": true,
+      "neverRequestFullPaymentWithoutConfirmation": true
+    }
+  },
+  "media": {
+    "ownerImage": {
+      "url": "https://cdn.andeanscapes.com/whatsapp_bot/emerald_mining_chivor/heinneryalexandra.jpg",
+      "caption": "Heinner y Alexandra - Andean Scapes"
+    }
+  },
+  "experiences": {
+    "emerald_mining_tour": {
+      "status": "active",
+      "clarifications": [
+        "Las minas que visitamos son minas reales de esmeralda de la zona esmeraldifera. Algunas tienen operacion artesanal y otras tienen mayor movimiento o escala. Ninguna es mina de carbon y no existe relacion con la mineria de carbon; tampoco son minas adaptadas o montadas para turismo.",
+        "No se asegura una mina en particular. Se visita alguna de las minas aliadas segun disponibilidad y condiciones del dia; todas ofrecen la experiencia real con equipo de seguridad y guia local.",
+        "La cabalgata guiada es un adicional opcional por persona; no viene incluida en el plan base.",
+        "Cascadas, caminatas adicionales y otras actividades fuera del itinerario son extras: requieren validacion previa del equipo para confirmar precio, disponibilidad y requisitos."
+      ],
+      "currency": "COP",
+      "paymentPolicy": {
+        "depositRequired": true,
+        "depositPercentage": 15,
+        "remainingBalancePercentage": 85,
+        "paymentMethods": [
+          "nequi",
+          "mercado_pago"
+        ],
+        "paymentDataReference": "payments",
+        "requiresAvailabilityValidation": true,
+        "requiresPaymentValidation": true
+      },
+      "sites": {
+        "chivor": {
+          "clarifications": [
+            "DURACION: la jornada de experiencia minera en Chivor dura en promedio unas 6 horas en total. Incluye traslados locales, preparacion, caminatas, ingreso y salida. El tiempo dentro de la mina es solo una parte, varia segun la mina y las condiciones del dia; nunca digas que son 6 horas continuas bajo tierra.",
+            "ASISTENCIA MEDICA: se incluye un seguro de asistencia medica, pero ningun medico, paramedico ni personal sanitario acompana presencialmente el tour. No lo describas como personal medico en sitio. Un seguro de viaje integral distinto a esta asistencia no esta incluido.",
+            "TIPO DE MINA: todas las minas aliadas son minas reales de esmeralda de la zona esmeraldifera. Algunas operan artesanalmente y otras tienen mayor movimiento o escala. Ninguna es mina de carbon y no existe relacion con la mineria de carbon. La mina especifica depende de disponibilidad y condiciones del dia."
+          ],
+          "addons": {
+            "apiary_cattle": {
+              "label": "Apicultura y ganadería (opcional, por persona)",
+              "pp": 55000
+            },
+            "horseback_riding": {
+              "label": "Cabalgata guiada (opcional, por persona, se cotiza aparte del total del plan)",
+              "pp": 120000
+            },
+            "private_transport": {
+              "label": "Transporte privado 4x4 puerta a puerta desde Bogotá",
+              "price": 1700000,
+              "max": 4
+            }
+          },
+          "rules": [
+            "Usa solo el precio del plan elegido. Apicultura/ganaderia extra solo en 2D/1N. Traductor con costo extra (consultar). Nunca inventes descuentos ni precios fuera del catalogo.",
+            "Transporte privado 4x4 puerta a puerta desde Bogotá: el mismo valor cubre hasta 4 personas. Incluye recogida en casa u hotel, ida y regreso Bogotá-Chivor-Bogotá; aproximadamente 5-6 horas por trayecto. Conviene más a grupos que comparten el valor; para una persona sola puede resultar costosa. Súmalo al plan base solo si lo piden. Para 5 o más personas se requieren vehículos adicionales: no inventes ese costo, el equipo lo confirma.",
+            "Carro propio o moto: normalmente la alternativa más conveniente. Carro no 4x4 debe llegar por Chivor pueblo y usar transporte local 4x4 hacia la mina; la ruta por Ubalá solo aplica para moto o carro 4x4.",
+            "Bus público: alternativa más económica desde Bogotá, Tunja u otra ciudad. NO sumar al plan; el cliente lo compra por su cuenta. Orientar y validar horarios para llegar a Chivor.",
+            "Si RUNTIME incluye QUOTE LOCK, copia únicamente ese total exacto — aunque los precios individual/pareja visibles en DATOS produzcan otra cifra. La diferencia es intencional; QUOTE LOCK tiene prioridad. Nunca calcules, estimes ni reconstruyas el total desde DATOS.",
+            "Cabalgata guiada: $120.000 COP por persona, ambos planes. Es un adicional que se cotiza por separado del total del plan base — NUNCA la sumaras al total del QUOTE LOCK. Presenta la cabalgata como una línea aparte. Requiere confirmación previa del equipo sobre disponibilidad de caballos y guía para la fecha solicitada.",
+            "Cascadas, caminatas adicionales y otras actividades fuera del itinerario estándar son extras que requieren validación previa del equipo para confirmar precio, disponibilidad y requisitos. Nunca inventes valores ni prometas factibilidad de estas actividades.",
+            "Plan solo incluye la experiencia minera e introducción a la ruta. Sin guía dedicada en transporte (cliente llega en su vehículo o moto propia, no 4x4 entra por Chivor pueblo). Ruta guiada o más técnica se coordina con el equipo con costo adicional según grupo; no inventes ese valor, el equipo lo confirma."
+          ],
+          "media": {
+            "gallery": [
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/emerald_mining_chivor/exp/exp_01.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/emerald_mining_chivor/exp/exp_02.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/emerald_mining_chivor/exp/exp_03.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/emerald_mining_chivor/exp/exp_61.jpg",
+                "caption": "Niños en la experiencia minera en Chivor",
+                "type": "kids"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/emerald_mining_chivor/exp/exp_39.jpg",
+                "caption": "Hospedaje de la experiencia en Chivor",
+                "type": "hotel"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/emerald_mining_chivor/exp/exp_40.jpg",
+                "caption": "Hospedaje de la experiencia en Chivor",
+                "type": "hotel"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/emerald_mining_chivor/exp/exp_50.jpg",
+                "caption": "Vehículo 4x4 de la ruta en Chivor",
+                "type": "car"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/emerald_mining_chivor/exp/exp_51.jpg",
+                "caption": "Vehículo 4x4 de la ruta en Chivor",
+                "type": "car"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/emerald_mining_chivor/exp/exp_56.jpg",
+                "caption": "Moto de la ruta en Chivor",
+                "type": "bike"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/emerald_mining_chivor/exp/exp_57.jpg",
+                "caption": "Moto de la ruta en Chivor",
+                "type": "bike"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/emerald_mining_chivor/exp/exp_25.jpg",
+                "caption": "Apicultura de la experiencia en Chivor",
+                "type": "beekeping"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/emerald_mining_chivor/exp/exp_62.jpg",
+                "caption": "Niños en la experiencia minera en Chivor",
+                "type": "kids"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/emerald_mining_chivor/exp/exp_76.jpg",
+                "caption": "Paisaje de la ruta en Chivor",
+                "type": "nature"
+              }
+            ],
+            "types": ["mine", "hotel", "food", "nature", "car", "bike", "beekeping", "kids"],
+            "typeKeywords": {
+              "mine": ["mina", "minas", "minera", "mineria", "minero", "mineros", "socavon", "esmeralda", "esmeraldas", "mining", "mine", "emerald"],
+              "hotel": ["hotel", "hospedaje", "alojamiento", "habitacion", "habitaciones", "hacienda", "room", "rooms", "lodging"],
+              "food": ["comida", "almuerzo", "desayuno", "gastronomia", "food"],
+              "nature": ["naturaleza", "paisaje", "paisajes", "represa", "mirador", "ruta", "camino", "carretera", "nature", "route", "road"],
+              "car": ["4x4", "camioneta", "carro", "carros", "transporte", "vehiculo"],
+              "bike": ["moto", "motos", "motocicleta", "motorcycle", "motorbike"],
+              "beekeping": ["abejas", "apiario", "miel", "apicultura"],
+              "kids": ["nino", "ninos", "nina", "ninas", "hijo", "hijos", "hija", "hijas", "peques", "pequenos", "chicos", "menores", "kid", "kids", "child", "children"]
+            }
+          },
+          "availability": {
+            "tz": "America/Bogota",
+            "dates": [
+              {
+                "d": "2026-08-07",
+                "s": "limited",
+                "sl": 7
+              },
+              {
+                "d": "2026-08-15",
+                "s": "limited",
+                "sl": 9
+              },
+              {
+                "d": "2026-09-26",
+                "s": "limited",
+                "sl": 5
+              },
+              {
+                "d": "2026-10-10",
+                "s": "limited",
+                "sl": 7
+              },
+              {
+                "d": "2026-10-24",
+                "s": "limited",
+                "sl": 7
+              },
+              {
+                "d": "2026-10-31",
+                "s": "limited",
+                "sl": 7
+              },
+              {
+                "d": "2026-11-14",
+                "s": "limited",
+                "sl": 7
+              }
+            ],
+            "rule": "Nunca digas que todo está vendido. El equipo valida disponibilidad para cualquier fecha. Si preguntan cuáles están libres, lista las fechas planeadas y di que el equipo las valida. Siempre deriva la confirmación al equipo."
+          },
+          "plans": {
+            "2d1n_mining": {
+              "pricing": {
+                "individual": 550000,
+                "couple": 1000000
+              },
+              "clarifications": [],
+              "addons": [
+                "apiary_cattle",
+                "horseback_riding"
+              ],
+              "media": {
+                "planImages": [
+                  {
+                    "id": "emerald_mining_preview_1",
+                    "url": "https://cdn.andeanscapes.com/whatsapp_bot/details/2d1n_1.png",
+                    "caption": "Imagen de referencia del plan 2D/1N"
+                  }
+                ]
+              },
+              "name": "2 Dias / 1 Noche — Mina Esmeralda",
+              "duration": "2D/1N",
+              "shortDescription": "Aventura minera en Chivor: jornada minera total de unas 6 horas, taller esmeraldero, alojamiento y 3 comidas. El tiempo subterraneo es solo una parte y varia. Pet-friendly.",
+              "benefits": "Plan ideal para quienes buscan una experiencia de aventura real en la mina. Puede hacerse llegando temprano en la manana para completar la mina ese mismo dia, o llegando con calma para tomar la charla minera al llegar y hacer la mina el segundo dia en la manana, regresando a Chivor al final del dia. Intenso, autentico, bien aprovechado.",
+              "keywords": [
+                "mina",
+                "esmeralda",
+                "emerald",
+                "mining",
+                "chivor",
+                "mineria",
+                "2d",
+                "2 dias",
+                "2 días",
+                "1 noche",
+                "un dia",
+                "una noche",
+                "minera"
+              ],
+              "imageId": "emerald_mining_preview_1",
+              "status": "active"
+            },
+            "3d2n_rural": {
+              "pricing": {
+                "individual": 750000,
+                "couple": 1400000
+              },
+              "clarifications": [],
+              "addons": [
+                "horseback_riding"
+              ],
+              "media": {
+                "planImages": [
+                  {
+                    "id": "rural_experience_preview_1",
+                    "url": "https://cdn.andeanscapes.com/whatsapp_bot/details/3d2n_1.png",
+                    "caption": "Imagen de referencia del plan 3D/2N"
+                  }
+                ]
+              },
+              "name": "3 Dias / 2 Noches — Mina + Apicultura + Ganaderia",
+              "duration": "3D/2N",
+              "shortDescription": "Experiencia de 3 dias: charla esmeraldera, jornada minera total de unas 6 horas, apicultura y ganaderia. El tiempo subterraneo varia. Incluye 2 noches y 6 comidas. Pet-friendly.",
+              "benefits": "Itinerario relajado: charla el dia 1, jornada minera el dia 2 y actividades rurales el dia 3. Incluye 2 noches, 6 comidas y WiFi.",
+              "keywords": [
+                "apicultura",
+                "abejas",
+                "abeja",
+                "ganaderia",
+                "ganado",
+                "vacas",
+                "vaca",
+                "ordeño",
+                "beekeeping",
+                "livestock",
+                "rural",
+                "3d",
+                "3 dias",
+                "3 días",
+                "2 noches",
+                "dos noches",
+                "completo",
+                "full",
+                "colmenas",
+                "apiario"
+              ],
+              "imageId": "rural_experience_preview_1",
+              "status": "active"
+            }
+          },
+          "name": "Chivor",
+          "location": "Chivor, Boyacá, Colombia",
+          "meetingPoint": "Chivor town center",
+          "route": {
+            "fromBogota": "Bogota → Tunja → bajar por El Sisga → Macanal (ferry) → via destapada → Chivor. Tiempo total aprox 5-6 horas. El ferry funciona lunes a domingo de 6:00 am a 5:20 pm. Despues del ferry son ~40 min hasta Chivor.",
+            "alternateRoute": "Via Region del Guavio por Ubala: Bogota → Ubala → Hacienda El Recuerdo/Chivor. Esta ruta NO es la recomendada para carro normal: solo aplica para moto o carro 4x4. Desde Ubala hasta la Hacienda son aprox 35 km por via rural. Siempre validar estado de las vias antes de viajar.",
+            "localAccess": "El tour inicia y termina en Chivor. Para carro normal o carro no 4x4, la opcion correcta es llegar por Chivor pueblo, dejar el vehiculo seguro y usar nuestro transporte local 4x4 hacia la mina. La ruta por Ubala solo es para moto o 4x4.",
+            "arrivalTips": "Hay dos formas de programar la salida desde Bogota, y ambas son validas. OPCION A (la mas comun): salir muy temprano, alrededor de 4:30 am, para llegar a Chivor antes de 10:30 am y alcanzar a hacer la jornada minera ese mismo dia. OPCION B (llegada con calma): salir mas tarde, teniendo en cuenta que las 2:00 pm son la HORA LIMITE de salida, no la recomendada, para no terminar manejando de noche en zona rural; con esta opcion se llega en la tarde, se hace la charla esmeraldera al llegar y la mina queda para la manana siguiente. En cualquier caso, salir de Bogota minimo 5 horas antes del inicio del tour. Si el tour es al dia siguiente del dia de llegada, estos horarios aplican al dia anterior. Se puede llegar en moto o carro, pero carro no 4x4 debe entrar por Chivor, no por Ubala.",
+            "ferryInfo": "Ferry en Macanal. Horario: lunes a domingo 6:00 am a 5:20 pm. Es el unico cruce disponible para llegar a Chivor via Valle de Tenza.",
+            "botRules": [
+              "Comparti la ruta exacta si el cliente pregunta: Bogota → Tunja → Sisga → Macanal → ferry → Chivor (via Valle de Tenza).",
+              "Tambien menciona la via alterna por Ubala (Region del Guavio), pero aclara que NO es la recomendada para carro normal: solo moto o 4x4. De Ubala a la Hacienda son ~35 km por via rural.",
+              "Menciona el horario del ferry (6am-5:20pm) si preguntan por logistica.",
+              "Si el cliente tiene carro no 4x4, explicale que debe llegar por Chivor pueblo, dejarlo seguro en el pueblo y nosotros lo llevamos a la mina.",
+              "El tour empieza y termina en Chivor. Si tienen vehiculo propio pueden llegar por Chivor; solo moto o 4x4 puede considerar Ubala.",
+              "Si una persona pregunta por que el transporte privado es costoso, explica que es un servicio 4x4 puerta a puerta con recogida en casa u hotel e ida y regreso Bogota-Chivor-Bogota, de aproximadamente 5-6 horas por trayecto. El mismo valor cubre hasta 4 personas y conviene mas al compartirlo en grupo. Para una persona sola, recomienda primero carro propio o moto; como alternativa mas economica, bus publico desde Bogota o Tunja comprado por su cuenta.",
+              "Recomenda salir de Bogota con 5 horas de anticipacion o maximo 2pm. Siempre sugiere validar estado de vias antes de viajar.",
+              "Si el tour es al dia siguiente, el cliente puede llegar el dia anterior antes de las 2pm.",
+              "Para bus publico: desde Bogota sale aproximadamente a las 7:00 am desde Terminal Salitre; desde Tunja, aproximadamente a las 5:00 am. Hay pocas salidas al dia. Estos horarios son de referencia, no una garantia.",
+              "El pasaje de bus publico cuesta aproximadamente $60.000 COP por persona y por trayecto. El cliente lo compra por su cuenta y no se suma al valor del plan.",
+              "Antes de viajar en bus publico, pide al cliente validar horario actualizado y disponibilidad directamente con Flota Valle de Tenza o Flota La Macarena. No asignes una empresa especifica a Bogota o Tunja ni inventes otros horarios, terminales, tarifas o disponibilidad.",
+              "Quien llega en bus publico debe coordinar la experiencia para hacer la visita minera al dia siguiente; no prometas mina la misma manana de llegada.",
+              "La ruta y el ferry descritos para carro propio no aplican automaticamente al bus publico. No menciones ferry al explicar bus salvo que el cliente pregunte especificamente por ese cruce."
+            ]
+          },
+          "shortDescription": "Aventura Minera 2 Dias/1 Noche en Hacienda El Recuerdo, Chivor (Boyaca). Experiencia inmersiva de aventura real — no es un plan turistico convencional. Mina con lodo y agua, caminatas, comunidad local. Plan todo incluido: alojamiento, 3 comidas, mina, charla esmeraldera. Pet-friendly. Para quien busca algo autentico, no piscina con vista.",
+          "fullDescription": "Para que lo tengas claro: esta NO es una experiencia de descanso con piscina. Es una aventura real de 2 dias y 1 noche con caminatas, esfuerzo fisico, terrenos rurales, lodo y humedad dentro de la mina. El ultimo tramo de via es en carretera terciaria (destapada). Si vienes en carro propio, debe estar preparado para via sin pavimentar. No es un plan para quien busca un tour facil de pocas horas — es para quienes quieren vivir algo genuino al lado de la comunidad esmeraldera. Somos pet-friendly. Edad minima: 5 anios. Ideal para personas que les gusta caminar y las aventuras. La Hacienda El Recuerdo es una finca dedicada a la ganaderia y apicultura, con ambiente rural comodo para descansar. Tiene WiFi para trabajar remotamente si se requiere. La distancia desde Bogota hace necesario el hospedaje. Se recomienda llegar a Chivor maximo 10:30 am si se quiere hacer la mina el mismo dia, lo que implica salir de Bogota alrededor de 4:30 am; la alternativa es salir maximo a las 2:00 pm (hora limite para no manejar de noche), llegar en la tarde y hacer la mina a la manana siguiente. La experiencia minera dura ~6 horas y termina en la tarde, por eso se incluye alojamiento con 3 comidas. Menu local estandar, se tienen en cuenta restricciones alimentarias. Para vehiculo propio, la opcion mas segura y cercana es llegar por Chivor. Si el cliente tiene carro que no es 4x4, debe llegar a Chivor pueblo, dejarlo en un lugar seguro y nosotros lo transportamos a las minas en vehiculo 4x4 (~45 min). La ruta por Ubala solo aplica para moto o carro 4x4; desde Ubala hasta la Hacienda son ~35 km por via rural. Si el cliente viaja en bus publico, debe comprarlo directamente por su cuenta en la terminal que corresponda segun su ciudad de origen (Bogota, Tunja u otra). El costo del bus NO se suma al precio final del plan; solo se orienta al cliente y se validan horarios para cumplir el itinerario. Si se necesita transporte privado 4x4 desde Bogota, tiene costo adicional (capacidad maxima 4 personas, mismo precio para 1-4 personas; grupos mas grandes requieren vehiculos adicionales); el equipo confirma el valor. Cancelacion o reagendamiento: maximo 2 veces, hasta 4 dias antes del tour. Despues de eso no se hacen reembolsos de reservas. Traductor disponible con costo adicional.",
+          "included": [
+            "1 noche de alojamiento en Hacienda El Recuerdo",
+            "Habitacion privada con cama doble y bano privado",
+            "3 comidas completas por persona: desayuno, almuerzo fiambre, cena (menu local estandar, se tienen en cuenta restricciones alimentarias)",
+            "Jornada minera total de unas 6 horas; el tiempo subterraneo varia. Puede alcanzar aproximadamente 300m de profundidad.",
+            "Equipo de seguridad completo: casco, botas, guia durante toda la actividad",
+            "Seguro de asistencia medica, sin personal medico presencial.",
+            "Charla minera con artesanos locales al llegar",
+            "Taller y charla esmeraldera (~1 hora)",
+            "Transporte local 4x4 desde Chivor pueblo hasta la mina (~45 min, si el cliente no tiene 4x4)",
+            "Acompanamiento local (Chivor → Hacienda)"
+          ],
+          "notIncludedUnlessConfirmed": [
+            "Transporte desde la ciudad de origen. Privado 4x4 desde Bogota tiene costo adicional. Bus publico lo compra el cliente por su cuenta y no se suma al precio del plan.",
+            "Traductor (disponible con costo adicional)",
+            "Comidas adicionales",
+            "Seguro de viaje integral (distinto del seguro de asistencia medica incluido durante la experiencia)",
+            "Gastos personales",
+            "Guía de ruta / acompañamiento en carretera"
+          ],
+          "whatToBring": [
+            "Zapatos que se puedan mojar y ensuciar (el lodo es real)",
+            "Ropa de cambio completa (vas a sudar y probablemente mojarte)",
+            "Toalla pequeña",
+            "Chaqueta ligera o impermeable",
+            "Botella de agua",
+            "Protector solar",
+            "Gorra o sombrero",
+            "Medicina personal",
+            "Ropa comoda para caminos rurales",
+            "Efectivo para gastos locales"
+          ],
+          "haciendaInfo": {
+            "name": "Hacienda El Recuerdo",
+            "activities": "Ganaderia y apicultura",
+            "amenities": [
+              "WiFi para trabajo remoto",
+              "Ambiente rural comodo",
+              "Descanso en finca"
+            ],
+            "notes": "Finca ganadera y apicola con alojamiento rural comodo."
+          },
+          "safetyInfo": {
+            "equipment": "Casco, botas de seguridad y guia acompanante durante toda la actividad minera.",
+            "medicalSupport": "Seguro de asistencia medica incluido; no hay personal sanitario presencial. La asistencia se activa mediante el seguro si se requiere.",
+            "regionSecurity": "El Valle de Tenza es una region tranquila; el equipo valida las condiciones operativas antes de cada salida.",
+            "notes": [
+              "La mina tiene ingreso controlado y siempre se entra con guia.",
+              "Se deben informar condiciones medicas preexistentes antes de la actividad.",
+              "No recomendada para personas con movilidad severamente reducida."
+            ]
+          },
+          "mineDetails": {
+            "type": "Minas reales de esmeralda de la zona esmeraldifera: algunas de operacion artesanal y otras de mayor movimiento o escala. No son minas de carbon ni tienen relacion con la mineria de carbon.",
+            "multipleMines": true,
+            "notes": "Se visita una mina aliada segun condiciones del dia. La jornada total ronda 6 horas; el tiempo subterraneo varia. Puede haber agua, lodo y terreno irregular. Se ingresa con equipo y guia local."
+          },
+          "climateInfo": {
+            "altitude": "~2,000 msnm",
+            "temperature": "Frio. Llevar chaqueta ligera para la noche.",
+            "rainySeason": "Mayo a agosto (epoca de lluvias)",
+            "drySeason": "Final e inicio de anio (diciembre a febrero, epoca mas seca)",
+            "notes": "Clima frio por altura. Dentro de la mina hay zonas humedas. En epoca de lluvias (mayo-agosto) se recomienda ropa impermeable adicional."
+          },
+          "difficulty": {
+            "level": "Moderate",
+            "notes": [
+              "Caminatas en terreno rural irregular, lodo, humedad dentro de la mina y esfuerzo fisico moderado.",
+              "No es un plan de descanso ni un paseo de pocas horas. Es aventura real con comunidad local.",
+              "No recomendado para personas con movilidad severamente reducida o que busquen una experiencia de descanso."
+            ]
+          },
+          "experienceReality": {
+            "whatItIs": "Una aventura autentica de 2 dias al lado de mineros y comunidad local en la region esmeraldera de Colombia. Experiencia inmersiva: caminas, te metes a la mina de verdad, te mojas, compartes con la gente local. No es un tour montado para turistas — es la vida real de la region.",
+            "whatItIsNot": "No es un plan de piscina, ni un paseo de pocas horas, ni un tour masivo. No es para quien busca comodidad tipo hotel todo el tiempo. Es rustico, real y genuino.",
+            "physicalDemands": "Jornada total de unas 6 horas con traslados, caminatas e ingreso variable a la mina. Terreno irregular, humedad, lodo y esfuerzo moderado.",
+            "roadConditions": "Los ultimos tramos son carretera terciaria (destapada). Para carro normal o carro no 4x4, la opcion correcta es llegar por Chivor pueblo y dejar el vehiculo seguro; el acceso local a la mina se hace en nuestro 4x4. La ruta por Ubala solo aplica para moto o carro 4x4; desde Ubala hasta la Hacienda son aprox 35 km por via rural.",
+            "idealFor": "Personas con ganas de aventura real, que disfrutan la naturaleza, la cultura local y no le tienen miedo al lodo ni al esfuerzo fisico. Viajeros que buscan experiencias autenticas, no turismo de vitrina.",
+            "notIdealFor": "Personas que buscan descanso, piscina, planes urbanos, o que no estan dispuestas a caminar o mojarse. No recomendado para movilidad severamente reducida."
+          },
+          "safetyFaqs": [
+            {
+              "lang": "es",
+              "intent": "activities",
+              "question": "¿Qué actividades incluye?",
+              "answer": "Incluye jornada minera total de unas 6 horas, con tiempo subterraneo variable; taller esmeraldero (~1h), charla, alojamiento y 3 comidas."
+            },
+            {
+              "lang": "en",
+              "intent": "activities",
+              "question": "What activities are included?",
+              "answer": "Includes an approximately 6-hour mining day with variable underground time, an emerald workshop (~1h), a local talk, 1 night lodging, and 3 meals."
+            },
+            {
+              "lang": "es",
+              "intent": "arrival",
+              "question": "¿A qué hora debo llegar?",
+              "answer": "El tour empieza y termina en Chivor. En el plan 2D/1N hay dos formas de organizarlo: si llegas temprano en la manana, puedes hacer la experiencia minera ese mismo dia; si prefieres llegar con calma, haces la charla minera al llegar y al segundo dia en la manana haces la mina, regresando a Chivor al final del dia. Sobre la hora de salida desde Bogota: la mayoria sale muy temprano, alrededor de 4:30 am, para llegar a Chivor antes de 10:30 am y hacer la mina ese mismo dia. Si prefieres salir mas tarde, las 2:00 pm son la hora limite (no la recomendada) para no terminar manejando de noche en zona rural. Recorda validar el estado de las vias antes de viajar."
+            },
+            {
+              "lang": "en",
+              "intent": "arrival",
+              "question": "What time should I arrive?",
+              "answer": "The tour starts and ends in Chivor. About departure time from Bogota: most travelers leave very early, around 4:30 am, to reach Chivor before 10:30 am and do the mine the same day. If you prefer a later start, 2:00 pm is the latest possible departure, not the recommended one, to avoid driving at night on rural roads. If you're arriving the day before the tour, the same timing applies. If you have your own vehicle, you can drive directly to Hacienda El Recuerdo. Remember to check road conditions before traveling."
+            },
+            {
+              "lang": "es",
+              "intent": "reservation_lead_time",
+              "question": "¿Con cuánta anticipación se reserva?",
+              "answer": "No manejamos un plazo fijo: depende de la fecha y de la logistica del grupo. Si nos escribes con anticipacion, el equipo puede validar disponibilidad real antes de confirmar cualquier cupo."
+            },
+            {
+              "lang": "en",
+              "intent": "reservation_lead_time",
+              "question": "How far in advance should I book?",
+              "answer": "We do not use a fixed lead time: it depends on the date and group logistics. If you contact us in advance, the team can validate real availability before confirming any spot."
+            },
+            {
+              "lang": "es",
+              "intent": "physical_recovery",
+              "question": "¿Puedo hacer la experiencia si me estoy recuperando de una fractura?",
+              "answer": "Si estas en recuperacion de una fractura o tienes movilidad limitada, te recomendamos validarlo primero con tu medico. La experiencia tiene caminatas, terreno rural, lodo y zonas humedas; no vale la pena arriesgar tu recuperacion."
+            },
+            {
+              "lang": "en",
+              "intent": "physical_recovery",
+              "question": "Can I do the experience while recovering from a fracture?",
+              "answer": "If you are recovering from a fracture or have limited mobility, we recommend checking with your doctor first. The experience includes walks, rural terrain, mud, and wet areas; it is not worth risking your recovery."
+            }
+          ],
+          "entrySegments": {
+            "C01": {
+              "label": "Familiar Adventure / General",
+              "description": "Usuario que busca aventura familiar o grupal sin transporte específico.",
+              "valueHook": "Es una inmersión real en la zona esmeraldera: mina con guías locales, noche en hacienda y desconexión total. Adaptamos el ritmo para tu grupo.",
+              "diagnosisQuestion": "¿Qué les atrae más: la experiencia minera intensa, o prefieren un ritmo que incluya actividades rurales como apicultura y naturaleza?",
+              "planMatch": "2D/1N estándar, ajustable según grupo y transporte.",
+              "contextualMediaTypes": ["mine"]
+            },
+            "C02": {
+              "label": "4x4 / Off-Road Adventure",
+              "description": "Usuario entusiasta de 4x4 y off-road.",
+              "valueHook": "La ruta a Chivor es todo un reto 4x4: carretera destapada, ferry en Macanal y acceso a la mina por caminos que solo vehículos preparados disfrutan.",
+              "diagnosisQuestion": "¿Traen su 4x4 para vivir la ruta completa, o prefieren llegar con su vehículo y que el equipo los mueva en nuestro 4x4 local?",
+              "planMatch": "2D/1N con énfasis en ruta desafiante. Si vienen en vehículo propio, confirmamos compatibilidad.",
+              "contextualMediaTypes": ["car", "mine"]
+            },
+            "C03": {
+              "label": "Moto / Bike Adventure",
+              "description": "Usuario interesado en rutas en motocicleta.",
+              "valueHook": "Por la Región del Guavio son unos 35 km de vía rural desde Ubalá hasta la Hacienda; esa ruta solo aplica para moto o 4x4. Conviene validar el estado de las vías antes de viajar.",
+              "diagnosisQuestion": "¿Vienen en moto para la ruta completa, o prefieren llegar por Chivor y que nos movamos en vehículo a la mina?",
+              "planMatch": "2D/1N diseñado para moto riders. Confirmamos que traen equipamiento adecuado.",
+              "contextualMediaTypes": ["bike", "mine"]
+            },
+            "C04": {
+              "label": "Kids / Family Mining Education",
+              "description": "Familia con niños interesada en experiencia educativa y minería.",
+              "valueHook": "Los niños aman las minas (¡Minecraft es real aquí!). Tenemos guías especializados en niños, comidas adaptadas y actividades como apicultura que los encantarán.",
+              "diagnosisQuestion": "¿Qué edades tienen los niños? Así aseguramos guías, comidas y actividades pensadas para ellos.",
+              "planMatch": "2D/1N con enfoque family-friendly. Ajustamos ritmo y comidas según edades.",
+              "contextualMediaTypes": ["kids", "mine"]
+            },
+            "H01": {
+              "label": "Hot Lead - General",
+              "description": "Lead con alto intent desde funnel, sin transporte específico.",
+              "valueHook": "",
+              "diagnosisQuestion": "¿Qué les atrae más: la intensidad de la mina, o prefieren un ritmo que incluya más naturaleza y actividades?",
+              "planMatch": "Cualquier plan. Confirmamos fechas disponibles.",
+              "contextualMediaTypes": ["mine"]
+            },
+            "H02": {
+              "label": "Hot Lead - 4x4",
+              "description": "Lead con alto intent desde funnel, interesado en ruta 4x4.",
+              "valueHook": "",
+              "diagnosisQuestion": "¿Traen su 4x4 para vivir la ruta, o prefieren llevar su auto normal y que el equipo los mueva en nuestro 4x4 local?",
+              "planMatch": "2D/1N con énfasis en ruta 4x4. Confirmamos transporte y fechas.",
+              "contextualMediaTypes": ["car", "mine"]
+            },
+            "H03": {
+              "label": "Hot Lead - Moto",
+              "description": "Lead con alto intent desde funnel, interesado en ruta moto.",
+              "valueHook": "",
+              "diagnosisQuestion": "¿Vienen en moto para la ruta completa, o prefieren llegar por Chivor y que nos movamos en vehículo?",
+              "planMatch": "2D/1N diseñado para moto riders. Confirmamos equipamiento y fechas.",
+              "contextualMediaTypes": ["bike", "mine"]
+            },
+            "H04": {
+              "label": "Hot Lead - Kids",
+              "description": "Lead con alto intent desde funnel, interesado en experiencia para niños.",
+              "valueHook": "",
+              "diagnosisQuestion": "¿Qué edades traen? Así aseguramos guías, comidas y actividades pensadas para cada uno.",
+              "planMatch": "2D/1N family-friendly. Ajustamos según edades y preferencias.",
+              "contextualMediaTypes": ["kids", "mine"]
+            },
+            "R01": {
+              "label": "Returning - General",
+              "description": "Lead que tuvo conversación previa pero no reservó.",
+              "valueHook": "Venías mirando la experiencia y tenías un plan en mente. ¿Qué te frenó la última vez: fecha, precio, logística o seguridad?",
+              "diagnosisQuestion": "Cuando vimos la experiencia hace poco, ¿qué te frenó: disponibilidad de fecha, presupuesto, logística, o seguridad?",
+              "planMatch": "El plan que ya vieron. Resolver el blocker concreto.",
+              "contextualMediaTypes": ["mine"]
+            },
+            "R02": {
+              "label": "Returning - 4x4",
+              "description": "Lead que tuvo conversación previa pero no reservó, interesado en ruta 4x4.",
+              "valueHook": "Venías buscando la ruta 4x4 desafiante. Resolvamos qué te frenó: ¿fue fecha, precio, logística del viaje o seguridad del vehículo?",
+              "diagnosisQuestion": "Cuando vimos la ruta 4x4 hace poco, ¿qué te frenó: disponibilidad de fecha, presupuesto, cómo transportarte, o dudas sobre el camino?",
+              "planMatch": "2D/1N 4x4. Resolver blocker. Confirmar transporte y fechas disponibles.",
+              "contextualMediaTypes": ["car", "mine"]
+            },
+            "R03": {
+              "label": "Returning - Moto",
+              "description": "Lead que tuvo conversación previa pero no reservó, interesado en ruta moto.",
+              "valueHook": "Te interesó la ruta en moto por Ubalá. ¿Qué nos pasó: fecha que no cuadraba, presupuesto, o detalles de la ruta?",
+              "diagnosisQuestion": "La ruta en moto te había gustado. ¿Qué cambió o qué nos frenó: fecha, precio, logística, o preocupación por la ruta?",
+              "planMatch": "2D/1N moto. Resolver blocker. Confirmar disponibilidad y detalles técnicos.",
+              "contextualMediaTypes": ["bike", "mine"]
+            },
+            "R04": {
+              "label": "Returning - Kids",
+              "description": "Lead que tuvo conversación previa pero no reservó, interesado en experiencia para niños.",
+              "valueHook": "Los niños te fascinaba la idea de la mina. ¿Qué nos pasó para no avanzar: fechas, presupuesto, logística con los niños?",
+              "diagnosisQuestion": "Cuando miramos la experiencia para los niños, ¿qué nos frenó: fechas que no encajaban, presupuesto, preocupación por logística?",
+              "planMatch": "2D/1N family-friendly. Resolver blocker. Confirmar edades de niños y necesidades.",
+              "contextualMediaTypes": ["kids", "mine"]
+            }
+          }
+        }
+      },
+      "name": "Emerald Mining Tour",
+      "agePolicy": {
+        "minimumAge": 5,
+        "notes": "Edad minima 5 anios. No recomendado para ninos menores."
+      },
+      "petPolicy": {
+        "allowed": true,
+        "notes": "Somos pet-friendly. Las mascotas son bienvenidas. Consultar con el equipo para coordinar detalles."
+      },
+      "emeraldPolicy": {
+        "guaranteed": false,
+        "notes": "No podemos asegurar que encuentren una esmeralda. Cuando ocasionalmente pasa, tratamos de compartir los hallazgos con los integrantes del grupo de manera divertida. Sugerimos que ojala pase, pero no es seguro. Es parte de la emocion de la experiencia."
+      },
+      "cancellationPolicy": {
+        "maxReschedules": 2,
+        "deadlineDaysBefore": 7,
+        "refundAfterDeadline": false,
+        "notes": "Se puede cancelar o reagendar maximo 2 veces, hasta 7 dias antes del tour (periodo gratuito). Despues de ese plazo la reprogramacion queda sujeta a gastos ya causados. No hay reembolso del anticipo despues del plazo."
+      }
+    }
+  }
+}

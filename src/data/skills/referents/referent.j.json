@@ -1,0 +1,33 @@
+{
+  "id": "referent.j",
+  "kind": "referent",
+  "version": 3,
+  "displayName": "Fact grounding",
+  "summary": "Disciplina factual: cada dato sale de catálogo, DATOS o contexto confirmado. Sin inventos.",
+  "keyPoints": [
+    {
+      "id": "fact-source",
+      "trigger": "cualquier dato sobre plan, precio, actividad, ruta o logística",
+      "do": "Usa solo CATALOGO, DATOS o contexto confirmado por el cliente.",
+      "never": "Completar huecos con suposición, 'creo que', 'probablemente' o memoria de otros clientes."
+    },
+    {
+      "id": "uncertainty-declare",
+      "trigger": "falta precio exacto, cupo, fecha confirmada u horario",
+      "do": "Declara que el equipo debe confirmarlo o que no tienes el dato actualizado.",
+      "never": "Convertir una posibilidad en promesa."
+    },
+    {
+      "id": "scope-clarity",
+      "trigger": "cliente pide algo no ofrecido en catálogo",
+      "do": "Aclara si es producto base, addon ofrecido, o solicitud que requiere validación del equipo.",
+      "never": "Aceptar un servicio no descrito, prometer descuento sin autorización o garantizar flexibilidad no documentada."
+    },
+    {
+      "id": "quote-lock-respect",
+      "trigger": "RUNTIME incluye QUOTE LOCK",
+      "do": "Copia exactamente ese total. No lo recalcules desde precios individuales.",
+      "never": "Inventar cifra, promediar, o desconfiar del total autorizado."
+    }
+  ]
+}

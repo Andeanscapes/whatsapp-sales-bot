@@ -23,6 +23,13 @@ function apiResponse(content: string | null, extra: Record<string, unknown> = {}
   }), { status: 200, headers: { 'Content-Type': 'application/json' } });
 }
 
+function apiResponseWithFinish(content: string, finishReason: string): Response {
+  return new Response(JSON.stringify({
+    choices: [{ finish_reason: finishReason, message: { content } }],
+    usage: { prompt_tokens: 10, completion_tokens: 800 },
+  }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+}
+
 function requestBody(fetchMock: ReturnType<typeof vi.fn>, index: number): Record<string, unknown> {
   const init = fetchMock.mock.calls[index]?.[1] as RequestInit | undefined;
   expect(init?.body).toBeTruthy();
@@ -40,7 +47,7 @@ afterEach(() => {
 describe('LlmTurn schema (prompt↔client contract)', () => {
   it('validates a complete JSON response from the model', () => {
     const sampleJson = {
-      reply: 'Hola Ana! Claro, el plan 2D/1N en pareja sale en $1,040,000 COP. ¿Qué te parece?',
+      reply: 'Hola Ana! Claro, el plan 2D/1N en pareja sale en $1,000,000 COP. ¿Qué te parece?',
       sales_phase: 'pricing',
       action: 'present_price',
       collected_fields: {
@@ -64,7 +71,7 @@ describe('LlmTurn schema (prompt↔client contract)', () => {
     const result = llmTurnSchema.safeParse(sampleJson);
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.reply).toContain('$1,040,000');
+      expect(result.data.reply).toContain('$1,000,000');
       expect(result.data.sales_phase).toBe('pricing');
       expect(result.data.action).toBe('present_price');
       expect(result.data.collected_fields.name).toBe('Ana');
@@ -152,14 +159,14 @@ describe('LlmTurn schema (prompt↔client contract)', () => {
 
 describe('DeepSeekLlmClient', () => {
   it('sends plain-text request (no JSON mode) and disables thinking', async () => {
-    const plainReply = 'Ana, el plan 2D/1N en pareja sale en $1,040,000 COP.';
+    const plainReply = 'Ana, el plan 2D/1N en pareja sale en $1,000,000 COP.';
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(apiResponse(plainReply));
     vi.stubGlobal('fetch', fetchMock);
 
     const client = new DeepSeekLlmClient(false);
     const result = await client.complete(llmInput);
 
-    expect(result?.turn.reply).toContain('$1,040,000');
+    expect(result?.turn.reply).toContain('$1,000,000');
     expect(result?.turn.action).toBe('answer');
     expect(result?.turn.lead.score_delta).toBe(0);
     const body = requestBody(fetchMock, 0);
@@ -200,6 +207,58 @@ describe('DeepSeekLlmClient', () => {
 
     expect(result).toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects a provider-truncated reply instead of sending partial text', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      apiResponseWithFinish('Respuesta incompleta que termina a mitad de', 'length'),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await new DeepSeekLlmClient(false).complete(llmInput);
+
+    expect(result).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries after a truncated reply and returns the complete replacement', async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(apiResponseWithFinish('Respuesta incompleta', 'length'))
+      .mockResolvedValueOnce(apiResponse('Respuesta completa y segura.'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const onAttempt = vi.fn();
+    const result = await new DeepSeekLlmClient(true).complete({ ...llmInput, onAttempt });
+
+    expect(result?.turn.reply).toBe('Respuesta completa y segura.');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(onAttempt).toHaveBeenNthCalledWith(1, {
+      tokens: { prompt: 10, completion: 800 },
+      success: false,
+    });
+  });
+
+  it('keeps newest complete history messages within the configured context budget', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(apiResponse('Respuesta completa.'));
+    vi.stubGlobal('fetch', fetchMock);
+    const chunk = (label: string) => `${label}:${'x'.repeat(4_990)}`;
+
+    await new DeepSeekLlmClient(false).complete({
+      ...llmInput,
+      history: [
+        { role: 'user' as const, content: chunk('oldest') },
+        { role: 'assistant' as const, content: chunk('middle') },
+        { role: 'user' as const, content: chunk('newest') },
+      ],
+    });
+
+    const body = requestBody(fetchMock, 0);
+    const messages = body.messages as Array<{ role: string; content: string }>;
+    const history = messages.slice(1, -1);
+    expect(history).toHaveLength(2);
+    expect(history[0]?.content).toContain('middle:');
+    expect(history[1]?.content).toContain('newest:');
+    expect(history.some(message => message.content.includes('oldest:'))).toBe(false);
   });
 
   it('parses useful plain text with safe defaults', async () => {

@@ -1,0 +1,33 @@
+{
+  "id": "referent.f",
+  "kind": "referent",
+  "version": 3,
+  "displayName": "Logistics safety",
+  "summary": "Transforma logística y seguridad en confianza: rutas claras, validación operativa, no promesas inventadas.",
+  "keyPoints": [
+    {
+      "id": "logistics-context",
+      "trigger": "cliente pregunta ruta, vehículo, transporte o timing",
+      "do": "Comparte el dato exacto del catálogo y la razón práctica que reduce incertidumbre.",
+      "never": "Inventar horarios, pickup personalizado, descuentos en transporte o rutas no catalogadas."
+    },
+    {
+      "id": "safety-validate",
+      "trigger": "cliente expresa miedo (seguridad, carretera, mina, gente desconocida)",
+      "do": "Valida el miedo y responde con hechos catalogados (equipo, guía, región, apoyo médico).",
+      "never": "Decir 'no te preocupes', esconder riesgos reales u ofrecer garantías."
+    },
+    {
+      "id": "fit-clarity",
+      "trigger": "cliente pregunta si es para él, si aguanta o si conviene",
+      "do": "Describe la demanda real (caminatas, lodo, altura, frío, esfuerzo) y aclara para quién encaja y para quién no.",
+      "never": "Prometer comodidad de hotel, negar esfuerzo o ajustar la experiencia solo para gustar."
+    },
+    {
+      "id": "story-context",
+      "trigger": "cliente pregunta por el lugar o por qué la experiencia es así",
+      "do": "Contextualiza con hechos del catálogo: región real, comunidad local y operación auténtica.",
+      "never": "Exagerar, inventar descubrimientos o romantizar sin bases."
+    }
+  ]
+}
