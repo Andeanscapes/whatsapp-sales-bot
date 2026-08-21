@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { calculatePriceQuote } from '../../services/pricing-calculator.js';
+import { getActiveExperience } from '../../services/product-registry.js';
+import { getSkills, loadSkills } from '../../services/skill-loader.js';
 import { evaluateScenario } from './evaluate-scenario.js';
 import { scenarioSchema } from './schema.js';
 import type { TurnRecord } from './runner.js';
@@ -74,13 +77,42 @@ describe('conversation criteria', () => {
   });
 
   it('passes an exact group quote from the product registry', () => {
-    const input = scenario([{ id: 'quote', rule: 'group_quote_integrity', people: 4, planId: '2d1n_mining', expectedTotal: 2000000, weight: 1, critical: true }]);
-    expect(evaluateScenario(input, [turn('Somos 4', 'Para 4 personas, el valor total es $2,000,000 COP.')]).score).toBe(100);
+    loadSkills();
+    const quote = calculatePriceQuote(getActiveExperience(getSkills()), {
+      planId: '2d1n_mining',
+      people: 4,
+      transportNeed: 'own',
+    });
+    const expectedTotal = quote?.planTotal;
+    expect(expectedTotal).toBeTypeOf('number');
+    const formatted = expectedTotal!.toLocaleString('en-US');
+    const input = scenario([{ id: 'quote', rule: 'group_quote_integrity', people: 4, planId: '2d1n_mining', expectedTotal, weight: 1, critical: true }]);
+    expect(evaluateScenario(input, [turn('Somos 4', `Para 4 personas, el valor total es $${formatted} COP.`)]).score).toBe(100);
   });
 
   it('fails a quote for the wrong group size', () => {
-    const input = scenario([{ id: 'quote', rule: 'group_quote_integrity', people: 4, planId: '2d1n_mining', expectedTotal: 2000000, weight: 1, critical: true }]);
+    loadSkills();
+    const quote = calculatePriceQuote(getActiveExperience(getSkills()), {
+      planId: '2d1n_mining',
+      people: 4,
+      transportNeed: 'own',
+    });
+    const expectedTotal = quote?.planTotal ?? 0;
+    const input = scenario([{ id: 'quote', rule: 'group_quote_integrity', people: 4, planId: '2d1n_mining', expectedTotal, weight: 1, critical: true }]);
     expect(evaluateScenario(input, [turn('Somos 4', 'Para 2 personas, el valor total es $1,000,000 COP.')]).hardFail).toBe(true);
+  });
+
+  it('fails when a quote includes both a wrong and the expected total', () => {
+    loadSkills();
+    const quote = calculatePriceQuote(getActiveExperience(getSkills()), {
+      planId: '2d1n_mining',
+      people: 5,
+      transportNeed: 'own',
+    });
+    const expectedTotal = quote?.planTotal ?? 0;
+    const input = scenario([{ id: 'quote', rule: 'group_quote_integrity', people: 5, planId: '2d1n_mining', expectedTotal, weight: 1, critical: true }]);
+
+    expect(evaluateScenario(input, [turn('Somos 5', `Antes $2.500.000. Para 5 personas son $${expectedTotal.toLocaleString('en-US')} COP.`)]).hardFail).toBe(true);
   });
 
   it('enforces max question marks', () => {

@@ -69,4 +69,14 @@ describe('/block command routing guard', () => {
     expect(reply).toContain('bloqueado');
     expect(repos.optOut.isOptedOut(PHONE)).toBe(true);
   });
+
+  it('revokes template consent so a blocked lead cannot receive a granted template', async () => {
+    repos.conversation.setAssignment(PHONE, { assignedLineId: 'line1_bridge', assignedAgentChat: '111' });
+    repos.followupConsent.grantConsent(PHONE, 'telegram:111');
+
+    await blockHandler({ repos, chatId: 111, args: [PHONE] });
+
+    expect(repos.followupConsent.hasConsent(PHONE)).toBe(false);
+    expect(repos.followupSubscription.getByPhone(PHONE)?.revoke_source).toBe('operator');
+  });
 });

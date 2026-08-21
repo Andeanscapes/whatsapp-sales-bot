@@ -1,4 +1,6 @@
 import type { ConversationRow, RecentMessage } from '../db/repositories/types.js';
+import { formatAdReferral } from '../services/ad-referral.js';
+import { formatChildAges } from '../services/qualification-format.js';
 
 const MAX_HISTORY_CHARS = 3500;
 
@@ -19,7 +21,12 @@ function formatRecentMessage(message: RecentMessage): string {
   return `${prefix}: ${md(content)}`;
 }
 
-export function formatLeadHistory(conv: ConversationRow, recentMessages: RecentMessage[]): string {
+/**
+ * Lead field card without the message history. Shared by the text-only
+ * `formatLeadHistory` and by the photo replay, so the two can never disagree on
+ * which fields an operator sees.
+ */
+export function formatLeadCard(conv: ConversationRow): string {
   const lines: string[] = [
     '*Lead*',
     `Phone: ${md(conv.customer_phone)}`,
@@ -31,10 +38,24 @@ export function formatLeadHistory(conv: ConversationRow, recentMessages: RecentM
   if (conv.assigned_line_id) lines.push(`Assigned line: ${md(conv.assigned_line_id)}`);
   if (conv.collected_name) lines.push(`Name: ${md(conv.collected_name)}`);
   if (conv.collected_people) lines.push(`People: ${conv.collected_people}`);
+  if (conv.collected_adults != null) lines.push(`Adults: ${conv.collected_adults}`);
+  if (conv.collected_children != null) lines.push(`Children: ${conv.collected_children}`);
+  const childAges = formatChildAges(conv.collected_child_ages_json);
+  if (childAges) lines.push(`Child ages: ${childAges}`);
+  if (conv.collected_travel_origin) lines.push(`Origin: ${md(conv.collected_travel_origin)}`);
   if (conv.collected_date) lines.push(`Date: ${md(conv.collected_date)}`);
   if (conv.collected_plan) lines.push(`Plan: ${md(conv.collected_plan)}`);
   if (conv.collected_transport_need) lines.push(`Transport: ${md(conv.collected_transport_need)}`);
   if (conv.lead_intent) lines.push(`Intent: ${md(conv.lead_intent)}`);
+  if (conv.entry_marker) lines.push(`Entry: ${md(conv.entry_marker)} (${md(conv.entry_temperature ?? 'unknown')})`);
+  const adReferral = formatAdReferral(conv.ad_referral_json);
+  if (adReferral) lines.push(`Ad: ${md(adReferral)}`);
+
+  return lines.join('\n');
+}
+
+export function formatLeadHistory(conv: ConversationRow, recentMessages: RecentMessage[]): string {
+  const lines: string[] = [formatLeadCard(conv)];
 
   lines.push('', '*Recent messages*');
   if (recentMessages.length === 0) lines.push('No messages yet.');

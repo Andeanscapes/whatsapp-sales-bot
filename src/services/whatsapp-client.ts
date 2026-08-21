@@ -1,6 +1,7 @@
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 import { reportWhatsAppApiFailure, reportWhatsAppApiSuccess } from './whatsapp-operational-health.js';
+import { z } from 'zod';
 
 const WHATSAPP_FETCH_TIMEOUT_MS = 10_000;
 /** Binary media transfers (download/upload) need more headroom than JSON message calls. */
@@ -11,11 +12,35 @@ export class WhatsAppSendError extends Error {
     message: string,
     readonly deliveryUncertain: boolean,
     readonly retryable = false,
+    readonly metaCode?: string,
   ) {
     super(message);
     this.name = 'WhatsAppSendError';
   }
 }
+
+interface MetaErrorBody {
+  error?: {
+    code?: number;
+    error_subcode?: number;
+    message?: string;
+  };
+}
+
+function extractMetaErrorCode(body: string): string | undefined {
+  try {
+    const parsed = JSON.parse(body) as MetaErrorBody;
+    const { error } = parsed;
+    if (!error) return undefined;
+    if (error.error_subcode != null) return `${error.code ?? '?'}:${error.error_subcode}`;
+    return error.code != null ? String(error.code) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** WhatsApp rejects image captions longer than this, so a long reply must be sent as text. */
+export const MAX_IMAGE_CAPTION_CHARS = 1024;
 
 /** WhatsApp Cloud API image limit is 5MB; cap inbound downloads to protect memory. */
 export const MAX_MEDIA_BYTES = 5 * 1024 * 1024;
@@ -54,7 +79,104 @@ async function readCappedBuffer(res: Response, maxBytes: number): Promise<Buffer
   return buffer;
 }
 
-export async function sendText(to: string, text: string): Promise<void> {
+export interface TemplateSendResult {
+  whatsappMessageId: string;
+}
+
+export interface TextSendResult {
+  /**
+   * `null` when Meta answered 2xx with an unexpected body. The message may still
+   * have been delivered, so callers must not retry on the strength of a null id.
+   */
+  whatsappMessageId: string | null;
+}
+
+const templateResponseSchema = z.object({
+  messages: z.array(z.object({ id: z.string().min(1) })).min(1),
+});
+
+/**
+ * Sends an approved Meta message template. This is the only outbound path
+ * allowed outside the 24h customer service window (see
+ * docs/skills-architecture.md — the LLM never composes this text; the
+ * template body is fixed and Meta-approved, only `bodyParams` and
+ * `headerImageUrl` are filled deterministically by the caller).
+ */
+export async function sendTemplate(
+  to: string,
+  templateName: string,
+  languageCode: string,
+  bodyParams: string[],
+  headerImageUrl?: string,
+): Promise<TemplateSendResult> {
+  const url = `https://graph.facebook.com/${env.WHATSAPP_GRAPH_API_VERSION}/${env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
+  const components: Record<string, unknown>[] = [];
+  if (headerImageUrl) {
+    components.push({ type: 'header', parameters: [{ type: 'image', image: { link: headerImageUrl } }] });
+  }
+  if (bodyParams.length > 0) {
+    components.push({ type: 'body', parameters: bodyParams.map(text => ({ type: 'text', text })) });
+  }
+
+  logger.info({ to, templateName, languageCode }, '[WHATSAPP] sending template');
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      signal: AbortSignal.timeout(WHATSAPP_FETCH_TIMEOUT_MS),
+      headers: {
+        'Authorization': `Bearer ${env.WHATSAPP_ACCESS_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to,
+        type: 'template',
+        template: {
+          name: templateName,
+          language: { code: languageCode },
+          components,
+        },
+      }),
+    });
+  } catch (error) {
+    void reportWhatsAppApiFailure({ operation: 'envio de plantilla' });
+    throw new WhatsAppSendError(error instanceof Error ? error.message : 'WhatsApp transport failed', true);
+  }
+  if (!response.ok) {
+    const errBody = await response.text().catch(() => '');
+    logger.warn({ status: response.status, templateName, errBody: errBody.slice(0, 500) }, '[WHATSAPP] template send failed');
+    void reportWhatsAppApiFailure({ operation: 'envio de plantilla', status: response.status });
+    const retryable = response.status === 429 || response.status >= 500;
+    const metaCode = extractMetaErrorCode(errBody);
+    throw new WhatsAppSendError(
+      metaCode ? `WhatsApp API error: HTTP ${response.status} (meta ${metaCode})` : `WhatsApp API error: HTTP ${response.status}`,
+      false,
+      retryable,
+      metaCode,
+    );
+  }
+  void reportWhatsAppApiSuccess();
+  const parsed = templateResponseSchema.safeParse(await response.json().catch(() => null));
+  if (!parsed.success) {
+    void reportWhatsAppApiFailure({ operation: 'respuesta de plantilla invalida' });
+    throw new WhatsAppSendError('WhatsApp template response was invalid', true);
+  }
+  const whatsappMessageId = parsed.data.messages[0].id;
+  logger.info({ to, templateName, whatsappMessageId }, '[WHATSAPP] template sent ok');
+  return { whatsappMessageId };
+}
+
+/**
+ * Sends a free-form text. Allowed ONLY inside the 24h customer service window.
+ *
+ * Exposes the Meta message id for callers that need provenance, but an
+ * unparsable 2xx body is NOT an error here: every customer reply, alert and
+ * bridge message goes through this function, and they must not start failing
+ * over a response-shape change. Callers that require the id use
+ * `sendTextWithId()`.
+ */
+export async function sendText(to: string, text: string): Promise<TextSendResult> {
   const url = `https://graph.facebook.com/${env.WHATSAPP_GRAPH_API_VERSION}/${env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
   logger.info({ to, textLen: text.length }, '[WHATSAPP] sending text');
   let response: Response;
@@ -78,13 +200,51 @@ export async function sendText(to: string, text: string): Promise<void> {
     throw new WhatsAppSendError(error instanceof Error ? error.message : 'WhatsApp transport failed', true);
   }
   if (!response.ok) {
-    logger.warn({ status: response.status, to, phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID }, '[WHATSAPP] text send failed');
+    // Meta's error code is the only way to tell an expired token (190) from a
+    // policy block (368) from a recipient-not-allowlisted test number (131030).
+    // Without it a 403 is undiagnosable, so log the body like sendTemplate does.
+    const errBody = await response.text().catch(() => '');
+    const metaCode = extractMetaErrorCode(errBody);
+    logger.warn(
+      { status: response.status, to, phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID, metaCode, errBody: errBody.slice(0, 500) },
+      '[WHATSAPP] text send failed',
+    );
     void reportWhatsAppApiFailure({ operation: 'envio de texto', status: response.status });
     const retryable = response.status === 429 || response.status >= 500;
-    throw new WhatsAppSendError(`WhatsApp API error: HTTP ${response.status}`, false, retryable);
+    throw new WhatsAppSendError(
+      metaCode ? `WhatsApp API error: HTTP ${response.status} (meta ${metaCode})` : `WhatsApp API error: HTTP ${response.status}`,
+      false,
+      retryable,
+      metaCode,
+    );
   }
   void reportWhatsAppApiSuccess();
-  logger.info({ to }, '[WHATSAPP] text sent ok');
+  // Reuses the template response shape: Meta returns the same `messages[0].id`.
+  const parsed = templateResponseSchema.safeParse(await response.json().catch(() => null));
+  if (!parsed.success) {
+    // 2xx: Meta accepted the message. Report the missing id without failing the
+    // send, and never fabricate one.
+    logger.warn({ to }, '[WHATSAPP] text sent but response carried no message id');
+    return { whatsappMessageId: null };
+  }
+  const whatsappMessageId = parsed.data.messages[0].id;
+  logger.info({ to, whatsappMessageId }, '[WHATSAPP] text sent ok');
+  return { whatsappMessageId };
+}
+
+/**
+ * Strict variant for callers that must persist which outbound carried a message
+ * (currently the follow-up consent ask, whose reply has to be attributable).
+ *
+ * A 2xx without an id is reported as `deliveryUncertain`: Meta may hold the
+ * message, so the caller must record it as terminal and never retry.
+ */
+export async function sendTextWithId(to: string, text: string): Promise<{ whatsappMessageId: string }> {
+  const { whatsappMessageId } = await sendText(to, text);
+  if (!whatsappMessageId) {
+    throw new WhatsAppSendError('WhatsApp text response carried no message id', true);
+  }
+  return { whatsappMessageId };
 }
 
 export interface DownloadedMedia {
@@ -131,7 +291,15 @@ export async function downloadMedia(mediaId: string): Promise<DownloadedMedia> {
   return { buffer, mimeType };
 }
 
-export async function sendImageUrl(to: string, imageUrl: string, caption: string): Promise<void> {
+/**
+ * Sends an image by public URL with an optional caption.
+ *
+ * Like `sendText`, an unparsable 2xx body is NOT an error here: this is the main
+ * customer reply path (plan card, contextual photo) and it must not start failing
+ * over a response-shape change. Callers that require the id use
+ * `sendImageUrlWithId()`.
+ */
+export async function sendImageUrl(to: string, imageUrl: string, caption: string): Promise<TextSendResult> {
   const url = `https://graph.facebook.com/${env.WHATSAPP_GRAPH_API_VERSION}/${env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
   logger.info({ to, captionLen: caption.length, imageUrl: imageUrl.slice(0, 80) }, '[WHATSAPP] sending image');
   const response = await fetch(url, {
@@ -154,7 +322,30 @@ export async function sendImageUrl(to: string, imageUrl: string, caption: string
     throw new Error(`WhatsApp API error: HTTP ${response.status}`);
   }
   void reportWhatsAppApiSuccess();
-  logger.info({ to }, '[WHATSAPP] image sent ok');
+  // Reuses the template response shape: Meta returns the same `messages[0].id`.
+  const parsed = templateResponseSchema.safeParse(await response.json().catch(() => null));
+  if (!parsed.success) {
+    logger.warn({ to }, '[WHATSAPP] image sent but response carried no message id');
+    return { whatsappMessageId: null };
+  }
+  logger.info({ to, whatsappMessageId: parsed.data.messages[0].id }, '[WHATSAPP] image sent ok');
+  return { whatsappMessageId: parsed.data.messages[0].id };
+}
+
+/**
+ * Strict variant for callers that must persist which outbound carried a message
+ * (the follow-up consent ask, whose reply has to be attributable even when the
+ * ask is delivered as an image caption).
+ *
+ * A 2xx without an id is reported as `deliveryUncertain`: Meta may hold the
+ * message, so the caller must record it as terminal and never retry.
+ */
+export async function sendImageUrlWithId(to: string, imageUrl: string, caption: string): Promise<{ whatsappMessageId: string }> {
+  const { whatsappMessageId } = await sendImageUrl(to, imageUrl, caption);
+  if (!whatsappMessageId) {
+    throw new WhatsAppSendError('WhatsApp image response carried no message id', true);
+  }
+  return { whatsappMessageId };
 }
 
 export type MediaKind = 'image' | 'video' | 'audio';

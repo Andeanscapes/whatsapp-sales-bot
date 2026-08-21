@@ -22,6 +22,12 @@ function validateTurnExpectation(turn: ScenarioTurn, output: EvaluationOutput): 
       errors.push(`${key} expected=${String(expectedValues[key])} actual=${String(outputValues[key])}`);
     }
   }
+  if (expected.requestedGalleryImagesCount !== undefined) {
+    const actual = output.requestedGalleryImages?.length ?? 0;
+    if (actual !== expected.requestedGalleryImagesCount) {
+      errors.push(`requestedGalleryImages count expected=${expected.requestedGalleryImagesCount} actual=${actual}`);
+    }
+  }
   if (expected.sendOwnerImage !== undefined && output.shouldSendOwnerImage !== expected.sendOwnerImage) {
     errors.push(`shouldSendOwnerImage expected=${expected.sendOwnerImage} actual=${output.shouldSendOwnerImage}`);
   }

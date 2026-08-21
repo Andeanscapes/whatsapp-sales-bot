@@ -111,8 +111,33 @@ For changes touching the reply path, also run:
 
 ```bash
 npm run validate:skills
+npm run validate:prompt
 npm run simulate -- "Hola, cuanto vale el tour?"
+npm run eval:conversations
 ```
+
+For live LLM quality (costs tokens):
+
+```bash
+npm run eval:conversations:llm-bot
+```
+
+Costs ~$0.37 for the 20 `live`-tagged scenarios. Watch: `group-of-5-math` and
+`group-then-plan-quote` (QUOTE LOCK total), `entry-retarget-R01-with-history` (no
+brochure on return), `plan-selection-gallery` (plan choice must quote AND demo),
+`consecutive-gallery-requests` (repeat and "show me" photo requests),
+`vacation-motive-discovery-baredate` (bare-day T3b close), openings that must ask
+group first.
+
+A live-only failure is not automatically a prompt bug. Check scenario fidelity first:
+exact photo counts differ between the CDN feed and the CI fixture, marker-leak
+patterns compile case-insensitively (so `FOTOS` also matches the word "fotos"), and
+state seeded without matching visible history makes correct replies look wrong. See
+AGENTS.md "Writing conversation-eval scenarios".
+
+Never judge a gate through a pipe — `npm run validate:prompt | tail -1` reports
+tail's exit code, so a failing gate looks green. Run gates bare or capture
+`EXIT=$?` explicitly.
 
 ## Architecture rules quick card
 
@@ -120,6 +145,18 @@ npm run simulate -- "Hola, cuanto vale el tour?"
 - Use `product-registry.ts` to access product data
 - All DB access through `src/db/repositories/`
 - DeepSeek is live reply source; deterministic code handles safety/guards
+- Prompt assembly only via `skills-prompt-assembly.ts` (no bypass)
+- QUOTE LOCK in RUNTIME beats manual individual/couple arithmetic for group totals;
+  it only appears for a plan the customer actually settled, and its "deliver the total
+  this turn" tail is gated on no price having been given yet
+- Photos ship only via a model-emitted `[[FOTOS:<theme>]]` marker. The engine may
+  strip, log and (once, budget-gated) ask the model to correct a missing marker or a
+  missing final question — it never writes the marker, the question, or the copy
+- Never write a runtime cue name plus a colon (`QUOTE LOCK:`) as prose in a skill MD:
+  it leaks a fake state marker into every prompt
+- Conversation is natural-inbound only; automated outbound is limited to the three
+  gated paths in `followup-service.ts` (one-shot template, consent ask, recurring
+  template). The consent ask is the only model-written outbound
 - Never log: `WHATSAPP_ACCESS_TOKEN`, `DEEPSEEK_API_KEY`, `WHATSAPP_APP_SECRET`, `TELEGRAM_BOT_TOKEN`
 - Bind Fastify to `127.0.0.1`
 - Never use `any`
@@ -127,4 +164,8 @@ npm run simulate -- "Hola, cuanto vale el tour?"
 
 ## Full docs
 
-See `docs/bot-architecture.md` for complete architecture guide with diagrams.
+- `docs/bot-architecture.md` — runtime architecture
+- `docs/skills-architecture.md` — prompt assembly order + campaign-segment/QUOTE LOCK contract
+- `src/prompts/SKILLS-ASSEMBLY.md` — assembly rules for coding agents (not sent to LLM)
+- `src/prompts/LESSONS.md` — append-only prompt iteration log (not sent to LLM)
+- `AGENTS.md` — invariants + phases

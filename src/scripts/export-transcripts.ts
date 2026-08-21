@@ -4,6 +4,7 @@ import { pathToFileURL } from 'url';
 import { env } from '../config/env.js';
 import { createAndMigrate } from '../db/migrate.js';
 import { createRepositories } from '../db/repositories/index.js';
+import { formatAdReferral } from '../services/ad-referral.js';
 
 function maskPhone(phone: string): string {
   if (phone.length <= 6) return phone;
@@ -33,6 +34,10 @@ function main(): void {
       last_seen_at: record.lastSeenAt,
       lead_score: record.leadScore,
       mode: record.mode,
+      entry_marker: record.entryMarker,
+      entry_temperature: record.entryTemperature,
+      entry_marker_at: record.entryMarkerAt,
+      ad_referral: formatAdReferral(record.adReferral),
       handed_off: record.handedOff,
       converted: record.converted,
       collected: record.collected,

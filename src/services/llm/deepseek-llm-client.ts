@@ -4,6 +4,30 @@ import { type LlmClient, type LlmClientInput, type LlmTurn, type LlmResult } fro
 import { requestDeepSeekCompletion } from './deepseek-completion.js';
 
 const DEEPSEEK_FETCH_TIMEOUT_MS = 30_000;
+const CHARS_PER_TOKEN_ESTIMATE = 3;
+
+function fitHistoryToContext(input: LlmClientInput): LlmClientInput['history'] {
+  const currentMessageTokens = Math.ceil(input.message.length / CHARS_PER_TOKEN_ESTIMATE);
+  const systemTokens = Math.ceil(input.systemPrompt.length / CHARS_PER_TOKEN_ESTIMATE);
+  const contextHistoryChars = Math.max(
+    0,
+    (env.DEEPSEEK_CONTEXT_WINDOW_TOKENS - systemTokens - currentMessageTokens - env.DEEPSEEK_MAX_OUTPUT_TOKENS)
+      * CHARS_PER_TOKEN_ESTIMATE,
+  );
+  const charBudget = Math.min(env.DEEPSEEK_HISTORY_MAX_CHARS, contextHistoryChars);
+  const selected: LlmClientInput['history'] = [];
+  let usedChars = 0;
+
+  for (let index = input.history.length - 1; index >= 0; index -= 1) {
+    const message = input.history[index];
+    if (!message) continue;
+    if (usedChars + message.content.length > charBudget) break;
+    selected.unshift(message);
+    usedChars += message.content.length;
+  }
+
+  return selected;
+}
 
 function parsePlainTextContent(content: string): LlmTurn | null {
   const reply = content.trim();
@@ -53,14 +77,11 @@ export class DeepSeekLlmClient implements LlmClient {
   }
 
   private async callApi(input: LlmClientInput): Promise<{ turn: LlmTurn | null; tokens: { prompt: number; completion: number } } | null> {
-    const systemContent = input.systemPromptSuffix
-      ? `${input.systemPrompt}\n\n${input.systemPromptSuffix}`
-      : input.systemPrompt;
     const messages: Array<{ role: string; content: string }> = [
-      { role: 'system', content: systemContent },
+      { role: 'system', content: input.systemPrompt },
     ];
 
-    for (const h of input.history) {
+    for (const h of fitHistoryToContext(input)) {
       messages.push({ role: h.role, content: h.content });
     }
 
@@ -76,6 +97,11 @@ export class DeepSeekLlmClient implements LlmClient {
     if (!result) return null;
 
     const tokens = { prompt: result.promptTokens, completion: result.completionTokens };
+
+    if (result.finishReason === 'length') {
+      logger.warn({ completionTokens: result.completionTokens }, '[LLM] response truncated by provider');
+      return { turn: null, tokens };
+    }
 
     if (result.content.length < 2) {
       logger.warn({ contentLen: result.content.length }, '[LLM] content too short');

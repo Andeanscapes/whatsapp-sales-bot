@@ -1,0 +1,33 @@
+{
+  "id": "referent.i",
+  "kind": "referent",
+  "version": 3,
+  "displayName": "Low-pressure pause",
+  "summary": "Convierte la pausa en un resumen compartible: datos claros, tono tranquilo, puerta abierta sin urgencia.",
+  "keyPoints": [
+    {
+      "id": "explicit-pause",
+      "trigger": "cliente dice que lo habla con su pareja, consulta al grupo o escribe luego",
+      "do": "Reconoce que necesita tiempo y deja un resumen breve de lo acordado.",
+      "never": "Tratar la pausa como rechazo, insistir de inmediato o crear urgencia."
+    },
+    {
+      "id": "shareable-summary",
+      "trigger": "cliente va a consultar con otros",
+      "do": "Incluye solo grupo, plan, precio total, anticipo y fecha si ya están confirmados.",
+      "never": "Incluir enlaces, fotos, detalles extras, términos no confirmados o datos del equipo."
+    },
+    {
+      "id": "low-pressure-tone",
+      "trigger": "pausa explícita",
+      "do": "Mantén tono tranquilo y abierto. Sin urgencia, sin escasez, sin culpa.",
+      "never": "Decir que se acaba la fecha, que hay otros interesados, o que es ahora o nunca."
+    },
+    {
+      "id": "return-respect",
+      "trigger": "cliente vuelve después de pausa",
+      "do": "Continúa con los datos pendientes, sin reclamo ni sorpresa.",
+      "never": "Preguntar qué pasó, por qué no respondió, o mostrar enfado."
+    }
+  ]
+}

@@ -3,6 +3,7 @@ import type { Repositories } from './types.js';
 import {
   SqliteConversationRepo,
   SqliteMessageRepo,
+  SqliteOutboundMediaRepo,
   SqliteDedupeRepo,
   SqliteOptOutRepo,
   SqliteAiCacheRepo,
@@ -14,8 +15,11 @@ import {
   SqliteSystemErrorRepo,
   SqliteCustomerDataRepo,
   SqliteTranscriptRepo,
-  SqliteFollowUpEventRepo,
   SqlitePaymentReservationRepo,
+  SqliteFollowupConsentRepo,
+  SqliteFollowupSubscriptionRepo,
+  SqliteFollowupEventRepo,
+  SqliteFollowupSubscriptionEventRepo,
 } from './sqlite-repos.js';
 
 export function createRepositories(db: Database.Database): Repositories {
@@ -26,8 +30,13 @@ export function createRepositories(db: Database.Database): Repositories {
   }
 
   return {
+    followupConsent: new SqliteFollowupConsentRepo(db),
+    followupSubscription: new SqliteFollowupSubscriptionRepo(db),
+    followupEvent: new SqliteFollowupEventRepo(db), // LIVE: one-shot post-24h template
+    followupSubscriptionEvent: new SqliteFollowupSubscriptionEventRepo(db),
     conversation: new SqliteConversationRepo(db),
     message: new SqliteMessageRepo(db),
+    outboundMedia: new SqliteOutboundMediaRepo(db),
     dedupe: new SqliteDedupeRepo(db),
     optOut: new SqliteOptOutRepo(db),
     aiCache: new SqliteAiCacheRepo(db),
@@ -40,7 +49,6 @@ export function createRepositories(db: Database.Database): Repositories {
     systemErrors: new SqliteSystemErrorRepo(db),
     customerData: new SqliteCustomerDataRepo(db),
     transcripts: new SqliteTranscriptRepo(db),
-    followUpEvent: new SqliteFollowUpEventRepo(db),
     runInTransaction(operation: () => void): void {
       db.transaction(operation)();
     },
@@ -52,6 +60,22 @@ export function createRepositories(db: Database.Database): Repositories {
       db.prepare(
         "INSERT INTO bot_config (key, value, updated_at) VALUES ('paused', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = datetime('now')"
       ).run(paused ? 'true' : 'false', paused ? 'true' : 'false');
+    },
+    claimPeriodicJob(jobKey: string, periodKey: string): boolean {
+      // The WHERE on the upsert is what makes this a claim: `changes` reports
+      // whether THIS caller moved the row. A read-then-write would let two ticks
+      // both pass.
+      //
+      // `<` and not `!=`: the claim must be monotonic. Inequality also accepts an
+      // EARLIER period, which would rewind the marker and let an already-delivered
+      // period be claimed a second time. Period keys must therefore sort
+      // lexicographically in chronological order (`YYYY-MM-DD` does).
+      const info = db.prepare(
+        `INSERT INTO bot_config (key, value, updated_at) VALUES (?, ?, datetime('now'))
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')
+         WHERE bot_config.value < excluded.value`
+      ).run(jobKey, periodKey);
+      return info.changes > 0;
     },
     ping(): boolean {
       try {

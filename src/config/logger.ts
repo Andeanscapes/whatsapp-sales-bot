@@ -35,7 +35,7 @@ export function sanitizeSensitiveText(value: unknown): string {
   return sanitizeUrl(value)
     .replace(/(authorization\s*[:=]\s*)(?:bearer\s+)?[^\s,;]+/gi, '$1[REDACTED]')
     .replace(/\b(bearer\s+)[A-Za-z0-9._~+/=-]+/gi, '$1[REDACTED]')
-    .replace(/\b(WHATSAPP_ACCESS_TOKEN|WHATSAPP_APP_SECRET|WHATSAPP_VERIFY_TOKEN|DEEPSEEK_API_KEY|TELEGRAM_BOT_TOKEN|ADMIN_SECRET)\s*[:=]\s*[^\s,;]+/gi, '$1=[REDACTED]');
+    .replace(/\b(WHATSAPP_ACCESS_TOKEN|WHATSAPP_APP_SECRET|WHATSAPP_VERIFY_TOKEN|DEEPSEEK_API_KEY|TELEGRAM_BOT_TOKEN|ADMIN_SECRET|MERCADOPAGO_ACCESS_TOKEN|MERCADOPAGO_WEBHOOK_SECRET)\s*[:=]\s*[^\s,;]+/gi, '$1=[REDACTED]');
 }
 
 function serializeRequest(value: unknown): Record<string, unknown> {
@@ -83,6 +83,25 @@ const redactPaths = [
   '*.TELEGRAM_BOT_TOKEN',
   'ADMIN_SECRET',
   '*.ADMIN_SECRET',
+  'MERCADOPAGO_ACCESS_TOKEN',
+  '*.MERCADOPAGO_ACCESS_TOKEN',
+  'MERCADOPAGO_WEBHOOK_SECRET',
+  '*.MERCADOPAGO_WEBHOOK_SECRET',
+  'PAYMENT_NEQUI_PHONE_NUMBER',
+  '*.PAYMENT_NEQUI_PHONE_NUMBER',
+  'PAYMENT_MERCADO_PAGO_LINK',
+  '*.PAYMENT_MERCADO_PAGO_LINK',
+  'PAYMENT_PRIVATE_INSTRUCTIONS',
+  '*.PAYMENT_PRIVATE_INSTRUCTIONS',
+  // Payment-payload paths only (avoid bare phoneNumber/instructions — over-redacts ops logs).
+  'fullPhoneNumber',
+  '*.fullPhoneNumber',
+  'paymentLink',
+  '*.paymentLink',
+  'payments.methods[*].phoneNumber',
+  'payments.methods[*].fullPhoneNumber',
+  'payments.methods[*].paymentLink',
+  'payments.methods[*].instructions',
 ];
 
 export const logger = pino({

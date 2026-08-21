@@ -4,10 +4,11 @@ import { scenarioSchema } from './schema.js';
 import { validateTurnExpectations } from './turn-expectations.js';
 import type { TurnRecord } from './runner.js';
 
-function scenario(runner: 'message' | 'follow_up' | 'lifecycle' = 'message') {
+function scenario(runner: 'message' | 'lifecycle' = 'message', tags?: string[]) {
   return scenarioSchema.parse({
-    id: `test-${runner}`,
+    id: `test-${runner}${tags?.length ? `-${tags.join('-')}` : ''}`,
     runner,
+    ...(tags ? { tags } : {}),
     turns: [{
       user: 'Fotos de la mina',
       mockReply: 'Claro',
@@ -52,10 +53,55 @@ describe('conversation eval integrity', () => {
     );
   });
 
+  // The production defect was a marker that resolved to zero photos while the copy
+  // still promised them, so the count must be assertable on its own.
+  it('counts the photos a turn actually ships, not just the flag', () => {
+    const record = turn(true);
+    const expectOne = scenarioSchema.parse({
+      id: 'test-requested-count',
+      turns: [{ user: 'Fotos de la mina', mockReply: 'Claro', expect: { requestedGalleryImagesCount: 1 } }],
+      criteria: [{ id: 'reply', rule: 'reply_must_match', patterns: ['claro'] }],
+    });
+
+    expect(validateTurnExpectations(expectOne, [record])).toContain(
+      '[expect turn 1] requestedGalleryImages count expected=1 actual=0',
+    );
+
+    record.processOutput.requestedGalleryImages = ['https://cdn.example.com/exp_01.jpg'];
+    expect(validateTurnExpectations(expectOne, [record])).toEqual([]);
+  });
+
   it('excludes synthetic runners from live scenarios', () => {
-    const scenarios = [scenario(), scenario('follow_up'), scenario('lifecycle')];
+    const scenarios = [scenario(), scenario('lifecycle')];
     const result = partitionLiveScenarios(scenarios);
     expect(result.supported.map(item => item.runner)).toEqual(['message']);
-    expect(result.skipped.map(item => item.runner)).toEqual(['follow_up', 'lifecycle']);
+    expect(result.skipped.map(item => item.runner)).toEqual(['lifecycle']);
+    expect(result.deselected).toEqual([]);
+  });
+
+  // Live runs cost provider tokens: the `live` tag must actually bound the subset.
+  it('sends only live-tagged message scenarios by default', () => {
+    const tagged = scenario('message', ['opening', 'live']);
+    const untagged = scenario('message', ['objection']);
+    const result = partitionLiveScenarios([tagged, untagged, scenario('lifecycle')]);
+
+    expect(result.supported.map(item => item.id)).toEqual([tagged.id]);
+    expect(result.deselected.map(item => item.id)).toEqual([untagged.id]);
+    expect(result.skipped.map(item => item.runner)).toEqual(['lifecycle']);
+  });
+
+  it('includes every message scenario when includeAll is requested', () => {
+    const tagged = scenario('message', ['live']);
+    const untagged = scenario('message', ['objection']);
+    const result = partitionLiveScenarios([tagged, untagged], { includeAll: true });
+
+    expect(result.supported.map(item => item.id)).toEqual([tagged.id, untagged.id]);
+    expect(result.deselected).toEqual([]);
+  });
+
+  it('falls back to all message scenarios when no scenario is tagged live', () => {
+    const result = partitionLiveScenarios([scenario('message', ['opening'])]);
+    expect(result.supported).toHaveLength(1);
+    expect(result.deselected).toEqual([]);
   });
 });

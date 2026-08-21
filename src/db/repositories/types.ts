@@ -3,30 +3,84 @@ export interface StoredMessage {
   whatsapp_message_id?: string;
   customer_phone: string;
   direction: 'inbound' | 'outbound';
-  message_type: 'text' | 'image' | 'video' | 'audio';
+  message_type: 'text' | 'image' | 'video' | 'audio' | 'template';
   body?: string;
   created_at: string;
   raw_json?: string | null;
   app_version?: string | null;
+  media_id?: string;
 }
 
 export interface RecentMessage {
   role: 'user' | 'assistant';
   content: string;
   messageType?: string;
+  /** ISO timestamp of the stored row. Needed to interleave media by time. */
+  createdAt?: string;
+  /** WhatsApp media id for an inbound photo/audio/video, so a replay can re-download it. */
+  mediaId?: string;
+}
+
+export interface OutboundMediaRow {
+  id?: number;
+  customer_phone: string;
+  media_url: string;
+  media_id: string;
+  caption?: string;
+  carried_reply: number;
+  flow: string;
+  theme_site_id?: string;
+  theme_type?: string;
+  turn_inbound_message_id?: string;
+  sequence?: number;
+  sent_at: string;
 }
 
 export type DateStatus = 'unasked' | 'asked' | 'deferred' | 'options_offered' | 'selected' | 'window';
 
-export type MetaAudienceConsentSource =
-  | 'whatsapp_explicit_opt_in'
-  | 'booking_checkout_opt_in'
-  | 'documented_lawful_basis';
-
 export interface ConversationRepository {
   getByPhone(phone: string): ConversationRow | undefined;
+  /**
+   * Leads eligible for the one-shot post-24h follow-up template. All gates that
+   * can be expressed in SQL run here (consent, qualification, opt-out,
+   * conversion, handoff, silence age, last message is ours) so the scheduler
+   * does not N+1 scan every conversation.
+   *
+   * Qualification is `collected_plan` OR `collected_people` OR `price_given_at` —
+   * a quoted lead often has neither collected column set. See
+   * `QUALIFIED_FOR_FOLLOWUP_SQL` in `sqlite-repos.ts`.
+   */
+  listFollowupCandidates(input: { silentSinceIso: string; limit: number }): FollowupCandidateRow[];
+  /**
+   * Leads due the free-form consent ask. Every gate is SQL so the scheduler does
+   * not N+1 scan: subscription is `unasked`, the customer has been silent since
+   * `silentSinceIso`, their last inbound is still newer than `windowExpiryIso`
+   * (so the free-form 24h window is definitely open), the last message in the
+   * thread is OURS (i.e. they never replied), and the lead is qualified
+   * (`QUALIFIED_FOR_FOLLOWUP_SQL`: plan, people count, or a delivered price).
+   */
+  listConsentAskCandidates(input: {
+    silentSinceIso: string;
+    windowExpiryIso: string;
+    limit: number;
+  }): ConsentAskCandidateRow[];
+  /**
+   * Broad recurring candidates past the shortest interval. Exact exponential
+   * due filtering and the dispatch batch limit run together in the service so
+   * non-due r2/r3 rows cannot consume the limited batch and starve due r1 rows.
+   *
+   * `dueBeforeIso` spaces sends from the previous send (cadence). `silentSinceIso`
+   * is the independent dormancy floor measured from the customer's last inbound.
+   * `scanLimit` bounds memory only; it must stay well above the per-tick send limit
+   * so the exact due filter still has non-due rows to discard without starving.
+   */
+  listRecurringCandidates(input: {
+    dueBeforeIso: string;
+    silentSinceIso: string;
+    maxSends: number;
+    scanLimit: number;
+  }): RecurringCandidateRow[];
   listMetaAudienceLeads(): MetaAudienceLead[];
-  recordMetaAudienceConsent(phone: string, source: MetaAudienceConsentSource, consentedAt?: string): void;
   upsert(phone: string, data: Record<string, unknown>): void;
   getHandedOffAt(phone: string): string | null;
   setHandedOff(phone: string): void;
@@ -40,6 +94,7 @@ export interface ConversationRepository {
   updateLeadScore(phone: string, score: number): void;
   getCollectedFields(phone: string): Record<string, unknown>;
   clearCollectedDate(phone: string): void;
+  clearCollectedChildAges(phone: string): void;
   getDateStatus(phone: string): DateStatus;
   setDateAsked(phone: string): void;
   setDateDeferred(phone: string): void;
@@ -61,14 +116,11 @@ export interface ConversationRepository {
   setMode(phone: string, mode: ConversationMode): void;
   getSelectedExperienceId(phone: string): string | null;
   setSelectedExperienceId(phone: string, experienceId: string): void;
+  clearSelectedExperienceId(phone: string): void;
   getBookedAt(phone: string): string | null;
   setBooked(phone: string): void;
-  getFollowUpCandidates(cutoffIso: string, serviceWindowStartIso: string, limit: number): FollowUpCandidate[];
-  getSecondFollowUpCandidates(anchorBeforeIso: string, serviceWindowStartIso: string, limit: number): FollowUpCandidate[];
-  markFollowUpSent(phone: string): void;
   setLeadPain(phone: string, pain: LeadPain, detail?: string): void;
   getLeadPain(phone: string): LeadPain | null;
-  incrementFollowUpReplyCount(phone: string): void;
 }
 
 export interface MetaAudienceLead {
@@ -76,15 +128,283 @@ export interface MetaAudienceLead {
   collectedName: string | null;
 }
 
+export interface FollowupConsentRepository {
+  hasConsent(phone: string): boolean;
+  grantConsent(phone: string, grantedBy: string): void;
+  revokeConsent(phone: string): void;
+}
+
+/**
+ * Consent lifecycle for the recurring follow-up flow:
+ *   unasked → pending (ask sent) → active (said yes) | declined (said no)
+ *   any state → revoked (opt-out or operator command)
+ *
+ * Silence is NOT consent: a `pending` row that is never answered stays `pending`
+ * and never receives a recurring send. One ambiguous sales continuation may defer
+ * the ask once per session; the final unanswered ask remains pending. Keep `FOLLOWUP_CONSENT_ASK_ENABLED`,
+ * `FOLLOWUP_RECURRING_ENABLED` and `ALLOW_FOLLOWUP_TEMPLATE` independent —
+ * never alias them.
+ */
+export type FollowupSubscriptionStatus = 'unasked' | 'pending' | 'active' | 'declined' | 'revoked';
+
+export interface FollowupSubscriptionRow {
+  customer_phone: string;
+  status: FollowupSubscriptionStatus;
+  asked_at: string | null;
+  ask_outbound_message_id: string | null;
+  ask_attempts: number;
+  consent_session: number;
+  deferred_reask_used: number;
+  decided_at: string | null;
+  decision_inbound_message_id: string | null;
+  consent_source: string | null;
+  activated_at: string | null;
+  revoked_at: string | null;
+  revoke_source: string | null;
+  updated_at: string | null;
+}
+
+export interface FollowupSubscriptionRepository {
+  getByPhone(phone: string): FollowupSubscriptionRow | null;
+  /**
+   * Consent status per customer for a set of phones. Batched for the operator
+   * digest, which reports the recorded decision for every consent ask it lists and
+   * would otherwise issue one query per row.
+   */
+  listStatuses(phones: string[]): { customer_phone: string; status: FollowupSubscriptionStatus }[];
+  /** Ensure row exists; initialize to 'unasked' if needed. */
+  ensureExists(phone: string): void;
+  /** Ask consent: transition to 'pending', record ask metadata. */
+  /** `null` when the carrying outbound id is not known yet (pre-dispatch write). */
+  markAsked(phone: string, outboundMessageId: string | null): void;
+  /** Definite pre-acceptance failure: reopen eligibility for a bounded retry. */
+  resetUnaskedIfPending(phone: string): void;
+  /** Customer continued after c1: allow one deferred ask after the new silence. */
+  deferPendingAskAfterCustomerInbound(phone: string): boolean;
+  /** Accept consent: transition to 'active'. */
+  affirm(phone: string, inboundMessageId: string, consentSource: string): void;
+  /** Decline consent: transition to 'declined'. */
+  decline(phone: string, inboundMessageId: string): void;
+  /** Revoke consent: transition to 'revoked'. */
+  revoke(phone: string, revokeSource: string): void;
+  /**
+   * Consent is session-scoped: a customer-initiated inbound closes an `active`
+   * cycle back to `unasked`, so recurring templates stop until a fresh "sí" and a
+   * new ask becomes eligible after this session goes silent. Returns true when a
+   * cycle was actually closed. `pending`/`declined`/`revoked` are untouched.
+   */
+  closeCycleOnCustomerInbound(phone: string): boolean;
+  /**
+   * A customer who previously revoked may reopen a NEW consent opportunity by
+   * initiating a later inbound. This never grants consent; it only returns to
+   * `unasked`. Operator revocations are never reopened automatically.
+   */
+  reopenAfterCustomerInbound(phone: string): boolean;
+}
+
+/** A lead eligible for the one-shot post-24h template, resolved in one SQL pass. */
+export interface FollowupCandidateRow {
+  customer_phone: string;
+  language: string | null;
+  collected_plan: string | null;
+  selected_experience_id: string | null;
+  /** Last inbound timestamp — the silence anchor and the claim idempotency key. */
+  anchor_at: string;
+}
+
+/** A lead eligible for the free-form consent ask, resolved in one SQL pass. */
+export interface ConsentAskCandidateRow {
+  customer_phone: string;
+  language: string | null;
+  /** Customer's last inbound — both the silence anchor and the 24h window origin. */
+  anchor_at: string;
+  /** Successfully sent/uncertain asks from previous customer-initiated sessions. */
+  consent_asks_so_far: number;
+  /** Current consent session number, incremented each time a new ask cycle opens. */
+  consent_session: number;
+}
+
+/** A consented customer due for the next recurring template send. */
+export interface RecurringCandidateRow {
+  customer_phone: string;
+  language: string | null;
+  collected_plan: string | null;
+  selected_experience_id: string | null;
+  /** Count of recurring sends already delivered/uncertain — drives the next cycle index. */
+  sends_so_far: number;
+  /** Consent session sequence; recurring ids are scoped as cN-rN. */
+  consent_cycle: number;
+  /** When the last recurring send (or the consent activation) happened. */
+  last_send_at: string;
+}
+
+/**
+ * Per-stage dispatch ledger kinds. `cycle_key` is a session sequence (`'c1'`, `'c2'`…)
+ * for consent asks and a consent-scoped send sequence (`'c1-r1'`, `'c2-r1'`…)
+ * for recurring — never a calendar key, which would
+ * silently cap sends at one per calendar month and make short dev intervals untestable.
+ */
+export type FollowupSubscriptionEventKind = 'consent_ask' | 'recurring';
+export type FollowupSubscriptionEventStatus = 'due' | 'claimed' | 'dispatching' | 'accepted' | 'delivered' | 'failed' | 'uncertain' | 'cancelled';
+
+export interface FollowupSubscriptionEventRow {
+  id: number;
+  customer_phone: string;
+  event_kind: FollowupSubscriptionEventKind;
+  cycle_key: string;
+  scheduled_for: string;
+  status: FollowupSubscriptionEventStatus;
+  claim_token: string | null;
+  claimed_at: string | null;
+  dispatch_started_at: string | null;
+  dispatching_until: string | null;
+  accepted_at: string | null;
+  delivered_at: string | null;
+  failed_at: string | null;
+  error_reason: string | null;
+  whatsapp_message_id: string | null;
+  attempts: number;
+  updated_at: string | null;
+}
+
+export interface FollowupSubscriptionEventRepository {
+  /** List events in a given status, for claiming/processing. */
+  listByStatus(status: FollowupSubscriptionEventStatus, limit: number): FollowupSubscriptionEventRow[];
+  /**
+   * Atomically claim an event: update status to 'claimed' and set claim_token.
+   * Returns the event id, or null if already claimed/terminal.
+   */
+  claim(
+    phone: string,
+    eventKind: FollowupSubscriptionEventKind,
+    cycleKey: string,
+    maxAttempts: number,
+    staleClaimedMinutes: number
+  ): number | null;
+  /**
+   * Persist the no-retry boundary before entering Meta. It is conservatively
+   * `uncertain` until a definite success/failure overwrites it.
+   */
+  startDispatching(eventId: number, dispatchingUntilIso: string): void;
+  markAccepted(eventId: number, whatsappMessageId: string): void;
+  markDelivered(eventId: number): void;
+  markFailed(eventId: number, reason: string): void;
+  markUncertain(eventId: number, reason: string): void;
+  /** Release a claim without consuming an attempt (e.g., local guard blocked send). */
+  releaseClaim(eventId: number): void;
+  getByPhoneKindCycle(phone: string, eventKind: FollowupSubscriptionEventKind, cycleKey: string): FollowupSubscriptionEventRow | null;
+  getLatest(phone: string): FollowupSubscriptionEventRow | null;
+  /** Newest-first dispatch history for one customer. Operator diagnostics only. */
+  listByPhone(phone: string, limit?: number): FollowupSubscriptionEventRow[];
+  /**
+   * True when a consent ask actually reached Meta after `sinceIso`.
+   *
+   * Scopes the post-opt-out ask tone to the FIRST ask after a stop request.
+   * `last_opt_out_at` is never cleared (it is compliance evidence), so testing
+   * it alone would soften every ask this customer ever receives again.
+   */
+  hasAskedSince(phone: string, sinceIso: string): boolean;
+  /** Ensure the event row exists; update if due row already exists. */
+  ensureExists(
+    phone: string,
+    eventKind: FollowupSubscriptionEventKind,
+    cycleKey: string,
+    scheduledForIso: string
+  ): number;
+  /**
+   * Events of one kind that actually reached Meta inside a window, for the operator
+   * digest. `listByStatus` cannot serve this: it filters `scheduled_for <= now` and
+   * takes a single status, so it can neither bound a past window nor span the three
+   * statuses that mean "shipped".
+   *
+   * The terminal instant is `COALESCE(accepted_at, delivered_at, failed_at)`, matching
+   * the `terminal_recurring` CTE in `listRecurringCandidates` — `uncertain` records
+   * only `failed_at` even though Meta may have accepted it.
+   */
+  listReachedMetaBetween(
+    eventKind: FollowupSubscriptionEventKind,
+    sinceIso: string,
+    untilIso: string
+  ): FollowupSubscriptionEventRow[];
+}
+
+/** LIVE: one-shot post-24h template event row. */
+export interface FollowupEventRow {
+  id: number;
+  customer_phone: string;
+  anchor_at: string;
+  claimed_at: string;
+  attempts: number;
+  sent_at: string | null;
+  whatsapp_message_id: string | null;
+  failed_at: string | null;
+  error_reason: string | null;
+  status: 'pending' | 'sent' | 'failed' | 'uncertain';
+}
+
+/**
+ * LIVE: the one-shot post-24h template flow (`followup_events`). This is the only
+ * follow-up path that actually sends today. Distinct from
+ * `FollowupSubscriptionEventRepository`, which powers the consent-gated recurring
+ * flow. Do not merge them; they have separate tables, columns and semantics.
+ */
+export interface FollowupEventRepository {
+  /**
+   * Atomically reserves the send for (phone, anchor). Returns the claim id, or
+   * `null` when the lead already has a terminal row (sent/uncertain, or failed
+   * `maxAttempts` times) or a fresh pending claim is held by another worker.
+   * `stalePendingMinutes` allows reclaim after a crash left status='pending'.
+   */
+  claim(phone: string, anchorAt: string, maxAttempts: number, stalePendingMinutes: number): number | null;
+  /**
+   * Terminal pre-send boundary: once dispatch starts, a process crash makes Meta
+   * acceptance unknowable, so the row is `uncertain` and must never auto-retry.
+   * A definite HTTP rejection may still transition it to `failed`.
+   */
+  markDispatching(claimId: number): void;
+  markSent(claimId: number, whatsappMessageId: string): void;
+  markFailed(claimId: number, reason: string): void;
+  /** Terminal: Meta may have accepted the message — never auto-retry. */
+  markUncertain(claimId: number, reason: string): void;
+  /** Drops a claim that never reached Meta, so a local guard does not consume a retry. */
+  releaseClaim(claimId: number): void;
+  getLatest(phone: string): FollowupEventRow | null;
+  /**
+   * One-shot rows that actually reached Meta inside a window, for the operator digest.
+   *
+   * The terminal instant is `COALESCE(sent_at, failed_at)`: `uncertain` leaves
+   * `sent_at` NULL and records the dispatch moment in `failed_at`, so filtering on
+   * `sent_at` alone would silently drop every send Meta may have accepted.
+   */
+  listReachedMetaBetween(sinceIso: string, untilIso: string): FollowupEventRow[];
+}
+
+
 export interface MessageRepository {
   addMessage(msg: StoredMessage): void;
   getLastOutboundBody(phone: string): string | null;
+  getLastOutboundTextBody(phone: string): string | null;
   getRecentMessages(phone: string, limit?: number): RecentMessage[];
   getLastInboundBodies(phone: string, limit?: number): { body: string | null }[];
   getLastInboundBody(phone: string): string | null;
   getLastInboundAt(phone: string): string | null;
   getLastMessageDirection(phone: string): 'inbound' | 'outbound' | null;
-  countOutboundSince(phone: string, sinceIso: string): number;
+  countOutboundSince(phone: string, sinceIso: string, messageType?: 'text' | 'image'): number;
+  /**
+   * Inbound timestamps at or after `sinceIso` for a set of customers, oldest first
+   * per phone.
+   *
+   * Batched on purpose: the operator digest needs, for each follow-up it sent,
+   * whether a reply landed before the NEXT send to that same customer. Per-row
+   * `getLastInboundAt` calls were both N+1 and unable to answer that — the latest
+   * inbound marks every send of the day as answered, inflating the reply count.
+   */
+  listInboundSince(phones: string[], sinceIso: string): { customer_phone: string; created_at: string }[];
+}
+
+export interface OutboundMediaRepository {
+  record(row: OutboundMediaRow): void;
+  listByPhone(phone: string, limit?: number): OutboundMediaRow[];
 }
 
 export interface DedupeRepository {
@@ -95,6 +415,13 @@ export interface DedupeRepository {
 export interface OptOutRepository {
   isOptedOut(phone: string): boolean;
   setOptOut(phone: string): void;
+  /**
+   * Clears the ACTIVE suppression flag only (customer-initiated return).
+   * The `last_opt_out_at` compliance record is never cleared.
+   */
+  clearOptOut(phone: string): void;
+  /** Timestamp of the last stop request, surviving any later reopening. */
+  getLastOptOutAt(phone: string): string | null;
 }
 
 export interface AiCacheRepository {
@@ -151,7 +478,18 @@ export interface OwnerAlertRepository {
 
 export interface MediaSendRepository {
   countRecentImages(phone: string, cutoffIso: string): number;
+  /** Counts only sends whose media id starts with `prefix` (e.g. gallery vs plan images). */
+  countRecentImagesWithPrefix(phone: string, cutoffIso: string, prefix: string): number;
   hasRecentSameImage(phone: string, imageId: string, cutoffIso: string): boolean;
+  /**
+   * Last send of one logical image. Without `scopedPrefix` this is an exact
+   * `media_id` match; with it, ids namespaced as `<scopedPrefix><scope>_<imageId>`
+   * count as the same photo. Exact substr comparison, never LIKE: `_` is a LIKE
+   * wildcard and both the prefix and the image id are full of them.
+   */
+  getLastSentAtForImage(phone: string, imageId: string, scopedPrefix?: string): string | null;
+  claimSend(phone: string, mediaId: string, cutoffIso: string): number | null;
+  releaseClaim(id: number): void;
   recordSend(phone: string, mediaId: string): void;
 }
 
@@ -201,37 +539,6 @@ export type ConversationMode = 'bot' | 'bridge_active' | 'referred' | 'human_pen
 
 export type LeadPain = 'price' | 'date_time' | 'security' | 'logistics_4x4' | 'experience_clarity' | 'partner_group' | 'not_interested' | 'other';
 
-export type FollowUpStage = 'first_nudge' | 'second_nudge' | 'price_nudge' | 'final_nudge' | 'pain_question';
-export type FollowUpStatus = 'pending' | 'sent' | 'replied' | 'suppressed' | 'failed' | 'uncertain';
-
-export interface FollowUpEvent {
-  id?: number;
-  customerPhone: string;
-  sequenceNumber: number;
-  stage: FollowUpStage;
-  anchorInboundAt?: string | null;
-  claimedAt?: string | null;
-  decisionReason?: string | null;
-  sentAt: string | null;
-  repliedAt: string | null;
-  scoreBefore: number;
-  scoreAfter: number | null;
-  detectedPain: LeadPain | null;
-  status: FollowUpStatus;
-}
-
-export interface FollowUpEventRepository {
-  insert(event: Omit<FollowUpEvent, 'id'>): void;
-  claim(event: Omit<FollowUpEvent, 'id'>): boolean;
-  markClaimSent(phone: string, anchorInboundAt: string, stage: FollowUpStage, sentAt: string): void;
-  markClaimSuppressed(phone: string, anchorInboundAt: string, stage: FollowUpStage, reason: string): void;
-  markClaimFailed(phone: string, anchorInboundAt: string, stage: FollowUpStage, reason: string): void;
-  markClaimUncertain(phone: string, anchorInboundAt: string, stage: FollowUpStage, reason: string): void;
-  getLatestByPhone(phone: string): FollowUpEvent | null;
-  markReplied(phone: string, sequenceNumber: number, scoreAfter: number, detectedPain: LeadPain | null): void;
-  countByPhone(phone: string): number;
-}
-
 export interface ConversationAssignment {
   assignedLineId: string;
   assignedAgentChat: string;
@@ -265,8 +572,14 @@ export interface ConversationRow {
   opt_out_at: string | null;
   free_entry_detected: number;
   ad_referral_json: string | null;
+  entry_marker: string | null;
+  entry_temperature: 'cold' | 'funnel' | 'retargeting' | null;
+  entry_marker_at: string | null;
   collected_name: string | null;
   collected_date: string | null;
+  collected_date_canon_year: number | null;
+  collected_date_canon_month: number | null;
+  collected_date_canon_day: number | null;
   collected_date_window: string | null;
   date_status: DateStatus | null;
   collected_people: number | null;
@@ -274,15 +587,17 @@ export interface ConversationRow {
   collected_lodging_need: string | null;
   collected_pet: string | null;
   collected_plan: string | null;
+  collected_adults: number | null;
+  collected_children: number | null;
+  collected_child_ages_json: string | null;
+  collected_travel_origin: string | null;
   price_given_at: string | null;
   handed_off_at: string | null;
   soft_closed_at: string | null;
   gallery_nudged_at: string | null;
-  follow_up_sent_at: string | null;
   lead_pain: LeadPain | null;
   lead_pain_detail: string | null;
   lead_pain_detected_at: string | null;
-  follow_up_reply_count: number;
   converted_at: string | null;
   sales_phase: string | null;
   lead_intent: string | null;
@@ -290,15 +605,6 @@ export interface ConversationRow {
   assigned_agent_chat: string | null;
   conversation_mode: ConversationMode | null;
   selected_experience_id: string | null;
-  meta_audience_consent_at: string | null;
-  meta_audience_consent_source: MetaAudienceConsentSource | null;
-}
-
-export interface FollowUpCandidate {
-  customerPhone: string;
-  language: 'es' | 'en' | null;
-  anchorInboundAt?: string;
-  reviewPause?: boolean;
 }
 
 export interface DailyStats {
@@ -331,6 +637,13 @@ export interface ConversationSummary {
   plan: string | null;
   people: number | null;
   date: string | null;
+  transportNeed: string | null;
+  adults: number | null;
+  children: number | null;
+  childAges: number[] | null;
+  travelOrigin: string | null;
+  entryMarker: string | null;
+  entryTemperature: 'cold' | 'funnel' | 'retargeting' | null;
   lastSeenAt: string;
 }
 
@@ -351,9 +664,9 @@ export interface StatsRepository {
   getPeriodStats(label: string, sinceIso: string, untilIso: string | null, hotLeadThreshold: number, excludedPhones?: string[]): DailyStats;
   getRecentConversations(limit: number, lineId?: string | null): ConversationSummary[];
   getRecentInboundAfterFirstReply(limit: number, lineId?: string | null, excludedPhones?: string[]): ConversationSummary[];
-  getTopLeads(limit: number, threshold: number, lineId?: string | null): ConversationSummary[];
+  getTopLeads(limit: number, threshold: number, lineId?: string | null, excludedPhones?: string[]): ConversationSummary[];
   getPhaseBreakdown(): PhaseBreakdown[];
-  getLeadCountsByLine(hotLeadThreshold: number): LineLeadCount[];
+  getLeadCountsByLine(hotLeadThreshold: number, excludedPhones?: string[]): LineLeadCount[];
   getLeadCountsByLineForPeriod(sinceIso: string, untilIso: string | null, hotLeadThreshold: number, excludedPhones?: string[]): LineLeadCount[];
 }
 
@@ -381,7 +694,10 @@ export interface CustomerDataRepository {
     ownerAlerts: number;
     mediaSends: number;
     bridgeSessions: number;
-    followUpEvents: number;
+    followupConsent: number;
+    followupEvents: number;
+    followupSubscriptions: number;
+    followupSubscriptionEvents: number;
   };
 }
 
@@ -400,6 +716,10 @@ export interface TranscriptRecord {
   lastSeenAt: string;
   leadScore: number;
   mode: ConversationMode | null;
+  entryMarker: string | null;
+  entryTemperature: 'cold' | 'funnel' | 'retargeting' | null;
+  entryMarkerAt: string | null;
+  adReferral: string | null;
   handedOff: boolean;
   converted: boolean;
   collected: {
@@ -410,6 +730,10 @@ export interface TranscriptRecord {
     lodgingNeed: string | null;
     pet: string | null;
     plan: string | null;
+    adults: number | null;
+    children: number | null;
+    childAges: number[] | null;
+    travelOrigin: string | null;
   };
   aiUsage: { promptTokens: number; completionTokens: number; estimatedCostUsd: number } | null;
   turns: TranscriptTurn[];
@@ -433,6 +757,15 @@ export interface DayConversationSummary {
   language: 'es' | 'en' | null;
   people: number | null;
   date: string | null;
+  transportNeed: string | null;
+  adults: number | null;
+  children: number | null;
+  childAges: number[] | null;
+  travelOrigin: string | null;
+  entryMarker: string | null;
+  entryTemperature: 'cold' | 'funnel' | 'retargeting' | null;
+  entryMarkerAt: string | null;
+  adReferralJson: string | null;
   firstSeenAt: string;
   lastActivityAt: string;
   messageCount: number;
@@ -443,7 +776,7 @@ export interface DayConversationSummary {
   aiCompletionTokens: number;
   aiCalls: number;
   aiUsageBreakdown: AiUsageBreakdown;
-  followUps: FollowUpEvent[];
+  followUps: [];
   messages: DayMessage[];
 }
 
@@ -472,8 +805,13 @@ export interface TranscriptRepository {
 }
 
 export interface Repositories {
+  followupConsent: FollowupConsentRepository;
+  followupSubscription: FollowupSubscriptionRepository;
+  followupEvent: FollowupEventRepository; // LIVE: one-shot post-24h template
+  followupSubscriptionEvent: FollowupSubscriptionEventRepository;
   conversation: ConversationRepository;
   message: MessageRepository;
+  outboundMedia: OutboundMediaRepository;
   dedupe: DedupeRepository;
   optOut: OptOutRepository;
   aiCache: AiCacheRepository;
@@ -486,9 +824,18 @@ export interface Repositories {
   systemErrors: SystemErrorRepository;
   customerData: CustomerDataRepository;
   transcripts: TranscriptRepository;
-  followUpEvent: FollowUpEventRepository;
   runInTransaction(operation: () => void): void;
   isPaused(): boolean;
   setPaused(paused: boolean): void;
+  /**
+   * Claims a once-per-period operator job, returning true only for the caller that
+   * won. Persisted in `bot_config`, so a restart cannot re-run a period already
+   * delivered — an in-process flag alone would re-send on every boot, and a crash
+   * loop at the trigger hour would spam the operator.
+   *
+   * The claim is taken BEFORE the send: losing one period's informational digest to
+   * a transport failure is cheaper than repeating it on every retry.
+   */
+  claimPeriodicJob(jobKey: string, periodKey: string): boolean;
   ping(): boolean;
 }

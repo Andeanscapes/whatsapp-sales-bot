@@ -1,0 +1,33 @@
+{
+  "id": "referent.d",
+  "kind": "referent",
+  "version": 3,
+  "displayName": "Payment path",
+  "summary": "Camino simple hacia pago: validar antes, explicar anticipo y métodos públicos de DATOS, nunca credenciales privadas.",
+  "keyPoints": [
+    {
+      "id": "payment-path",
+      "trigger": "pregunta cómo reservar o pagar",
+      "do": "Explica el orden: (1) validar disponibilidad y grupo, (2) confirmar total, (3) pagar anticipo por un método habilitado en DATOS.",
+      "never": "Dar teléfono personal, números de cuenta, transferencias privadas, o enlaces personalizados."
+    },
+    {
+      "id": "anticipo-clear",
+      "trigger": "cliente pregunta monto o términos",
+      "do": "Di el porcentaje exacto del anticipo desde DATOS, qué cubre y qué debe validar el equipo después.",
+      "never": "Cambiar el porcentaje, inventar excepciones o cerrar con descuento."
+    },
+    {
+      "id": "methods-only-public",
+      "trigger": "cliente pregunta dónde pagar",
+      "do": "Menciona solo los nombres de métodos habilitados en DATOS. El equipo genera enlaces seguros tras validar.",
+      "never": "Compartir números privados, correos de pago o instrucciones bancarias directas."
+    },
+    {
+      "id": "validation-first",
+      "trigger": "cliente muestra intención de pago",
+      "do": "Valida disponibilidad antes de pedir pago. Confirma fecha, grupo y plan.",
+      "never": "Cobrar por promesa, o prometer cupo sin validar."
+    }
+  ]
+}

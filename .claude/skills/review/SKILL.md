@@ -13,6 +13,7 @@ Check against:
 Focus on:
 - Service-layer patterns: fetch → validate → transform → return
 - Architecture boundaries (server/client separation, provider topology, module scope)
+- **Skills v2 architecture** (see `docs/skills-architecture.md`): LLM owns reply text — no new pre-LLM sales intercepts, no deterministic sales copy rewriting, no payment phone/link in prompt, all prompt building via `skills-prompt-assembly.ts`
 - No hardcoded copy — respect i18n patterns if present
 - Reuse existing primitives, helpers, utilities, and components
 - No fake or mock data outside approved registries

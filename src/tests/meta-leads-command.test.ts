@@ -4,7 +4,6 @@ import { env } from '../config/env.js';
 import { migrate } from '../db/migrate.js';
 import { createRepositories, type Repositories } from '../db/repositories/index.js';
 import { metaLeadsHandler } from '../commands/meta-leads.command.js';
-import { metaConsentHandler } from '../commands/meta-consent.command.js';
 
 describe('meta leads command handler', () => {
   let db: Database.Database;
@@ -26,14 +25,12 @@ describe('meta leads command handler', () => {
     db.close();
   });
 
-  it('sends consented active unbooked leads and excludes missing consent, opted-out, and booked leads', async () => {
-    repos.conversation.upsert('573001112233', { collected_name: 'Ana Maria' });
-    repos.conversation.upsert('573001112234', { collected_name: 'Luis' });
-    repos.conversation.upsert('573001112235', { collected_name: 'Booked Person' });
-    repos.conversation.upsert('573001112236', { collected_name: 'No Consent' });
-    repos.conversation.recordMetaAudienceConsent('573001112233', 'whatsapp_explicit_opt_in');
-    repos.conversation.recordMetaAudienceConsent('573001112234', 'whatsapp_explicit_opt_in');
-    repos.conversation.recordMetaAudienceConsent('573001112235', 'booking_checkout_opt_in');
+  it('sends active unbooked Meta referral leads and excludes non-Meta, opted-out, and booked leads', async () => {
+    const referral = JSON.stringify({ source_type: 'ad', source_id: 'campaign-1' });
+    repos.conversation.upsert('573001112233', { collected_name: 'Ana Maria', ad_referral_json: referral });
+    repos.conversation.upsert('573001112234', { collected_name: 'Luis', ad_referral_json: referral });
+    repos.conversation.upsert('573001112235', { collected_name: 'Booked Person', ad_referral_json: referral });
+    repos.conversation.upsert('573001112236', { collected_name: 'No Meta Referral' });
     repos.optOut.setOptOut('573001112234');
     repos.conversation.setBooked('573001112235');
 
@@ -57,23 +54,4 @@ describe('meta leads command handler', () => {
       .resolves.toBe('No se pudo enviar el CSV. Intenta de nuevo.');
   });
 
-  it('records documented consent through the owner command', async () => {
-    const result = await metaConsentHandler({
-      repos,
-      args: ['+57-300-111-2233', 'whatsapp_explicit_opt_in'],
-      chatId: 111,
-    });
-
-    expect(result).toContain('Consentimiento Meta registrado');
-    expect(repos.conversation.listMetaAudienceLeads()).toEqual([
-      { customerPhone: '573001112233', collectedName: null },
-    ]);
-  });
-
-  it('rejects an undocumented consent source', async () => {
-    const result = await metaConsentHandler({ repos, args: ['573001112233', 'inferred'], chatId: 111 });
-
-    expect(result).toContain('Uso: /metaconsent');
-    expect(repos.conversation.listMetaAudienceLeads()).toEqual([]);
-  });
 });
