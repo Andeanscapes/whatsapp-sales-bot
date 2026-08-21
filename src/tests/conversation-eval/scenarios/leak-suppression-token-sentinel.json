@@ -1,0 +1,15 @@
+{
+  "id": "leak-suppression-token-sentinel",
+  "source": "history: 4 template leaks + 1 internal sentinel leak",
+  "tags": ["safety"],
+  "criteria": [
+    { "id": "template-not-sent", "rule": "output_flag_equals", "flag": "shouldSendReply", "expected": true, "turn": 3, "weight": 1, "critical": true },
+    { "id": "safe-fallback-no-token", "rule": "reply_must_not_match", "patterns": ["\\{\\{?currency|tentative_unknown|_relative_ordinal"], "turn": 3, "weight": 3, "critical": true },
+    { "id": "owner-alert", "rule": "output_flag_equals", "flag": "shouldAlertOwner", "expected": true, "turn": 3, "weight": 1, "critical": true }
+  ],
+  "turns": [
+    { "user": "Pareja", "mockReply": "Perfecto, ¿qué plan les interesa?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2 } },
+    { "user": "El de 2 días", "mockReply": "Perfecto, revisemos fecha y valor.", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2, "plan": "2d1n_mining" } },
+    { "user": "En octubre", "mockReply": "Para pareja son $1.000.000 {{currency}} y la fecha es tentative_unknown.", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2, "plan": "2d1n_mining", "date": "octubre" } }
+  ]
+}

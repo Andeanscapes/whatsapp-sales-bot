@@ -6,8 +6,11 @@ import { sendTelegramMessage } from './telegram-bot.js';
 import { assignLine, isReferralLine } from './lead-routing.js';
 import { bridgeMessages } from './bridge-messages.js';
 import { RESERVATION_ALERT_COOLDOWN_MS } from './constants.js';
+import { formatAdReferral } from './ad-referral.js';
+import { formatChildAges } from './qualification-format.js';
 
 const ALERT_FETCH_TIMEOUT_MS = 10_000;
+const MAX_ALERT_LENGTH = 4_000;
 
 let startupWarned = false;
 
@@ -51,6 +54,31 @@ function leadTemperatureEmoji(score: number): string {
   return '🧊';
 }
 
+function storedLeadContext(repos: Repositories, customerPhone: string): string | null {
+  const conversation = repos.conversation.getByPhone(customerPhone);
+  if (!conversation) return null;
+
+  const childAges = formatChildAges(conversation.collected_child_ages_json);
+  const adReferral = formatAdReferral(conversation.ad_referral_json);
+  const lines = [
+    conversation.collected_plan ? `Plan: ${conversation.collected_plan}` : null,
+    conversation.collected_adults != null ? `Adultos: ${conversation.collected_adults}` : null,
+    conversation.collected_children != null ? `Ninos: ${conversation.collected_children}` : null,
+    childAges ? `Edades ninos: ${childAges}` : null,
+    conversation.collected_travel_origin ? `Origen viaje: ${conversation.collected_travel_origin}` : null,
+    conversation.entry_marker
+      ? `Entrada: ${conversation.entry_marker} (${conversation.entry_temperature ?? 'unknown'})`
+      : null,
+    adReferral ? `Anuncio: ${adReferral}` : null,
+  ].filter((line): line is string => line !== null);
+
+  return lines.length > 0 ? lines.join('\n') : null;
+}
+
+function fitAlert(body: string): string {
+  return body.length <= MAX_ALERT_LENGTH ? body : `${body.slice(0, MAX_ALERT_LENGTH - 3)}...`;
+}
+
 export async function sendAlert(request: AlertRequest, repos: Repositories): Promise<boolean> {
   const alertType = request.intent === 'reservation_handoff' || request.intent === 'reservation_intent' || request.intent === 'payment_received' || request.intent === 'unsafe_reservation_blocked' || request.intent === 'policy_violation_blocked' || request.intent === 'system_error' || request.intent === 'dynamic_pricing_unavailable'
     ? request.intent
@@ -84,6 +112,8 @@ export async function sendAlert(request: AlertRequest, repos: Repositories): Pro
     .replace('{{people}}', request.people ?? 'unknown')
     .replace('{{transportNeed}}', request.transport ?? 'unknown')
     .replace('{{lastMessage}}', request.message);
+  const storedContext = storedLeadContext(repos, request.customerPhone);
+  if (storedContext) body = `${body}\n\n${storedContext}`;
 
   let delivered = false;
 
@@ -95,6 +125,7 @@ export async function sendAlert(request: AlertRequest, repos: Repositories): Pro
       bridge: assignedLine.type === 'bridge',
       displayNumber: isReferralLine(assignedLine) ? assignedLine.displayNumber : undefined,
     })}`;
+    body = fitAlert(body);
     try {
       await sendTelegramMessage(assignedLine.telegramChatId, body);
       delivered = true;
@@ -113,6 +144,7 @@ export async function sendAlert(request: AlertRequest, repos: Repositories): Pro
       }
     }
   } else if (env.ALERT_CHANNEL === 'telegram') {
+    body = fitAlert(body);
     if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) {
       if (!startupWarned) {
         logger.warn('[ALERT] ALERT_CHANNEL=telegram but TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is empty — alerts will be logged, not sent to Telegram');
@@ -130,6 +162,7 @@ export async function sendAlert(request: AlertRequest, repos: Repositories): Pro
       }
     }
   } else if (env.ALERT_CHANNEL === 'whatsapp') {
+    body = fitAlert(body);
     try {
       await sendWhatsAppAlert(body);
       delivered = true;
@@ -138,6 +171,7 @@ export async function sendAlert(request: AlertRequest, repos: Repositories): Pro
       logger.warn({ reason }, '[ALERT] owner WhatsApp delivery failed');
     }
   } else {
+    body = fitAlert(body);
     logger.info({ body }, '[ALERT] log channel');
     delivered = true;
   }

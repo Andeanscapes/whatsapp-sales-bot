@@ -6,7 +6,6 @@ import { getActiveExperience } from '../../services/product-registry.js';
 import { PRICING_NOT_AVAILABLE } from '../../services/dynamic-data-service.js';
 import type { AnalyzerInput, LeadAnalysis } from '../../services/lead-analyzer.js';
 import { applyScenarioSeeds, createRunContext, defaultMockResult, runTurn, type MockLlmFunction } from './runner.js';
-import { runFollowUpScenario } from './follow-up-runner.js';
 import { runLifecycleScenario } from './lifecycle-runner.js';
 import { evaluateScenario } from './evaluate-scenario.js';
 import { buildReport, printReport, writeReport } from './report.js';
@@ -41,6 +40,17 @@ describe('Conversation Quality Eval V2', () => {
   const scenarios = loadScenarios(scenariosDir);
   const results: ScenarioResult[] = [];
 
+  if (scenarios.length === 0) {
+    it('no scenarios registered — harness idle', () => {
+      expect(scenarios).toEqual([]);
+    });
+    afterAll(() => {
+      const report = buildReport('deterministic', []);
+      printReport(report);
+      writeReport(report, 'conversation-eval.json');
+    });
+  }
+
   for (let index = 0; index < scenarios.length; index++) {
     const scenario = scenarios[index];
     it(`${scenario.id} (${scenario.turns.length} turns)`, async () => {
@@ -57,14 +67,10 @@ describe('Conversation Quality Eval V2', () => {
           completionTokens: 10,
         } : null;
       });
-      if (scenario.runner === 'follow_up') {
-        mockLlmComplete.mockResolvedValueOnce(defaultMockResult(scenario.followUpMockReply ?? ''));
-      } else {
-        mockLlmComplete.mockImplementation(async input => {
-          const turn = scenario.turns.find(candidate => candidate.user === input.message);
-          return turn ? defaultMockResult(turn.mockReply) : null;
-        });
-      }
+      mockLlmComplete.mockImplementation(async input => {
+        const turn = scenario.turns.find(candidate => candidate.user === input.message);
+        return turn ? defaultMockResult(turn.mockReply) : null;
+      });
 
       const ctx = createRunContext({ phoneSuffix: index });
       const experience = getActiveExperience(getSkills());
@@ -85,8 +91,6 @@ describe('Conversation Quality Eval V2', () => {
         restoreSeeds = applyScenarioSeeds(ctx, scenario);
         if (scenario.runner === 'lifecycle') {
           ctx.turns.push(...runLifecycleScenario(ctx, scenario));
-        } else if (scenario.runner === 'follow_up') {
-          ctx.turns.push(...await runFollowUpScenario(ctx, scenario));
         } else {
           for (let turnIndex = 0; turnIndex < scenario.turns.length; turnIndex++) {
             ctx.turns.push(await runTurn(ctx, scenario.turns[turnIndex], turnIndex + 1));

@@ -1,10 +1,13 @@
 # This repo's rules live in AGENTS.md. The file at the repo root is the single source of truth for:
-# - Architecture invariants
+# - Architecture invariants (incl. no automated follow-up / re-engagement)
 # - Business facts source (JSON skill files, never hardcoded)
+# - Prompt assembly only via skills-prompt-assembly.ts; QUOTE LOCK for group totals
 # - Database repository seam
 # - Security rules (secrets, localhost binding, no `any`)
-# - Validation gate (typecheck, lint, test, build, simulate)
+# - Validation gate (typecheck, lint, test, build, validate:prompt, simulate, eval:conversations)
 #
 # For complex tasks, generate a plan first before writing code.
-# Agent workflows: see docs/agent-workflows.md
-# Full architecture docs: see docs/bot-architecture.md
+# Agent workflows: docs/agent-workflows.md
+# Skills v2: docs/skills-architecture.md + src/prompts/SKILLS-ASSEMBLY.md
+# Runtime architecture: docs/bot-architecture.md
+# Prompt lessons (not runtime): src/prompts/LESSONS.md

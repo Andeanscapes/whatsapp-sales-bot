@@ -18,7 +18,7 @@ export const bridgeMessages = {
   chatClosed: (phone: string): string => `Chat cerrado con ${phone}.`,
   sent: (phone: string): string => `Enviado a ${phone}`,
   sendFailed: (reason: string): string => `Error enviando WhatsApp desde bridge: ${reason}`,
-  bridgeUsage: 'Uso: /bridge <telefono>  (alias: /chat)',
+  bridgeUsage: 'Uso: /chat <telefono>',
   leadUsage: 'Uso: /lead <telefono>',
   bookingUsage: 'Uso: /booking <telefono>',
   deleteUsage: 'Uso: /delete <telefono>',
@@ -31,7 +31,6 @@ export const bridgeMessages = {
     ownerAlerts: number;
     mediaSends: number;
     bridgeSessions: number;
-    followUpEvents: number;
   }): string =>
     [
       `🧹 Datos eliminados para ${params.phone}`,
@@ -42,7 +41,6 @@ export const bridgeMessages = {
       `owner alerts: ${params.ownerAlerts}`,
       `media sends: ${params.mediaSends}`,
       `bridge sessions: ${params.bridgeSessions}`,
-      `follow-up events: ${params.followUpEvents}`,
     ].join('\n'),
   alreadyBooked: (sinceDay: string): string => `Ya estaba confirmado desde ${sinceDay}.`,
   bookingConfirmed: (who: string): string => `Reserva confirmada para ${who}. Se notifico a todas las lineas.`,
@@ -66,28 +64,28 @@ export const bridgeMessages = {
   relayFailed: (phone: string, messageType: string): string =>
     `No se pudo entregar al agente el mensaje ${messageType} de ${phone}. El mensaje quedo guardado y el bridge sigue activo.`,
   dormantBridgeNotice: (phone: string, text: string): string =>
-    `${customerMessageBody(phone, text)}\n\nUsa /bridge ${phone} para tomar control.`,
+    `${customerMessageBody(phone, text)}\n\nUsa /chat ${phone} para tomar control.`,
   dormantBridgeImageNotice: (phone: string): string =>
-    `${phone} envio una imagen.\n\nUsa /bridge ${phone} para tomar control.`,
+    `${phone} envio una imagen.\n\nUsa /chat ${phone} para tomar control.`,
   dormantBridgeAudioNotice: (phone: string): string =>
-    `${phone} envio un audio.\n\nUsa /bridge ${phone} para tomar control.`,
+    `${phone} envio un audio.\n\nUsa /chat ${phone} para tomar control.`,
   dormantBridgeVideoNotice: (phone: string): string =>
-    `${phone} envio un video.\n\nUsa /bridge ${phone} para tomar control.`,
+    `${phone} envio un video.\n\nUsa /chat ${phone} para tomar control.`,
   customerImageFailed: (phone: string): string =>
     `${phone} envio una imagen pero no se pudo descargar. Pidele al cliente que la reenvie.`,
   customerAudioFailed: (phone: string): string =>
     `${phone} envio un audio pero no se pudo descargar. Pidele al cliente que lo reenvie.`,
-  imageNoActiveChat: 'No hay chat activo. Abre uno con /bridge <telefono> antes de enviar una imagen.',
+  imageNoActiveChat: 'No hay chat activo. Abre uno con /chat <telefono> antes de enviar una imagen.',
   postHandoffCustomerMessage: (params: { phone: string; text: string; bridge: boolean; displayNumber?: string }): string => {
     const action = params.bridge
-      ? `Usa /bridge ${params.phone} para responder desde el bridge.`
+      ? `Usa /chat ${params.phone} para responder desde el bridge.`
       : `Responder desde WhatsApp Business app: ${params.displayNumber ?? 'linea asignada'}.`;
     return `Nuevo mensaje del lead ${params.phone}\nWhatsApp: https://wa.me/${params.phone}\n\n${params.text}\n\n${action}`;
   },
   fallbackAlert: (body: string): string => `[FALLBACK] ${body}`,
   alertFooter: (params: { label: string; agentName: string; type: string; bridge: boolean; displayNumber?: string }): string => {
     const action = params.bridge
-      ? 'Responder con /bridge <telefono> y luego escribir aqui.'
+      ? 'Responder con /chat <telefono> y luego escribir aqui.'
       : `El asesor debe escribir desde ${params.displayNumber ?? 'la linea asignada'}.`;
     return `Asignado: ${params.label} (${params.agentName})\nRuta: ${params.type}\n${action}`;
   },
@@ -97,4 +95,6 @@ export const bridgeMessages = {
   stopbotUsage: 'Uso: /stopbot <telefono>',
   stopbotBooked: 'Lead confirmado (booked). No se puede silenciar.',
   stopbotDone: (phone: string): string => `Bot silenciado para ${phone}. Chat humano activo; usa /end para cerrarlo o /returnbot ${phone} para reactivar el bot.`,
+  stopallUsage: 'Uso: /stopall <telefono>',
+  stopallDone: (phone: string): string => `Bot silenciado para ${phone}. Usa /returnbot ${phone} para reactivar.`,
 } as const;

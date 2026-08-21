@@ -75,6 +75,50 @@ describe('sendAlert — per-line delivery', () => {
     expect(repos.ownerAlert.wasAlertedToday(PHONE, 'reservation_handoff')).toBe(true);
   });
 
+  it('includes stored qualification and acquisition context', async () => {
+    pinBridgeLine();
+    repos.conversation.upsert(PHONE, {
+      collected_plan: '2d1n_mining',
+      collected_adults: 2,
+      collected_children: 1,
+      collected_child_ages_json: '[9]',
+      collected_travel_origin: 'Medellin',
+      entry_marker: 'R01',
+      entry_temperature: 'retargeting',
+      ad_referral_json: JSON.stringify({ headline: 'Tour', source_type: 'ad', source_id: 'campaign-1', ctwa_clid: 'private' }),
+    });
+
+    await sendAlert({
+      customerPhone: PHONE,
+      score: 90,
+      intent: 'reservation_handoff',
+      message: 'Quiero reservar',
+    }, repos);
+
+    const body = String(mockSendTelegram.mock.calls[0]?.[1]);
+    expect(body).toContain('Plan: 2d1n_mining');
+    expect(body).toContain('Adultos: 2');
+    expect(body).toContain('Ninos: 1');
+    expect(body).toContain('Edades ninos: 9');
+    expect(body).toContain('Origen viaje: Medellin');
+    expect(body).toContain('Entrada: R01 (retargeting)');
+    expect(body).toContain('campaign-1');
+    expect(body).not.toContain('private');
+  });
+
+  it('caps alert text below Telegram limits', async () => {
+    pinBridgeLine();
+
+    await sendAlert({
+      customerPhone: PHONE,
+      score: 90,
+      intent: 'reservation_handoff',
+      message: 'x'.repeat(5_000),
+    }, repos);
+
+    expect(String(mockSendTelegram.mock.calls[0]?.[1]).length).toBeLessThanOrEqual(4_000);
+  });
+
   it('does not record the alert when both line and fallback fail — allows retry', async () => {
     pinBridgeLine();
     mockSendTelegram.mockRejectedValue(new Error('chat not found'));

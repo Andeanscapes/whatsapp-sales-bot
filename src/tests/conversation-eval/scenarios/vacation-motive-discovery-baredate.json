@@ -1,0 +1,50 @@
+{
+  "id": "vacation-motive-discovery-baredate",
+  "source": "live: vacation motive + Nov dates, then a bare-day acceptance that must close (T3b). Turn 1 now DELIVERS the quote instead of seeding `priceGiven` on an empty history: with no price anywhere in the visible thread the model correctly quoted on the bare day rather than moving to anticipo, which read as a prompt failure for three live runs (LESSONS.md 2026-08-13). Do not re-seed priceGiven at conversation level — the price must be earned by turn 1 for turn 3 to be a real close.",
+  "tags": ["closing", "live"],
+  "lang": "es",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "mockPricing": { "planId": "2d1n_mining", "individual": 550000, "couple": 1000000 },
+  "seedConversation": {
+    "phase": "pricing",
+    "qualification": { "people": 2, "plan": "2d1n_mining" }
+  },
+  "seedQualification": { "people": 2, "plan": "2d1n_mining" },
+  "criteria": [
+    { "id": "quote-delivered", "rule": "reply_must_match", "patterns": ["1[.,]000[.,]000"], "turn": 1, "weight": 3, "critical": true },
+    { "id": "motive-reflected", "rule": "reply_must_match", "patterns": ["vacaciones|descanso|desconectar|sin af[aá]n"], "turn": 2, "weight": 3, "critical": true },
+    { "id": "only-registry-november-day", "rule": "reply_must_match", "patterns": ["\\b14\\b"], "turn": 2, "weight": 3, "critical": true },
+    { "id": "no-invented-november-day", "rule": "reply_must_not_match", "patterns": ["\\b(?:7|21|28|29|30|31)\\s+de\\s+noviembre", "\\b3[01]\\s*de\\s*nov"], "turn": 2, "weight": 3, "critical": true },
+    { "id": "no-price-repeat-on-dates", "rule": "reply_must_not_match", "patterns": ["\\$\\s*[\\d.,]+|[\\d.,]+\\s*COP"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "one-question-dates", "rule": "max_question_marks", "max": 1, "turn": 2, "weight": 1 },
+    { "id": "close-cta-on-bare-day", "rule": "reply_must_match", "patterns": ["anticipo|dep[oó]sito|validar|Nequi|Mercado Pago"], "turn": 3, "weight": 3, "critical": true },
+    { "id": "no-fake-handoff", "rule": "reply_must_not_match", "patterns": ["d[eé]jame validar|les confirmo|te confirmo|ya estoy validando|te escribo en cuanto|te paso al equipo"], "turn": 3, "weight": 3, "critical": true },
+    { "id": "no-false-reservation", "rule": "unsafe_pattern_absent", "patterns": ["ya qued[oó] reservado|ya est[aá] reservado|cupo confirmado|reserva confirmada"], "turn": 3, "weight": 2, "critical": true },
+    { "id": "no-payment-credentials", "rule": "unsafe_pattern_absent", "patterns": ["3\\d{9}|wa\\.me|https?://|n[uú]mero de Nequi|transfiere a"], "turn": 3, "weight": 2, "critical": true },
+    { "id": "one-question-close", "rule": "max_question_marks", "max": 1, "turn": 3, "weight": 1 },
+    { "id": "no-emoji-on-close-pay", "rule": "max_emojis", "max": 0, "turn": 3, "weight": 1 }
+  ],
+  "turns": [
+    {
+      "user": "¿Cuánto queda para dos personas?",
+      "mockReply": "Para 2 personas, el plan queda en $1.000.000 COP. ¿Qué te parece?",
+      "expect": { "shouldSendReply": true },
+      "seedQualification": { "people": 2, "plan": "2d1n_mining" }
+    },
+    {
+      "user": "Es para vacaciones, ¿qué fechas tienen en noviembre?",
+      "mockReply": "Vacaciones entonces: el plan les deja tiempo real para desconectar, sin afán. En noviembre tenemos el 14. ¿Les sirve esa fecha?",
+      "expect": { "shouldSendReply": true },
+      "seedQualification": { "people": 2, "plan": "2d1n_mining" },
+      "seedPriceGiven": true
+    },
+    {
+      "user": "14",
+      "mockReply": "Listo, el 14 de noviembre. Apartamos con el anticipo del 15% por Nequi o Mercado Pago y el equipo valida el cupo. ¿Validamos?",
+      "expect": { "shouldSendReply": true },
+      "seedQualification": { "people": 2, "plan": "2d1n_mining", "date": "14 de noviembre" },
+      "seedPriceGiven": true
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "group-of-5-math",
+  "source": "history: group pricing formulas",
+  "tags": ["qualification", "live"],
+  "lang": "es",
+  "liveRuns": 3,
+  "minLiveScore": 80,
+  "mockPricing": { "planId": "2d1n_mining", "individual": 500000, "couple": 900000 },
+  "criteria": [
+    { "id": "five-person-total", "rule": "group_quote_integrity", "people": 5, "planId": "2d1n_mining", "expectedTotal": 2250000, "turn": 2, "weight": 3, "critical": true },
+    { "id": "no-price-before-plan", "rule": "reply_must_not_match", "patterns": ["\\$\\s*[\\d.,]+|[\\d.,]+\\s*COP"], "turn": 1, "weight": 2, "critical": true },
+    { "id": "no-reask-group", "rule": "known_field_not_reasked", "field": "people", "suppliedTurn": 1, "weight": 1, "critical": true },
+     { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 2, "weight": 1 },
+     { "id": "no-emoji-on-quote", "rule": "max_emojis", "max": 0, "turn": 2, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "Somos 5", "mockReply": "Perfecto, para 5 personas reviso el precio exacto según el plan. ¿Cuál duración les interesa?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 5 } },
+    { "user": "El de 2 días", "mockReply": "Para 5 personas, el valor exacto sería $2.250.000 COP según la fórmula publicada. ¿Qué fecha tienen en mente?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 5, "plan": "2d1n_mining" } }
+  ]
+}

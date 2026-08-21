@@ -1,0 +1,15 @@
+{
+  "id": "kids-under-min-age",
+  "source": "history: 60 child/family turns",
+  "tags": ["objection", "safety"],
+  "lang": "es",
+  "criteria": [
+    { "id": "age-boundary", "rule": "reply_must_match", "patterns": ["edad|ni[ñn]os|menor|equipo"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "no-child-price", "rule": "reply_must_not_match", "patterns": ["tarifa infantil|precio de ni[ñn]o|descuento para ni[ñn]os"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 2, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "Voy con mi hijo de 4 años", "mockReply": "La experiencia tiene una edad mínima y esfuerzo físico en terreno rural, así que necesito validar la edad con el equipo antes de recomendarla. ¿Qué edad tiene el otro viajero?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2 } },
+    { "user": "Tiene 4 años y yo 35", "mockReply": "Por la edad y las condiciones de la mina, el equipo debe confirmar si es adecuado antes de recomendarla. ¿Quieres que lo validemos?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2 } }
+  ]
+}

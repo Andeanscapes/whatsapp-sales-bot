@@ -2,8 +2,10 @@ import { z } from 'zod';
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import type { DynamicDataService, InternalDynamicData, InternalDynamicMedia, InternalPricingItem } from './dynamic-data-service.js';
-import { PRICING_NOT_AVAILABLE, AVAILABILITY_NOT_AVAILABLE } from './dynamic-data-service.js';
+import type { DynamicDataService, InternalDynamicData, InternalDynamicMedia, InternalExperienceData } from './dynamic-data-service.js';
+import { PRICING_NOT_AVAILABLE, AVAILABILITY_NOT_AVAILABLE, transformDynamicData } from './dynamic-data-service.js';
+import { assertDynamicCatalogReady, dynamicDataSchema } from './dynamic-data-schema.js';
+import { existsSync } from 'fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -25,6 +27,7 @@ const availableDateSchema = z.object({
 const pricingItemSchema = z.object({
   id: z.string(),
   kind: z.enum(['plan', 'addon']).optional(),
+  siteId: z.string().optional(),
   planId: z.string().optional(),
   label: z.string(),
   pricePerPerson: z.number().int().nullable().optional(),
@@ -46,7 +49,8 @@ const commonQuestionSchema = z.object({
 const experienceSchema = z.object({
   id: z.string(),
   name: z.string(),
-  status: z.string(),
+  status: z.enum(['active', 'inactive']).default('active'),
+  clarifications: z.array(z.string()).default([]),
   shortDescription: z.string(),
   fullDescription: z.string().optional(),
   meetingPoint: z.string(),
@@ -78,15 +82,26 @@ const experienceSchema = z.object({
   included: z.array(z.string()),
   notIncludedUnlessConfirmed: z.array(z.string()),
   whatToBring: z.array(z.string()),
-  plans: z.array(z.object({
-    id: z.string(),
-    name: z.string(),
-    duration: z.string(),
-    shortDescription: z.string(),
-    benefits: z.string(),
-    keywords: z.array(z.string()),
-    imageId: z.string(),
-  })),
+   plans: z.array(z.object({
+     id: z.string(),
+     siteId: z.string().optional(),
+     name: z.string(),
+     duration: z.string(),
+     shortDescription: z.string(),
+     benefits: z.string(),
+     keywords: z.array(z.string()),
+     imageId: z.string(),
+     clarifications: z.array(z.string()).default([]),
+     included: z.array(z.string()).default([]),
+     notIncludedUnlessConfirmed: z.array(z.string()).default([]),
+     itinerary: z.array(z.object({
+       day: z.number().int().positive(),
+       title: z.string(),
+       activities: z.array(z.string()),
+       meals: z.array(z.string()).default([]),
+       notes: z.string().optional(),
+     })).default([]),
+   })),
   petPolicy: z.object({
     allowed: z.boolean(),
     notes: z.string(),
@@ -110,6 +125,18 @@ const experienceSchema = z.object({
     guaranteed: z.boolean(),
     notes: z.string(),
   }),
+  haciendaInfo: z.object({
+    name: z.string().optional(),
+    activities: z.string().optional(),
+    amenities: z.array(z.string()).optional(),
+    notes: z.string().optional(),
+  }).optional(),
+  safetyInfo: z.object({
+    equipment: z.string().optional(),
+    medicalSupport: z.string().optional(),
+    regionSecurity: z.string().optional(),
+    notes: z.array(z.string()).optional(),
+  }).optional(),
   climateInfo: z.object({
     altitude: z.string().optional(),
     temperature: z.string().optional(),
@@ -163,7 +190,8 @@ const andeanScapesSchema = z.object({
       methodNames: z.array(z.string()).min(1),
     }),
   }),
-  experiences: z.array(experienceSchema).min(1),
+  // Empty allowed: product catalog SSoT is dynamic JSON when present.
+  experiences: z.array(experienceSchema).default([]),
 });
 
 const signalSchema = z.object({
@@ -179,50 +207,8 @@ const negativeSignalSchema = z.object({
   keywords: z.array(z.string()),
 });
 
-const salesTacticsSchema = z.object({
-  tonePersonality: z.string(),
-  urgency: z.object({
-    realScarcity: z.string(),
-    weekendPressure: z.string(),
-    noFakeScarcity: z.string(),
-  }),
-  powerConfidence: z.object({
-    attitude: z.string(),
-    examples: z.array(z.string()),
-  }),
-  closing: z.object({
-    assumptive: z.string(),
-    softTakeaway: z.string(),
-  }),
-  objectionHandling: z.object({
-    thinkAboutIt: z.string(),
-    checkWithPartner: z.string(),
-    notYet: z.string(),
-  }),
-  serviceOverSales: z.string(),
-  peakEndAnchor: z.string(),
-  metaRule: z.string(),
-  firstContact: z.string(),
-  typoHandling: z.string(),
-  humanSellFormula: z.string(),
-  customerFirstSelling: z.string(),
-  microQuestionFlow: z.string(),
-  recommendNotDescribe: z.string(),
-  shortStorytelling: z.string(),
-  priceWithContext: z.string(),
-  softClosing: z.string(),
-  mediaRestraint: z.string(),
-  messageStyle: z.string(),
-  hotLeadBehavior: z.string(),
-  rarityPositioning: z.string(),
-  safetyLogisticsValue: z.string(),
-  againstMassTourism: z.string(),
-  authenticityCommunity: z.string(),
-  followUpReplyStrategy: z.string(),
-  painResponseStrategy: z.string(),
-  invisibleQualification: z.string(),
-});
-
+// Sales methodology lives in the MD skills + referent packs (skills v2), not here.
+// This file is scoring/threshold data only.
 const salesStrategySchema = z.object({
   hotLeadThreshold: z.number().int(),
   urgentLeadThreshold: z.number().int(),
@@ -231,7 +217,6 @@ const salesStrategySchema = z.object({
   signals: z.array(signalSchema),
   negativeSignals: z.array(negativeSignalSchema),
   ownerAlertTemplate: z.string(),
-  salesTactics: salesTacticsSchema,
 });
 
 const mediaPolicySchema = z.object({
@@ -263,9 +248,7 @@ const langFallbackSchema = z.object({
   askPeople: z.string(),
   askDate: z.string(),
   askTransport: z.string(),
-  clarifyTransportMode: z.string(),
   childSuitabilityBoundary: z.string(),
-  reservationImmediate: z.string(),
   dateOptionsOffer: z.string(),
   advanceQuestionPeople: z.string(),
   advanceQuestionTransportSolo: z.string(),
@@ -275,13 +258,7 @@ const langFallbackSchema = z.object({
   advanceQuestionNameSolo: z.string(),
   advanceQuestionName: z.string(),
   advanceQuestionNextStep: z.string(),
-  motorcycleContext: z.string(),
-  availabilityVerification: z.string(),
-  priceObjectionBusAlternative: z.string(),
-  priceObjectionAlternative: z.string(),
   priceDependsOnGroup: z.string(),
-  priceAndDatesIntro: z.string(),
-  priceAcceptedReservation: z.string(),
   clarifyName: z.string(),
   clarifyPlan: z.string(),
   clarifyPeople: z.string(),
@@ -308,8 +285,6 @@ const langFallbackSchema = z.object({
   adventureClarifier: z.string(),
   disculpaYaDicho: z.string(),
   objectionResolvedContinue: z.string(),
-  partnerConsultSummary: z.string(),
-  reviewPauseAcknowledgement: z.string(),
   quoteContext: z.string(),
   quoteNextStep: z.string(),
   quoteNextStepSolo: z.string(),
@@ -320,8 +295,6 @@ const langFallbackSchema = z.object({
   reservationPendingOwner: z.string(),
   reservationPendingAck: z.string(),
   reservationSoftHold: z.string(),
-  reservationDateNeeded: z.string(),
-  dateDeferredAcknowledgement: z.string(),
   priceGateTeaser: z.string(),
   priceFollowUpCatalog: z.string(),
   priceFollowUpCase: z.string(),
@@ -361,16 +334,14 @@ const langFallbackSchema = z.object({
   answerQuestionBeforeQualification: z.string(),
   itineraryReply: z.string(),
   dynamicDataUnavailable: z.string(),
+  experienceInactive: z.string(),
+  planUnavailable: z.string(),
   pastDateReply: z.string(),
   systemErrorRetry: z.string(),
-  galleryIntro: z.string(),
-  galleryFollowUp: z.string(),
   largeGroupReview: z.string(),
   largeGroupEscalate: z.string(),
   organizerContactReceived: z.string(),
   wrongServiceNatureOnly: z.string(),
-  qualifiedNextStep: z.string(),
-  coreBookingNextStep: z.string(),
   reservationPolicyUnavailable: z.string(),
   paymentLinkSent: z.string(),
   paymentApprovedOwnerAlert: z.string(),
@@ -383,14 +354,6 @@ const langFallbackSchema = z.object({
   availabilityWindowNoMatchClosest: z.string(),
   availabilityWindowNoMatch: z.string(),
   availabilityLimitedClause: z.string(),
-  followUpSafeNudge: z.string(),
-  followUpFatherSonMotorcycleMonth: z.string(),
-  followUpReviewReminder: z.string(),
-  followUpGreeting: z.string(),
-  followUpValue: z.string(),
-  followUpPricing: z.string(),
-  followUpPartner: z.string(),
-  followUpFinalDirect: z.string(),
   painReplyPrice: z.string(),
   painReplyDateTime: z.string(),
   painReplySecurity: z.string(),
@@ -399,14 +362,7 @@ const langFallbackSchema = z.object({
   painReplyPartnerGroup: z.string(),
   multiExperienceIntro: z.string(),
   experienceSelected: z.string(),
-  enrichAfterPriceNextStep: z.string(),
-  enrichFirstContactQualification: z.string(),
-  enrichPublishedDates: z.string(),
-    enrichBusAlternative: z.string(),
-    enrichReengagementDates: z.string(),
   closeDepositPriceLine: z.string(),
-  motorcycleAvailabilityCta: z.string(),
-  installmentPaymentReply: z.string(),
   transportAdditionalLabel: z.string(),
 });
 
@@ -438,68 +394,227 @@ function loadJson(filename: string): unknown {
   return JSON.parse(substituteTokens(raw));
 }
 
-function applyDynamicPricingItems(
-  staticItems: readonly AndeanScapesSkill['experiences'][number]['pricing']['items'][number][],
-  dynamicItems: readonly InternalPricingItem[],
-): AndeanScapesSkill['experiences'][number]['pricing']['items'] {
-  return dynamicItems.map(dynamicItem => {
-    const staticItem = staticItems.find(item => item.id === dynamicItem.id)
-      ?? staticItems.find(item => item.planId === dynamicItem.planId && dynamicItem.pricePerPerson != null && item.pricePerPerson != null)
-      ?? staticItems.find(item => item.planId === dynamicItem.planId && dynamicItem.couplePrice != null && item.couplePrice != null);
+type Experience = AndeanScapesSkill['experiences'][number];
 
-    return staticItem
-      ? { ...staticItem, ...dynamicItem, id: staticItem.id, label: staticItem.label }
-      : dynamicItem;
-  });
+/**
+ * Build runtime experiences solely from dynamic catalog.
+ * Missing dynamic experience key = deleted. No static resurrection.
+ */
+export function buildExperiencesFromDynamic(dynData: InternalDynamicData): Experience[] {
+  return Object.entries(dynData.experiences).map(([expId, dyn]) => experienceFromDynamic(expId, dyn));
 }
 
-function applyDynamicToExperiences(
-  exps: readonly AndeanScapesSkill['experiences'][number][],
+function experienceFromDynamic(expId: string, dyn: InternalExperienceData): Experience {
+  // Site logistics stay site-owned. Only collapse into experience root when there is
+  // exactly one site (current prod). Multi-site keeps root free of site-0 leakage;
+  // CATALOGO scopes via scopeExperienceToSite.
+  const siteEntries = Object.values(dyn.sites);
+  const site = siteEntries.length === 1 ? siteEntries[0] : undefined;
+  const route = site?.route ?? dyn.route;
+  const shortDescription = site?.shortDescription ?? dyn.shortDescription ?? '';
+  const fullDescription = site?.fullDescription ?? dyn.fullDescription;
+  const meetingPoint = site?.meetingPoint ?? dyn.meetingPoint ?? '';
+  const included = site?.included ?? dyn.included ?? [];
+  const notIncluded = site?.notIncludedUnlessConfirmed ?? dyn.notIncludedUnlessConfirmed ?? [];
+  const whatToBring = site?.whatToBring ?? dyn.whatToBring ?? [];
+  const mineDetails = site?.mineDetails ?? dyn.mineDetails;
+  const climateInfo = site?.climateInfo ?? dyn.climateInfo;
+  const difficulty = site?.difficulty ?? dyn.difficulty;
+  const experienceReality = site?.experienceReality ?? dyn.experienceReality;
+  const safetyFaqs = site?.safetyFaqs ?? dyn.safetyFaqs ?? [];
+
+  const plans = dyn.plans.map(plan => ({
+    id: plan.id,
+    siteId: plan.siteId,
+    name: plan.name ?? plan.id,
+    duration: plan.duration ?? '',
+    shortDescription: plan.shortDescription ?? '',
+    benefits: plan.benefits ?? '',
+    keywords: plan.keywords ?? [],
+    imageId: plan.imageId ?? '',
+    clarifications: plan.clarifications ?? dyn.clarifications?.plans?.[plan.id] ?? [],
+    included: plan.included ?? [],
+    notIncludedUnlessConfirmed: plan.notIncludedUnlessConfirmed ?? [],
+    itinerary: (plan.itinerary ?? []).map(day => ({ ...day, meals: day.meals ?? [] })),
+  }));
+
+  const pricingItems: Experience['pricing']['items'] = dyn.pricing.items.map(item => ({
+    id: item.id,
+    kind: item.kind,
+    siteId: item.siteId,
+    planId: item.planId,
+    label: item.label,
+    pricePerPerson: item.pricePerPerson ?? null,
+    couplePrice: item.couplePrice ?? null,
+    peopleIncluded: item.peopleIncluded ?? null,
+    publiclyShow: item.publiclyShow,
+  }));
+
+  const commonQuestions = safetyFaqs.map(faq => ({
+    lang: faq.lang,
+    intent: faq.intent,
+    question: faq.question ?? faq.intent,
+    answer: faq.answer,
+  }));
+
+  return {
+    id: expId,
+    name: dyn.name ?? expId,
+    status: dyn.status ?? 'active',
+    clarifications: dyn.clarifications?.experience ?? [],
+    shortDescription,
+    fullDescription,
+    meetingPoint,
+    route: {
+      fromBogota: route?.fromBogota ?? '',
+      alternateRoute: route?.alternateRoute,
+      localAccess: route?.localAccess ?? '',
+      arrivalTips: route?.arrivalTips,
+      ferryInfo: route?.ferryInfo,
+      botRules: route?.botRules ?? [],
+    },
+    availability: {
+      lastUpdated: dyn.availability.lastUpdated.match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? '1970-01-01',
+      timezone: dyn.availability.timezone,
+      availableDates: dyn.availability.availableDates.map(d => ({
+        date: d.date,
+        status: d.status as Experience['availability']['availableDates'][number]['status'],
+        slotsApprox: d.slotsApprox,
+      })),
+      botRule: dyn.availability.botRule,
+    },
+    pricing: {
+      currency: dyn.pricing.currency,
+      lastUpdated: dyn.pricing.lastUpdated.match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? '1970-01-01',
+      items: pricingItems,
+      botRules: dyn.pricing.botRules,
+      businessRules: [],
+    },
+    included,
+    notIncludedUnlessConfirmed: notIncluded,
+    whatToBring,
+    plans,
+    petPolicy: dyn.petPolicy?.allowed !== undefined
+      ? { allowed: dyn.petPolicy.allowed, notes: dyn.petPolicy.notes ?? '' }
+      : undefined,
+    agePolicy: dyn.agePolicy?.minimumAge !== undefined
+      ? { minimumAge: dyn.agePolicy.minimumAge, notes: dyn.agePolicy.notes ?? '' }
+      : undefined,
+    cancellationPolicy: dyn.cancellationPolicy?.deadlineDaysBefore !== undefined
+      ? {
+          maxReschedules: dyn.cancellationPolicy.maxReschedules ?? 0,
+          deadlineDaysBefore: dyn.cancellationPolicy.deadlineDaysBefore,
+          refundAfterDeadline: dyn.cancellationPolicy.refundAfterDeadline ?? false,
+          notes: dyn.cancellationPolicy.notes ?? '',
+        }
+      : undefined,
+    mineDetails: {
+      type: mineDetails?.type ?? '',
+      multipleMines: mineDetails?.multipleMines ?? true,
+      notes: mineDetails?.notes ?? '',
+    },
+    emeraldPolicy: {
+      guaranteed: dyn.emeraldPolicy?.guaranteed ?? false,
+      notes: dyn.emeraldPolicy?.notes ?? '',
+    },
+    haciendaInfo: site?.haciendaInfo ?? dyn.haciendaInfo,
+    safetyInfo: site?.safetyInfo ?? dyn.safetyInfo,
+    climateInfo,
+    difficulty: {
+      level: difficulty?.level ?? '',
+      notes: difficulty?.notes ?? [],
+    },
+    experienceReality: experienceReality
+      ? {
+          whatItIs: experienceReality.whatItIs ?? '',
+          whatItIsNot: experienceReality.whatItIsNot ?? '',
+          physicalDemands: experienceReality.physicalDemands ?? '',
+          roadConditions: experienceReality.roadConditions ?? '',
+          idealFor: experienceReality.idealFor ?? '',
+          notIdealFor: experienceReality.notIdealFor ?? '',
+        }
+      : undefined,
+    reservationFlow: [],
+    commonQuestions,
+  };
+}
+
+/** Offline/CI catalog path: committed twin of CDN dynamic JSON. */
+function resolveOfflineCatalogPath(): string | null {
+  const candidates = [
+    join(__dirname, '..', 'data', 'bot-dynamic.ci.json'),
+    join(__dirname, '..', '..', 'scripts', 'bot-dynamic.ci.json'),
+    join(process.cwd(), 'scripts', 'bot-dynamic.ci.json'),
+  ];
+  for (const p of candidates) {
+    if (existsSync(p)) return p;
+  }
+  return null;
+}
+
+function loadOfflineCatalog(): InternalDynamicData | null {
+  const path = resolveOfflineCatalogPath();
+  if (!path) throw new Error('Offline dynamic catalog not found');
+  const raw = JSON.parse(readFileSync(path, 'utf-8'));
+  const validated = dynamicDataSchema.parse(raw);
+  assertDynamicCatalogReady(validated);
+  return transformDynamicData(validated);
+}
+
+function applyAuthoritativeCatalog(
+  _brand: AndeanScapesSkill,
   dynData: InternalDynamicData | null,
-): AndeanScapesSkill['experiences'] {
-  return exps.map(exp => {
-    const dyn = dynData?.experiences[exp.id];
-    if (!dyn) return exp as AndeanScapesSkill['experiences'][number];
+  staticExperiences: readonly Experience[],
+): { experiences: Experience[]; dynamicMedia: InternalDynamicMedia | null; dynamicData: InternalDynamicData | null } {
+  // Remote/service snapshot wins when present (even empty = intentional wipe).
+  if (dynData) {
     return {
-      ...exp,
-      pricing: {
-        currency: dyn.pricing.currency,
-        lastUpdated: dyn.pricing.lastUpdated,
-        items: applyDynamicPricingItems(exp.pricing.items, dyn.pricing.items),
-        // Apply the remote pricing rules ALONGSIDE the static business rules.
-        // Remote owns the price numbers/formatting; static owns the durable
-        // business logic (group formulas, addon/transport policy, cancellation,
-        // pet/age, never-invent-discounts). The PRICING_NOT_AVAILABLE sentinel is
-        // never merged — when dynamic pricing loads, pricing IS available.
-        botRules: [...dyn.pricing.botRules, ...exp.pricing.businessRules],
-        businessRules: exp.pricing.businessRules,
-      },
-      availability: {
-        lastUpdated: dyn.availability.lastUpdated,
-        timezone: dyn.availability.timezone,
-        availableDates: dyn.availability.availableDates.map(d => ({
-          date: d.date,
-          status: d.status,
-          slotsApprox: d.slotsApprox,
-        })),
-        botRule: dyn.availability.botRule,
-      },
-    } as AndeanScapesSkill['experiences'][number];
-  });
+      experiences: buildExperiencesFromDynamic(dynData),
+      dynamicMedia: dynData.media,
+      dynamicData: dynData,
+    };
+  }
+  // Service configured but no successful payload yet → degraded empty catalog.
+  // Do NOT fall back to offline CI fixture (that would hide real CDN outages).
+  if (cachedService) {
+    return {
+      experiences: [],
+      dynamicMedia: null,
+      dynamicData: null,
+    };
+  }
+  // No dynamic service (local/tests): load committed offline CI catalog as SSoT.
+  const offline = loadOfflineCatalog();
+  if (offline) {
+    return {
+      experiences: buildExperiencesFromDynamic(offline),
+      dynamicMedia: offline.media,
+      dynamicData: offline,
+    };
+  }
+  return {
+    experiences: [...staticExperiences],
+    dynamicMedia: null,
+    dynamicData: null,
+  };
 }
 
 function mergeDynamicIntoStatic(dynData: InternalDynamicData | null): void {
   if (!cached) return;
-  const mergedExperiences = applyDynamicToExperiences(cached.andeanScapes.experiences, dynData);
+  const applied = applyAuthoritativeCatalog(cached.andeanScapes, dynData, []);
   cached = {
     ...cached,
-    andeanScapes: { ...cached.andeanScapes, experiences: mergedExperiences },
-    dynamicMedia: dynData?.media ?? null,
+    andeanScapes: { ...cached.andeanScapes, experiences: applied.experiences },
+    dynamicMedia: applied.dynamicMedia,
+    dynamicData: applied.dynamicData,
   };
 }
 
 export function setDynamicService(service: DynamicDataService | null): void {
   cachedService = service;
+  // Drop skills cache so next loadSkills/getSkills rebuilds from the new service
+  // (or offline CI catalog when service is cleared). Prevents stale merges across tests.
+  cached = null;
 }
 
 export function getDynamicService(): DynamicDataService | null {
@@ -538,23 +653,19 @@ export function loadSkills(): Skills {
   const rawMedia = loadJson('media.skill.json');
   const rawFallback = loadJson('fallback-replies.json');
 
+  const andeanScapes = andeanScapesSchema.parse(rawAndean);
+  const staticExperiences = andeanScapes.experiences;
+  const dynFromService = cachedService?.getData() ?? null;
+  const applied = applyAuthoritativeCatalog(andeanScapes, dynFromService, staticExperiences);
+
   const skills: Skills = {
-    andeanScapes: andeanScapesSchema.parse(rawAndean),
+    andeanScapes: { ...andeanScapes, experiences: applied.experiences },
     salesStrategy: salesStrategySchema.parse(rawSales),
     media: mediaSchema.parse(rawMedia),
     fallbackReplies: fallbackRepliesSchema.parse(rawFallback),
-    dynamicMedia: null,
-    dynamicData: null,
+    dynamicMedia: applied.dynamicMedia,
+    dynamicData: applied.dynamicData,
   };
-
-  if (cachedService) {
-    const dynData = cachedService.getData();
-    if (dynData) {
-      skills.andeanScapes.experiences = applyDynamicToExperiences(skills.andeanScapes.experiences, dynData);
-      skills.dynamicMedia = dynData.media;
-      skills.dynamicData = dynData;
-    }
-  }
 
   cached = skills;
   return skills;

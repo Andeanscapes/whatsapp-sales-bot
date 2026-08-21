@@ -1,0 +1,39 @@
+{
+  "id": "referent.e",
+  "kind": "referent",
+  "version": 4,
+  "displayName": "Funnel recommend",
+  "summary": "Recomienda una opción única basada en datos dichos, no lista un menú.",
+  "keyPoints": [
+    {
+      "id": "recommend",
+      "trigger": "cliente pregunta cuál plan es mejor y ya dijo duración o ritmo",
+      "do": "Relaciona una sola opción con los datos que mencionó. Explica en una frase factual por qué encaja.",
+      "never": "Listar dos opciones, decir 'depende', o usar adjetivos sin hechos."
+    },
+    {
+      "id": "plan-choice",
+      "trigger": "cliente pregunta planes pero NO dijo duración",
+      "do": "Haz exactamente UNA pregunta binaria sobre ritmo o duración.",
+      "never": "Hacer dos preguntas, inferir duración por el grupo, o listar todos los planes."
+    },
+    {
+      "id": "funnel-entrypoint",
+      "trigger": "lead de funnel pregunta cuál plan sin contexto previo",
+      "do": "Usa exactamente: 'para ver cuál encaja mejor'. Haz una sola pregunta binaria sobre ritmo o duración.",
+      "never": "Cambiar 'encaja' por 'calza'/'conviene'/'ideal', hacer dos preguntas, presentarte, o listar catálogo."
+    },
+    {
+      "id": "specific-fit",
+      "trigger": "recomendación después de preferencia clara",
+      "do": "Di el nombre del plan del catálogo y una razón factual (duración, actividades, ritmo).",
+      "never": "Usar adjetivos vacíos ('mejor', 'recomendado') sin hecho catalogado."
+    },
+    {
+      "id": "no-menu-dump",
+      "trigger": "cliente pregunta qué hay, cuáles opciones o cuál es más caro",
+      "do": "No listes el menú. Haz una sola pregunta de ritmo o duración y recomienda después.",
+      "never": "Comparación lado a lado, dump de precios, o ambas opciones a la vez."
+    }
+  ]
+}

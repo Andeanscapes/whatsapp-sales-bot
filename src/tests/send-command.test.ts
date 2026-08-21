@@ -51,7 +51,7 @@ function recordInbound(): void {
 describe('/send command routing guard', () => {
   it('blocks referral agents from sending through the API line', async () => {
     repos.conversation.setAssignment(PHONE, { assignedLineId: 'line2_referral', assignedAgentChat: '222' });
-    const sendSpy = vi.spyOn(whatsappClient, 'sendText').mockResolvedValue();
+    const sendSpy = vi.spyOn(whatsappClient, 'sendText').mockResolvedValue({ whatsappMessageId: 'wamid.test' });
 
     const reply = await sendHandler({ repos, chatId: 222, args: [PHONE, 'hola'] });
 
@@ -62,7 +62,7 @@ describe('/send command routing guard', () => {
   it('allows bridge agents through guarded bridge send path', async () => {
     recordInbound();
     repos.conversation.setAssignment(PHONE, { assignedLineId: 'line1_bridge', assignedAgentChat: '111' });
-    const sendSpy = vi.spyOn(whatsappClient, 'sendText').mockResolvedValue();
+    const sendSpy = vi.spyOn(whatsappClient, 'sendText').mockResolvedValue({ whatsappMessageId: 'wamid.test' });
 
     const reply = await sendHandler({ repos, chatId: 111, args: [PHONE, 'hola'] });
 
@@ -73,7 +73,7 @@ describe('/send command routing guard', () => {
 
   it('blocks a bridge agent from sending to an unassigned/arbitrary number', async () => {
     recordInbound();
-    const sendSpy = vi.spyOn(whatsappClient, 'sendText').mockResolvedValue();
+    const sendSpy = vi.spyOn(whatsappClient, 'sendText').mockResolvedValue({ whatsappMessageId: 'wamid.test' });
 
     const reply = await sendHandler({ repos, chatId: 111, args: [PHONE, 'hola'] });
 
@@ -84,7 +84,7 @@ describe('/send command routing guard', () => {
   it('blocks a bridge agent from sending to a lead assigned to another line', async () => {
     recordInbound();
     repos.conversation.setAssignment(PHONE, { assignedLineId: 'line1_bridge', assignedAgentChat: '999' });
-    const sendSpy = vi.spyOn(whatsappClient, 'sendText').mockResolvedValue();
+    const sendSpy = vi.spyOn(whatsappClient, 'sendText').mockResolvedValue({ whatsappMessageId: 'wamid.test' });
 
     const reply = await sendHandler({ repos, chatId: 111, args: [PHONE, 'hola'] });
 
