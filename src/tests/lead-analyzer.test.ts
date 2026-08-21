@@ -70,4 +70,26 @@ describe('lead analyzer', () => {
     expect(result).toBeNull();
     expect(onAttempt).toHaveBeenCalledWith({ tokens: { prompt: 40, completion: 7 }, success: false });
   });
+
+  it('instructs the analyzer not to rescore persisted group breakdown fields', async () => {
+    mockRequestDeepSeekCompletion.mockResolvedValueOnce({
+      content: JSON.stringify({
+        intent: 'qualified', score_delta: 5, confidence: 0.9,
+        buying_signals: [], blockers: [], after_price_interest: false,
+        reservation_readiness: 'none', rationale: 'Datos de contexto.',
+      }),
+      finishReason: 'stop', promptTokens: 10, completionTokens: 10,
+    });
+
+    await analyzeLead({
+      latestMessage: 'Gracias', history: [], currentScore: 20, salesPhase: 'value',
+      collectedFields: { personas: 4, adultos: 2, ninos: 2, edadesNinos: [9, 11], origen: 'Medellin' },
+      priceGiven: false, isFollowUpReply: false, isPainQuestionReply: false,
+      lastAssistantQuestion: null, lang: 'es',
+    });
+
+    const messages = mockRequestDeepSeekCompletion.mock.calls.at(-1)?.[0].messages ?? [];
+    expect(messages[0]?.content).toContain('must not be scored again');
+    expect(messages[0]?.content).toContain('not separate buying signals');
+  });
 });

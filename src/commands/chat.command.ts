@@ -1,7 +1,11 @@
 import { getLineByTelegramChat, isOwnerChat } from '../services/lead-routing.js';
 import { bridgeMessages } from '../services/bridge-messages.js';
-import { formatLeadHistory } from './lead-format.js';
+import { formatLeadCard, formatLeadHistory } from './lead-format.js';
+import { emitTranscript, formatTranscriptFooter, parseTurnLimit } from './transcript-blocks.js';
 import type { CommandContext } from './index.js';
+
+const DEFAULT_TURNS = 20;
+const MAX_TURNS = 40;
 
 export async function chatHandler(ctx: CommandContext): Promise<string> {
   const phone = ctx.args[0]?.replace(/\D/g, '');
@@ -45,6 +49,16 @@ export async function chatHandler(ctx: CommandContext): Promise<string> {
   ctx.repos.bridgeSession.open(chatId, phone, returnMode);
   ctx.repos.conversation.setMode(phone, 'bridge_active');
 
-  const history = formatLeadHistory(conv, ctx.repos.message.getRecentMessages(phone, 500));
-  return `${bridgeMessages.chatActiveHeader(phone)}\n\n${history}`;
+  // Without an emitter (offline callers, tests) keep the text-only transcript.
+  if (!ctx.emit) {
+    const history = formatLeadHistory(conv, ctx.repos.message.getRecentMessages(phone, 500));
+    return `${bridgeMessages.chatActiveHeader(phone)}\n\n${history}`;
+  }
+
+  // The replay is emitted first so `chatActiveHeader` — the "you can type now"
+  // call to action — is the LAST thing the agent sees.
+  const limit = parseTurnLimit(ctx.args[1], DEFAULT_TURNS, MAX_TURNS);
+  ctx.emit({ kind: 'text', text: formatLeadCard(conv), parseMode: 'Markdown' });
+  const stats = await emitTranscript(ctx, phone, limit);
+  return `${bridgeMessages.chatActiveHeader(phone)}\n${formatTranscriptFooter(stats, limit)}`;
 }

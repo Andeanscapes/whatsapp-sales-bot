@@ -1,0 +1,18 @@
+{
+  "id": "known-fields-not-reasked",
+  "source": "history: 8 observed group re-asks",
+  "tags": ["qualification"],
+  "lang": "es",
+  "criteria": [
+    { "id": "people-not-reasked", "rule": "known_field_not_reasked", "field": "people", "suppliedTurn": 1, "weight": 2, "critical": true },
+    { "id": "date-not-reasked", "rule": "known_field_not_reasked", "field": "date", "suppliedTurn": 2, "weight": 2, "critical": true },
+    { "id": "transport-not-reasked", "rule": "known_field_not_reasked", "field": "transport", "suppliedTurn": 3, "weight": 2, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 4, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "Pareja", "mockReply": "Perfecto para ustedes dos. ¿Qué fecha tienen en mente?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2 } },
+    { "user": "En octubre", "mockReply": "Octubre puede funcionar. ¿Vienen en carro propio o necesitan transporte?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2, "date": "octubre" } },
+    { "user": "Carro propio", "mockReply": "Perfecto, con carro propio revisamos la ruta más conveniente. ¿Qué plan les interesa?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2, "date": "octubre", "transport": "own" } },
+    { "user": "El de 2 días", "mockReply": "Buena elección. Te comparto el valor del plan y luego validamos la fecha exacta.", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2, "date": "octubre", "transport": "own", "plan": "2d1n_mining" } }
+  ]
+}

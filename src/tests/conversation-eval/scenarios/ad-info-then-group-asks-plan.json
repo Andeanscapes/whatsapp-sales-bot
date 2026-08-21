@@ -1,0 +1,22 @@
+{
+  "id": "ad-info-then-group-asks-plan",
+  "source": "history: 106 info+date openings; 97 pareja replies. Diagnosis-first funnel: group → diagnosis → plan recommendation. C02 diagnosis copy from entrySegments feed.",
+  "tags": ["opening", "qualification", "diagnosis", "live"],
+  "lang": "es",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "criteria": [
+    { "id": "diagnosis-question-turn2", "rule": "reply_must_match", "patterns": ["veh[ií]culo|traslado|ruta|preparad|ritmo|intens|relaj|tranquil|qu[eé] busc"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "no-plan-offer-turn2", "rule": "reply_must_not_match", "patterns": ["2\\s*d[ií]as|3\\s*d[ií]as|2\\s*noche|3\\s*noche|plan de|plan corto|plan largo"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "no-price-before-diagnosis", "rule": "price_after_min_fields", "minFields": 2, "weight": 2, "critical": true },
+    { "id": "one-question-turn2", "rule": "max_question_marks", "max": 1, "turn": 2, "weight": 1 },
+    { "id": "no-reask-group", "rule": "known_field_not_reasked", "field": "people", "suppliedTurn": 2, "weight": 1, "critical": true },
+    { "id": "plan-recommendation-turn3", "rule": "reply_must_match", "patterns": ["plan|d[ií]as|noche"], "turn": 3, "weight": 2, "critical": true },
+    { "id": "reflects-diagnosis-turn3", "rule": "reply_must_match", "patterns": ["traslado|veh[ií]culo|ruta|ritmo|intens|relaj|tranquil|acceso|4x4|c[oó]mod|local|movam|llevan"], "turn": 3, "weight": 1, "critical": false }
+  ],
+  "turns": [
+    { "user": "C02 - Hola, quiero información y fechas", "mockReply": "Hola. ¿Serían para ti solo, en pareja o en grupo?", "expect": { "shouldSendReply": true } },
+    { "user": "Pareja", "mockReply": "Perfecto para ustedes dos. ¿Vienen con vehículo preparado o prefieren el traslado local al sitio?", "expect": { "shouldSendReply": true } },
+    { "user": "Traslado local", "mockReply": "Ese acceso calza con el plan de 2 días: llegamos con criterio local y sin armar la logística solos. ¿Qué fecha tienen en mente?", "expect": { "shouldSendReply": true } }
+  ]
+}

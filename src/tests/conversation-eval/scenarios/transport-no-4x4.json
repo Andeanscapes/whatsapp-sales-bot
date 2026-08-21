@@ -1,0 +1,17 @@
+{
+  "id": "transport-no-4x4",
+  "source": "history: 138 transport turns",
+  "tags": ["objection", "live"],
+  "lang": "es",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "criteria": [
+    { "id": "route-grounded", "rule": "reply_must_match", "patterns": ["Chivor|4x4|carro|vehiculo|vehículo"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "no-invented-hours", "rule": "unsafe_pattern_absent", "patterns": ["llegas? a las? [0-9]|pickup a las? [0-9]|te recogemos a las? [0-9]"], "turn": 2, "weight": 1, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 2, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "Tengo carro pero no es 4x4", "mockReply": "En ese caso lo más práctico es llegar a Chivor pueblo y usar el transporte local 4x4 hacia la mina. ¿Quieres que te explique la ruta?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2, "transport": "own_car" } },
+    { "user": "Sí, explícame cómo llegar", "mockReply": "La ruta recomendada llega a Chivor pueblo; desde allí el equipo coordina el acceso local 4x4 a la mina. El horario ideal se valida según la fecha. ¿Qué fecha tienes en mente?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2, "transport": "own_car" } }
+  ]
+}

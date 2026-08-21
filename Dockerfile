@@ -12,6 +12,7 @@ RUN npm ci
 FROM deps AS build
 COPY tsconfig.json eslint.config.js ./
 COPY src ./src
+COPY scripts/bot-dynamic.ci.json ./scripts/bot-dynamic.ci.json
 RUN npm run build
 
 FROM base AS runtime

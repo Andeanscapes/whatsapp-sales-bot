@@ -1,0 +1,18 @@
+{
+  "id": "ad-price-date-opening",
+  "source": "history: 501 price+date openings",
+  "tags": ["opening", "live"],
+  "lang": "es",
+  "liveRuns": 5,
+  "minLiveScore": 80,
+  "criteria": [
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 1, "weight": 2, "critical": true },
+    { "id": "short-opening", "rule": "reply_length_at_most", "expected": 420, "turn": 1, "weight": 1 },
+    { "id": "asks-group", "rule": "reply_must_match", "patterns": ["personas|pareja|grupo|solo"], "turn": 1, "weight": 2, "critical": true },
+    { "id": "no-brochure", "rule": "reply_must_not_match", "patterns": ["incluye.{0,80}(alojamiento|comidas)|todo incluido.{0,80}(alojamiento|comidas)"], "turn": 1, "weight": 2 },
+    { "id": "no-false-scarcity", "rule": "reply_must_not_match", "patterns": ["cupo limitado|ultimos? cupos|se esta llenando"], "turn": 1, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "C01 - Hola, quiero informacion y fechas para la aventura minera en Chivor", "mockReply": "Hola. Soy Test Owner, cofundador de Andean Scapes con Test Partner. Para recomendarte bien, ¿serían para ti solo, en pareja o en grupo?", "expect": { "shouldSendReply": true } }
+  ]
+}

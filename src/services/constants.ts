@@ -5,7 +5,9 @@ export const MONTH_NAMES = [
   'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
 ] as const;
 
-export const MS_72H = 72 * 60 * 60 * 1000;
+export const MS_MINUTE = 60 * 1000;
+export const MS_HOUR = 60 * MS_MINUTE;
+export const MS_72H = 72 * MS_HOUR;
 
 export const COLOMBIA_MIDNIGHT_HOUR = 20;
 export const COLOMBIA_MORNING_HOUR = 9;
@@ -22,6 +24,3 @@ export const SCORE_GALLERY_TRIGGER_THRESHOLD = 60;
 
 /** Min gap between repeatable reservation_* owner alerts for the same phone. */
 export const RESERVATION_ALERT_COOLDOWN_MS = 60 * 60 * 1000;
-
-export const INPUT_COST_PER_TOKEN = 0.15 / 1_000_000;
-export const OUTPUT_COST_PER_TOKEN = 0.60 / 1_000_000;

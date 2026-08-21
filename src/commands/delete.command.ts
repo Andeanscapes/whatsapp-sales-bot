@@ -1,15 +1,10 @@
 import { bridgeMessages } from '../services/bridge-messages.js';
 import { hasRoutingConfig, isOwnerChat } from '../services/lead-routing.js';
+import { normalizeCommandPhone } from './phone.js';
 import type { CommandContext } from './index.js';
 
-function normalizePhone(value: string | undefined): string | null {
-  if (!value) return null;
-  const phone = value.replace(/[^0-9]/g, '');
-  return phone.length >= 8 ? phone : null;
-}
-
 export async function deleteHandler(ctx: CommandContext): Promise<string> {
-  const phone = normalizePhone(ctx.args[0]);
+  const phone = normalizeCommandPhone(ctx.args[0]);
   if (!phone) return bridgeMessages.deleteUsage;
 
   // Mirror block.command authorization: in multi-line mode only the owning
