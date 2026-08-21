@@ -6,6 +6,12 @@ const expectSchema = z.object({
   shouldSendImage: z.boolean().optional(),
   shouldSendOwnerImage: z.boolean().optional(),
   shouldSendGalleryImages: z.boolean().optional(),
+  /**
+   * How many photos this turn actually ships. `shouldSendGalleryImages` alone
+   * cannot catch a marker that resolved to an empty list, which is exactly how
+   * the "reply promises photos, zero delivered" defect reached production.
+   */
+  requestedGalleryImagesCount: z.number().int().nonnegative().optional(),
   sendOwnerImage: z.boolean().optional(),
   usedAi: z.boolean().optional(),
   priceJustGiven: z.boolean().optional(),
@@ -52,18 +58,9 @@ const turnSchema = z.object({
     reservationReadiness: z.enum(['none', 'weak', 'medium', 'strong']),
   }).strict().optional(),
   seedPriceGiven: z.boolean().optional(),
-  seedGalleryNudge: z.boolean().optional(),
   seedLeadScore: z.number().int().min(0).max(100).optional(),
   seedQualification: qualificationSeedSchema.optional(),
 });
-
-const followUpSeedSchema = z.object({
-  phase: z.string().optional(),
-  score: z.number().int().min(0).max(100).optional(),
-  qualification: qualificationSeedSchema.optional(),
-  softClosed: z.boolean().optional(),
-  conversationMode: conversationModeSchema.optional(),
-}).strict();
 
 const seedConversationSchema = z.object({
   conversationMode: conversationModeSchema.optional(),
@@ -138,6 +135,7 @@ const criterionRuleSchema = z.enum([
   'unsafe_pattern_absent',
   'group_quote_integrity',
   'max_question_marks',
+  'max_emojis',
   'reply_length_at_most',
   'output_question_count_at_most',
   'output_count_at_most',
@@ -202,8 +200,8 @@ const criterionSchema = z.object({
   if (criterion.rule === 'group_quote_integrity' && (criterion.people === undefined || criterion.planId === undefined || criterion.expectedTotal === undefined)) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'group_quote_integrity requires people, planId, and expectedTotal' });
   }
-  if (criterion.rule === 'max_question_marks' && criterion.max === undefined) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'max_question_marks requires max' });
+  if ((criterion.rule === 'max_question_marks' || criterion.rule === 'max_emojis') && criterion.max === undefined) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${criterion.rule} requires max` });
   }
   if (['reply_length_at_most', 'output_question_count_at_most', 'output_count_at_most'].includes(criterion.rule)
     && typeof criterion.expected !== 'number') {
@@ -219,9 +217,7 @@ export const scenarioSchema = z.object({
   source: z.string().optional(),
   tags: z.array(z.string()).optional(),
   lang: z.enum(['es', 'en']).default('es'),
-  runner: z.enum(['message', 'follow_up', 'lifecycle']).default('message'),
-  followUpMockReply: z.string().optional(),
-  followUpSeed: followUpSeedSchema.optional(),
+  runner: z.enum(['message', 'lifecycle']).default('message'),
   seedQualification: qualificationSeedSchema.optional(),
   seedConversation: seedConversationSchema.optional(),
   seedSystem: seedSystemSchema.optional(),

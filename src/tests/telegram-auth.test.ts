@@ -118,7 +118,7 @@ afterEach(() => {
 describe('telegram dispatcher authorization', () => {
   it('ignores and logs messages from unregistered chats', async () => {
     const warnSpy = vi.spyOn(logger, 'warn');
-    const sendSpy = vi.spyOn(whatsappClient, 'sendText').mockResolvedValue();
+    const sendSpy = vi.spyOn(whatsappClient, 'sendText').mockResolvedValue({ whatsappMessageId: 'wamid.test' });
 
     await processUpdate(update(999999, '/pause'), repos);
 
@@ -200,7 +200,7 @@ describe('telegram dispatcher authorization', () => {
   it('allows owner chat to force a bridge for an unassigned lead', async () => {
     repos.conversation.upsert(CUSTOMER, { first_seen_at: new Date().toISOString() });
 
-    await processUpdate(update(333, `/bridge ${CUSTOMER}`), repos);
+    await processUpdate(update(333, `/chat ${CUSTOMER}`), repos);
 
     expect(repos.conversation.getMode(CUSTOMER)).toBe('bridge_active');
     expect(repos.bridgeSession.getByCustomer(CUSTOMER)?.agentChatId).toBe('333');
@@ -209,7 +209,7 @@ describe('telegram dispatcher authorization', () => {
   it('does not let an allowlisted bridge agent force an unassigned lead', async () => {
     repos.conversation.upsert(CUSTOMER, { first_seen_at: new Date().toISOString() });
 
-    await processUpdate(update(111, `/bridge ${CUSTOMER}`), repos);
+    await processUpdate(update(111, `/chat ${CUSTOMER}`), repos);
 
     expect(repos.conversation.getMode(CUSTOMER)).toBe('bot');
     expect(repos.bridgeSession.getByCustomer(CUSTOMER)).toBeNull();
@@ -231,13 +231,14 @@ describe('telegram dispatcher authorization', () => {
     expect(repos.conversation.getByPhone(CUSTOMER)).toBeTruthy();
   });
 
+
   it('runs /send without a secret for the owning bridge line', async () => {
     repos.message.addMessage({
       whatsapp_message_id: 'in-1', customer_phone: CUSTOMER, direction: 'inbound',
       message_type: 'text', body: 'hola', created_at: new Date().toISOString(),
     });
     repos.conversation.setAssignment(CUSTOMER, { assignedLineId: 'line1_bridge', assignedAgentChat: '111' });
-    const sendSpy = vi.spyOn(whatsappClient, 'sendText').mockResolvedValue();
+    const sendSpy = vi.spyOn(whatsappClient, 'sendText').mockResolvedValue({ whatsappMessageId: 'wamid.test' });
 
     await processUpdate(update(111, `/send ${CUSTOMER} hola buen dia`), repos);
 
@@ -245,7 +246,7 @@ describe('telegram dispatcher authorization', () => {
   });
 
   it('blocks an allowlisted referral chat from /send to arbitrary numbers', async () => {
-    const sendSpy = vi.spyOn(whatsappClient, 'sendText').mockResolvedValue();
+    const sendSpy = vi.spyOn(whatsappClient, 'sendText').mockResolvedValue({ whatsappMessageId: 'wamid.test' });
 
     await processUpdate(update(222, `/send ${CUSTOMER} mensaje`), repos);
 
@@ -359,5 +360,52 @@ describe('telegram bridge image relay', () => {
     // No media relayed; only the "no active chat" hint is sent (sendMessage, never getFile).
     expect(uploadSpy).not.toHaveBeenCalled();
     expect(fetchSpy.mock.calls.every(([url]) => !String(url).includes('/getFile'))).toBe(true);
+  });
+
+  it('rejects command text with invalid command chars and never relays it to the customer', async () => {
+    // The bridge guard must prevent a command with an unrecognized char (e.g. hyphen in future or misspelled names)
+    // from leaking to the customer WhatsApp. A bridge is open; a malformed command should error in Telegram only.
+    env.LEAD_ROUTING_JSON = JSON.stringify(config);
+    env.TELEGRAM_CHAT_ID = String(111);
+    env.TELEGRAM_BOT_TOKEN = 'test-token';
+    resetRoutingConfigCache();
+
+    repos.bridgeSession.open('111', CUSTOMER);
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{"ok":true}', { status: 200 }));
+    const sendTextSpy = vi.spyOn(whatsappClient, 'sendText');
+
+    // Malformed command: hyphenated name (not recognized by parseCommand regex [a-zA-Z0-9_]+).
+    await processUpdate(update(111, '/bad-command-name 573001234567'), repos);
+
+    // Should NOT send to customer; only operator error in Telegram.
+    expect(sendTextSpy).not.toHaveBeenCalled();
+    // Should send operator error to Telegram.
+    const tgCalls = fetchSpy.mock.calls.filter(([url]) => String(url).includes('sendMessage'));
+    expect(tgCalls.length).toBeGreaterThan(0);
+    expect(tgCalls.some(([, init]) => String(init?.body).includes('Comando no reconocido'))).toBe(true);
+
+    fetchSpy.mockRestore();
+    sendTextSpy.mockRestore();
+  });
+
+  it('every registered command is dispatchable by parseCommand', async () => {
+    // Regression net: all registered command names must pass the regex in parseCommand,
+    // otherwise they are unreachable and leak to the bridge. The bug was /followup-grant
+    // and /followup-revoke (hyphens); they should all be alphanumeric + underscore only.
+    const { getAllCommands } = await import('../commands/index.js');
+
+    const allCommands = getAllCommands();
+    // Sanity check on the guard itself: an empty registry would make the loop
+    // below pass vacuously and hide exactly the bug this test exists to catch.
+    expect(allCommands.length).toBeGreaterThan(20);
+    for (const cmd of allCommands) {
+      // Simulate parseCommand on the registered name.
+      const match = (`/${cmd.name}`).match(/^\/([a-zA-Z0-9_]+)(@[a-zA-Z0-9_]+)?(?:\s+(.*))?$/s);
+      expect(match, `Command "${cmd.name}" does not match parseCommand regex (may leak to bridge)`).not.toBeNull();
+      if (match) {
+        expect(match[1]).toBe(cmd.name);
+      }
+    }
   });
 });

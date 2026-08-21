@@ -45,10 +45,12 @@ describe('resolveExperience', () => {
         ownerImage: null,
         planImages: [],
         galleryImages: [
-          { experienceId: first.id, url: 'https://cdn.andeanscapes.com/first.jpg', caption: '' },
-          { experienceId: 'other_experience', url: 'https://cdn.andeanscapes.com/other.jpg', caption: '' },
-          { url: 'https://cdn.andeanscapes.com/unscoped.jpg', caption: '' },
+          { experienceId: first.id, url: 'https://cdn.andeanscapes.com/first.jpg', caption: '', type: 'mine' },
+          { experienceId: 'other_experience', url: 'https://cdn.andeanscapes.com/other.jpg', caption: '', type: 'mine' },
+          { url: 'https://cdn.andeanscapes.com/unscoped.jpg', caption: '', type: 'mine' },
         ],
+        siteTypes: { [`${first.id}/chivor`]: ['mine'] },
+        typeKeywords: {},
       },
     };
 

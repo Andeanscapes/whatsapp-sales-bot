@@ -1,0 +1,248 @@
+/**
+ * Consent classification and scheduling maths for the recurring follow-up flow.
+ *
+ * Deliberately free of I/O so the rules are unit-testable: the scheduler and the
+ * webhook both call into here, and neither may re-implement the semantics.
+ */
+
+/** Marker the model appends to a consent ask; validated and stripped before send. */
+export const CONSENT_ASK_MARKER = '[[FOLLOWUP_CONSENT]]';
+
+/**
+ * Parses both JS ISO timestamps and SQLite UTC (`YYYY-MM-DD HH:mm:ss`) values.
+ *
+ * Lives here rather than in the scheduler because the webhook path needs it too,
+ * and `followup-service.ts` already imports this module — the reverse would be a
+ * cycle. Re-exported from the scheduler for existing callers.
+ */
+export function parseStoredTimestamp(value: string): number {
+  const normalized = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value)
+    ? value
+    : `${value.replace(' ', 'T')}Z`;
+  return Date.parse(normalized);
+}
+
+function normalize(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[¿?¡!.,;:]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Affirmatives are matched only while a consent ask is pending, so short tokens are
+// safe here. They would be far too greedy in the general sales path.
+const AFFIRM = [
+  'si', 'si claro', 'claro', 'claro que si', 'dale', 'listo', 'bueno', 'dale pues',
+  'si porfa', 'si por favor', 'dale gracias', 'dale listo', 'dale si', 'dale ok',
+  'dale va', 'dale de una', 'de una', 'dale hazlo', 'esta bien', 'dale tranquilo',
+  'ok', 'okey', 'oki', 'vale', 'va', 'perfecto', 'de acuerdo', 'me parece',
+  'si me interesa', 'si quiero', 'acepto', 'autorizo', 'permiso concedido',
+  'yes', 'yes please', 'yeah', 'yep', 'yup', 'sure', 'sure thing', 'of course',
+  'okay', 'alright', 'fine', 'go ahead', 'sounds good', 'please do', 'i accept',
+  'that works', 'no problem',
+];
+
+const DECLINE = [
+  'no', 'no gracias', 'nope', 'negativo', 'mejor no', 'no por ahora',
+  'no me interesa', 'no quiero', 'preferiria no', 'prefiero no', 'no hace falta',
+  'no necesito', 'ahora no', 'por ahora no', 'no thanks', 'no thank you',
+  'nah', 'not now', 'not interested', 'rather not', 'no need', 'dont',
+];
+
+/**
+ * Bare negation tokens. On their own they are far more often the verb negation of
+ * a sales answer ("no tengo fecha") than a refusal of the permission question, so
+ * they only count as a decline when the whole reply IS one of them.
+ */
+const BARE_NEGATIONS = new Set(['no', 'not', 'dont', 'nope', 'nah']);
+
+/**
+ * Refusals unmistakable enough to match ANYWHERE in a short reply.
+ *
+ * This is what keeps "si, pero no quiero mensajes" a decline without treating
+ * every stray "no" as one.
+ *
+ * DERIVED from `DECLINE` rather than retyped: the two lists overlapped by 19
+ * entries when written by hand, so adding a refusal to one and forgetting the
+ * other silently changed classification. Only the bare tokens are filtered out,
+ * plus the explicit extras below that have no single-phrase form in `DECLINE`.
+ */
+const DECLINE_ANYWHERE = [
+  ...DECLINE.filter(phrase => !BARE_NEGATIONS.has(phrase)),
+  // Spanish: refusing further contact.
+  'no me escribas', 'no me escriban', 'no me avises', 'no me avisen',
+  'no me contactes', 'no me contacten', 'no me mandes', 'no me manden',
+  'no me envies', 'no me envien', 'no me interesa nada',
+  'dejalo asi', 'dejelo asi', 'dejalo ahi',
+  // English: `dont`/`not` are bare tokens, so every negated-contact form needs an
+  // explicit entry. Omitting these classified "i dont want more messages" as
+  // ambiguous, which then let the deferral re-ask someone who had just refused.
+  'dont want', 'do not want', 'dont send', 'do not send',
+  'dont contact', 'do not contact', 'dont message', 'do not message',
+  'dont bother', 'do not bother', 'dont write', 'do not write',
+  'not really', 'leave it', 'im good', 'i am good',
+];
+
+function containsPhrase(normalized: string, phrase: string): boolean {
+  const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:^|\\s)${escaped}(?:\\s|$)`).test(normalized);
+}
+
+export type ConsentDecision = 'affirm' | 'decline' | 'ambiguous';
+
+/**
+ * Classifies a reply to a pending consent ask.
+ *
+ * Only ever called while `followup_subscriptions.status = 'pending'`. Anything that
+ * is not an unmistakable yes/no is `ambiguous`, which leaves consent untouched and
+ * lets the message flow through the normal sales path.
+ *
+ * Decline wins ties: "no, gracias" contains an affirm-ish token in some phrasings,
+ * and the safe failure mode is to not collect consent.
+ */
+export function classifyConsentReply(text: string): ConsentDecision {
+  const norm = normalize(text);
+  if (!norm) return 'ambiguous';
+
+  // Long messages are a real conversation turn, not a yes/no answer.
+  const words = norm.split(' ');
+  if (words.length > 6) return 'ambiguous';
+
+  if (DECLINE.includes(norm)) return 'decline';
+  if (AFFIRM.includes(norm)) return 'affirm';
+
+  // An unmistakable refusal wins wherever it sits, so "si, pero no quiero
+  // mensajes" can never activate marketing consent.
+  if (DECLINE_ANYWHERE.some(phrase => containsPhrase(norm, phrase))) return 'decline';
+
+  // Narrow leading-token fallback for "si, escribeme" / "no gracias igual".
+  //
+  // A BARE leading negation is deliberately NOT a decline: "no" is usually the
+  // verb negation of a sales answer, not a refusal of the permission question.
+  // Treating it as one recorded "no tengo fecha", "no todavia", "no se aun" and
+  // "no entendi tu pregunta" as refusals — and `declined` never auto-reopens, so
+  // those leads could never be asked again. Two-token declines ("no gracias …")
+  // still match, and anything genuinely refusing contact is caught above.
+  const first = words[0];
+  const firstTwo = words.slice(0, 2).join(' ');
+  if (DECLINE.includes(firstTwo)) return 'decline';
+  if (AFFIRM.includes(firstTwo) || AFFIRM.includes(first)) return 'affirm';
+
+  return 'ambiguous';
+}
+
+/**
+ * Exact-match affirmation only — no leading-token fallback.
+ *
+ * `classifyConsentReply` deliberately accepts "si quiero reservar para el 14" as an
+ * affirmation, which is right when deciding a pending consent ask but wrong for the
+ * duplicate-echo window: that message carries booking intent and must be treated as
+ * re-engagement.
+ */
+function isBareAffirmation(text: string): boolean {
+  const norm = normalize(text);
+  return norm !== '' && AFFIRM.includes(norm);
+}
+
+/**
+ * True when this inbound is the customer repeating the "sí" they just gave, inside
+ * `graceSeconds` of consent activating.
+ *
+ * WhatsApp users double-tap send. Without this, the second identical "Si" is read
+ * as a fresh customer-initiated turn and closes the cycle that the first one just
+ * opened — leaving the bot promising a follow-up it is no longer authorised to
+ * send. Deliberately narrow:
+ * - only while the subscription is `active` and only from its `activated_at`;
+ * - only for an EXACT bare affirmation: "si quiero reservar el 14" carries intent
+ *   and must still close the cycle, even though the consent classifier would read
+ *   it as an affirmation;
+ * - `graceSeconds <= 0` disables it entirely.
+ *
+ * It does not weaken the dormancy floor: a recurring template still requires the
+ * thread to go silent for `FOLLOWUP_RECURRING_MIN_SILENCE_HOURS`, so a customer who
+ * genuinely keeps talking cannot receive one regardless of this window.
+ */
+export function isDuplicateConsentEcho(
+  subscription: { status: string; activated_at: string | null } | null,
+  message: string,
+  graceSeconds: number,
+  now: number = Date.now(),
+): boolean {
+  if (graceSeconds <= 0) return false;
+  if (!subscription || subscription.status !== 'active' || !subscription.activated_at) return false;
+  if (!isBareAffirmation(message)) return false;
+
+  const activatedAtMs = parseStoredTimestamp(subscription.activated_at);
+  if (Number.isNaN(activatedAtMs)) return false;
+  const elapsed = now - activatedAtMs;
+  return elapsed >= 0 && elapsed <= graceSeconds * 1_000;
+}
+
+export interface ConsentAskValidation {
+  ok: boolean;
+  /** Marker-stripped text, present only when `ok` is true. */
+  text?: string;
+  reason?: string;
+}
+
+/**
+ * Validates an LLM-authored consent ask. The engine may only accept-and-strip or
+ * reject: rewriting or appending copy would violate the "LLM owns reply text"
+ * invariant, so a malformed draft is discarded rather than repaired.
+ */
+export function validateConsentAsk(reply: string): ConsentAskValidation {
+  const raw = reply.trim();
+  if (!raw.includes(CONSENT_ASK_MARKER)) return { ok: false, reason: 'marker_missing' };
+
+  const text = raw.split(CONSENT_ASK_MARKER).join('').trim();
+  if (text.length < 20) return { ok: false, reason: 'too_short' };
+  if (text.length > 900) return { ok: false, reason: 'too_long' };
+
+  const questionCount = (text.match(/\?/g) ?? []).length;
+  if (questionCount === 0) return { ok: false, reason: 'no_question' };
+  if (questionCount > 1) return { ok: false, reason: 'multiple_questions' };
+
+  // The ask must not smuggle the sales pitch back in.
+  if (/\$\s?\d|\b\d{1,3}[.,]\d{3}\b/.test(text)) return { ok: false, reason: 'contains_amount' };
+  if (/\bhttps?:\/\//i.test(text)) return { ok: false, reason: 'contains_link' };
+
+  return { ok: true, text };
+}
+
+/**
+ * `c1`, `c2`, … — one key per consent-ask SESSION, so a customer who opted out and
+ * later returned can be asked again without colliding with the first ask.
+ *
+ * Takes the session number directly (`followup_subscriptions.consent_session`,
+ * which starts at 1). It deliberately does NOT add one: deriving the key from a
+ * COUNT of previous asks made a cycle that burned its bounded attempts keep the
+ * same key forever, so the customer could never be asked again.
+ */
+export function consentCycleKey(consentSession: number): string {
+  return `c${Math.max(1, Math.floor(consentSession))}`;
+}
+
+/** `c1-r1`, `c2-r1`, … — scoped by consent session, never a calendar key. */
+export function recurringCycleKey(sendsSoFar: number, consentCycle: number = 1): string {
+  return `c${Math.max(1, consentCycle)}-r${sendsSoFar + 1}`;
+}
+
+/**
+ * Adds whole months, clamping to the last valid day so Jan 31 + 1 month lands on
+ * Feb 28/29 instead of rolling into March.
+ */
+export function addMonthsClamped(from: Date, months: number): Date {
+  const targetMonth = from.getUTCMonth() + months;
+  const candidate = new Date(Date.UTC(
+    from.getUTCFullYear(), targetMonth, 1,
+    from.getUTCHours(), from.getUTCMinutes(), from.getUTCSeconds(), from.getUTCMilliseconds(),
+  ));
+  const daysInTargetMonth = new Date(Date.UTC(
+    candidate.getUTCFullYear(), candidate.getUTCMonth() + 1, 0,
+  )).getUTCDate();
+  candidate.setUTCDate(Math.min(from.getUTCDate(), daysInTargetMonth));
+  return candidate;
+}

@@ -1,0 +1,33 @@
+{
+  "id": "referent.b",
+  "kind": "referent",
+  "version": 3,
+  "displayName": "Connect clarity",
+  "summary": "Claridad primero: conecta con lo dicho, entrega un dato valioso y termina con un avance verificable.",
+  "keyPoints": [
+    {
+      "id": "connect",
+      "trigger": "cliente comparte necesidad o contexto",
+      "do": "Refleja exactamente lo que dijo antes de responder. Una frase que demuestre escucha.",
+      "never": "Saltar a un guion, ignorar contexto o repetir solo la mitad."
+    },
+    {
+      "id": "three-blocks",
+      "trigger": "turno activo",
+      "do": "Estructura clara: (1) valida lo dicho, (2) suma un dato factual, (3) cierra con un siguiente paso específico.",
+      "never": "Monólogo sin pausa, respuesta sin dirección, o respuesta sin conexión a lo anterior."
+    },
+    {
+      "id": "reduce-friction",
+      "trigger": "cliente expresa duda o vacilación",
+      "do": "Convierte la duda en una pregunta de datos: sí/no, opción A/B, o confirmación de contexto.",
+      "never": "Abrir múltiples temas, sugerir muchas opciones, o dejar una pregunta abierta."
+    },
+    {
+      "id": "value-not-pitch",
+      "trigger": "cliente pide información",
+      "do": "Entrega el dato exacto pedido y una conexión breve a su contexto mencionado.",
+      "never": "Adjuntar catálogo, enviar enlaces o agregar hechos no pedidos."
+    }
+  ]
+}

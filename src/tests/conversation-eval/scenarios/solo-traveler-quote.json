@@ -1,0 +1,16 @@
+{
+  "id": "solo-traveler-quote",
+  "source": "history: solo/sola short replies",
+  "tags": ["qualification"],
+  "lang": "es",
+  "mockPricing": { "planId": "2d1n_mining", "individual": 500000, "couple": 900000 },
+  "criteria": [
+    { "id": "solo-quote", "rule": "group_quote_integrity", "people": 1, "planId": "2d1n_mining", "expectedTotal": 500000, "turn": 2, "weight": 2, "critical": true },
+    { "id": "no-reask-group", "rule": "known_field_not_reasked", "field": "people", "suppliedTurn": 1, "weight": 1, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 2, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "Solo", "mockReply": "Perfecto, para una persona te recomiendo el plan activo. ¿Qué fecha tienes en mente?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 1 } },
+    { "user": "En octubre", "mockReply": "Para 1 persona son $500.000 COP. ¿Quieres que revise las fechas publicadas de octubre?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 1, "plan": "2d1n_mining", "date": "octubre" } }
+  ]
+}

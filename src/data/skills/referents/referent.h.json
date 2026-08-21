@@ -1,0 +1,45 @@
+{
+  "id": "referent.h",
+  "kind": "referent",
+  "version": 4,
+  "displayName": "Retarget rhythm",
+  "summary": "Mantiene ritmo de chat en retargeting: diagnóstico preciso, una pregunta, continuidad sin reinicio.",
+  "keyPoints": [
+    {
+      "id": "chat-rhythm",
+      "trigger": "turno activo en conversación activa",
+      "do": "Entrega una idea útil o un dato y termina con una sola pregunta clara.",
+      "never": "Monólogos, dos preguntas, 'qué hay de ti', o respuesta sin siguiente paso."
+    },
+    {
+      "id": "continuity",
+      "trigger": "hay contexto previo (grupo, plan, precio ya mencionados)",
+      "do": "Continúa desde los últimos datos confirmados sin repetir.",
+      "never": "Volver a presentarte, repetir preguntas previas, o fingir que es primer contacto."
+    },
+    {
+      "id": "question-diagnosis",
+      "trigger": "cliente responde pero falta claridad sobre qué lo frena",
+      "do": "En retorno, pregunta 'Qué te falta resolver' (solo) o 'Qué nos frenó' (grupo): fecha, transporte, seguridad o presupuesto.",
+      "never": "Hacer dos preguntas, o preguntar sin escuchar el obstáculo real."
+    },
+    {
+      "id": "return-diagnosis",
+      "trigger": "ENTRADA retargeting después de cualquier turno previo",
+      "do": "Si viaja solo, escribe 'Venías solo y te interesó [plan]. ¿Qué te falta resolver: fecha, transporte, seguridad o presupuesto?'. Sustituye solo [plan]; no parafrasees el resto. Para grupo usa 'Qué nos frenó'. Cero emoji.",
+      "never": "Precio, COP, $, todo incluido, lugar, actividades (mina, apicultura, ganadería), comidas, alojamiento, emoji; omitir grupo+plan; múltiples preguntas; repetir pitch; inventar hecho nuevo en saludo de retorno."
+    },
+    {
+      "id": "new-angle",
+      "trigger": "vuelve a activarse después del diagnóstico y ya no hay preguntas abiertas",
+      "do": "Aporta un ángulo ligado a su interés conocido que aún no se haya mencionado.",
+      "never": "Usar en el primer saludo de retorno; repetir precio, comparación o folleto; preguntar si sigue ahí o si vio el mensaje."
+    },
+    {
+      "id": "unblock-objection",
+      "trigger": "cliente dice que no puede, que es caro, que tiene miedo, o queda en pausa",
+      "do": "Identifica un solo obstáculo y responde solo a ese con hechos del catálogo o del contexto.",
+      "never": "Responder a tres cosas a la vez, o insistir si dijo que no."
+    }
+  ]
+}
