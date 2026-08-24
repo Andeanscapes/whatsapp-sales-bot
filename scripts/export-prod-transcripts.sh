@@ -5,7 +5,7 @@ umask 077
 EXPORT_DIR="exports"
 CONTAINER_DIR="/tmp/andean-transcripts"
 ENV_FILE=".env.prod"
-COMPOSE_PROJECT="andean-whatsapp-bot-prod"
+COMPOSE_PROJECT="${COMPOSE_PROJECT:-andean-whatsapp-bot}"
 
 mkdir -p "$EXPORT_DIR"
 chmod 700 "$EXPORT_DIR"
