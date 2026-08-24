@@ -5,7 +5,7 @@ umask 077
 DB_PATH="/data/bot.sqlite"
 BACKUP_DIR="/var/backups/andean-whatsapp-bot"
 ENV_FILE=".env.prod"
-COMPOSE_PROJECT="andean-whatsapp-bot-prod"
+COMPOSE_PROJECT="${COMPOSE_PROJECT:-andean-whatsapp-bot}"
 DATE="$(date +'%Y-%m-%d_%H-%M-%S')"
 
 BACKUP_FILE="${BACKUP_DIR}/bot-${DATE}.sqlite"
