@@ -663,13 +663,42 @@ describe('skills-prompt-assembly', () => {
     expect(prompt.indexOf('EMOJIS YA USADOS')).toBeLessThan(prompt.indexOf('ESTADO DE TURNO: PERMISO-SEGUIMIENTO'));
   });
 
-  it('keeps the consent ask generic instead of offering a sales action', () => {
-    const prompt = assembleSystemPrompt({
-      skills: loadSkills(), lang: 'es', proactiveMode: 'consent_ask',
-    });
+  // Scoped to the §PERMISO-SEGUIMIENTO body on purpose: a bare `prompt.toContain`
+  // matches anywhere in a ~94k-char Spanish prompt, so it passes even if the rule
+  // is deleted from this section. See mdSection().
+  it('requires an explicit permission close and forbids inviting a decline', () => {
+    const section = mdSection(
+      assembleSystemPrompt({ skills: loadSkills(), lang: 'es', proactiveMode: 'consent_ask' }),
+      '### PERMISO-SEGUIMIENTO (',
+    );
 
-    expect(prompt).toContain('pregunta genérica de beneficio');
-    expect(prompt).not.toContain('te revise disponibilidad en otro mes');
+    expect(section).toContain('permiso explícito');
+    expect(section).toContain('UNA sola pregunta explícita');
+    expect(section).toContain('WhatsApp');
+    // The ask must be answerable with a bare affirmation, which is what
+    // classifyConsentReply() can actually recognise.
+    expect(section).toContain('"sí" suelto');
+    expect(section).toContain('Nunca asumas el permiso');
+    // Guard restored after review: `declined` never auto-reopens (AGENTS.md
+    // invariant 10), so an invited "no" permanently kills follow-up.
+    expect(section).toContain('no invites a un "no"');
+    expect(section).not.toContain('te revise disponibilidad en otro mes');
+  });
+
+  it('keeps the post-stop variant consistent with the permission close', () => {
+    const section = mdSection(
+      assembleSystemPrompt({ skills: loadSkills(), lang: 'es', proactiveMode: 'consent_ask', reaskAfterOptOut: true }),
+      '### PERMISO-SEGUIMIENTO-POST-PARADA',
+    );
+
+    // The variant cites the base section; it must not cite a rule the base no
+    // longer has ("pregunta de beneficio" was the pre-permission wording).
+    expect(section).toContain('pregunta de permiso');
+    expect(section).not.toContain('pregunta de beneficio');
+    // A post-stop lead is the most likely to decline, so the exit door that used
+    // to live here must stay removed and stay explicitly banned.
+    expect(section).toContain('prohibición de invitar a un "no"');
+    expect(section).not.toContain('lo dejamos así');
   });
 
   it('asks for the post-stop variant only when re-asking after an opt-out', () => {
@@ -697,6 +726,54 @@ describe('skills-prompt-assembly', () => {
     expect(runtime).not.toContain('ESTADO DE TURNO: PERMISO-SEGUIMIENTO');
   });
 
+  // The consent ask has to be able to reference real context, but the model may
+  // only see what the customer actually gave us. Plan ids come from the registry:
+  // an invented id would make the assertion pass while encoding a nonexistent
+  // product in the suite.
+  describe('consent ask — carried context', () => {
+    const skills = loadSkills();
+    const planId = getActiveExperience(skills).plans[0].id;
+
+    it('carries the collected context the ask is allowed to reference', () => {
+      const runtime = runtimeSection(assembleSystemPrompt({
+        skills, lang: 'es', proactiveMode: 'consent_ask',
+        collectedFields: { plan: planId, personas: 2, fecha: '14 de noviembre' },
+      }));
+
+      expect(runtime).toContain(`PLAN ACTIVO: ${planId}`);
+      expect(runtime).toContain('personas: 2');
+      expect(runtime).toContain('fecha: 14 de noviembre');
+      expect(runtime).toContain('ESTADO DE TURNO: PERMISO-SEGUIMIENTO');
+    });
+
+    // With nothing collected the ask still has to run, and RUNTIME must not
+    // fabricate a plan/date for the model to "remember".
+    it('still asks when no context was collected, inventing none', () => {
+      const runtime = runtimeSection(assembleSystemPrompt({
+        skills, lang: 'es', proactiveMode: 'consent_ask', collectedFields: {},
+      }));
+
+      expect(runtime).toContain('ESTADO DE TURNO: PERMISO-SEGUIMIENTO');
+      expect(runtime).toContain('[[FOLLOWUP_CONSENT]]');
+      expect(runtime).not.toContain('PLAN ACTIVO:');
+      expect(runtime).not.toContain('LO QUE YA SABEMOS');
+    });
+
+    // Collected fields alone would otherwise leave the sales-turn cues in play;
+    // the consent cue is pushed last precisely so it overrides them.
+    it('suppresses the sales script even when the lead looks qualified', () => {
+      const runtime = runtimeSection(assembleSystemPrompt({
+        skills, lang: 'es', proactiveMode: 'consent_ask',
+        collectedFields: { plan: planId, personas: 2, fecha: '14 de noviembre' },
+        priceGiven: true, dateSelectedThisTurn: true,
+      }));
+
+      expect(runtime).toContain('Prohibido preguntar por fecha, plan, precio, personas, reserva o pago');
+      expect(runtime.indexOf('ESTADO DE TURNO: PERMISO-SEGUIMIENTO'))
+        .toBeGreaterThan(runtime.indexOf('PLAN ACTIVO:'));
+    });
+  });
+
 });
 
 /** Only the per-turn RUNTIME block, so assertions cannot match the static skills. */
@@ -704,6 +781,18 @@ function runtimeSection(prompt: string): string {
   const marker = '\nRUNTIME:';
   const idx = prompt.lastIndexOf(marker);
   return idx === -1 ? '' : prompt.slice(idx + marker.length);
+}
+
+/**
+ * A single `###` block of a skill MD, so a rule assertion cannot be satisfied by
+ * a coincidental match elsewhere in the ~94k-char assembled prompt.
+ */
+function mdSection(prompt: string, heading: string): string {
+  const start = prompt.indexOf(heading);
+  expect(start, `section not found: ${heading}`).toBeGreaterThan(-1);
+  const rest = prompt.slice(start + heading.length);
+  const end = rest.indexOf('\n### ');
+  return end === -1 ? rest : rest.slice(0, end);
 }
 
 function withLivePricing(skills: Skills): Skills {
