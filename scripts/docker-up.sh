@@ -35,17 +35,9 @@ done
 if $SKIP_BACKUP; then
   echo "=== Skipping pre-restart backup (--skip-backup) ==="
 else
-  RUNNING_SERVICES="$(docker compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" ps --status running --services)"
-  if printf '%s\n' "$RUNNING_SERVICES" | grep -qx app; then
-    echo "=== Backing up SQLite before stopping containers ==="
-    bash "$SCRIPT_DIR/../deploy/backup-db.sh"
-  else
-    echo "=== No running app container, nothing to back up ==="
-  fi
+  echo "=== Backing up SQLite before stopping containers ==="
+  bash "$SCRIPT_DIR/../deploy/backup-db.sh"
 fi
-
-echo "=== Stopping existing containers ==="
-docker compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" down --remove-orphans 2>/dev/null || true
 
 echo "=== Building Docker image ==="
 docker compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" build
@@ -55,12 +47,26 @@ if $BUILD_ONLY; then
   exit 0
 fi
 
+echo "=== Stopping existing containers ==="
+docker compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" down --remove-orphans
+
 echo "=== Starting prod containers ==="
-docker compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" --profile tunnel up -d --build --force-recreate
+docker compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" --profile tunnel up -d --force-recreate
 
 echo "=== Checking health ==="
-sleep 2
-curl -sf http://127.0.0.1:3000/health && echo "" || echo "Health check failed"
+HEALTHY=false
+for _ in {1..15}; do
+  if curl -sf http://127.0.0.1:3000/health; then
+    echo ""
+    HEALTHY=true
+    break
+  fi
+  sleep 2
+done
+if ! $HEALTHY; then
+  echo "Health check failed"
+  exit 1
+fi
 
 echo "=== Done ==="
 
