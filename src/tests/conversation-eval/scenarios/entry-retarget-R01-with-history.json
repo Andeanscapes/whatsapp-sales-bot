@@ -9,7 +9,7 @@
     { "id": "marker-hidden", "rule": "reply_must_not_match", "patterns": ["R01|marcador|codigo de campana"], "turn": 4, "weight": 2, "critical": true },
     { "id": "continues-context", "rule": "reply_must_match", "patterns": ["ven[ií]as.{0,40}solo|viajabas solo|para (?:ti|vos) solo|viajes solo|viajas solo"], "turn": 4, "weight": 2, "critical": true },
     { "id": "plan-recalled", "rule": "reply_must_match", "patterns": ["3 dias|3 días|plan largo|plan completo"], "turn": 4, "weight": 2, "critical": true },
-    { "id": "diagnoses-blocker", "rule": "reply_must_match", "patterns": ["qu[eé] te falta|qu[eé] te fren(?:a|[oó])|qu[eé] quisieras resolver|qu[eé] resuelvo|qu[eé] necesitas|qu[eé] hace falta"], "turn": 4, "weight": 2, "critical": true },
+    { "id": "diagnoses-blocker", "rule": "reply_must_match", "patterns": ["qu[eé] (?:te|le|les|los|las|nos) (?:falta|fren|pas[oó]|dej)|qu[eé] te falta|qu[eé] cambio|qu[eé] quisieras resolver|qu[eé] resuelvo|qu[eé] necesitas|qu[eé] hace falta"], "turn": 4, "weight": 2, "critical": true },
     { "id": "offers-pain-fecha", "rule": "reply_must_match", "patterns": ["fecha"], "turn": 4, "weight": 1 },
     { "id": "offers-pain-logistics", "rule": "reply_must_match", "patterns": ["transporte|log[ií]stica"], "turn": 4, "weight": 1 },
     { "id": "offers-pain-safety-or-budget", "rule": "reply_must_match", "patterns": ["seguridad|presupuesto|precio"], "turn": 4, "weight": 1 },

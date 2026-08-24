@@ -134,6 +134,7 @@ const criterionRuleSchema = z.enum([
   'partner_name_not_customer_name',
   'unsafe_pattern_absent',
   'group_quote_integrity',
+  'no_unpublished_date',
   'max_question_marks',
   'max_emojis',
   'reply_length_at_most',

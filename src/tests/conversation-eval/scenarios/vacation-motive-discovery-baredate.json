@@ -15,7 +15,7 @@
     { "id": "quote-delivered", "rule": "reply_must_match", "patterns": ["1[.,]000[.,]000"], "turn": 1, "weight": 3, "critical": true },
     { "id": "motive-reflected", "rule": "reply_must_match", "patterns": ["vacaciones|descanso|desconectar|sin af[aá]n"], "turn": 2, "weight": 3, "critical": true },
     { "id": "only-registry-november-day", "rule": "reply_must_match", "patterns": ["\\b14\\b"], "turn": 2, "weight": 3, "critical": true },
-    { "id": "no-invented-november-day", "rule": "reply_must_not_match", "patterns": ["\\b(?:7|21|28|29|30|31)\\s+de\\s+noviembre", "\\b3[01]\\s*de\\s*nov"], "turn": 2, "weight": 3, "critical": true },
+    { "id": "no-invented-november-day", "rule": "no_unpublished_date", "turn": 2, "weight": 3, "critical": true },
     { "id": "no-price-repeat-on-dates", "rule": "reply_must_not_match", "patterns": ["\\$\\s*[\\d.,]+|[\\d.,]+\\s*COP"], "turn": 2, "weight": 2, "critical": true },
     { "id": "one-question-dates", "rule": "max_question_marks", "max": 1, "turn": 2, "weight": 1 },
     { "id": "close-cta-on-bare-day", "rule": "reply_must_match", "patterns": ["anticipo|dep[oó]sito|validar|Nequi|Mercado Pago"], "turn": 3, "weight": 3, "critical": true },
