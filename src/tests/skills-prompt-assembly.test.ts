@@ -663,6 +663,15 @@ describe('skills-prompt-assembly', () => {
     expect(prompt.indexOf('EMOJIS YA USADOS')).toBeLessThan(prompt.indexOf('ESTADO DE TURNO: PERMISO-SEGUIMIENTO'));
   });
 
+  it('keeps the consent ask generic instead of offering a sales action', () => {
+    const prompt = assembleSystemPrompt({
+      skills: loadSkills(), lang: 'es', proactiveMode: 'consent_ask',
+    });
+
+    expect(prompt).toContain('pregunta genérica de beneficio');
+    expect(prompt).not.toContain('te revise disponibilidad en otro mes');
+  });
+
   it('asks for the post-stop variant only when re-asking after an opt-out', () => {
     const skills = loadSkills();
     const plain = runtimeSection(assembleSystemPrompt({ skills, lang: 'es', proactiveMode: 'consent_ask' }));
