@@ -477,6 +477,18 @@ describe('contextAwareExtract — people reply parsing', () => {
     expect(result.collected_people).toBeUndefined();
   });
 
+  it('does not read a calendar date as people after a group question', () => {
+    seedLastQuestion('¿Para cuantas personas seria?');
+    const result = contextAwareExtract('Me gustaria para la fecha del 10 de octubre', repos, PHONE, {});
+    expect(result.collected_people).toBeUndefined();
+  });
+
+  it('still reads explicit people before a date after a group question', () => {
+    seedLastQuestion('¿Para cuantas personas seria?');
+    const result = contextAwareExtract('Somos 2 para el 10 de octubre', repos, PHONE, {});
+    expect(result.collected_people).toBe(2);
+  });
+
   it('does not capture numbers when no relevant question was asked', () => {
     const result = contextAwareExtract('somos 5', repos, PHONE, {});
     expect(result.collected_people).toBeUndefined();
