@@ -170,7 +170,7 @@ is honoured even for booked leads.
 | `npm run docker:dev` | Tear down + rebuild image + recreate dev stack from `.env.dev` (attached) |
 | `npm run docker:dev:db:clean` | Stop dev stack and wipe its SQLite volume |
 | `npm run docker:dev:clean` | `docker:dev:db:clean` then `docker:dev` |
-| `npm run docker:prod` | Docker Compose with `.env.prod` + Cloudflare tunnel |
+| `npm run docker:prod` | Backup SQLite, then recreate production Docker stack |
 | `npm run start:tunnel` | Start Cloudflare tunnel locally (raw, no sync) |
 | `npm run dev:tunnel` | Start a fresh quick tunnel **and** sync `.env.dev` + Meta webhook |
 | `npm run dev:tunnel:sync` | Sync `.env.dev` + Meta webhook from an already-running tunnel |
@@ -266,11 +266,16 @@ bash deploy/update-app.sh
 
 ### Docker
 
+Docker deployment reads the repository-local `.env.prod` file.
+
 ```bash
+sudo install -d -m 700 -o "$USER" -g "$(id -gn)" /var/backups/andean-whatsapp-bot
 npm run docker:prod
 ```
 
-Multi-container setup with Cloudflare Tunnel profile, Docker volume for SQLite, and log rotation. See [deploy/docker-compose.md](deploy/docker-compose.md).
+The backup directory setup is required once per host. Multi-container setup uses a
+Cloudflare Tunnel profile, persistent SQLite volume, and log rotation. See
+[deploy/docker-compose.md](deploy/docker-compose.md).
 
 ## Testing
 
