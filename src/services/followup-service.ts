@@ -381,6 +381,12 @@ async function processConsentAsk(repos: Repositories, candidate: ConsentAskCandi
     }
     return false;
   }
+  const claimedEvent = repos.followupSubscriptionEvent.getByPhoneKindCycle(
+    phone,
+    'consent_ask',
+    cycleKey,
+  );
+  const consentAskRetryInstruction = (claimedEvent?.attempts ?? 1) > 1;
 
   if (repos.isPaused()) {
     repos.followupSubscriptionEvent.releaseClaim(eventId);
@@ -431,6 +437,7 @@ async function processConsentAsk(repos: Repositories, candidate: ConsentAskCandi
         collectedFields: repos.conversation.getCollectedFields(phone),
         selectedExperienceId: repos.conversation.getSelectedExperienceId(phone),
         proactiveMode: 'consent_ask',
+        consentAskRetryInstruction,
         reaskAfterOptOut,
       }),
       // Internal turn signal, explicitly defined in the assembled RUNTIME block.
