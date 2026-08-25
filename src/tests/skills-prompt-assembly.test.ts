@@ -716,6 +716,20 @@ describe('skills-prompt-assembly', () => {
     expect(reask).toContain('[[FOLLOWUP_CONSENT]]');
   });
 
+  it('adds consent correction guidance only on retry attempts', () => {
+    const skills = loadSkills();
+    const first = runtimeSection(assembleSystemPrompt({
+      skills, lang: 'es', proactiveMode: 'consent_ask',
+    }));
+    const retry = runtimeSection(assembleSystemPrompt({
+      skills, lang: 'es', proactiveMode: 'consent_ask', consentAskRetryInstruction: true,
+    }));
+
+    expect(first).not.toContain('CORRECCION PERMISO:');
+    expect(retry).toContain('CORRECCION PERMISO:');
+    expect(retry).toContain('[[FOLLOWUP_CONSENT]]');
+  });
+
   // A reask flag on an ordinary inbound turn must not smuggle a proactive
   // permission cue into a normal sales reply.
   it('ignores reaskAfterOptOut when the turn is not a consent ask', () => {

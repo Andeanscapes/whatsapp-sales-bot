@@ -208,6 +208,24 @@ describe('consent ask — draft rejection stays bounded and observable', () => {
     expect(mockSendTextWithId).not.toHaveBeenCalled();
   });
 
+  it('adds corrective runtime guidance after the first invalid draft', async () => {
+    const completeSpy = vi.spyOn(llmClient, 'complete')
+      .mockResolvedValueOnce(draft('sin marcador'))
+      .mockResolvedValueOnce(draft('¿Te puedo escribir más adelante?\n[[FOLLOWUP_CONSENT]]'));
+
+    await runConsentAskCycle(repos);
+    await runConsentAskCycle(repos);
+
+    const firstPrompt = completeSpy.mock.calls[0]?.[0].systemPrompt ?? '';
+    const retryPrompt = completeSpy.mock.calls[1]?.[0].systemPrompt ?? '';
+    expect(firstPrompt).not.toContain('CORRECCION PERMISO:');
+    expect(retryPrompt).toContain('CORRECCION PERMISO:');
+    expect(retryPrompt).toContain('La ultima linea debe ser exactamente [[FOLLOWUP_CONSENT]].');
+    expect(mockSendTextWithId).toHaveBeenCalledTimes(1);
+    expect(eventFor('c1')?.status).toBe('accepted');
+    expect(eventFor('c1')?.attempts).toBe(2);
+  });
+
   it('alerts the owner exactly once, not once per tick', async () => {
     vi.spyOn(llmClient, 'complete').mockResolvedValue(draft('sin marcador'));
 
