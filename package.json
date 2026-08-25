@@ -39,7 +39,7 @@
     "docker:dev": "bash scripts/docker-dev-up.sh",
     "docker:dev:db:clean": "bash scripts/docker-dev-db-clean.sh",
     "docker:dev:clean": "npm run docker:dev:db:clean && npm run docker:dev",
-    "docker:prod": "ENV_FILE=.env.prod docker compose -p andean-whatsapp-bot --env-file .env.prod --profile tunnel up --build -d --force-recreate",
+    "docker:prod": "bash scripts/docker-up.sh --no-logs",
     "docker:prod:log": "bash scripts/docker-up.sh",
     "docker:test": "bash scripts/docker-up-test.sh",
     "db:clean:prod": "docker compose -p andean-whatsapp-bot --env-file .env.prod down -v"

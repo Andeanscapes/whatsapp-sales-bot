@@ -442,7 +442,15 @@ without having seen a real exit code.
 [x] `/lead`, `/chat`, `/customer` replay real photos with the caption the customer saw; pre-ledger turns show a bare glyph
 [ ] Operator replay verified live against Telegram (album batching + byte-upload fallback)
 [x] Opt-out honoured for the bare standalone phrases, including "no mas porfa"
-[ ] Plan-selection turn quotes AND demos, and a repeat photo request re-marks (requires live eval rerun)
+[ ] Plan-selection turn quotes AND demos, and a repeat photo request re-marks
+    FAILING as of the 2026-08-24 live rerun. The plan-choice turn quotes correctly but
+    emits no `[[FOTOS:...]]` (`plan-selection-gallery` 67, 0/2 — unchanged by the
+    2026-08-20 §GALERIA fix). A repeat request still ships zero photos AFTER promising
+    them ("aquí van de nuevo las de la mina"), a shape `PHOTO_PROMISE` does not match.
+    Needs its own PR; see LESSONS.md 2026-08-24.
+[ ] Bare-day acceptance closes with anticipo instead of re-quoting
+    FAILING as of the 2026-08-24 live rerun (`vacation-motive-discovery-baredate` 78,
+    0/2). The 2026-08-20 QUOTE LOCK `!priceGiven` tail did not produce a T3b close.
 [x] HMAC SHA-256 webhook signature verification (X-Hub-Signature-256)
 [x] Meta webhook verification works (verified live 2026-08-04)
 [x] WhatsApp POST webhook receives messages (verified live 2026-08-04, dev tunnel)

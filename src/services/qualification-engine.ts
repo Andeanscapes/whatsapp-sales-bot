@@ -537,6 +537,11 @@ function extractPeopleFromReply(text: string): number | null {
     if (n != null) return n;
   }
 
+  // A customer can answer the previous group question and immediately add a date
+  // in a second WhatsApp message. A calendar month makes that number a day, not a
+  // delayed headcount answer. Explicit people wording above still wins.
+  if (MONTH_NAMES.some(month => norm.includes(month))) return null;
+
   // Exact standalone digit (existing behaviour preserved).
   const soloNum = /^(\d+)$/.exec(norm);
   if (soloNum) {
