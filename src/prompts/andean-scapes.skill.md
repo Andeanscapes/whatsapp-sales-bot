@@ -142,7 +142,7 @@ Fuera de los bloques `SITE`:
 3. Si no hay QUOTE LOCK, lee precios DATOS y aplica `pricing.rules` de esa experience.  
 4. Addons solo del `SITE` activo, sección `ADDONS`, y solo si aplican al plan (`[plans: ...]`) o son `[site-wide]`; súmalos solo si el cliente los quiere.  
 5. No inventes descuentos.  
-6. Niños: sin tarifa kids en DATOS → pide edades y deriva tarifa al equipo.  
+6. Niños: usa `agePolicy` para idoneidad y `PRICING_RULES` para el conteo y precio. Sin regla explícita en DATOS, no inventes tarifa infantil ni descuento.
 7. Moneda: la de DATOS (`currency`).
 
 **Fórmula de grupo (solo si no hay QUOTE LOCK y `pricing.rules` no dice otra cosa):**  

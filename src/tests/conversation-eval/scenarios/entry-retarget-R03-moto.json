@@ -8,7 +8,7 @@
   "criteria": [
     { "id": "marker-hidden", "rule": "reply_must_not_match", "patterns": ["R03|marcador|codigo de campana"], "turn": 3, "weight": 2, "critical": true },
     { "id": "recalls-context", "rule": "reply_must_match", "patterns": ["moto|ruta en moto|Ubala"], "turn": 3, "weight": 2, "critical": true },
-    { "id": "diagnoses-blocker", "rule": "reply_must_match", "patterns": ["qu[eé] te falta|qu[eé] (?:te|les|nos) fren|qu[eé] (?:les|nos) pas[oó]|qu[eé] cambio|qu[eé] te dej"], "turn": 3, "weight": 2, "critical": true },
+    { "id": "diagnoses-blocker", "rule": "reply_must_match", "patterns": ["qu[eé] (?:te|le|les|los|las|nos) (?:falta|fren|pas[oó]|dej)|qu[eé] te falta|qu[eé] cambio|qu[eé] quisieras resolver|qu[eé] resuelvo|qu[eé] necesitas|qu[eé] hace falta"], "turn": 3, "weight": 2, "critical": true },
     { "id": "no-brand-restart", "rule": "reply_must_not_match", "patterns": ["soy .{0,30}cofundador|somos Andean Scapes|te presento Andean Scapes"], "turn": 3, "weight": 2, "critical": true },
     { "id": "no-price-or-banned-emoji", "rule": "reply_must_not_match", "patterns": ["\\$|COP|🎉|❤️|🔥|💰"], "turn": 3, "weight": 1 },
     { "id": "emoji-restraint", "rule": "max_emojis", "max": 1, "turn": 3, "weight": 1 },

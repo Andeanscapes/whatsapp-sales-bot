@@ -90,18 +90,23 @@ No router port forwarding or public IP is required.
 
 ## Updates
 
-Use `.env.dev` locally and `.env.prod` in production:
+Provision the host backup directory once, then use the backup-enabled production
+launcher. A failed backup stops the update before any container is removed:
 
 ```bash
+sudo install -d -m 700 -o "$USER" -g "$(id -gn)" /var/backups/andean-whatsapp-bot
 git pull
-docker compose --env-file .env.prod up -d --build
+npm run docker:prod
 ```
 
 ## Backups
 
 Use the repo-managed script. It runs an online-safe `sqlite3 .backup` inside the
 running container (WAL-aware), copies the snapshot to `/var/backups/andean-whatsapp-bot`,
-and prunes backups older than 30 days. Requires `sqlite3` in the runtime image (installed via Dockerfile).
+and prunes backups older than 30 days. If the app is stopped, it runs the same
+WAL-aware backup from a temporary container attached to the persistent volume.
+Requires `sqlite3` in the runtime image (installed via Dockerfile) and the host's
+standard `flock` command from `util-linux`.
 
 ```bash
 deploy/backup-db.sh
@@ -112,15 +117,16 @@ Schedule it with cron (daily at 03:00):
 
 ```bash
 crontab -e
-# 0 3 * * * /opt/andean-whatsapp-bot/app/deploy/backup-db.sh >> /var/log/andean-whatsapp-bot/backup.log 2>&1
+# 0 3 * * * cd /opt/andean-whatsapp-bot/app && deploy/backup-db.sh >> /var/log/andean-whatsapp-bot/backup.log 2>&1
 ```
 
 ### Offline fallback (container stopped)
 
-If the container is not running, copy the DB file straight from the volume:
+If the app image is unavailable and the container is stopped, copy the DB file
+straight from the volume only as a last-resort offline recovery:
 
 ```bash
-docker run --rm -v andean-whatsapp-bot-data:/data -v "$PWD":/backup busybox cp /data/bot.sqlite /backup/bot.sqlite.backup
+docker run --rm -v andean-whatsapp-bot-data:/data:ro -v "$PWD":/backup:Z busybox cp /data/bot.sqlite /backup/bot.sqlite.backup
 ```
 
 If the volume name differs, check it with `docker volume ls`.

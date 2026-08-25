@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { calculatePriceQuote } from '../../services/pricing-calculator.js';
-import { getActiveExperience } from '../../services/product-registry.js';
+import { getActiveExperience, getFutureAvailableDates } from '../../services/product-registry.js';
 import { getSkills, loadSkills } from '../../services/skill-loader.js';
 import { evaluateScenario } from './evaluate-scenario.js';
 import { scenarioSchema } from './schema.js';
@@ -151,5 +151,34 @@ describe('conversation criteria', () => {
     const notEquals = scenario([{ id: 'phase', rule: 'output_flag_not_equals', flag: 'salesPhase', expected: 'booked', weight: 1, critical: true }]);
     expect(evaluateScenario(equals, [record]).score).toBe(100);
     expect(evaluateScenario(notEquals, [record]).score).toBe(100);
+  });
+
+  /**
+   * Replaces a hardcoded date denylist that scored a REAL published date
+   * (2026-11-28, live feed) as invented because the CI fixture only carries
+   * 2026-11-14. The scenario's own mockReply says "el 14" with no month, so it
+   * checks zero dates — this is the rule's only deterministic coverage.
+   */
+  describe('no_unpublished_date', () => {
+    const input = scenario([{ id: 'dates', rule: 'no_unpublished_date', weight: 1, critical: true }]);
+    const published = getFutureAvailableDates(getActiveExperience(getSkills()));
+    const [, month, day] = published[0].date.split('-');
+    const realDate = `${Number(day)} de ${['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'][Number(month) - 1]}`;
+
+    it('accepts a day the registry publishes', () => {
+      expect(evaluateScenario(input, [turn('fechas?', `Tenemos el ${realDate}.`)]).score).toBe(100);
+    });
+
+    it('rejects a day the registry does not publish', () => {
+      // 31 de febrero is not a date in any feed, present or future.
+      const result = evaluateScenario(input, [turn('fechas?', 'Tenemos el 31 de febrero.')]);
+      expect(result.score).toBe(0);
+      expect(result.hardFail).toBe(true);
+      expect(result.criteria[0].evidence).toContain('31 de febrero');
+    });
+
+    it('passes a reply that names no date at all', () => {
+      expect(evaluateScenario(input, [turn('hola', 'Con gusto, ¿para cuántas personas?')]).score).toBe(100);
+    });
   });
 });

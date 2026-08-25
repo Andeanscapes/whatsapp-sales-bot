@@ -30,6 +30,7 @@ const SKILL_GUARDS: Check[] = [
   // deposit literal slipped through this guard for as long as it existed. Any
   // numeric percentage is business data; the prompt must use [ANTICIPO%].
   { label: 'percentage literal (use [ANTICIPO%])', pattern: /\b\d{1,3}\s?%/ },
+  { label: 'calendar date literal (use [FECHA]/[DÍA])', pattern: /\b\d{1,2}\s+de\s+(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\b/i },
   { label: 'phone number literal', pattern: /\b319[.\s-]?251[.\s-]?0498\b/ },
   { label: 'any Colombian mobile', pattern: /\b3\d{2}[.\s-]?\d{3}[.\s-]?\d{4}\b/ },
   { label: 'hardcoded plan id', pattern: /\b2d1n_mining\b/ },

@@ -4,7 +4,7 @@ umask 077
 
 ENV_FILE=.env.prod
 export ENV_FILE
-COMPOSE_PROJECT=andean-whatsapp-bot-prod
+COMPOSE_PROJECT="${COMPOSE_PROJECT:-andean-whatsapp-bot}"
 
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 BASE_DIR="exports/prod-debug-${STAMP}"
