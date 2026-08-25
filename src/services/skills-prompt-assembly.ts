@@ -530,6 +530,8 @@ export interface AssembleSystemPromptInput {
    * validates and strips the marker (see AGENTS.md invariants 8 and 9).
    */
   proactiveMode?: 'consent_ask';
+  /** Retry after an invalid consent draft; reinforces shape without supplying copy. */
+  consentAskRetryInstruction?: boolean;
   /**
    * True when this is a consent ask AND the customer previously opted out and
    * has now returned. Signals the model to use a different tone: acknowledge
@@ -553,7 +555,7 @@ export interface AssembleSystemPromptInput {
 }
 
 export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
-  const { skills, lang, collectedFields, salesPhase, customerContext, selectedExperienceId, entryMarker, priorContext, leadPain, priceGiven, latestCustomerMessage, dateSelectedThisTurn, closeCtaAcceptedThisTurn, proactiveMode, reaskAfterOptOut, consentAcceptedThisTurn, followupReopenedThisTurn, usedEmojis, galleryShown, galleryRequestThemes, galleryImagesRemaining, galleryRetryInstruction, advanceQuestionRetryInstruction } = input;
+  const { skills, lang, collectedFields, salesPhase, customerContext, selectedExperienceId, entryMarker, priorContext, leadPain, priceGiven, latestCustomerMessage, dateSelectedThisTurn, closeCtaAcceptedThisTurn, proactiveMode, consentAskRetryInstruction, reaskAfterOptOut, consentAcceptedThisTurn, followupReopenedThisTurn, usedEmojis, galleryShown, galleryRequestThemes, galleryImagesRemaining, galleryRetryInstruction, advanceQuestionRetryInstruction } = input;
 
   const personality = substituteTokens(readPrompt('seller-personality.skill.md'));
   // entry-strategy must precede cold-info-handler: the first-turn handler reads the
@@ -811,6 +813,9 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
         'Prohibido preguntar por fecha, plan, precio, personas, reserva o pago en este turno.',
       ].join(' '),
     );
+    if (consentAskRetryInstruction) {
+      runtime.push('CORRECCION PERMISO: el borrador anterior fue invalido porque no cumplio el formato interno. Reescribe el mensaje completo aplicando §PERMISO-SEGUIMIENTO. No continues la venta ni respondas preguntas pendientes. La ultima linea debe ser exactamente [[FOLLOWUP_CONSENT]].');
+    }
   }
   if (consentAcceptedThisTurn) {
     runtime.push('ESTADO DE TURNO: PERMISO-CONCEDIDO. Aplica whatsapp-sales.skill.md §PERMISO-CONCEDIDO. El cliente aceptó recibir mensajes futuros; NO es una confirmación de reserva, fecha ni pago.');
