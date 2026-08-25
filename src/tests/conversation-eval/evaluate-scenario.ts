@@ -1,6 +1,6 @@
 import { env } from '../../config/env.js';
 import { getSkills } from '../../services/skill-loader.js';
-import { getActiveExperience } from '../../services/product-registry.js';
+import { getActiveExperience, getFutureAvailableDates } from '../../services/product-registry.js';
 import { calculatePriceQuote } from '../../services/pricing-calculator.js';
 import { countEmojis } from '../../services/reply-guard.js';
 import type { Criterion, CriterionResult, Scenario } from './schema.js';
@@ -29,6 +29,14 @@ const BIG_GROUP_PATTERN = /\b(\d{2,})\s*(?:personas|people|pax)\b|\b(?:m[ií]nim
 const BIG_GROUP_DATE_PATTERN = /\b(validar.*(?:fecha|disponibilidad|cupo)|con cuidado|grupo grande|cuidadosamente|revisar.*(?:fecha|disponibilidad|cupo))\b/i;
 const BIG_GROUP_PRICE_PATTERN = /\b(revis.*precio|referencial|validamos.*valor|precio.*cantidad|valor.*segun.*cantidad|precio.*revisable|ajustar.*precio|precio.*referencia)\b/i;
 const COFOUNDER_PATTERN = /(?:junto\s+(?:con|a)|\bco-?fundador(?:a)?\b[^.!?\n]{0,100}\bcon)\s+([A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑáéíóúñ0-9]*)/;
+/**
+ * Local on purpose: `response-engine.ts` has the same map as a module-local const,
+ * and widening a core service's exports for a harness rule is not worth the churn.
+ */
+const MONTH_NUMBER: Record<string, number> = {
+  enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6,
+  julio: 7, agosto: 8, septiembre: 9, octubre: 10, noviembre: 11, diciembre: 12,
+};
 
 export interface ScenarioEvaluation {
   score: number;
@@ -206,6 +214,34 @@ function evaluateCriterion(criterion: Criterion, turns: TurnRecord[]): Criterion
       criterion,
       peopleMatch && totalMatch,
       `people=${peopleCounts.join(',') || 'missing'} total=${amounts.join(',') || 'missing'} expected=${expectedPeople}/${expectedTotal}`,
+    );
+  }
+
+  // Any "<day> de <month>" in the reply must be a day the registry actually
+  // publishes for that month. A hardcoded denylist cannot express this in a `live`
+  // scenario: the live pass reads the real CDN feed while the deterministic pass
+  // reads the CI fixture, so a real published date (2026-11-28) was scored as an
+  // invented one. Same trap as asserting exact photo counts — derive, never hardcode.
+  if (criterion.rule === 'no_unpublished_date') {
+    const published = getFutureAvailableDates(getActiveExperience(getSkills()));
+    const publishedDayMonth = new Set(
+      published.map(entry => {
+        const [, month, day] = entry.date.split('-');
+        return `${Number(day)}-${Number(month)}`;
+      }),
+    );
+    const mentioned = [...replyText.matchAll(
+      /\b(\d{1,2})\s+de\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\b/gi,
+    )];
+    const unpublished = mentioned
+      .filter(match => !publishedDayMonth.has(`${Number(match[1])}-${MONTH_NUMBER[match[2].toLowerCase()]}`))
+      .map(match => match[0]);
+    return criterionResult(
+      criterion,
+      unpublished.length === 0,
+      unpublished.length === 0
+        ? `all mentioned dates published (${mentioned.length} checked)`
+        : `unpublished: ${unpublished.join(', ')}`,
     );
   }
 

@@ -14,6 +14,7 @@ let repos: Repositories;
 let previousChatId: string;
 let previousConsentSeconds: number;
 let previousAskEnabled: boolean;
+let previousAllowlist: string;
 
 beforeEach(() => {
   db = new Database(':memory:');
@@ -22,9 +23,11 @@ beforeEach(() => {
   previousChatId = env.TELEGRAM_CHAT_ID;
   previousConsentSeconds = env.FOLLOWUP_DEV_CONSENT_SECONDS;
   previousAskEnabled = env.FOLLOWUP_CONSENT_ASK_ENABLED;
+  previousAllowlist = env.FOLLOWUP_DEV_ALLOWLIST_PHONES;
   env.TELEGRAM_CHAT_ID = String(OWNER_CHAT);
   env.FOLLOWUP_DEV_CONSENT_SECONDS = 60;
   env.FOLLOWUP_CONSENT_ASK_ENABLED = true;
+  env.FOLLOWUP_DEV_ALLOWLIST_PHONES = '';
   resetRoutingConfigCache();
 });
 
@@ -32,6 +35,7 @@ afterEach(() => {
   env.TELEGRAM_CHAT_ID = previousChatId;
   env.FOLLOWUP_DEV_CONSENT_SECONDS = previousConsentSeconds;
   env.FOLLOWUP_CONSENT_ASK_ENABLED = previousAskEnabled;
+  env.FOLLOWUP_DEV_ALLOWLIST_PHONES = previousAllowlist;
   resetRoutingConfigCache();
   db.close();
 });
