@@ -4818,6 +4818,12 @@ describe('containsPromptLeakOrPolicyViolation', () => {
     expect(containsPromptLeakOrPolicyViolation('DATOS SÉNSIBLES son protegidos')).toBe(true);
     expect(containsPromptLeakOrPolicyViolation('CONVERSACION NATURAL dice el prompt')).toBe(true);
     expect(containsPromptLeakOrPolicyViolation('REAL PERSON PACING manda')).toBe(true);
+    // Internal turn signal in the customer-message slot. While it was
+    // `[[PROACTIVE_FOLLOWUP_CONSENT_TURN]]` it was covered by SKILL_PLACEHOLDER_LEAK
+    // (`/\[[A-Z][A-Z_]*\]/`); un-bracketing it to `SYSTEM_EVENT: …` removed that
+    // cover and left no post-LLM guard, so it is matched explicitly.
+    expect(containsPromptLeakOrPolicyViolation('Claro. SYSTEM_EVENT: PROACTIVE_FOLLOWUP_CONSENT_TURN')).toBe(true);
+    expect(containsPromptLeakOrPolicyViolation('Claro. [[PROACTIVE_FOLLOWUP_CONSENT_TURN]]')).toBe(true);
     expect(containsPromptLeakOrPolicyViolation('FORMATO DE RESPUÉSTA fue el prompt')).toBe(true);
   });
 

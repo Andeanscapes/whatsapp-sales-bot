@@ -126,15 +126,15 @@ export async function followupStatusHandler(ctx: CommandContext): Promise<string
   }
   // The failure mode this command exists for: the cycle burned every bounded
   // attempt, so `claim()` refuses forever while the SQL keeps serving the lead.
-  // Nothing recovers automatically — only a new session (deferral, cycle close or
-  // opt-out reopen) mints a fresh cycle_key.
+  // Nothing recovers automatically — either a new session (deferral, cycle close or
+  // opt-out reopen) mints a fresh cycle_key, or an operator runs /followupretry.
   if (subscription) {
     const currentCycle = consentCycleKey(subscription.consent_session);
     const currentEvent = ctx.repos.followupSubscriptionEvent
       .getByPhoneKindCycle(phone, 'consent_ask', currentCycle);
     if (currentEvent && currentEvent.status === 'failed' && currentEvent.attempts >= env.FOLLOWUP_MAX_ATTEMPTS) {
       blockers.push(
-        `ciclo ${currentCycle} AGOTADO (${currentEvent.attempts}/${env.FOLLOWUP_MAX_ATTEMPTS} intentos, ${currentEvent.error_reason ?? 'sin motivo'}) — requiere nueva sesion`,
+        `ciclo ${currentCycle} AGOTADO (${currentEvent.attempts}/${env.FOLLOWUP_MAX_ATTEMPTS} intentos, ${currentEvent.error_reason ?? 'sin motivo'}) — /followupretry ${phone} o nueva sesion`,
       );
     }
   }

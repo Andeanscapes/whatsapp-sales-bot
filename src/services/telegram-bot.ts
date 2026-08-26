@@ -29,6 +29,7 @@ import { stopbotHandler } from '../commands/stopbot.command.js';
 import { stopallHandler } from '../commands/stopall.command.js';
 import { followupGrantHandler } from '../commands/followup-grant.command.js';
 import { followupRevokeHandler } from '../commands/followup-revoke.command.js';
+import { followupRetryHandler } from '../commands/followup-retry.command.js';
 import { followupStatusHandler } from '../commands/followup-status.command.js';
 import { followupDigestHandler } from '../commands/followup-digest.command.js';
 import { isAllowedTelegramChat, isBridgeTelegramChat, isOwnerChat } from './lead-routing.js';
@@ -841,6 +842,14 @@ export function registerCommands(): void {
     usage: '<telefono>',
     ownerOnly: true,
     handler: followupStatusHandler,
+  });
+
+  registerCommand({
+    name: 'followupretry',
+    description: 'Reintentar ciclo de permiso agotado de un lead',
+    usage: '<telefono>',
+    ownerOnly: true,
+    handler: followupRetryHandler,
   });
 
   registerCommand({

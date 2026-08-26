@@ -16,6 +16,9 @@ import {
   type ActiveExperience,
 } from './product-registry.js';
 import { getEntrySalesComposition, renderReferentStrategies } from './sales-composition.js';
+// Single source for both control tokens: the prompt and the validator must never
+// disagree about the exact strings.
+import { CONSENT_ASK_MARKER, CONSENT_ASK_TURN_EVENT } from './followup-consent.js';
 import type { EntryMarker } from './entry-marker.js';
 import { calculatePriceQuote, type TransportNeed } from './pricing-calculator.js';
 import { AVAILABILITY_NOT_AVAILABLE, type InternalExperienceData, type InternalSiteData } from './dynamic-data-service.js';
@@ -802,7 +805,11 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
       [
         'ESTADO DE TURNO: PERMISO-SEGUIMIENTO.',
         'Este estado ANULA cualquier pregunta pendiente, CTA, fase de venta o instrucción comercial anterior.',
-        'El mensaje actual contiene el marcador interno [[PROACTIVE_FOLLOWUP_CONSENT_TURN]]: NO es texto del cliente y nunca debes repetirlo.',
+        `El mensaje actual es la señal interna "${CONSENT_ASK_TURN_EVENT}": NO es texto del cliente, no la respondas y nunca la escribas en tu respuesta.`,
+        // The two control tokens carry OPPOSITE instructions, so the difference is
+        // stated explicitly. When both were `[[…]]`-shaped the model dropped the
+        // mandatory output marker along with the input one.
+        `Distinción de control: SYSTEM_EVENT es contexto de ENTRADA y nunca se escribe; ${CONSENT_ASK_MARKER} es SALIDA obligatoria y sí se escribe.`,
         // The post-stop variant is an ADDITION to §PERMISO-SEGUIMIENTO, never a
         // replacement: it only reframes tone. Presenting it as an alternative
         // section let the model drop the mandatory marker.
@@ -823,6 +830,21 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
   if (followupReopenedThisTurn) {
     runtime.push(
       'CONVERSACION REACTIVADA POR EL CLIENTE: antes pidió detener mensajes automáticos y ahora inició voluntariamente una nueva conversación. Responde su consulta normalmente. Si es útil, aclara brevemente que su solicitud anterior detuvo los seguimientos; este inbound permite conversar pero NO vuelve a autorizar templates ni mensajes futuros. Solo un nuevo "sí" a una pregunta posterior de permiso puede reactivarlos.',
+    );
+  }
+
+  // LAST block of the whole prompt, unconditionally. The output contract is the
+  // final thing the model reads and ends on the literal marker, so the token it
+  // must emit is also the token most recently in context. Any push after this one
+  // puts text between the contract and the marker and weakens it.
+  if (proactiveMode === 'consent_ask') {
+    runtime.push(
+      [
+        'FORMATO OBLIGATORIO DE ESTE TURNO. Tu respuesta completa tiene exactamente esta forma:',
+        'linea 1..N: el mensaje visible (2 a 3 lineas) que termina en UNA sola pregunta de permiso.',
+        'ultima linea: el marcador, solo y sin nada despues.',
+        `Si omites esa ultima linea el mensaje se descarta y el cliente NO recibe seguimiento. La ultima linea de tu respuesta debe ser exactamente:\n${CONSENT_ASK_MARKER}`,
+      ].join(' '),
     );
   }
 
