@@ -148,8 +148,131 @@ describe('validateConsentAsk', () => {
     expect(result.text).toContain('¿Te parece bien');
   });
 
+  // Preserved from before the markerless fallback existed: a bare "¿Te escribo
+  // después?" is NOT a permission ask (no contact object beyond the verb itself and
+  // no permission frame), so the marker stays mandatory for it.
   it('rejects a draft without the marker', () => {
     expect(validateConsentAsk('¿Te escribo después?').reason).toBe('marker_missing');
+  });
+
+  it('accepts a markerless draft whose question is an explicit permission ask', () => {
+    const markerlessAsk = 'Quedamos a mitad de camino con tu plan.\n¿Te parece bien si te escribo más adelante?';
+    const result = validateConsentAsk(markerlessAsk);
+    expect(result.ok).toBe(true);
+    expect(result.text).toBe(markerlessAsk);
+    expect(result.markerlessAccepted).toBe(true);
+  });
+
+  it.each([
+    '¿Te parece que te escriba cuando haya novedades?',
+    '¿Puedo escribirte con las fechas disponibles?',
+    '¿Te puedo contactar cuando haya salidas especiales?',
+    '¿Te parece si te aviso más adelante por aquí?',
+    '¿Puedo mantenerme en contacto contigo para futuras oportunidades?',
+    'Your experience was great. Can I message you about future trips?',
+    'Would you mind if I send you updates about new adventures?',
+    'Is it okay if I contact you with special offers?',
+  ])('accepts the markerless permission ask %s', ask => {
+    const result = validateConsentAsk(ask);
+    expect(result.ok).toBe(true);
+    expect(result.markerlessAccepted).toBe(true);
+  });
+
+  // For a group the model correctly switches to plural/formal "les"/"ustedes". A
+  // singular-only ("te") pattern set rejected every one of these, which made the
+  // qualified-group context the worst performer in `npm run measure:consent`.
+  // The first entry is a real draft captured by that script.
+  it.each([
+    'Heinner por acá. Vi que quedamos con el plan para ustedes cuatro, y quería saber si les sirve que les escriba por aquí cuando haya novedades?',
+    '¿Les puedo escribir por aquí cuando haya salidas nuevas?',
+    '¿Les parece si les aviso cuando tengamos novedades?',
+  ])('accepts the plural/formal permission ask %s', ask => {
+    expect(validateConsentAsk(ask).ok).toBe(true);
+  });
+
+  // WhatsApp drafts routinely omit the opening `¿`. An `¿`-anchored test rejected
+  // these perfectly good asks while accepting the sales turns below.
+  it.each([
+    'Quedamos pendientes de tu plan. Te parece si te escribo mas adelante con novedades?',
+    'Puedo escribirte por aqui cuando haya salidas especiales, te sirve?',
+  ])('accepts a real ask that omits the opening question mark: %s', ask => {
+    expect(validateConsentAsk(ask).ok).toBe(true);
+  });
+
+  // THE regression that matters. Each of these was accepted by a whole-draft
+  // keyword match: the sales question would have been sent as the consent ask,
+  // burning the one free-form message the 24h window allows, and a bare "sí" to
+  // that sales question would then have activated marketing consent.
+  it.each([
+    'Te escribo el itinerario completo mañana temprano, ¿cuántos van a viajar?',
+    'Perfecto, te escribo la confirmacion ahora. ¿Prefieres salida de manana o tarde?',
+    'Is it ok for 4 people in one cabin, or do you need two?',
+    'Would you like the guided mine tour included in your plan?',
+    'Can i send the itinerary in english instead of spanish?',
+    '¿Tienes disponibilidad para el mes que viene?',
+  ])('never accepts the sales turn %s as a consent ask', draftText => {
+    expect(validateConsentAsk(draftText).reason).toBe('marker_missing');
+  });
+
+  it('requires a permission frame in the question, not anywhere in the draft', () => {
+    // Permission frame present, but attached to a different sentence than the question.
+    expect(validateConsentAsk('Te puedo confirmar el cupo hoy. ¿Cuántos son en total?').reason)
+      .toBe('marker_missing');
+  });
+
+  // The phrasing §PERMISO-SEGUIMIENTO actually asks for: a declarative permission
+  // setup closed by a short tag question answerable with a bare "sí". Requiring both
+  // signals inside the question rejected this shape, which measured 33% deliverable
+  // on the real production context (`npm run measure:consent`). Both entries are
+  // real drafts captured by that script.
+  it.each([
+    'Heinner por acá. Quedamos en que te interesaba la aventura minera, y quería saber si te puedo escribir más adelante por este WhatsApp cuando tengamos novedades o salidas especiales que puedan servirte. ¿Te parece?',
+    'Venías mirando el plan de la mina y quería saber si te puedo volver a escribir por este WhatsApp cuando haya novedades. ¿Te parece?',
+    'Quedamos pendientes con ustedes y queria saber si les puedo escribir por aqui cuando haya salidas especiales. ¿Les parece?',
+  ])('accepts a permission setup closed by a tag question: %s', ask => {
+    expect(validateConsentAsk(ask).ok).toBe(true);
+  });
+
+  // The tag-question branch must not become a way to smuggle a sales turn through.
+  // The question still has to carry the permission frame, and the setup must not be
+  // delivering a sales artefact.
+  it.each([
+    ['a sales deliverable in the setup', 'Te puedo escribir el total mañana por este WhatsApp. ¿Te parece?'],
+    ['a price in the setup', 'Quedamos en que te puedo mandar el precio actualizado. ¿Te parece?'],
+    ['a sales question after a permission setup', 'Te puedo escribir mas adelante por aqui. ¿Cuantos van a viajar?'],
+    // Same sentences as above with the permission inside the question instead of a
+    // tag. Guarding only the tag branch made acceptance depend on punctuation.
+    ['a sales deliverable inside the question', '¿Te puedo escribir el total mañana por este WhatsApp?'],
+    ['an itinerary inside the question', '¿Puedo escribirte el itinerario cuando lo tengamos listo?'],
+    ['a quote inside the question', '¿Puedo escribirte la cotizacion mas adelante por aqui?'],
+  ])('rejects %s', (_label, ask) => {
+    expect(validateConsentAsk(ask).reason).toBe('marker_missing');
+  });
+
+  it('still accepts marker-based drafts as before', () => {
+    const withMarker = `¿Te parece si te escribo más adelante?\n${CONSENT_ASK_MARKER}`;
+    const result = validateConsentAsk(withMarker);
+    expect(result.ok).toBe(true);
+    expect(result.markerlessAccepted).toBeFalsy();
+    expect(result.text).not.toContain(CONSENT_ASK_MARKER);
+  });
+
+  // Only the consent marker is stripped, so any other internal marker surviving in
+  // the draft would reach the customer verbatim.
+  it.each([
+    `¿Te puedo escribir mas adelante?\n[[FOTOS:mina]]\n${CONSENT_ASK_MARKER}`,
+    '¿Te puedo escribir mas adelante?\n[[FOTOS:mina]]',
+  ])('rejects a draft with a residual internal marker', draftText => {
+    expect(validateConsentAsk(draftText).reason).toBe('residual_marker');
+  });
+
+  // The turn signal is no longer `[[…]]`-shaped, so the residual-marker check above
+  // cannot catch it echoing back into customer copy.
+  it.each([
+    `Quedamos pendientes. SYSTEM_EVENT: PROACTIVE_FOLLOWUP_CONSENT_TURN\n¿Te puedo escribir mas adelante?\n${CONSENT_ASK_MARKER}`,
+    '¿Te puedo escribir mas adelante? Respondo al PROACTIVE_FOLLOWUP_CONSENT_TURN',
+  ])('rejects a draft that echoes the internal turn signal', draftText => {
+    expect(validateConsentAsk(draftText).reason).toBe('internal_echo');
   });
 
   it('rejects a draft with no question', () => {
@@ -165,6 +288,10 @@ describe('validateConsentAsk', () => {
   it('rejects a draft that smuggles an amount back in', () => {
     expect(validateConsentAsk(`Quedo en $550.000 el plan. ¿Te escribo luego? ${CONSENT_ASK_MARKER}`).reason)
       .toBe('contains_amount');
+  });
+
+  it('rejects a markerless draft with amount even if permission pattern is present', () => {
+    expect(validateConsentAsk('¿Te puedo escribir con un plan de $550.000?').reason).toBe('contains_amount');
   });
 
   it('rejects a draft containing a link', () => {
