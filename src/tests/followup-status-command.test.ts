@@ -162,7 +162,10 @@ describe('/followupstatus', () => {
     const output = await run();
 
     expect(output).toContain('AGOTADO');
-    expect(output).toContain('requiere nueva sesion');
+    // The blocker must name the recovery path, not just the dead end: an exhausted
+    // cycle is recoverable by /followupretry or by a new consent session.
+    expect(output).toContain('/followupretry');
+    expect(output).toContain('nueva sesion');
   });
 
   it('does not flag exhaustion while attempts remain', async () => {
