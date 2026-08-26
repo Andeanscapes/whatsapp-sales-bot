@@ -716,6 +716,62 @@ describe('skills-prompt-assembly', () => {
     expect(reask).toContain('[[FOLLOWUP_CONSENT]]');
   });
 
+  // The output contract must be the LAST thing the model reads, ending on the
+  // literal token it has to emit. Anything appended after it puts text between the
+  // contract and the marker.
+  describe('consent ask — output contract placement', () => {
+    const skills = loadSkills();
+    const variants = {
+      base: { proactiveMode: 'consent_ask' as const },
+      retry: { proactiveMode: 'consent_ask' as const, consentAskRetryInstruction: true },
+      postStop: { proactiveMode: 'consent_ask' as const, reaskAfterOptOut: true },
+      // These two cues are pushed after the consent block in source order.
+      consentAccepted: { proactiveMode: 'consent_ask' as const, consentAcceptedThisTurn: true },
+      reopened: { proactiveMode: 'consent_ask' as const, followupReopenedThisTurn: true },
+    };
+
+    it.each(Object.entries(variants))('ends the whole prompt with the marker (%s)', (_label, extra) => {
+      const prompt = assembleSystemPrompt({ skills, lang: 'es', ...extra });
+
+      expect(prompt.trimEnd().endsWith('[[FOLLOWUP_CONSENT]]')).toBe(true);
+    });
+
+    it('states the consequence of omitting the marker', () => {
+      const runtime = runtimeSection(assembleSystemPrompt({ skills, lang: 'es', proactiveMode: 'consent_ask' }));
+
+      expect(runtime).toContain('FORMATO OBLIGATORIO DE ESTE TURNO');
+      expect(runtime).toContain('se descarta');
+    });
+
+    // The root cause of the production exhaustion: the input signal used to be
+    // `[[PROACTIVE_FOLLOWUP_CONSENT_TURN]]`, so the turn carried two identically
+    // shaped `[[…]]` tokens with opposite instructions and the model dropped both.
+    it('keeps the input signal out of the [[...]] namespace', () => {
+      const runtime = runtimeSection(assembleSystemPrompt({ skills, lang: 'es', proactiveMode: 'consent_ask' }));
+
+      expect(runtime).not.toContain('[[PROACTIVE_FOLLOWUP_CONSENT_TURN]]');
+      expect(runtime).toContain('SYSTEM_EVENT: PROACTIVE_FOLLOWUP_CONSENT_TURN');
+      // The only bracketed token KIND in a consent-ask runtime is the one to emit.
+      // It legitimately appears several times (state cue, direction note, contract).
+      expect([...new Set(runtime.match(/\[\[[A-Z_:]+/g))]).toEqual(['[[FOLLOWUP_CONSENT']);
+    });
+
+    it('spells out which token is input and which is output', () => {
+      const runtime = runtimeSection(assembleSystemPrompt({ skills, lang: 'es', proactiveMode: 'consent_ask' }));
+
+      expect(runtime).toContain('Distinción de control');
+      expect(runtime).toContain('ENTRADA');
+      expect(runtime).toContain('SALIDA');
+    });
+
+    it('adds no output contract to an ordinary inbound turn', () => {
+      const runtime = runtimeSection(assembleSystemPrompt({ skills, lang: 'es' }));
+
+      expect(runtime).not.toContain('FORMATO OBLIGATORIO DE ESTE TURNO');
+      expect(runtime).not.toContain('[[FOLLOWUP_CONSENT]]');
+    });
+  });
+
   it('adds consent correction guidance only on retry attempts', () => {
     const skills = loadSkills();
     const first = runtimeSection(assembleSystemPrompt({

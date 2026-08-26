@@ -14,7 +14,7 @@ import { followupGalleryMediaId, recordImageSend } from './media-service.js';
 import { recordOutboundMedia } from './conversation-media.js';
 import { buildSystemPrompt } from './deepseek-client.js';
 import { llmClient } from './response-engine.js';
-import { addMonthsClamped, consentCycleKey, parseStoredTimestamp, recurringCycleKey, validateConsentAsk } from './followup-consent.js';
+import { addMonthsClamped, consentCycleKey, CONSENT_ASK_TURN_EVENT, parseStoredTimestamp, recurringCycleKey, validateConsentAsk } from './followup-consent.js';
 import { checkBudget } from './budget-guard.js';
 import { estimateDeepSeekCost } from './deepseek-cost.js';
 import { notifyOwnerOnce } from './owner-notice.js';
@@ -336,6 +336,18 @@ export function resetExhaustedCycleReportCache(): void {
   reportedExhaustedCycles.clear();
 }
 
+/**
+ * Forgets the exhaustion notice for ONE cycle, so a cycle an operator re-armed can
+ * alert again if it exhausts a second time.
+ *
+ * Deliberately keyed rather than a full `clear()`: clearing the whole set would let
+ * unrelated leads that already alerted this boot alert again, turning one operator
+ * retry into a burst of duplicate owner notices.
+ */
+export function forgetExhaustedCycleReport(phone: string, cycleKey: string): void {
+  reportedExhaustedCycles.delete(`${phone}:${cycleKey}`);
+}
+
 async function processConsentAsk(repos: Repositories, candidate: ConsentAskCandidateRow): Promise<boolean> {
   const phone = candidate.customer_phone;
 
@@ -375,7 +387,8 @@ async function processConsentAsk(repos: Repositories, candidate: ConsentAskCandi
         repos,
         phone,
         `followup_consent_exhausted:${cycleKey}`,
-        `Consent ask agotado: ${phone} ${cycleKey} tras ${claimed.attempts} intentos (ultimo error: ${reason})`,
+        `Consent ask agotado: ${phone} ${cycleKey} tras ${claimed.attempts} intentos `
+        + `(ultimo error: ${reason}). Para reintentar: /followupretry ${phone}`,
         { scope: 'ever' },
       );
     }
@@ -442,8 +455,9 @@ async function processConsentAsk(repos: Repositories, candidate: ConsentAskCandi
       }),
       // Internal turn signal, explicitly defined in the assembled RUNTIME block.
       // An empty customer turn made the model continue the previous sales question
-      // instead of applying the proactive mode.
-      message: '[[PROACTIVE_FOLLOWUP_CONSENT_TURN]]',
+      // instead of applying the proactive mode. Not `[[…]]`-shaped on purpose — see
+      // CONSENT_ASK_TURN_EVENT.
+      message: CONSENT_ASK_TURN_EVENT,
       history: repos.message.getRecentMessages(phone, 10)
         .map(entry => ({ role: entry.role, content: entry.content })),
       lang: language,
@@ -494,6 +508,13 @@ async function processConsentAsk(repos: Repositories, candidate: ConsentAskCandi
     repos.followupSubscriptionEvent.markFailed(eventId, `draft_${validation.reason ?? 'invalid'}`);
     logger.warn({ phone, reason: validation.reason }, '[FOLLOWUP] consent ask draft rejected');
     return false;
+  }
+
+  if (validation.markerlessAccepted) {
+    logger.info(
+      { phone, cycleKey, attempt: claimedEvent?.attempts ?? 1 },
+      '[FOLLOWUP] consent ask accepted without marker (matched permission pattern)',
+    );
   }
 
   // The LLM call can take seconds. A customer reply during that wait makes this

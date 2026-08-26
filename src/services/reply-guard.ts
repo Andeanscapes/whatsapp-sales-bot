@@ -438,6 +438,11 @@ export function containsPromptLeakOrPolicyViolation(reply: string): boolean {
     /\bDATOS SENSIBLES\b/i,
     /\bREAL[- ]PERSON PACING\b/i,
     /\bCONVERSACION NATURAL\b/i,
+    // Internal turn signals delivered in the customer-message slot. These used to be
+    // `[[…]]`-shaped and so were caught by SKILL_PLACEHOLDER_LEAK; un-bracketing the
+    // consent-ask signal removed that cover, leaving no post-LLM guard for it.
+    /\bSYSTEM_EVENT\b/i,
+    /\bPROACTIVE_FOLLOWUP[A-Z_]*\b/i,
     // Referent-strategy block markers. Matched against the NORMALIZED reply
     // (punctuation stripped), so these are the rendered header/label forms.
     // Referent display names are deliberately NOT matched here: they never enter
