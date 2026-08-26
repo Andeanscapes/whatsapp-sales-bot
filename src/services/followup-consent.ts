@@ -9,6 +9,21 @@
 export const CONSENT_ASK_MARKER = '[[FOLLOWUP_CONSENT]]';
 
 /**
+ * Internal signal placed in the customer-message slot of a proactive consent turn.
+ *
+ * Deliberately NOT `[[…]]`-shaped. It used to be `[[PROACTIVE_FOLLOWUP_CONSENT_TURN]]`,
+ * which put two identically-shaped bracket tokens in the same turn carrying opposite
+ * instructions — "never repeat this one" for the input and "always emit this one" for
+ * the output. A model that generalises "internal `[[…]]` tokens must not be written"
+ * drops both, which is exactly the `draft_marker_missing` exhaustion observed in
+ * production. Distinct shapes make the two directions unambiguous.
+ */
+export const CONSENT_ASK_TURN_EVENT = 'SYSTEM_EVENT: PROACTIVE_FOLLOWUP_CONSENT_TURN';
+
+/** Fragments of the internal turn signal that must never reach a customer. */
+const INTERNAL_ECHO_PATTERN = /SYSTEM_EVENT|PROACTIVE_FOLLOWUP_CONSENT_TURN/i;
+
+/**
  * Parses both JS ISO timestamps and SQLite UTC (`YYYY-MM-DD HH:mm:ss`) values.
  *
  * Lives here rather than in the scheduler because the webhook path needs it too,
@@ -186,18 +201,139 @@ export interface ConsentAskValidation {
   /** Marker-stripped text, present only when `ok` is true. */
   text?: string;
   reason?: string;
+  /** True if marker was omitted but draft was accepted as explicit permission question. */
+  markerlessAccepted?: boolean;
+}
+
+/**
+ * Second-person object pronouns, singular AND plural/formal.
+ *
+ * The plural forms are load-bearing, not decoration: for a group the model correctly
+ * writes "¿les sirve que les escriba…?" / "¿les puedo escribir…?", and a singular-only
+ * pattern set rejected every one of those. Measured with
+ * `npm run measure:consent`: the qualified-group context was the worst performer
+ * precisely because of this gap.
+ */
+const YOU = '(?:te|le|les|os)';
+
+/**
+ * Asking-for-permission frames. Deliberately excludes offer frames ("would you
+ * like…", "te interesa…"): those introduce a product, not a request to write later.
+ */
+const PERMISSION_FRAME = [
+  // Spanish
+  new RegExp(`\\b${YOU}\\s+puedo\\b`), /\bpuedo\b/, /\bpodria\b/,
+  new RegExp(`\\b${YOU}\\s+(?:parece|sirve|molesta)\\b`),
+  /\bme\s+permit(?:es|en)\b/, /\bautoriza(?:s|n)?\b/, /\besta\s+bien\s+si\b/,
+  /\bme\s+deja(?:s|n)\b/,
+  // English
+  /\bcan\s+i\b/, /\bmay\s+i\b/, /\bis\s+it\s+ok(?:ay)?\s+(?:if|to)\b/,
+  /\b(?:would|do)\s+you\s+mind\b/, /\bare\s+you\s+ok(?:ay)?\s+with\b/,
+];
+
+/**
+ * The thing being permitted must be FUTURE CONTACT, not a sales artefact.
+ *
+ * Spanish entries are stems so they cover the conjugations the model actually uses
+ * ("escriba", "escribirles", "avisarles"). `send you` rather than a bare `send` is
+ * what separates "can i send you updates" (a permission ask) from "can i send the
+ * itinerary" (a sales turn).
+ */
+const CONTACT_OBJECT = [
+  // Spanish
+  /\bescrib/, /\bavis/, /contact/, /\bmensaje/, /\bcomunic/,
+  new RegExp(`\\bmandar${YOU}\\b`), new RegExp(`\\b${YOU}\\s+mando\\b`),
+  // English
+  /\bmessag/, /\bwrit/, /\breach\s+out\b/, /\bsend\s+you\b/, /\btext\s+you\b/, /\bemail/,
+];
+
+/**
+ * Sales artefacts. Their presence means "escribir" is delivering a sales document,
+ * not asking to make contact later, so a tag question must not rescue them.
+ */
+const SALES_DELIVERABLE = /\b(?:total|precio|valor|cotizaci|itinerario|factura|comprobante|anticipo|link|cupo|disponibilidad|reserva|pago|deposito)/;
+
+/**
+ * Splits the draft into the sentence carrying the question and everything before it.
+ *
+ * Scoping to the question — rather than testing the whole draft — is the safety
+ * property. "Te escribo el itinerario mañana, ¿cuántos van a viajar?" contains
+ * permission-shaped words but its QUESTION is a sales question; a whole-draft match
+ * accepted it, burned the single free-form message the 24h window allows, and let a
+ * bare "sí" to that sales question activate marketing consent.
+ *
+ * Callers guarantee exactly one `?`.
+ */
+function splitAtQuestion(text: string): { setup: string; question: string } {
+  const end = text.indexOf('?');
+  if (end < 0) return { setup: '', question: '' };
+  const head = text.slice(0, end);
+  const start = Math.max(
+    head.lastIndexOf('.'),
+    head.lastIndexOf('!'),
+    head.lastIndexOf('\n'),
+    head.lastIndexOf('¿'),
+  );
+  return { setup: head.slice(0, start + 1), question: head.slice(start + 1) };
+}
+
+/**
+ * True when the draft is an explicit request for permission to make future contact.
+ *
+ * The question sentence must ALWAYS carry a permission frame — that is what keeps a
+ * sales question ("¿cuántos van a viajar?") from ever qualifying, no matter what the
+ * rest of the draft says. What the contact object is allowed to do is move:
+ *
+ * - (A) self-contained: "¿Te puedo escribir más adelante?" — both signals in the question.
+ * - (B) tag question: "…quería saber si te puedo escribir más adelante por aquí. ¿Te parece?"
+ *   The question is a permission tag and the contact object sits in the setup.
+ *
+ * (B) exists because it is the phrasing §PERMISO-SEGUIMIENTO actively asks for (a
+ * close answerable with a bare "sí"), and requiring both signals in the question
+ * rejected it — measured at 33% deliverable on the real production context with
+ * `npm run measure:consent`. It is bounded by the frame requirement above plus the
+ * sales-deliverable exclusion, so "Te puedo escribir el total mañana. ¿Te parece?"
+ * stays rejected.
+ *
+ * Unanchored on purpose: WhatsApp drafts routinely omit the opening `¿`.
+ */
+function isExplicitPermissionQuestion(text: string): boolean {
+  const { setup, question } = splitAtQuestion(text);
+  const q = normalize(question);
+  if (!q) return false;
+  // Non-negotiable: the thing being asked must be permission, never trip details.
+  if (!PERMISSION_FRAME.some(p => p.test(q))) return false;
+
+  // The sales-deliverable exclusion applies to whichever segment carries the contact
+  // object — that segment IS the permission subject. Guarding only the tag-question
+  // branch made the same sentence pass or fail depending on punctuation:
+  // "¿Te puedo escribir el total mañana?" was accepted while
+  // "Te puedo escribir el total mañana. ¿Te parece?" was rejected.
+  if (CONTACT_OBJECT.some(p => p.test(q))) return !SALES_DELIVERABLE.test(q);
+
+  const s = normalize(setup);
+  if (!s || SALES_DELIVERABLE.test(s)) return false;
+  return PERMISSION_FRAME.some(p => p.test(s)) && CONTACT_OBJECT.some(p => p.test(s));
 }
 
 /**
  * Validates an LLM-authored consent ask. The engine may only accept-and-strip or
  * reject: rewriting or appending copy would violate the "LLM owns reply text"
  * invariant, so a malformed draft is discarded rather than repaired.
+ *
+ * Fallback: if the marker is missing but the text is an explicit permission question
+ * with valid structure, it is accepted without the marker. This prevents leads from
+ * becoming permanently blocked when the LLM omits the internal marker due to prompt
+ * variance, while preserving safety (no sales copy, exactly one question, no amounts).
  */
 export function validateConsentAsk(reply: string): ConsentAskValidation {
   const raw = reply.trim();
-  if (!raw.includes(CONSENT_ASK_MARKER)) return { ok: false, reason: 'marker_missing' };
+  const hasMarker = raw.includes(CONSENT_ASK_MARKER);
 
-  const text = raw.split(CONSENT_ASK_MARKER).join('').trim();
+  const text = hasMarker
+    ? raw.split(CONSENT_ASK_MARKER).join('').trim()
+    : raw;
+
   if (text.length < 20) return { ok: false, reason: 'too_short' };
   if (text.length > 900) return { ok: false, reason: 'too_long' };
 
@@ -208,8 +344,20 @@ export function validateConsentAsk(reply: string): ConsentAskValidation {
   // The ask must not smuggle the sales pitch back in.
   if (/\$\s?\d|\b\d{1,3}[.,]\d{3}\b/.test(text)) return { ok: false, reason: 'contains_amount' };
   if (/\bhttps?:\/\//i.test(text)) return { ok: false, reason: 'contains_link' };
+  // Only the consent marker is stripped, so any OTHER internal marker left in the
+  // draft would be delivered verbatim to the customer.
+  if (text.includes('[[')) return { ok: false, reason: 'residual_marker' };
+  // The turn signal is no longer bracketed, so the check above cannot catch it.
+  if (INTERNAL_ECHO_PATTERN.test(text)) return { ok: false, reason: 'internal_echo' };
 
-  return { ok: true, text };
+  // The marker stays the contract. Accepting a markerless draft is a bounded
+  // fallback for prompt variance, and only when the draft's own question is an
+  // unmistakable request for permission to write later.
+  if (!hasMarker && !isExplicitPermissionQuestion(text)) {
+    return { ok: false, reason: 'marker_missing' };
+  }
+
+  return { ok: true, text, markerlessAccepted: !hasMarker };
 }
 
 /**

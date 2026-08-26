@@ -42,7 +42,8 @@
     "docker:prod": "bash scripts/docker-up.sh --no-logs",
     "docker:prod:log": "bash scripts/docker-up.sh",
     "docker:test": "bash scripts/docker-up-test.sh",
-    "db:clean:prod": "docker compose -p andean-whatsapp-bot --env-file .env.prod down -v"
+    "db:clean:prod": "docker compose -p andean-whatsapp-bot --env-file .env.prod down -v",
+    "measure:consent": "AI_ENABLED=true tsx src/scripts/measure-consent-compliance.ts"
   },
   "dependencies": {
     "@fastify/rate-limit": "^11.0.0",

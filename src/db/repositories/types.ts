@@ -292,6 +292,19 @@ export interface FollowupSubscriptionEventRepository {
   markUncertain(eventId: number, reason: string): void;
   /** Release a claim without consuming an attempt (e.g., local guard blocked send). */
   releaseClaim(eventId: number): void;
+  /**
+   * Operator-only: clear the burned attempts of an EXHAUSTED cycle so `claim()`
+   * can issue attempts again. Returns true when a row was actually reset.
+   *
+   * Restricted to `status = 'failed'` by design. `accepted`, `delivered` and
+   * `uncertain` all mean Meta may have taken the message, so resetting them could
+   * double-send; a `failed` row is only written before the send is attempted.
+   */
+  resetExhaustedCycle(
+    phone: string,
+    eventKind: FollowupSubscriptionEventKind,
+    cycleKey: string,
+  ): boolean;
   getByPhoneKindCycle(phone: string, eventKind: FollowupSubscriptionEventKind, cycleKey: string): FollowupSubscriptionEventRow | null;
   getLatest(phone: string): FollowupSubscriptionEventRow | null;
   /** Newest-first dispatch history for one customer. Operator diagnostics only. */
