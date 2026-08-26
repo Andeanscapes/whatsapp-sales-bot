@@ -85,6 +85,26 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
     - The LLM writes the ask (`whatsapp-sales.skill.md` §PERMISO-SEGUIMIENTO) and the
       acceptance acknowledgment (§PERMISO-CONCEDIDO). The engine may only validate
       and strip `[[FOLLOWUP_CONSENT]]`, never repair or substitute copy.
+    - **`[[FOLLOWUP_CONSENT]]` stays the contract, with one bounded fallback.** A
+      markerless draft is accepted only when its own **question sentence** contains
+      both a permission frame ("¿puedo…", "te parece…", "can i…") and a
+      future-contact object ("escribirte", "avisarte", "message you", "send you").
+      Both signals must sit in the question, not anywhere in the draft: a
+      whole-draft keyword match accepted "Te escribo el itinerario mañana,
+      ¿cuántos van a viajar?" as a permission ask, which would have burned the one
+      free-form message the 24h window allows and let a bare "sí" to that *sales*
+      question activate marketing consent. The matcher is deliberately unanchored
+      (WhatsApp drafts drop the opening `¿`) and offer frames ("¿te interesa…",
+      "would you like…") are excluded because they introduce a product, not a
+      request to write later. A draft still carrying any other `[[…]]` marker is
+      rejected (`residual_marker`) — only the consent marker is ever stripped.
+    - **An exhausted consent cycle is recovered by an operator, never automatically.**
+      Three failed attempts leave the cycle permanently unclaimable, so the lead is
+      unreachable until a new session mints a fresh `cycle_key`. `/followupretry`
+      resets attempts for a `status = 'failed'` cycle only: `accepted`, `delivered`
+      and `uncertain` all mean Meta may hold the message, so replaying them could
+      double-send. An automatic reset is forbidden — a persistently malformed draft
+      would loop on the provider's bill forever.
     - A yes/no is classified **only** while status is `pending`; anything ambiguous
       flows through the normal sales path untouched. `consentAcceptedThisTurn` tells
       the model the "sí" is permission, not a booking confirmation.
@@ -488,9 +508,18 @@ without having seen a real exit code.
   so `no-real-phone-numbers.test.ts` enforces the prefix convention instead. A bare
   10-digit secretlint pattern was rejected: it flags timestamps, ids and the
   placeholders themselves, and needs a dependency that is not installed.
-  **Note:** the real number remains in git history (9 commits from `ab8bde9`).
+  **Note:** the real number remains in git history (**10** commits, `ab8bde9` →
+  `af83536`, verified 2026-08-26 — the count grows with every new commit that touches
+  a file still containing it, so re-check rather than trusting this number).
   Scrubbing the working tree does not remove it; making this repo public without a
-  `git filter-repo` pass still exposes it.
+  `git filter-repo` pass still exposes it. HEAD itself is clean. Re-verify with:
+  ```bash
+  git log -p --all | grep -ohE '\b3[0-9]{9}\b' | sort -u   # any non-300 prefix = leak
+  ```
+  **This is the one hard blocker on making the repo public.** `secretlint`'s
+  recommended preset does not flag national-format phone numbers, so neither
+  `npx secretlint` nor `no-real-phone-numbers.test.ts` (working tree only) will
+  catch it.
 - **Any command that writes to a customer goes through `sendBridgeReply` /
   `sendBridgeMedia`.** They are the only senders that enforce pause, opt-out and the
   24h service window *and* persist the outbound. `/send` in single-line mode used a
