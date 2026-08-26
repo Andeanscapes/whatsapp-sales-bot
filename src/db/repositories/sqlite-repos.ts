@@ -2269,6 +2269,26 @@ export class SqliteFollowupSubscriptionEventRepo implements FollowupSubscription
     `).run(eventId);
   }
 
+  resetExhaustedCycle(
+    phone: string,
+    eventKind: FollowupSubscriptionEventKind,
+    cycleKey: string,
+  ): boolean {
+    // `status = 'failed'` is the whole safety argument: that status is only ever
+    // written before Meta accepted anything, so replaying the cycle cannot
+    // duplicate a delivered message. Terminal `uncertain`/`accepted`/`delivered`
+    // rows are deliberately not matched.
+    const info = this.db.prepare(`
+      UPDATE followup_subscription_events
+      SET status = 'due', attempts = 0, claim_token = NULL, claimed_at = NULL,
+          dispatch_started_at = NULL, dispatching_until = NULL,
+          failed_at = NULL, error_reason = NULL,
+          scheduled_for = datetime('now'), updated_at = datetime('now')
+      WHERE customer_phone = ? AND event_kind = ? AND cycle_key = ? AND status = 'failed'
+    `).run(phone, eventKind, cycleKey);
+    return info.changes > 0;
+  }
+
   getByPhoneKindCycle(phone: string, eventKind: FollowupSubscriptionEventKind, cycleKey: string): FollowupSubscriptionEventRow | null {
     const row = this.db.prepare(`
       SELECT * FROM followup_subscription_events

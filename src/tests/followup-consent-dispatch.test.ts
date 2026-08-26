@@ -186,17 +186,27 @@ describe('consent ask — transient skips must not consume attempts', () => {
 
 /**
  * A rejected draft IS a real provider attempt, so it must stay bounded — but the
- * exhaustion has to be visible, because nothing recovers it automatically.
+ * exhaustion has to be visible, because nothing recovers it without an operator.
  */
 describe('consent ask — draft rejection stays bounded and observable', () => {
+  /**
+   * Single source for "the model returned something unusable".
+   *
+   * A sales question with no permission frame, so it is rejected as
+   * `marker_missing` by both the marker check and the markerless fallback. Kept in
+   * one place on purpose: these tests are about attempt bookkeeping, and inlining
+   * the string four times coupled four assertions to the fallback's pattern set.
+   */
+  const REJECTED_DRAFT = 'Listo, lo dejo anotado. ¿Cuántos van a viajar?';
+
   beforeEach(() => {
     seedAskableLead();
     // Missing [[FOLLOWUP_CONSENT]] — the exact failure the skill used to invite.
-    vi.spyOn(llmClient, 'complete').mockResolvedValue(draft('¿Te aviso si hay novedades?'));
+    vi.spyOn(llmClient, 'complete').mockResolvedValue(draft(REJECTED_DRAFT));
   });
 
   it('consumes one attempt per rejected draft and then stops calling the LLM', async () => {
-    const completeSpy = vi.spyOn(llmClient, 'complete').mockResolvedValue(draft('sin marcador'));
+    const completeSpy = vi.spyOn(llmClient, 'complete').mockResolvedValue(draft(REJECTED_DRAFT));
 
     for (let tick = 0; tick < 6; tick += 1) await runConsentAskCycle(repos);
 
@@ -210,7 +220,7 @@ describe('consent ask — draft rejection stays bounded and observable', () => {
 
   it('adds corrective runtime guidance after the first invalid draft', async () => {
     const completeSpy = vi.spyOn(llmClient, 'complete')
-      .mockResolvedValueOnce(draft('sin marcador'))
+      .mockResolvedValueOnce(draft(REJECTED_DRAFT))
       .mockResolvedValueOnce(draft('¿Te puedo escribir más adelante?\n[[FOLLOWUP_CONSENT]]'));
 
     await runConsentAskCycle(repos);
@@ -227,7 +237,7 @@ describe('consent ask — draft rejection stays bounded and observable', () => {
   });
 
   it('alerts the owner exactly once, not once per tick', async () => {
-    vi.spyOn(llmClient, 'complete').mockResolvedValue(draft('sin marcador'));
+    vi.spyOn(llmClient, 'complete').mockResolvedValue(draft(REJECTED_DRAFT));
 
     for (let tick = 0; tick < 8; tick += 1) await runConsentAskCycle(repos);
     // Let the fire-and-forget notice settle.
@@ -241,7 +251,7 @@ describe('consent ask — draft rejection stays bounded and observable', () => {
   });
 
   it('does not alert while attempts remain', async () => {
-    vi.spyOn(llmClient, 'complete').mockResolvedValue(draft('sin marcador'));
+    vi.spyOn(llmClient, 'complete').mockResolvedValue(draft(REJECTED_DRAFT));
 
     await runConsentAskCycle(repos);
     await new Promise(resolve => setImmediate(resolve));
@@ -251,7 +261,7 @@ describe('consent ask — draft rejection stays bounded and observable', () => {
   });
 
   it('asks again under a new cycle key after an opt-out reopen', async () => {
-    vi.spyOn(llmClient, 'complete').mockResolvedValue(draft('sin marcador'));
+    vi.spyOn(llmClient, 'complete').mockResolvedValue(draft(REJECTED_DRAFT));
     for (let tick = 0; tick < 4; tick += 1) await runConsentAskCycle(repos);
     expect(eventFor('c1')?.status).toBe('failed');
 
