@@ -55,6 +55,20 @@ Implementation: `src/services/skills-prompt-assembly.ts` — sole prompt builder
    - **One-shot post-24h template** and **recurring template** — Meta-approved bodies, no LLM. They do not touch prompt assembly.
    - **Consent ask** — free-form, sent inside the 24h window, and the **only** outbound whose text the model writes. It goes through `assembleSystemPrompt({ proactiveMode: 'consent_ask' })`, so the copy still lives in `whatsapp-sales.skill.md` (§PERMISO-SEGUIMIENTO) and never in TypeScript. The engine may only validate the draft and strip `[[FOLLOWUP_CONSENT]]`; it must never repair, prepend or substitute copy.
 
+     Two shape rules exist because marker compliance is model-bound, not
+     promptable (measured 59–80% first-attempt; corrective retries do **not**
+     improve it — see `npm run measure:consent` and LESSONS.md 2026-08-26):
+     - The turn signal in the customer-message slot is `SYSTEM_EVENT: …`, never
+       `[[…]]`-shaped. Two identically shaped bracket tokens carrying opposite
+       instructions ("never repeat" / "always emit") made the model drop both.
+     - `[[FOLLOWUP_CONSENT]]` stays the contract. A markerless draft is accepted
+       only when its own **question sentence** carries a permission frame, plus a
+       future-contact object in that question or its setup sentence, and no sales
+       deliverable. Never widen this to a whole-draft keyword match: that accepted
+       "Te escribo el itinerario mañana, ¿cuántos van a viajar?" as a permission
+       ask, which burns the single free-form message the window allows and lets a
+       bare "sí" to a *sales* question activate marketing consent.
+
    Free-form sales nudges, score-band/date/cold-loop template tracks, and the old multi-track stack stay removed. Never add a fourth outbound path without a fresh design.
 8. **QUOTE LOCK for group totals.** When people + settled plan are known, assembly injects the authorized plan total. Skills must copy it; never rebuild totals from unit rates or 3/4-person patterns for 5+.
 
