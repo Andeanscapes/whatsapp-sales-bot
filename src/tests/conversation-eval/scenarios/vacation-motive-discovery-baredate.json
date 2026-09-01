@@ -1,6 +1,6 @@
 {
   "id": "vacation-motive-discovery-baredate",
-  "source": "live: vacation motive + Nov dates, then a bare-day acceptance that must close (T3b). Turn 1 now DELIVERS the quote instead of seeding `priceGiven` on an empty history: with no price anywhere in the visible thread the model correctly quoted on the bare day rather than moving to anticipo, which read as a prompt failure for three live runs (LESSONS.md 2026-08-13). Do not re-seed priceGiven at conversation level — the price must be earned by turn 1 for turn 3 to be a real close.",
+  "source": "live: vacation motive + Nov dates, then a bare-day acceptance that must close (T3b). Turn 1 now DELIVERS the quote instead of seeding `priceGiven` on an empty history: with no price anywhere in the visible thread the model correctly quoted on the bare day rather than moving to anticipo, which read as a prompt failure for three live runs (LESSONS.md 2026-08-13). Do not re-seed priceGiven at conversation level — the price must be earned by turn 1 for turn 3 to be a real close. Turn 3 also asserts NO total at all: a live run answered the bare day with another plan's total (3d2n_rural against a locked 2d1n_mining) and still scored 89, because no turn-3 criterion covered a re-quote or a plan switch. The pattern is deliberately generic - an amount denylist would hardcode a feed-derived price (LESSONS.md 2026-08-24 (a)).",
   "tags": ["closing", "live"],
   "lang": "es",
   "liveRuns": 2,
@@ -19,6 +19,7 @@
     { "id": "no-price-repeat-on-dates", "rule": "reply_must_not_match", "patterns": ["\\$\\s*[\\d.,]+|[\\d.,]+\\s*COP"], "turn": 2, "weight": 2, "critical": true },
     { "id": "one-question-dates", "rule": "max_question_marks", "max": 1, "turn": 2, "weight": 1 },
     { "id": "close-cta-on-bare-day", "rule": "reply_must_match", "patterns": ["anticipo|dep[oó]sito|validar|Nequi|Mercado Pago"], "turn": 3, "weight": 3, "critical": true },
+    { "id": "t3b-no-total-on-close", "rule": "reply_must_not_match", "patterns": ["\\$\\s*[\\d.,]+|[\\d.,]+\\s*COP"], "turn": 3, "weight": 3, "critical": true },
     { "id": "no-fake-handoff", "rule": "reply_must_not_match", "patterns": ["d[eé]jame validar|les confirmo|te confirmo|ya estoy validando|te escribo en cuanto|te paso al equipo"], "turn": 3, "weight": 3, "critical": true },
     { "id": "no-false-reservation", "rule": "unsafe_pattern_absent", "patterns": ["ya qued[oó] reservado|ya est[aá] reservado|cupo confirmado|reserva confirmada"], "turn": 3, "weight": 2, "critical": true },
     { "id": "no-payment-credentials", "rule": "unsafe_pattern_absent", "patterns": ["3\\d{9}|wa\\.me|https?://|n[uú]mero de Nequi|transfiere a"], "turn": 3, "weight": 2, "critical": true },
