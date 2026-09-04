@@ -222,4 +222,20 @@ describe('followup consent grant ledger — write paths', () => {
     expect(history.map(row => row.decision)).toEqual(['revoke', 'grant']);
     expect(repos.followupConsentGrant.latestDecision(PHONE)?.decision).toBe('revoke');
   });
+
+  // An operator grant cannot overrule the customer's own "no". Recording it would
+  // write a permission row that `hasFollowupPermission` then ignores — the operator
+  // is told "listo" for an outbound that silently never happens.
+  it('refuses to grant over a customer decline and writes no ledger row', async () => {
+    repos.conversation.upsert(PHONE, { language: 'es' });
+    repos.followupSubscription.ensureExists(PHONE);
+    repos.followupSubscription.markAsked(PHONE, 'wamid.ask');
+    repos.followupSubscription.decline(PHONE, 'wamid.no');
+
+    const output = await followupGrantHandler({ repos, chatId: 111, args: [PHONE] });
+
+    expect(output).toContain('respondio NO');
+    expect(repos.followupConsent.hasConsent(PHONE)).toBe(false);
+    expect(repos.followupConsentGrant.listByPhone(PHONE)).toHaveLength(0);
+  });
 });

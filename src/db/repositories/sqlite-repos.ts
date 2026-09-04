@@ -132,6 +132,12 @@ export class SqliteConversationRepo implements ConversationRepository {
         AND c.soft_closed_at IS NULL
         AND COALESCE(c.conversation_mode, 'bot') IN ('bot', 'human_pending')
         AND ${QUALIFIED_FOR_FOLLOWUP_SQL}
+        -- A recorded customer refusal outranks BOTH provenances. An operator grant
+        -- is a presumption of consent; "no" is the customer answering the question.
+        -- Without this the OR below re-enabled every declined lead that happened to
+        -- carry an older /followupgrant, because decline() writes only the
+        -- subscription and never revokes the operator row.
+        AND COALESCE(fs.status, '') <> 'declined'
         -- Permission check: operator grant (not revoked) OR customer active consent
         AND (
           (fc.customer_phone IS NOT NULL AND fc.revoked_at IS NULL)

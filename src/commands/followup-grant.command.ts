@@ -16,6 +16,15 @@ export async function followupGrantHandler(ctx: CommandContext): Promise<string>
     return `No hay conversacion para ${phone}. Verifica el numero.`;
   }
 
+  // An operator grant cannot overrule the customer's own "no". `hasFollowupPermission`
+  // treats `declined` as final, so recording the grant here would produce a row that
+  // never authorises a send — an operator told "listo" for an outbound that silently
+  // never happens.
+  if (ctx.repos.followupSubscription.getByPhone(phone)?.status === 'declined') {
+    return `${phone} respondio NO a la solicitud de permiso. `
+      + 'No se puede autorizar por encima de una negativa del cliente.';
+  }
+
   const grantedBy = `telegram:${ctx.chatId}`;
   // Live row and audit row commit together: a grant the ledger never saw would leave
   // the same unanswerable history this table exists to prevent.

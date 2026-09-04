@@ -38,7 +38,12 @@ vi.mock('../services/contextual-media.js', () => ({
   selectThemedImage: mockSelectThemedImage,
 }));
 
-import { runConsentAskCycle, runFollowupCycle, runRecurringCycle } from '../services/followup-service.js';
+import {
+  hasFollowupPermission,
+  runConsentAskCycle,
+  runFollowupCycle,
+  runRecurringCycle,
+} from '../services/followup-service.js';
 import { WhatsAppSendError } from '../services/whatsapp-client.js';
 import { env } from '../config/env.js';
 import { llmClient } from '../services/response-engine.js';
@@ -687,6 +692,42 @@ describe('followup one-shot permission bridge', () => {
     await runFollowupCycle(repos);
 
     expect(mockSendTemplate).not.toHaveBeenCalled();
+  });
+
+  // A customer "no" outranks an operator grant. The case above seeds NO operator
+  // grant, so it passed while the OR predicate happily re-enabled any declined lead
+  // that still carried one — `decline()` writes the subscription and never revokes
+  // `followup_consent`. That shipped a marketing template AFTER a recorded refusal.
+  it('sends nothing when the customer declined despite a standing operator grant', async () => {
+    seedWithoutOperatorGrant();
+    repos.followupConsent.grantConsent(PHONE, 'telegram:1');
+    repos.followupSubscription.ensureExists(PHONE);
+    repos.followupSubscription.markAsked(PHONE, 'wamid.ask');
+    repos.followupSubscription.decline(PHONE, 'wamid.no');
+    // The operator row is deliberately still live — provenance is not destroyed.
+    expect(repos.followupConsent.hasConsent(PHONE)).toBe(true);
+
+    await runFollowupCycle(repos);
+
+    expect(mockSendTemplate).not.toHaveBeenCalled();
+  });
+
+  // The scan and the post-claim re-check must agree. If only one learned the rule,
+  // the lead is selected and then silently dropped as `consent_revoked`.
+  it('excludes a declined-with-grant lead from the candidate scan itself', () => {
+    seedWithoutOperatorGrant();
+    repos.followupConsent.grantConsent(PHONE, 'telegram:1');
+    repos.followupSubscription.ensureExists(PHONE);
+    repos.followupSubscription.markAsked(PHONE, 'wamid.ask');
+    repos.followupSubscription.decline(PHONE, 'wamid.no');
+
+    const candidates = repos.conversation.listFollowupCandidates({
+      silentSinceIso: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+      limit: 25,
+    });
+
+    expect(candidates.map(candidate => candidate.customer_phone)).not.toContain(PHONE);
+    expect(hasFollowupPermission(repos, PHONE)).toBe(false);
   });
 
   // An operator revocation must beat a stale active subscription, and vice versa:

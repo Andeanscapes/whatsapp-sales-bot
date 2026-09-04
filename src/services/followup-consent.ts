@@ -216,6 +216,25 @@ const CONSENT_CONTACT_CONTINUATION = /escrib|avis|mensaje|contact|mand|envi|perm
 const CONSENT_QUESTION_CONTINUATION =
   /\b(cual|cuales|que|cuando|como|donde|cuanto|cuantos|what|which|when)\b/;
 
+/**
+ * Vetoes the contact continuation when the thing being sent is COMMERCIAL.
+ *
+ * `mand` and `envi` are unanchored, so they match the sales senses of mandar/enviar
+ * just as well as the contact sense. Live-verified before this veto existed:
+ * "si quiero enviar el anticipo", "dale mandame la cuenta para pagar" and
+ * "si me mandas la cotizacion" all classified as `affirm` — recording durable
+ * marketing consent from a payment message, and (because a consent-answer turn
+ * freezes `lead_score` and clears `isHot`) suppressing the owner alert on the
+ * highest-intent turn in the funnel.
+ *
+ * The split is clean: a real permission continuation names the CHANNEL
+ * ("escribeme", "mandame mensajes", "avisame", "mandame las promos"), never money
+ * or a quote. So veto on the commercial object rather than narrowing the verbs,
+ * which would also drop the legitimate "mandame"/"enviame" forms.
+ */
+const COMMERCIAL_OBJECT_VETO =
+  /pago|pagar|pagos|pague|anticip|deposit|transferenc|consign|cotizac|factur|precio|abono|saldo|comprobante|reserv|\bcuenta\b|\bplata\b|dinero/;
+
 export type ConsentDecision = 'affirm' | 'decline' | 'ambiguous';
 
 /**
@@ -295,7 +314,9 @@ export function classifyConsentReply(text: string): ConsentDecision {
     // behaviour).
     const remainder = words.slice(affirmPrefix).join(' ');
     if (AFFIRM.includes(remainder)) return 'affirm';
-    if (CONSENT_CONTACT_CONTINUATION.test(remainder)) return 'affirm';
+    if (CONSENT_CONTACT_CONTINUATION.test(remainder) && !COMMERCIAL_OBJECT_VETO.test(remainder)) {
+      return 'affirm';
+    }
     if (/[?¿]/.test(text) && CONSENT_QUESTION_CONTINUATION.test(remainder)) return 'affirm';
     return 'ambiguous';
   }

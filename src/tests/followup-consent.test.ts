@@ -216,6 +216,42 @@ describe('classifyConsentReply', () => {
   ])('still grants consent for %s', text => {
     expect(classifyConsentReply(text)).toBe('affirm');
   });
+
+  // `mand` and `envi` in CONSENT_CONTACT_CONTINUATION are unanchored, so they matched
+  // the SALES senses of mandar/enviar. Every string below classified as `affirm`
+  // before the commercial-object veto: durable marketing consent recorded from a
+  // payment message, and — because a consent-answer turn freezes `lead_score` and
+  // clears `isHot` — no owner alert on the highest-intent turn in the funnel.
+  it.each([
+    'si quiero enviar el anticipo',
+    'ok pero envio el pago manana',
+    'dale mandame la cuenta para pagar',
+    'si me mandas el pago',
+    'si me mandas la cotizacion',
+    'si quiero mandar el deposito',
+    'vale envio la transferencia hoy',
+    'si mandame la reserva',
+    'ok envio el abono',
+    'si mandame el comprobante',
+    'dale mandame el precio',
+  ])('never reads the payment/quote message %s as marketing consent', text => {
+    expect(classifyConsentReply(text)).toBe('ambiguous');
+  });
+
+  // The veto keys on the commercial OBJECT, not the verb, so the legitimate
+  // channel-naming forms of mandar/enviar must survive it.
+  it.each([
+    'claro mandame las promos',
+    'si mandame mensajes',
+    'si mandame info',
+    'si avisame',
+    'dale avisame',
+    'si escribeme cuando quieras',
+    'si contactame',
+    'vale escribeme',
+  ])('keeps the channel-naming consent reply %s an affirm', text => {
+    expect(classifyConsentReply(text)).toBe('affirm');
+  });
 });
 
 describe('parseStoredTimestamp', () => {
