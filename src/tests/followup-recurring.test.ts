@@ -182,8 +182,10 @@ describe('listConsentAskCandidates', () => {
     expect(query(2)).toHaveLength(0);
   });
 
-  // Consent is session-scoped: re-engagement closes the cycle and earns a new ask.
-  it('re-asks after a customer inbound closed an active consent cycle', () => {
+  // Consent is DURABLE (2026-09-03): an ordinary inbound no longer closes the cycle,
+  // so an already-consented lead is never re-asked. Session-scoping used to reopen the
+  // ask here, which is how 7 production leads were asked for permission twice.
+  it('never re-asks a lead whose consent is active, even after they write again', () => {
     seedUnansweredLead(db, 5);
     repos.followupSubscription.ensureExists(PHONE);
     repos.followupSubscription.markAsked(PHONE, 'wamid.ask1');
@@ -191,29 +193,12 @@ describe('listConsentAskCandidates', () => {
     const firstAsk = repos.followupSubscriptionEvent.claim(PHONE, 'consent_ask', 'c1', 3, 10);
     repos.followupSubscriptionEvent.markAccepted(firstAsk!, 'wamid.ask1');
 
-    // While consent is active there is nothing to ask.
     expect(query(2)).toHaveLength(0);
 
-    expect(repos.followupSubscription.closeCycleOnCustomerInbound(PHONE)).toBe(true);
-
-    const rows = query(2);
-    expect(rows).toHaveLength(1);
-    expect(rows[0].consent_asks_so_far).toBe(1);
-    // Closing the cycle opens the next consent session, so the re-ask cannot
-    // collide with the key already spent on this customer.
-    expect(rows[0].consent_session).toBe(2);
-    expect(repos.followupSubscription.getByPhone(PHONE)?.activated_at).toBeNull();
-  });
-
-  it.each(['pending', 'declined', 'revoked'])('does not close a %s cycle', status => {
-    seedUnansweredLead(db, 5);
-    repos.followupSubscription.ensureExists(PHONE);
-    repos.followupSubscription.markAsked(PHONE, 'wamid.ask');
-    if (status === 'declined') repos.followupSubscription.decline(PHONE, 'wamid.no');
-    if (status === 'revoked') repos.followupSubscription.revoke(PHONE, 'operator');
-
-    expect(repos.followupSubscription.closeCycleOnCustomerInbound(PHONE)).toBe(false);
-    expect(repos.followupSubscription.getByPhone(PHONE)?.status).toBe(status);
+    // A later customer inbound (the seed already has one) leaves consent intact.
+    expect(repos.followupSubscription.getByPhone(PHONE)?.status).toBe('active');
+    expect(repos.followupSubscription.getByPhone(PHONE)?.activated_at).not.toBeNull();
+    expect(query(2)).toHaveLength(0);
   });
 
   it('keeps an unsent due consent event eligible so claim() can retry it', () => {
@@ -436,12 +421,24 @@ describe('listRecurringCandidates', () => {
     expect(query(3)).toHaveLength(0);
   });
 
-  it('stops once a customer inbound closed the consent cycle', () => {
+  // REPLACES the deleted session-scope guarantee. Consent is now durable, so the
+  // dormancy floor is the ONLY thing standing between an authorised template and a
+  // live conversation. If this test goes green while the floor is broken, a consented
+  // customer can be interrupted mid-chat by a marketing template.
+  it('never sends into a live conversation, even with durable consent', () => {
     activate(30);
     expect(query(3)).toHaveLength(1);
 
-    repos.followupSubscription.closeCycleOnCustomerInbound(PHONE);
+    // The customer writes again: consent SURVIVES...
+    repos.message.addMessage({ customer_phone: PHONE, direction: 'inbound', message_type: 'text', body: 'una duda', created_at: isoAgo(2) });
+    expect(repos.followupSubscription.getByPhone(PHONE)?.status).toBe('active');
 
+    // ...but the thread is no longer dormant, so nothing is due.
+    expect(query(3)).toHaveLength(0);
+
+    // The last message must also be OURS. Answering them does not re-open eligibility
+    // while the silence floor is unmet.
+    repos.message.addMessage({ customer_phone: PHONE, direction: 'outbound', message_type: 'text', body: 'te cuento', created_at: isoAgo(1) });
     expect(query(3)).toHaveLength(0);
   });
 

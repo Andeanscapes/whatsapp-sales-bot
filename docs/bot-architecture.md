@@ -371,7 +371,7 @@ re-engaging.
 
 | Path | Switch | Timing | Channel | Consent |
 |---|---|---|---|---|
-| One-shot post-24h template | `ALLOW_FOLLOWUP_TEMPLATE` | `FOLLOWUP_HOURS_AFTER_INBOUND` (>= 24; prod uses 168) | approved template, no LLM | operator `/followupgrant` |
+| One-shot post-24h template | `ALLOW_FOLLOWUP_TEMPLATE` | `FOLLOWUP_HOURS_AFTER_INBOUND` (>= 24; prod uses 168) | approved template, no LLM | operator `/followupgrant` **OR** customer said "sí" |
 | Consent ask | `FOLLOWUP_CONSENT_ASK_ENABLED` | `FOLLOWUP_CONSENT_HOURS_AFTER_INBOUND` (max 23) | free-form, LLM-written | none needed (inside window) |
 | Recurring template | `FOLLOWUP_RECURRING_ENABLED` | gaps multiply by 3 from `FOLLOWUP_RECURRING_INTERVAL_MONTHS`, plus the independent `FOLLOWUP_RECURRING_MIN_SILENCE_HOURS` dormancy floor, capped by `FOLLOWUP_MAX_RECURRING_SENDS` | approved template, no LLM | customer said "sí" |
 
@@ -474,14 +474,42 @@ farewell, a soft close and a job enquiry are excluded. A
 conversation themselves (a later ask can then produce `c2`, `c3`…); operator
 revocations never reopen.
 
-Consent is **session-scoped**: any customer-initiated inbound closes an `active`
-cycle back to `unasked`, so recurring templates stop until a fresh "sí" and a new
-permission ask becomes eligible once that new session goes silent. The turn that
-grants consent is exempt; `declined` is never re-asked and `pending` has only the
-bounded deferred re-ask above. The dormancy
-floor (`FOLLOWUP_RECURRING_MIN_SILENCE_HOURS`, dev override
-`FOLLOWUP_DEV_RECURRING_MIN_SILENCE_SECONDS`) is applied on top of the cadence, in
-both the candidate query and a post-claim re-check.
+Consent is **durable until explicitly ended** (changed 2026-09-03). An `active`
+subscription survives ordinary conversation turns and ends only on an explicit
+decline, a customer opt-out, or an operator `/followuprevoke`. `declined` is never
+re-asked and `pending` has only the bounded deferred re-ask above.
+
+It used to be session-scoped — any customer inbound reset `active` to `unasked` and
+NULLed `activated_at`. That destroyed the permission it meant to protect: 7 of 10 real
+production affirmations lost consent before a template could become due, those leads
+were asked a second time, and the 1-month recurring cadence was unreachable in
+principle (a lead had to say yes and then stay silent for a month).
+
+Nothing about interrupting a live chat changed, because the **dormancy floor is
+independent of consent**: `FOLLOWUP_RECURRING_MIN_SILENCE_HOURS` (dev override
+`FOLLOWUP_DEV_RECURRING_MIN_SILENCE_SECONDS`) plus "the last message must be ours" are
+applied on top of the cadence, in both the candidate query and a post-claim re-check.
+Permission authorises writing later; dormancy decides when. One consequence: a consent
+cycle now lives until revoked, so `FOLLOWUP_MAX_RECURRING_SENDS` is a per-consent cap
+rather than a per-conversation one.
+
+Every permission change also appends one row to `followup_consent_grants`
+(append-only). The live subscription row is mutable, so it cannot answer "when was
+permission granted, and by whom?" — that ledger can. Rows predate nothing: leads
+decided before 2026-09-03 have no history, and absence must not be read as refusal.
+Five paths write: webhook affirm/decline, `/followupgrant`, `/followuprevoke`,
+`/block`, and the first customer opt-out. An ambiguous reply is not a decision and
+never appears. `/followupstatus` renders the effective permission (operator grant OR
+active customer consent) plus the last five decisions with their source. Customer
+decisions carry the ask cycle; operator decisions carry the Telegram actor. The
+customer-data deletion path removes ledger rows because they contain PII.
+
+An inbound that triggers an opt-out is persisted before the state write. It used to be
+dropped: the confirmation went out with no inbound row, so the transcript showed the
+bot opting a lead out unprompted and nothing recorded what the customer had asked for
+— the message is the evidence for the compliance action. The same applies to an
+ordinary inbound from an already-muted customer, which is stored even though no reply
+is generated.
 
 Opt-out interaction: a customer stop request sets `opt_out_at`, revokes the
 subscription and the operator grant in one transaction, and records

@@ -54,13 +54,17 @@ describe('consent_session lifecycle', () => {
     expect(consentCycleKey(sessionOf())).toBe('c2');
   });
 
-  it('opens a new session when an active cycle is closed by a customer inbound', () => {
+  // Consent is DURABLE (2026-09-03): only an explicit refusal, a customer opt-out or an
+  // operator revocation ends it. An ordinary inbound must NOT mint a new session, or
+  // the lead gets asked for permission they already granted.
+  it('keeps the session when an active consent holder writes again', () => {
     repos.followupSubscription.ensureExists(PHONE);
     repos.followupSubscription.markAsked(PHONE, 'wamid.ask1');
     repos.followupSubscription.affirm(PHONE, 'wamid.yes', 'customer_reply');
 
-    expect(repos.followupSubscription.closeCycleOnCustomerInbound(PHONE)).toBe(true);
-    expect(sessionOf()).toBe(2);
+    expect(sessionOf()).toBe(1);
+    expect(repos.followupSubscription.getByPhone(PHONE)?.status).toBe('active');
+    expect(repos.followupSubscription.getByPhone(PHONE)?.activated_at).not.toBeNull();
   });
 
   it('opens a new session for the bounded pending deferral', () => {

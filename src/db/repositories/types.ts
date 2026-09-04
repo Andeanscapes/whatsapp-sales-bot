@@ -135,6 +135,41 @@ export interface FollowupConsentRepository {
 }
 
 /**
+ * What the row records. `affirm`/`decline` are the customer's answer to a consent
+ * ask; `grant`/`revoke` are an operator or compliance action.
+ */
+export type FollowupConsentGrantDecision = 'affirm' | 'decline' | 'grant' | 'revoke';
+
+/** Who produced the row. Provenance is never inferred at read time. */
+export type FollowupConsentGrantSource =
+  | 'customer_reply'
+  | 'operator_grant'
+  | 'operator_revoke'
+  | 'customer_opt_out'
+  | 'backfill_2026_09';
+
+export interface FollowupConsentGrantRow {
+  id?: number;
+  customer_phone: string;
+  decision: FollowupConsentGrantDecision;
+  decided_at: string;
+  inbound_message_id?: string | null;
+  source: FollowupConsentGrantSource;
+  actor_id?: string | null;
+  ask_cycle_key?: string | null;
+  app_version?: string | null;
+  created_at?: string;
+}
+
+export interface FollowupConsentGrantRepository {
+  record(grant: FollowupConsentGrantRow): void;
+  listByPhone(phone: string, limit?: number): FollowupConsentGrantRow[];
+  /** Newest row of any decision — a decline or revocation, not necessarily a grant. */
+  latestDecision(phone: string): FollowupConsentGrantRow | null;
+  countBetween(startIso: string, endIso: string): number;
+}
+
+/**
  * Consent lifecycle for the recurring follow-up flow:
  *   unasked → pending (ask sent) → active (said yes) | declined (said no)
  *   any state → revoked (opt-out or operator command)
@@ -187,13 +222,6 @@ export interface FollowupSubscriptionRepository {
   decline(phone: string, inboundMessageId: string): void;
   /** Revoke consent: transition to 'revoked'. */
   revoke(phone: string, revokeSource: string): void;
-  /**
-   * Consent is session-scoped: a customer-initiated inbound closes an `active`
-   * cycle back to `unasked`, so recurring templates stop until a fresh "sí" and a
-   * new ask becomes eligible after this session goes silent. Returns true when a
-   * cycle was actually closed. `pending`/`declined`/`revoked` are untouched.
-   */
-  closeCycleOnCustomerInbound(phone: string): boolean;
   /**
    * A customer who previously revoked may reopen a NEW consent opportunity by
    * initiating a later inbound. This never grants consent; it only returns to
@@ -708,6 +736,7 @@ export interface CustomerDataRepository {
     mediaSends: number;
     bridgeSessions: number;
     followupConsent: number;
+    followupConsentGrants: number;
     followupEvents: number;
     followupSubscriptions: number;
     followupSubscriptionEvents: number;
@@ -819,6 +848,7 @@ export interface TranscriptRepository {
 
 export interface Repositories {
   followupConsent: FollowupConsentRepository;
+  followupConsentGrant: FollowupConsentGrantRepository;
   followupSubscription: FollowupSubscriptionRepository;
   followupEvent: FollowupEventRepository; // LIVE: one-shot post-24h template
   followupSubscriptionEvent: FollowupSubscriptionEventRepository;

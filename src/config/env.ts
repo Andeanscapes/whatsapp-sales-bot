@@ -249,3 +249,32 @@ export const envSchema = z.object({
 });
 
 export const env = envSchema.parse(process.env);
+
+/**
+ * Both template paths can now be unlocked by the SAME customer "sí": the one-shot
+ * fires at `FOLLOWUP_HOURS_AFTER_INBOUND`, the recurring cadence at
+ * `FOLLOWUP_RECURRING_INTERVAL_MONTHS`. When the two template names are identical the
+ * customer receives the exact same message twice, weeks apart, which reads as a bug to
+ * them and costs Meta quality rating.
+ *
+ * A warning rather than a startup failure: the duplicate is a content problem, not a
+ * compliance one, and refusing to boot would take the whole bot down over it.
+ */
+export function warnOnDuplicateFollowupTemplates(warn: (message: string) => void): void {
+  if (!env.ALLOW_FOLLOWUP_TEMPLATE || !env.FOLLOWUP_RECURRING_ENABLED) return;
+
+  const templatePairs = [
+    ['FOLLOWUP_TEMPLATE_NAME', env.FOLLOWUP_TEMPLATE_NAME, 'FOLLOWUP_RECURRING_TEMPLATE_NAME', env.FOLLOWUP_RECURRING_TEMPLATE_NAME],
+    ['FOLLOWUP_TEMPLATE_NAME_EN', env.FOLLOWUP_TEMPLATE_NAME_EN, 'FOLLOWUP_RECURRING_TEMPLATE_NAME_EN', env.FOLLOWUP_RECURRING_TEMPLATE_NAME_EN],
+  ] as const;
+
+  for (const [oneShotKey, oneShotValue, recurringKey, recurringValue] of templatePairs) {
+    const oneShot = oneShotValue.trim();
+    const recurring = recurringValue.trim();
+    if (!oneShot || !recurring || oneShot !== recurring) continue;
+    warn(
+      `[FOLLOWUP] ${oneShotKey} and ${recurringKey} are both "${oneShot}": `
+      + 'a consented customer will receive the same template twice. Submit a distinct recurring template.',
+    );
+  }
+}

@@ -45,6 +45,24 @@ export function devAllowlist(): string[] {
   return env.FOLLOWUP_DEV_ALLOWLIST_PHONES.split(',').map(entry => entry.trim()).filter(Boolean);
 }
 
+/**
+ * Permission to send the one-shot post-24h template: an operator grant OR the
+ * customer's own "sí". Two provenances, one predicate.
+ *
+ * MUST stay the exact complement of the permission clause in
+ * `listFollowupCandidates`. The scan and this post-claim re-check drifting apart is
+ * not a theoretical risk — it is the bug this function exists to prevent: widening
+ * only the SQL left every customer-consented candidate failing here as
+ * `consent_revoked`, i.e. selected for sending and then silently discarded.
+ *
+ * Deliberately NOT a duplicated write into `followup_consent`: the two tables must
+ * keep their provenance distinct so `/followupstatus` can say WHO granted it.
+ */
+export function hasFollowupPermission(repos: Repositories, phone: string): boolean {
+  if (repos.followupConsent.hasConsent(phone)) return true;
+  return repos.followupSubscription.getByPhone(phone)?.status === 'active';
+}
+
 /** ES and EN are separate approved templates; an unset EN name means EN leads are skipped. */
 function resolveTemplateName(language: string | null): string | null {
   if (language === 'en') return env.FOLLOWUP_TEMPLATE_NAME_EN.trim() || null;
@@ -179,7 +197,7 @@ async function processCandidate(repos: Repositories, candidate: FollowupCandidat
     repos.followupEvent.markFailed(claimId, 'guard_state_changed');
     return false;
   }
-  if (!repos.followupConsent.hasConsent(phone)) {
+  if (!hasFollowupPermission(repos, phone)) {
     repos.followupEvent.markFailed(claimId, 'consent_revoked');
     return false;
   }
@@ -786,7 +804,9 @@ async function processRecurring(repos: Repositories, candidate: RecurringCandida
   const lastInboundAt = repos.message.getLastInboundAt(phone);
   const lastInboundMs = lastInboundAt ? parseStoredTimestamp(lastInboundAt) : Number.NaN;
   const silenceThresholdMs = parseStoredTimestamp(recurringSilentSinceIso(Date.now()));
-  if (!Number.isNaN(lastInboundMs) && lastInboundMs > silenceThresholdMs) {
+  const lastDirection = repos.message.getLastMessageDirection(phone);
+  if (lastDirection !== 'outbound'
+    || (!Number.isNaN(lastInboundMs) && lastInboundMs > silenceThresholdMs)) {
     repos.followupSubscriptionEvent.releaseClaim(eventId);
     logger.info({ phone, cycleKey }, '[FOLLOWUP] recurring skipped — customer active again');
     return false;
