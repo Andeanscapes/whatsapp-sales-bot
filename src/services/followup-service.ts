@@ -63,10 +63,19 @@ export function devAllowlist(): string[] {
  * and `decline()` writes the subscription WITHOUT revoking the operator row — so
  * without this check the OR below sent a marketing template to a lead who had
  * explicitly refused, whenever an older `/followupgrant` existed.
+ *
+ * The live status is not sufficient on its own, because `revoke()` overwrites
+ * `declined` with `revoked`: an operator running `/followuprevoke` and then
+ * `/followupgrant` erased the refusal from the only field this predicate could see,
+ * and the template shipped after a recorded "no". The append-only ledger is
+ * therefore consulted for the customer's own latest decision. Leads who decided
+ * before the ledger existed have no rows, so absence still means "no refusal on
+ * record" — never "no permission".
  */
 export function hasFollowupPermission(repos: Repositories, phone: string): boolean {
   const subscription = repos.followupSubscription.getByPhone(phone);
   if (subscription?.status === 'declined') return false;
+  if (repos.followupConsentGrant.latestCustomerDecision(phone)?.decision === 'decline') return false;
   if (repos.followupConsent.hasConsent(phone)) return true;
   return subscription?.status === 'active';
 }

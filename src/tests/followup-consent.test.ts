@@ -234,8 +234,33 @@ describe('classifyConsentReply', () => {
     'ok envio el abono',
     'si mandame el comprobante',
     'dale mandame el precio',
+    // The question branch bypassed the veto entirely: an interrogative about money
+    // is the highest-intent sales turn in the funnel, so reading it as a permission
+    // answer both fabricated consent AND suppressed the owner alert (the turn
+    // freezes `lead_score` and clears `isHot`).
+    'si, como pago?',
+    'si claro, cuanto es el anticipo?',
+    'ok y cuando pago la reserva?',
+    'si, que precio queda?',
   ])('never reads the payment/quote message %s as marketing consent', text => {
     expect(classifyConsentReply(text)).toBe('ambiguous');
+  });
+
+  // `perm` was unanchored in CONSENT_CONTACT_CONTINUATION, so the SALES verb
+  // permitir matched it: a policy question recorded durable marketing consent.
+  it.each([
+    'si permiten mascotas',
+    'si claro permiten ninos?',
+  ])('never reads the policy question %s as marketing consent', text => {
+    expect(classifyConsentReply(text)).toBe('ambiguous');
+  });
+
+  // The permission sense of permitir must survive that narrowing.
+  it.each([
+    'si me permites escribeme',
+    'si claro tienes mi permiso',
+  ])('keeps the permission-granting reply %s an affirm', text => {
+    expect(classifyConsentReply(text)).toBe('affirm');
   });
 
   // The veto keys on the commercial OBJECT, not the verb, so the legitimate

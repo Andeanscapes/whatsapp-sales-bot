@@ -604,32 +604,33 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
             if (subscription?.status === 'pending' && decision !== 'ambiguous') {
               // The inbound is stored inside the same transaction as the decision so
               // the audit trail can never show a consent change without its message.
-               repos.runInTransaction(() => {
-                 repos.message.addMessage({
-                   whatsapp_message_id: msg.id,
-                   customer_phone: msg.from,
-                   direction: 'inbound',
-                   message_type: 'text',
-                   body: msg.text,
-                   created_at: new Date().toISOString(),
-                   raw_json: null,
-                 });
-                 if (decision === 'affirm') {
-                   repos.followupSubscription.affirm(msg.from, msg.id, 'customer_reply');
-                 } else {
-                   repos.followupSubscription.decline(msg.from, msg.id);
-                 }
-                 // Record the grant for append-only audit trail, regardless of decision
-                 repos.followupConsentGrant.record({
-                   customer_phone: msg.from,
-                   decision,
-                   decided_at: new Date().toISOString(),
-                    inbound_message_id: msg.id,
-                    source: 'customer_reply',
-                    ask_cycle_key: consentCycleKey(subscription.consent_session),
-                    app_version: env.APP_VERSION,
-                 });
-               });
+              repos.runInTransaction(() => {
+                repos.message.addMessage({
+                  whatsapp_message_id: msg.id,
+                  customer_phone: msg.from,
+                  direction: 'inbound',
+                  message_type: 'text',
+                  body: msg.text,
+                  created_at: new Date().toISOString(),
+                  raw_json: null,
+                });
+                if (decision === 'affirm') {
+                  repos.followupSubscription.affirm(msg.from, msg.id, 'customer_reply');
+                } else {
+                  repos.followupSubscription.decline(msg.from, msg.id);
+                }
+                // Every permission change appends one row: the live subscription is
+                // mutable, so only this ledger can answer "when, and from which ask?".
+                repos.followupConsentGrant.record({
+                  customer_phone: msg.from,
+                  decision,
+                  decided_at: new Date().toISOString(),
+                  inbound_message_id: msg.id,
+                  source: 'customer_reply',
+                  ask_cycle_key: consentCycleKey(subscription.consent_session),
+                  app_version: env.APP_VERSION,
+                });
+              });
               consentAcceptedThisTurn = decision === 'affirm';
               consentDeclinedThisTurn = decision === 'decline';
               consentDecisionStored = true;

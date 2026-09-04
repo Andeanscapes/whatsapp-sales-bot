@@ -79,6 +79,40 @@ describe('consent_session lifecycle', () => {
     expect(sessionOf()).toBe(2);
   });
 
+  // The sender calls markAsked AFTER awaiting Meta, so the customer's reply can be
+  // classified during that await. An unconditional write reset the fresh decision
+  // back to `pending`: durable consent erased, or — with a standing operator grant —
+  // the refusal that blocks the one-shot template erased.
+  it('never overwrites a decision recorded while the ask was in flight', () => {
+    repos.followupSubscription.ensureExists(PHONE);
+    repos.followupSubscription.markAsked(PHONE, null);
+    repos.followupSubscription.affirm(PHONE, 'wamid.yes', 'customer_reply');
+
+    repos.followupSubscription.markAsked(PHONE, 'wamid.ask1');
+
+    const active = repos.followupSubscription.getByPhone(PHONE);
+    expect(active?.status).toBe('active');
+    expect(active?.activated_at).not.toBeNull();
+
+    repos.followupSubscription.ensureExists(PHONE);
+    repos.followupSubscription.decline(PHONE, 'wamid.no');
+    repos.followupSubscription.markAsked(PHONE, 'wamid.ask2');
+    expect(repos.followupSubscription.getByPhone(PHONE)?.status).toBe('declined');
+  });
+
+  it('still marks a pending cycle as asked when the outbound id arrives', () => {
+    // The legitimate two-step write: pre-send with a null id, post-send with the
+    // real one. The guard must not break the deferral gate, which requires it.
+    repos.followupSubscription.ensureExists(PHONE);
+    repos.followupSubscription.markAsked(PHONE, null);
+    repos.followupSubscription.markAsked(PHONE, 'wamid.ask1');
+
+    const row = repos.followupSubscription.getByPhone(PHONE);
+    expect(row?.status).toBe('pending');
+    expect(row?.ask_outbound_message_id).toBe('wamid.ask1');
+    expect(repos.followupSubscription.deferPendingAskAfterCustomerInbound(PHONE)).toBe(true);
+  });
+
   it('does NOT open a new session when a failed send rolls back to unasked', () => {
     // A send failure must keep the same cycle key, or bounded retries become
     // unbounded: every attempt would mint a brand new event row.

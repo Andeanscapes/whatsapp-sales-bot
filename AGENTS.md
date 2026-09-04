@@ -70,10 +70,28 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
     `hasFollowupPermission`, and `/followupstatus` — which must call the predicate
     rather than re-deriving the OR, or the diagnostic contradicts the sender. Do not
     "fix" this by revoking the operator grant on decline: that erases who authorised
-    what. `/followupgrant` refuses on a `declined` subscription instead of writing a
+    what.     `/followupgrant` refuses on a `declined` subscription instead of writing a
     grant the predicate would ignore. The pre-existing declined/revoked test passed
     throughout because it seeded **no** operator grant — the regression test must seed
     both.
+
+    **The live status alone cannot hold the refusal, because `revoke()` overwrites
+    `declined` with `revoked`.** `/followuprevoke` followed by `/followupgrant`
+    therefore erased the "no" from the only field the predicate read, and the template
+    shipped over a recorded refusal while `/followupstatus` reported `SI`. Both
+    `hasFollowupPermission` and `listFollowupCandidates` additionally consult the
+    newest `source = 'customer_reply'` row in `followup_consent_grants`
+    (`latestCustomerDecision`), and `/followupgrant` refuses on either provenance. It
+    is the NEWEST customer decision, not any decline ever: a later affirmation in a
+    new session is the customer changing their mind. Pre-ledger leads have no rows, so
+    absence still means "no refusal on record", never "no permission".
+
+    **`markAsked()` only writes over `unasked` or `pending`.** The sender calls it
+    after awaiting Meta, so the customer's reply can be classified during that await;
+    an unconditional write reset a fresh `active` or `declined` back to `pending` —
+    erasing durable consent, or erasing the refusal that blocks the one-shot template
+    when an operator grant is standing. The legitimate two-step write (pre-send with a
+    null id, post-send with the real one) still works, which the deferral gate needs.
 
     **The consent classifier's contact continuation is vetoed by a commercial object.**
     `CONSENT_CONTACT_CONTINUATION` matches `mand|envi` unanchored, which also matches
@@ -81,10 +99,18 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
     la cuenta para pagar" and "si me mandas la cotizacion" all recorded durable
     marketing consent from a payment message. Worse, a consent-answer turn freezes
     `lead_score` and clears `isHot`, so the highest-intent turn in the funnel also
-    produced **no owner alert**. `COMMERCIAL_OBJECT_VETO` keys on the object (pago,
+    produced **no owner alert**.     `COMMERCIAL_OBJECT_VETO` keys on the object (pago,
     anticipo, cotizacion, reserva, comprobante…), not the verb, so the legitimate
     channel-naming forms ("mandame las promos", "mandame mensajes", "avisame") stay
     affirms. Never widen the continuation verbs without extending the veto.
+    **The veto must gate BOTH continuation branches.** It was applied to the contact
+    branch only, so the question branch still read "si, ¿como pago?" and "si claro,
+    cuanto es el anticipo?" as permission — fabricating consent on the highest-intent
+    turn in the funnel and, because that turn freezes `lead_score` and clears `isHot`,
+    suppressing the owner alert with it. For the same reason the continuation stem
+    list carries no bare `perm`: unanchored it matched the *sales* verb permitir, so
+    "si permiten mascotas" (a policy question) granted marketing consent. The
+    permission sense is matched as `permiso|me permit`.
 
     **Every permission change appends to `followup_consent_grants`** (append-only:
     `affirm`/`decline`/`grant`/`revoke` × `customer_reply`/`operator_grant`/
