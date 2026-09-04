@@ -212,7 +212,11 @@ function containsPhrase(normalized: string, phrase: string): boolean {
  * Everything else — "si un ritmo tranquilo", "si 4 personas", "si para diciembre" —
  * answers the SALES question and must leave consent untouched.
  */
-const CONSENT_CONTACT_CONTINUATION = /escrib|avis|mensaje|contact|mand|envi|perm/;
+// `perm` was unanchored, so it also matched the SALES verb permitir: "si permiten
+// mascotas" (a policy question) recorded durable marketing consent. The permission
+// sense always carries the noun or a first-person object ("me permites"), and the
+// forms that matter most already match on `escrib`, so the narrow shapes are enough.
+const CONSENT_CONTACT_CONTINUATION = /escrib|avis|mensaje|contact|mand|envi|permiso|me permit/;
 const CONSENT_QUESTION_CONTINUATION =
   /\b(cual|cuales|que|cuando|como|donde|cuanto|cuantos|what|which|when)\b/;
 
@@ -317,7 +321,16 @@ export function classifyConsentReply(text: string): ConsentDecision {
     if (CONSENT_CONTACT_CONTINUATION.test(remainder) && !COMMERCIAL_OBJECT_VETO.test(remainder)) {
       return 'affirm';
     }
-    if (/[?¿]/.test(text) && CONSENT_QUESTION_CONTINUATION.test(remainder)) return 'affirm';
+    // The commercial veto applies here too. Without it "si, ¿como pago?" and
+    // "si claro, cuanto es el anticipo?" were affirmations: an interrogative about
+    // MONEY is the highest-intent sales turn in the funnel, and classifying it as a
+    // permission answer both fabricated consent and (because a consent-answer turn
+    // freezes `lead_score` and clears `isHot`) suppressed the owner alert.
+    if (/[?¿]/.test(text)
+      && CONSENT_QUESTION_CONTINUATION.test(remainder)
+      && !COMMERCIAL_OBJECT_VETO.test(remainder)) {
+      return 'affirm';
+    }
     return 'ambiguous';
   }
 

@@ -20,7 +20,13 @@ export async function followupGrantHandler(ctx: CommandContext): Promise<string>
   // treats `declined` as final, so recording the grant here would produce a row that
   // never authorises a send — an operator told "listo" for an outbound that silently
   // never happens.
-  if (ctx.repos.followupSubscription.getByPhone(phone)?.status === 'declined') {
+  // Both provenances of the refusal are checked, because `/followuprevoke` rewrites
+  // `declined` to `revoked`: testing only the live status let revoke-then-grant
+  // authorise a template over a recorded "no".
+  const declinedLive = ctx.repos.followupSubscription.getByPhone(phone)?.status === 'declined';
+  const declinedOnRecord = ctx.repos.followupConsentGrant
+    .latestCustomerDecision(phone)?.decision === 'decline';
+  if (declinedLive || declinedOnRecord) {
     return `${phone} respondio NO a la solicitud de permiso. `
       + 'No se puede autorizar por encima de una negativa del cliente.';
   }

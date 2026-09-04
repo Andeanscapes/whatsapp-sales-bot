@@ -38,22 +38,22 @@ import type {
   PaymentReservationRepository,
   PaymentReservation,
   PaymentReservationCreate,
-   DateStatus,
-   FollowupConsentRepository,
-   FollowupConsentGrantRepository,
-   FollowupConsentGrantRow,
-   FollowupSubscriptionEventRepository,
-   FollowupSubscriptionEventRow,
-   FollowupSubscriptionEventKind,
-   FollowupSubscriptionEventStatus,
-   FollowupSubscriptionStatus,
-   FollowupSubscriptionRepository,
-   FollowupSubscriptionRow,
-   FollowupCandidateRow,
-   ConsentAskCandidateRow,
-   RecurringCandidateRow,
-   FollowupEventRepository,
-   FollowupEventRow,
+  DateStatus,
+  FollowupConsentRepository,
+  FollowupConsentGrantRepository,
+  FollowupConsentGrantRow,
+  FollowupSubscriptionEventRepository,
+  FollowupSubscriptionEventRow,
+  FollowupSubscriptionEventKind,
+  FollowupSubscriptionEventStatus,
+  FollowupSubscriptionStatus,
+  FollowupSubscriptionRepository,
+  FollowupSubscriptionRow,
+  FollowupCandidateRow,
+  ConsentAskCandidateRow,
+  RecurringCandidateRow,
+  FollowupEventRepository,
+  FollowupEventRow,
 } from './types.js';
 import { env } from '../../config/env.js';
 import { canonicalizeDateText } from '../../services/date-canonicalizer.js';
@@ -138,6 +138,16 @@ export class SqliteConversationRepo implements ConversationRepository {
         -- carry an older /followupgrant, because decline() writes only the
         -- subscription and never revokes the operator row.
         AND COALESCE(fs.status, '') <> 'declined'
+        -- ...and the refusal must survive an operator revocation. revoke() rewrites
+        -- declined to revoked, so /followuprevoke + /followupgrant used to erase the
+        -- "no" from the clause above. The append-only ledger keeps it. Absence of
+        -- rows (pre-ledger leads) is deliberately not a refusal.
+        AND COALESCE((
+          SELECT g.decision FROM followup_consent_grants g
+          WHERE g.customer_phone = c.customer_phone AND g.source = 'customer_reply'
+          ORDER BY datetime(g.decided_at) DESC, g.id DESC
+          LIMIT 1
+        ), '') <> 'decline'
         -- Permission check: operator grant (not revoked) OR customer active consent
         AND (
           (fc.customer_phone IS NOT NULL AND fc.revoked_at IS NULL)
@@ -1911,6 +1921,17 @@ export class SqliteFollowupConsentGrantRepo implements FollowupConsentGrantRepos
     return row ?? null;
   }
 
+  latestCustomerDecision(phone: string): FollowupConsentGrantRow | null {
+    const row = this.db.prepare(`
+      SELECT id, customer_phone, decision, decided_at, inbound_message_id, source, actor_id, ask_cycle_key, app_version, created_at
+      FROM followup_consent_grants
+      WHERE customer_phone = ? AND source = 'customer_reply'
+      ORDER BY datetime(decided_at) DESC, id DESC
+      LIMIT 1
+    `).get(phone) as FollowupConsentGrantRow | undefined;
+    return row ?? null;
+  }
+
   countBetween(startIso: string, endIso: string): number {
     // datetime() on both sides: writers mix JS ISO strings with SQLite's
     // 'YYYY-MM-DD HH:MM:SS', which compare wrong as plain text.
@@ -2084,11 +2105,19 @@ export class SqliteFollowupSubscriptionRepo implements FollowupSubscriptionRepos
     `).run(phone);
   }
 
+  /**
+   * Only an `unasked` or already-`pending` cycle may be marked as asked.
+   *
+   * The sender calls this AFTER awaiting Meta, and the customer's reply can land
+   * during that await: an unconditional write reset a freshly recorded `active` or
+   * `declined` back to `pending`, erasing durable consent — or, with a standing
+   * operator grant, erasing the refusal that blocks the one-shot template.
+   */
   markAsked(phone: string, outboundMessageId: string | null): void {
     this.db.prepare(`
       UPDATE followup_subscriptions
       SET status = 'pending', asked_at = datetime('now'), ask_outbound_message_id = ?, updated_at = datetime('now')
-      WHERE customer_phone = ?
+      WHERE customer_phone = ? AND status IN ('unasked', 'pending')
     `).run(outboundMessageId, phone);
   }
 

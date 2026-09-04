@@ -166,6 +166,13 @@ export interface FollowupConsentGrantRepository {
   listByPhone(phone: string, limit?: number): FollowupConsentGrantRow[];
   /** Newest row of any decision — a decline or revocation, not necessarily a grant. */
   latestDecision(phone: string): FollowupConsentGrantRow | null;
+  /**
+   * Newest row the CUSTOMER produced (`source = 'customer_reply'`), ignoring every
+   * operator action. This is what makes a refusal survive an operator revocation:
+   * `revoke()` overwrites `declined` with `revoked` in the live row, so the live
+   * status alone forgets that the customer ever said no.
+   */
+  latestCustomerDecision(phone: string): FollowupConsentGrantRow | null;
   countBetween(startIso: string, endIso: string): number;
 }
 

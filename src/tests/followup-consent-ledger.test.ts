@@ -19,6 +19,7 @@ import { resetRoutingConfigCache } from '../services/lead-routing.js';
 import { blockHandler } from '../commands/block.command.js';
 import { followupGrantHandler } from '../commands/followup-grant.command.js';
 import { followupRevokeHandler } from '../commands/followup-revoke.command.js';
+import { hasFollowupPermission } from '../services/followup-service.js';
 
 const { sendTextMock, processMessageMock } = vi.hoisted(() => ({
   sendTextMock: vi.fn(() => Promise.resolve({ whatsappMessageId: 'wamid.OUT' })),
@@ -237,5 +238,76 @@ describe('followup consent grant ledger — write paths', () => {
     expect(output).toContain('respondio NO');
     expect(repos.followupConsent.hasConsent(PHONE)).toBe(false);
     expect(repos.followupConsentGrant.listByPhone(PHONE)).toHaveLength(0);
+  });
+
+  // `revoke()` rewrites `declined` to `revoked`, so the live status forgets the
+  // refusal. Without the ledger check, revoke-then-grant authorised a marketing
+  // template over a recorded customer "no" — and `/followupstatus` reported SI.
+  it('refuses to grant after an operator revocation erased the declined status', async () => {
+    repos.conversation.upsert(PHONE, { language: 'es' });
+    pendingAsk();
+    await postInbound('no gracias', 'wamid.no.2');
+    await vi.waitFor(() => {
+      expect(repos.followupConsentGrant.latestCustomerDecision(PHONE)?.decision).toBe('decline');
+    });
+
+    await followupRevokeHandler({ repos, chatId: 111, args: [PHONE] });
+    expect(repos.followupSubscription.getByPhone(PHONE)?.status).toBe('revoked');
+
+    const output = await followupGrantHandler({ repos, chatId: 111, args: [PHONE] });
+
+    expect(output).toContain('respondio NO');
+    expect(repos.followupConsent.hasConsent(PHONE)).toBe(false);
+    expect(hasFollowupPermission(repos, PHONE)).toBe(false);
+  });
+
+  // Defence in depth: even if a grant row already exists (written before this rule),
+  // the recorded refusal must still block the send predicate and the candidate scan.
+  it('keeps a recorded decline outranking a pre-existing operator grant', () => {
+    repos.conversation.upsert(PHONE, { language: 'es' });
+    repos.followupConsent.grantConsent(PHONE, 'telegram:111');
+    repos.followupConsentGrant.record({
+      customer_phone: PHONE,
+      decision: 'decline',
+      decided_at: new Date().toISOString(),
+      inbound_message_id: 'wamid.no.3',
+      source: 'customer_reply',
+      ask_cycle_key: 'c1',
+    });
+    // The live subscription is `revoked`, not `declined` — the ledger is the only
+    // place the refusal survives.
+    repos.followupSubscription.ensureExists(PHONE);
+    repos.followupSubscription.revoke(PHONE, 'operator');
+
+    expect(hasFollowupPermission(repos, PHONE)).toBe(false);
+    expect(repos.conversation.listFollowupCandidates({
+      silentSinceIso: new Date(Date.now() + 60_000).toISOString(),
+      limit: 10,
+    })).toHaveLength(0);
+  });
+
+  // A later affirmation in a new session is the customer changing their mind, so the
+  // ledger check must read the NEWEST customer decision, not any decline ever.
+  it('lets a newer customer affirmation supersede an older decline', () => {
+    repos.conversation.upsert(PHONE, { language: 'es' });
+    repos.followupConsentGrant.record({
+      customer_phone: PHONE,
+      decision: 'decline',
+      decided_at: '2026-09-01T10:00:00.000Z',
+      source: 'customer_reply',
+      ask_cycle_key: 'c1',
+    });
+    repos.followupConsentGrant.record({
+      customer_phone: PHONE,
+      decision: 'affirm',
+      decided_at: '2026-09-02T10:00:00.000Z',
+      source: 'customer_reply',
+      ask_cycle_key: 'c2',
+    });
+    repos.followupSubscription.ensureExists(PHONE);
+    repos.followupSubscription.markAsked(PHONE, 'wamid.ask2');
+    repos.followupSubscription.affirm(PHONE, 'wamid.yes2', 'customer_reply');
+
+    expect(hasFollowupPermission(repos, PHONE)).toBe(true);
   });
 });
