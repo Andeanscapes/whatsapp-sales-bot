@@ -60,6 +60,32 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
     unreachable for its entire life. Do not duplicate consent into both tables:
     provenance must stay legible in `/followupstatus`.
 
+    **A `declined` subscription outranks BOTH provenances.** An operator grant is a
+    presumption of consent; a customer "no" is the answer to the question we asked.
+    `decline()` writes only `followup_subscriptions` and deliberately does not revoke
+    the operator row (provenance must survive), so the OR predicate on its own
+    re-enabled every declined lead that still carried an older `/followupgrant` and
+    shipped a marketing template **after a recorded refusal**. Three places must agree
+    and are asserted: the SQL clause (`COALESCE(fs.status,'') <> 'declined'`),
+    `hasFollowupPermission`, and `/followupstatus` — which must call the predicate
+    rather than re-deriving the OR, or the diagnostic contradicts the sender. Do not
+    "fix" this by revoking the operator grant on decline: that erases who authorised
+    what. `/followupgrant` refuses on a `declined` subscription instead of writing a
+    grant the predicate would ignore. The pre-existing declined/revoked test passed
+    throughout because it seeded **no** operator grant — the regression test must seed
+    both.
+
+    **The consent classifier's contact continuation is vetoed by a commercial object.**
+    `CONSENT_CONTACT_CONTINUATION` matches `mand|envi` unanchored, which also matches
+    the *sales* senses of mandar/enviar: "si quiero enviar el anticipo", "dale mandame
+    la cuenta para pagar" and "si me mandas la cotizacion" all recorded durable
+    marketing consent from a payment message. Worse, a consent-answer turn freezes
+    `lead_score` and clears `isHot`, so the highest-intent turn in the funnel also
+    produced **no owner alert**. `COMMERCIAL_OBJECT_VETO` keys on the object (pago,
+    anticipo, cotizacion, reserva, comprobante…), not the verb, so the legitimate
+    channel-naming forms ("mandame las promos", "mandame mensajes", "avisame") stay
+    affirms. Never widen the continuation verbs without extending the veto.
+
     **Every permission change appends to `followup_consent_grants`** (append-only:
     `affirm`/`decline`/`grant`/`revoke` × `customer_reply`/`operator_grant`/
     `operator_revoke`/`customer_opt_out`). The live row is mutable and was previously

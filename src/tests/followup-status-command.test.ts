@@ -200,6 +200,23 @@ describe('/followupstatus', () => {
 
       expect(await run()).toContain('operator_revoke, telegram:111');
     });
+
+    // The verdict must come from the sender's own predicate. A local copy of the OR
+    // reported "SI" here while the send path correctly refused — the diagnostic
+    // contradicting the behaviour it exists to explain.
+    it('reports NO when a customer decline overrides a standing operator grant', async () => {
+      repos.followupConsent.grantConsent(PHONE, 'telegram:111');
+      repos.followupSubscription.ensureExists(PHONE);
+      repos.followupSubscription.markAsked(PHONE, 'wamid.ask');
+      repos.followupSubscription.decline(PHONE, 'wamid.no');
+
+      const output = await run();
+
+      expect(output).toContain('plantilla autorizada: NO');
+      // Both provenances stay visible: the grant is not destroyed, it is outranked.
+      expect(output).toContain('via operador (/followupgrant): si');
+      expect(output).toContain('su negativa anula el permiso del operador');
+    });
   });
 
   // `followup_subscriptions.ask_attempts` is never written by any code path, so

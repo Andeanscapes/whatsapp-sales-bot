@@ -4,6 +4,7 @@ import { canAccessConversation } from '../services/access-control.js';
 import {
   consentThresholdMs,
   devAllowlist,
+  hasFollowupPermission,
   parseStoredTimestamp,
   FREE_FORM_WINDOW_MS,
 } from '../services/followup-service.js';
@@ -74,12 +75,22 @@ export async function followupStatusHandler(ctx: CommandContext): Promise<string
   // the one-shot template reads exactly this. Showing only the subscription hid the
   // operator grant, so an operator could not tell whether a template was authorised
   // or by whom.
+  //
+  // The verdict itself comes from the predicate the SENDER uses — never a local copy
+  // of the OR. A duplicated expression here reported "SI" for a lead who had declined
+  // while still carrying an operator grant, i.e. the diagnostic contradicted the send
+  // path it exists to explain. The two provenance lines below stay independent reads,
+  // because their job is to show WHO authorised it, not whether it is authorised.
   const operatorGrant = ctx.repos.followupConsent.hasConsent(phone);
   const customerConsent = subscription?.status === 'active';
+  const authorised = hasFollowupPermission(ctx.repos, phone);
   lines.push('', '*Permiso*');
-  lines.push(`plantilla autorizada: ${operatorGrant || customerConsent ? 'SI' : 'NO'}`);
+  lines.push(`plantilla autorizada: ${authorised ? 'SI' : 'NO'}`);
   lines.push(`  via operador (/followupgrant): ${operatorGrant ? 'si' : 'no'}`);
   lines.push(`  via cliente ("si"): ${customerConsent ? 'si' : 'no'}`);
+  if (!authorised && operatorGrant && subscription?.status === 'declined') {
+    lines.push('  NOTA: el cliente respondio NO; su negativa anula el permiso del operador.');
+  }
 
   // The live rows above are mutable; this ledger is append-only and is the only
   // place that can answer "when, and by whom?". An EMPTY history is not evidence of

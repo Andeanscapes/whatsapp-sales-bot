@@ -57,10 +57,18 @@ export function devAllowlist(): string[] {
  *
  * Deliberately NOT a duplicated write into `followup_consent`: the two tables must
  * keep their provenance distinct so `/followupstatus` can say WHO granted it.
+ *
+ * A recorded `declined` outranks both provenances. An operator grant is only a
+ * presumption of consent; a customer "no" is the answer to the question we asked,
+ * and `decline()` writes the subscription WITHOUT revoking the operator row — so
+ * without this check the OR below sent a marketing template to a lead who had
+ * explicitly refused, whenever an older `/followupgrant` existed.
  */
 export function hasFollowupPermission(repos: Repositories, phone: string): boolean {
+  const subscription = repos.followupSubscription.getByPhone(phone);
+  if (subscription?.status === 'declined') return false;
   if (repos.followupConsent.hasConsent(phone)) return true;
-  return repos.followupSubscription.getByPhone(phone)?.status === 'active';
+  return subscription?.status === 'active';
 }
 
 /** ES and EN are separate approved templates; an unset EN name means EN leads are skipped. */
