@@ -707,7 +707,7 @@ describe('processMessage', () => {
     expect(repos.followupSubscription.getByPhone(phone)?.status).toBe('pending');
   });
 
-  it('closes an active consent cycle when the customer writes again', async () => {
+  it('keeps consent active when the customer writes again (consent is durable)', async () => {
     const phone = '573009990025';
     mockLlmComplete.mockResolvedValueOnce(fromOld({ response: { reply: 'Claro, te cuento.' } }));
     repos.followupSubscription.ensureExists(phone);
@@ -716,10 +716,11 @@ describe('processMessage', () => {
 
     await processMessage({ repos, customerPhone: phone, message: 'Una duda sobre seguridad' });
 
-    // Recurring stops until a fresh "sí"; a new ask becomes eligible later.
+    // Consent is now durable and persists across customer turns. The dormancy floor
+    // (72h silence) still prevents templates from interrupting a live conversation.
     const subscription = repos.followupSubscription.getByPhone(phone);
-    expect(subscription?.status).toBe('unasked');
-    expect(subscription?.activated_at).toBeNull();
+    expect(subscription?.status).toBe('active');
+    expect(subscription?.activated_at).not.toBeNull();
   });
 
   // Live 2026-08-13: the customer sent "Si" twice a minute apart. The first granted
@@ -740,8 +741,10 @@ describe('processMessage', () => {
     expect(subscription?.activated_at).not.toBeNull();
   });
 
-  // The grace window must not shield real re-engagement, even seconds after consent.
-  it('still closes the cycle when the repeated yes carries intent', async () => {
+  // Real re-engagement (intent-carrying replies like "si quiero reservar para el 14")
+  // no longer closes the consent cycle. Consent is durable. However, the dormancy
+  // floor still prevents templates during an active conversation.
+  it('keeps consent active even when the reply carries intent', async () => {
     const phone = '573009990028';
     mockLlmComplete.mockResolvedValueOnce(fromOld({ response: { reply: 'Claro, te cuento.' } }));
     repos.followupSubscription.ensureExists(phone);
@@ -750,7 +753,8 @@ describe('processMessage', () => {
 
     await processMessage({ repos, customerPhone: phone, message: 'si quiero reservar para el 14' });
 
-    expect(repos.followupSubscription.getByPhone(phone)?.status).toBe('unasked');
+    // Consent persists. No template can fire anyway because the thread is active.
+    expect(repos.followupSubscription.getByPhone(phone)?.status).toBe('active');
   });
 
   it('keeps consent active on the turn that grants it', async () => {
@@ -840,6 +844,94 @@ describe('processMessage', () => {
 
     expect(result.reply).toContain('No enviaremos mas mensajes');
     expect(repos.optOut.isOptedOut(phone)).toBe(true);
+  });
+
+  // Live 2026-09-04: a stop phrase set `opt_out_at` and sent the confirmation while
+  // persisting NO inbound row. `processed_webhook_messages` had 4 entries and
+  // `messages` only 3, so the transcript showed the bot opting a lead out unprompted
+  // and nothing recorded what the customer had actually asked for. The message that
+  // triggers a permanent compliance action is the evidence for it.
+  describe('opt-out inbound persistence', () => {
+    const bodies = (phone: string): (string | null)[] =>
+      repos.message.getLastInboundBodies(phone, 5).map(entry => entry.body);
+
+    it('persists the stop request that produced the confirmation', async () => {
+      const phone = '573009990061';
+
+      const result = await processMessage({ repos, customerPhone: phone, message: 'no mas porfa' });
+
+      expect(result.reply).toContain('No enviaremos mas mensajes');
+      expect(bodies(phone)).toContain('no mas porfa');
+    });
+
+    it('persists a repeated stop request even though it earns no second confirmation', async () => {
+      const phone = '573009990062';
+      await processMessage({ repos, customerPhone: phone, message: 'no me escribas mas' });
+
+      const repeat = await processMessage({ repos, customerPhone: phone, message: 'basta ya' });
+
+      expect(repeat.shouldSendReply).toBe(false);
+      expect(bodies(phone)).toEqual(expect.arrayContaining(['no me escribas mas', 'basta ya']));
+    });
+
+    it('persists a stop phrase from an operator-blocked customer while staying silent', async () => {
+      mockLlmComplete.mockReset();
+      const phone = '573009990063';
+      repos.optOut.setOptOut(phone);
+      repos.followupSubscription.ensureExists(phone);
+      repos.followupSubscription.revoke(phone, 'operator');
+
+      const result = await processMessage({ repos, customerPhone: phone, message: 'no me escribas mas' });
+
+      expect(result.shouldSendReply).toBe(false);
+      // The block keeps its provenance, and the request is still on the record.
+      expect(repos.followupSubscription.getByPhone(phone)?.revoke_source).toBe('operator');
+      expect(bodies(phone)).toContain('no me escribas mas');
+      expect(mockLlmComplete).not.toHaveBeenCalled();
+    });
+
+    it('persists an ordinary inbound from a muted customer that gets no reply', async () => {
+      mockLlmComplete.mockReset();
+      const phone = '573009990064';
+      repos.optOut.setOptOut(phone);
+      repos.followupSubscription.ensureExists(phone);
+      repos.followupSubscription.revoke(phone, 'operator');
+
+      const result = await processMessage({ repos, customerPhone: phone, message: 'sigo interesado' });
+
+      expect(result.shouldSendReply).toBe(false);
+      expect(bodies(phone)).toContain('sigo interesado');
+      expect(mockLlmComplete).not.toHaveBeenCalled();
+    });
+
+    // The ledger is the only place that can answer "when was permission ended, and
+    // by whom?" once the live rows are mutated. A customer stop request is a
+    // permission change, so it appends exactly one row — and only the first one,
+    // because a repeat is the same refusal restated.
+    it('appends exactly one ledger row for the first stop request only', async () => {
+      const phone = '573009990066';
+
+      await processMessage({ repos, customerPhone: phone, message: 'no me escribas mas' });
+      await processMessage({ repos, customerPhone: phone, message: 'no me escribas mas' });
+
+      const history = repos.followupConsentGrant.listByPhone(phone);
+      expect(history).toHaveLength(1);
+      expect(history[0].decision).toBe('revoke');
+      expect(history[0].source).toBe('customer_opt_out');
+    });
+
+    // The reopen path continues into the main flow, which persists once. Guard
+    // against a second write creeping in above it.
+    it('stores a reopening inbound exactly once', async () => {
+      mockLlmComplete.mockReset();
+      mockLlmComplete.mockResolvedValueOnce(fromOld({ response: { reply: 'Claro, te cuento.' } }));
+      const phone = '573009990065';
+      await processMessage({ repos, customerPhone: phone, message: 'no mas porfa' });
+
+      await processMessage({ repos, customerPhone: phone, message: 'hola, volvi a escribir' });
+
+      expect(bodies(phone).filter(body => body === 'hola, volvi a escribir')).toHaveLength(1);
+    });
   });
 
   it('prevents replies for an operator-blocked customer', async () => {

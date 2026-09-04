@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { envSchema } from '../config/env.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { env, envSchema, warnOnDuplicateFollowupTemplates } from '../config/env.js';
 
 const productionEnv = {
   NODE_ENV: 'production',
@@ -108,5 +108,24 @@ describe('follow-up switches stay independent', () => {
 
   it('defaults the recurring cap to 12 sends', () => {
     expect(envSchema.parse(productionEnv).FOLLOWUP_MAX_RECURRING_SENDS).toBe(12);
+  });
+});
+
+describe('duplicate follow-up template warning', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it.each([
+    ['FOLLOWUP_TEMPLATE_NAME', 'FOLLOWUP_RECURRING_TEMPLATE_NAME'],
+    ['FOLLOWUP_TEMPLATE_NAME_EN', 'FOLLOWUP_RECURRING_TEMPLATE_NAME_EN'],
+  ] as const)('warns when %s duplicates %s', (oneShotKey, recurringKey) => {
+    vi.spyOn(env, 'ALLOW_FOLLOWUP_TEMPLATE', 'get').mockReturnValue(true);
+    vi.spyOn(env, 'FOLLOWUP_RECURRING_ENABLED', 'get').mockReturnValue(true);
+    vi.spyOn(env, oneShotKey, 'get').mockReturnValue('duplicate_template');
+    vi.spyOn(env, recurringKey, 'get').mockReturnValue('duplicate_template');
+    const warn = vi.fn();
+
+    warnOnDuplicateFollowupTemplates(warn);
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(`${oneShotKey} and ${recurringKey}`));
   });
 });

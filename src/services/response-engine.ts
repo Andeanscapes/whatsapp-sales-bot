@@ -843,8 +843,8 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   }
 
   // Single read reused by the opt-out, reopen and consent-answer branches below.
-  // Taken before any mutation: `closeCycleOnCustomerInbound()` only touches
-  // `active`, so a `pending` status observed here is still accurate afterwards.
+  // Consent is durable, so no ordinary-inbound path mutates status between this read
+  // and its uses; only the opt-out branch below writes, and it re-reads nothing.
   const followupSubscription = repos.followupSubscription.getByPhone(customerPhone);
   const operatorBlocked = followupSubscription?.status === 'revoked'
     && followupSubscription.revoke_source === 'operator';
@@ -860,12 +860,31 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     // they refused. It also covers a retraction that still contains the keyword
     // ("no era stop, era para parar y pensar"), which used to re-confirm the opt-out.
     // The writes below stay idempotent, so a repeat still repairs partial state.
+    // The message that triggered a permanent compliance action IS the evidence for
+    // it, so it is persisted before any state write and regardless of whether the
+    // confirmation is suppressed below. Without this the row was dropped entirely:
+    // live 2026-09-04 a customer stop phrase set `opt_out_at` and sent the
+    // confirmation while leaving NO inbound row, so the transcript showed the bot
+    // opting the lead out unprompted and nothing recorded what they had asked for.
+    persistInbound();
     const alreadyOptedOut = repos.optOut.isOptedOut(customerPhone);
     repos.runInTransaction(() => {
       if (!alreadyOptedOut) repos.optOut.setOptOut(customerPhone);
       repos.followupSubscription.ensureExists(customerPhone);
       repos.followupSubscription.revoke(customerPhone, 'customer_opt_out');
       repos.followupConsent.revokeConsent(customerPhone);
+      // Only the FIRST stop request appends: a repeat is the same refusal restated,
+      // and the ledger must count refusals, not inbound messages.
+      if (!alreadyOptedOut) {
+        repos.followupConsentGrant.record({
+          customer_phone: customerPhone,
+          decision: 'revoke',
+          decided_at: new Date().toISOString(),
+          inbound_message_id: messageId ?? null,
+          source: 'customer_opt_out',
+          app_version: env.APP_VERSION,
+        });
+      }
     });
     // An operator block stays silent even here: confirming would be a reply to a
     // customer the operator muted. The state above is still recorded for compliance.
@@ -883,6 +902,10 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     const reopenable = followupSubscription?.status === 'revoked'
       && followupSubscription.revoke_source === 'customer_opt_out';
     if (!reopenable) {
+      // Silent, but still recorded: an operator reading the thread must be able to
+      // see that this customer wrote while muted. Dropping it left the same
+      // transcript hole as the opt-out branch above.
+      persistInbound();
       return { reply: '', shouldSendReply: false, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
     }
     // Reopening clears only the ACTIVE suppression flag; `last_opt_out_at` keeps the
@@ -896,24 +919,16 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     logger.info({ phone: customerPhone }, '[FOLLOWUP] new customer inbound reopened consent opportunity');
   }
 
-  // Consent is session-scoped. A customer-initiated inbound closes the authorised
-  // cycle: recurring templates stop until a fresh "sí", and a new permission ask
-  // becomes eligible once THIS session goes silent (c2, c3…). Skipped on the turn
-  // that grants consent, which would otherwise erase the yes we just recorded.
   // A repeated bare "sí" seconds after consent activated is the same answer sent
-  // twice, not re-engagement: closing the cycle there would revoke the permission
-  // the previous turn just granted, while this turn still acknowledges it.
+  // twice, not re-engagement. We just log it and move on; the consent is durable
+  // and will not be revoked by ordinary conversation turns.
   const duplicateConsentEcho = isDuplicateConsentEcho(
     repos.followupSubscription.getByPhone(customerPhone),
     message,
     env.FOLLOWUP_CONSENT_DUPLICATE_GRACE_SECONDS,
   );
   if (duplicateConsentEcho) {
-    logger.info({ phone: customerPhone }, '[FOLLOWUP] duplicate consent echo — cycle kept open');
-  }
-  if (!consentAcceptedThisTurn && !duplicateConsentEcho
-    && repos.followupSubscription.closeCycleOnCustomerInbound(customerPhone)) {
-    logger.info({ phone: customerPhone }, '[FOLLOWUP] customer inbound closed the consent cycle');
+    logger.info({ phone: customerPhone }, '[FOLLOWUP] duplicate consent echo — consent remains active');
   }
 
   const handedOffRow = repos.conversation.getHandedOffAt(customerPhone);

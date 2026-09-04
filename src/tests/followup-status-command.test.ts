@@ -139,6 +139,69 @@ describe('/followupstatus', () => {
     expect(await run()).toContain('cycle_key c2');
   });
 
+  // The one-shot template authorises on operator grant OR customer consent. Showing
+  // only the subscription hid the operator grant entirely, so an operator could not
+  // tell whether a template was authorised — or by whom.
+  describe('permission provenance', () => {
+    beforeEach(() => {
+      repos.conversation.upsert(PHONE, { language: 'es', collected_people: 2 });
+    });
+
+    it('reports no authorisation when neither provenance granted it', async () => {
+      const output = await run();
+
+      expect(output).toContain('plantilla autorizada: NO');
+      expect(output).toContain('historial: sin registros');
+    });
+
+    it('reports the operator grant as the authorising provenance', async () => {
+      repos.followupConsent.grantConsent(PHONE, 'telegram:111');
+
+      const output = await run();
+
+      expect(output).toContain('plantilla autorizada: SI');
+      expect(output).toContain('via operador (/followupgrant): si');
+      expect(output).toContain('via cliente ("si"): no');
+    });
+
+    it('reports the customer consent as the authorising provenance', async () => {
+      repos.followupSubscription.ensureExists(PHONE);
+      repos.followupSubscription.markAsked(PHONE, 'wamid.ask');
+      repos.followupSubscription.affirm(PHONE, 'wamid.yes', 'customer_reply');
+
+      const output = await run();
+
+      expect(output).toContain('plantilla autorizada: SI');
+      expect(output).toContain('via operador (/followupgrant): no');
+      expect(output).toContain('via cliente ("si"): si');
+    });
+
+    it('shows the append-only decision history with its source', async () => {
+      repos.followupConsentGrant.record({
+        customer_phone: PHONE,
+        decision: 'affirm',
+        decided_at: new Date().toISOString(),
+        source: 'customer_reply',
+      });
+
+      const output = await run();
+
+      expect(output).toContain('historial: affirm (customer_reply)');
+    });
+
+    it('shows the operator identity for an operator decision', async () => {
+      repos.followupConsentGrant.record({
+        customer_phone: PHONE,
+        decision: 'revoke',
+        decided_at: new Date().toISOString(),
+        source: 'operator_revoke',
+        actor_id: 'telegram:111',
+      });
+
+      expect(await run()).toContain('operator_revoke, telegram:111');
+    });
+  });
+
   // `followup_subscriptions.ask_attempts` is never written by any code path, so
   // printing it told the operator "0" while the real count sat on the event row.
   it('does not report the never-written ask_attempts column', async () => {

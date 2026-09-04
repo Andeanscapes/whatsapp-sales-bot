@@ -63,6 +63,7 @@ export function migrate(db: Database.Database): void {
    addColumnIfMissing(db, 'conversations', 'opt_out_at', 'TEXT');
    addColumnIfMissing(db, 'conversations', 'last_opt_out_at', 'TEXT');
    addColumnIfMissing(db, 'followup_subscriptions', 'deferred_reask_used', 'INTEGER NOT NULL DEFAULT 0');
+   addColumnIfMissing(db, 'followup_consent_grants', 'actor_id', 'TEXT');
    // Backfill the compliance record for leads who opted out before the column existed.
    db.exec('UPDATE conversations SET last_opt_out_at = opt_out_at WHERE last_opt_out_at IS NULL AND opt_out_at IS NOT NULL');
    // Add consent session tracking so cycle keys survive a dead cycle (c1, c2, ... per session).
