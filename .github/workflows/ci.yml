@@ -32,6 +32,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 0
+      - name: Scan git history for real Colombian mobiles
+        run: |
+          leaks=$(git log -p --all --format= | grep -ohE '(57)?3[0-9]{9}' | sed 's/^57//' | grep -v '^300' | sort -u || true)
+          if [ -n "$leaks" ]; then echo "Non-300 Colombian mobile found in git history"; exit 1; fi
       - uses: actions/setup-node@v4
         with:
           node-version: 24.18.0

@@ -604,18 +604,18 @@ without having seen a real exit code.
   so `no-real-phone-numbers.test.ts` enforces the prefix convention instead. A bare
   10-digit secretlint pattern was rejected: it flags timestamps, ids and the
   placeholders themselves, and needs a dependency that is not installed.
-  **Note:** the real number remains in git history (**10** commits, `ab8bde9` →
-  `af83536`, verified 2026-08-26 — the count grows with every new commit that touches
-  a file still containing it, so re-check rather than trusting this number).
-  Scrubbing the working tree does not remove it; making this repo public without a
-  `git filter-repo` pass still exposes it. HEAD itself is clean. Re-verify with:
+  **History was rewritten on 2026-10-08** (`git filter-repo --replace-text`): 15
+  real customer numbers (eval scenario `source` fields `prod-summary-…#57…`), a
+  third-party organizer number, a partner line and the operator number were
+  replaced with `30000001xx` placeholders across every branch and tag. All commit
+  SHAs before that date changed; old clones must be re-cloned, never pushed.
+  Eval scenario `source` must never carry a phone — describe the origin instead.
+  CI runs the history scan below on every push, because the working-tree test
+  cannot see history and the old `\b3[0-9]{9}\b` grep missed the `57` prefix:
   ```bash
-  git log -p --all | grep -ohE '\b3[0-9]{9}\b' | sort -u   # any non-300 prefix = leak
+  git log -p --all --format= | grep -ohE '(57)?3[0-9]{9}' | sed 's/^57//' | grep -v '^300' | sort -u
   ```
-  **This is the one hard blocker on making the repo public.** `secretlint`'s
-  recommended preset does not flag national-format phone numbers, so neither
-  `npx secretlint` nor `no-real-phone-numbers.test.ts` (working tree only) will
-  catch it.
+  Empty output = clean. `--format=` drops commit headers, whose SHAs false-positive.
 - **Any command that writes to a customer goes through `sendBridgeReply` /
   `sendBridgeMedia`.** They are the only senders that enforce pause, opt-out and the
   24h service window *and* persist the outbound. `/send` in single-line mode used a
