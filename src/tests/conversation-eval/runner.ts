@@ -201,6 +201,25 @@ export function applyScenarioSeeds(ctx: RunContext, scenario: Scenario): () => v
     if (seed.conversationMode) ctx.repos.conversation.setMode(ctx.customerPhone, seed.conversationMode as ConversationMode);
     if (seed.softClosed) ctx.repos.conversation.setSoftClosed(ctx.customerPhone);
     if (seed.priceGiven) ctx.repos.conversation.setPriceGiven(ctx.customerPhone);
+    // Seed followup subscription status: primarily for consent-path testing.
+    if (seed.followupStatus) {
+      ctx.repos.followupSubscription.ensureExists(ctx.customerPhone);
+      const status = seed.followupStatus;
+      if (status === 'pending') {
+        ctx.repos.followupSubscription.markAsked(ctx.customerPhone, null);
+      } else if (status === 'active') {
+        ctx.repos.followupSubscription.markAsked(ctx.customerPhone, null);
+        ctx.repos.followupSubscription.affirm(ctx.customerPhone, `test_seed_${Date.now()}`, 'test_seed');
+      } else if (status === 'declined') {
+        ctx.repos.followupSubscription.markAsked(ctx.customerPhone, null);
+        ctx.repos.followupSubscription.decline(ctx.customerPhone, `test_seed_${Date.now()}`);
+      } else if (status === 'revoked') {
+        ctx.repos.followupSubscription.markAsked(ctx.customerPhone, null);
+        ctx.repos.followupSubscription.affirm(ctx.customerPhone, `test_seed_${Date.now()}`, 'test_seed');
+        ctx.repos.followupSubscription.revoke(ctx.customerPhone, 'test_seed');
+      }
+      // 'unasked' is the default state, so no action needed
+    }
   }
 
   const dynamicAvailable = scenario.seedSystem?.dynamicSkillAvailable;
@@ -229,15 +248,63 @@ export async function runTurn(
   ctx: RunContext,
   turnDef: ScenarioTurn,
   turnNumber: number,
+  mode: 'deterministic' | 'live' = 'deterministic',
 ): Promise<TurnRecord> {
   if (turnDef.seedPriceGiven) ctx.repos.conversation.setPriceGiven(ctx.customerPhone);
   if (turnDef.seedLeadScore !== undefined) ctx.repos.conversation.updateLeadScore(ctx.customerPhone, turnDef.seedLeadScore);
   applyQualificationSeed(ctx.repos, ctx.customerPhone, turnDef.seedQualification);
+
+  // Replay turns bypass LLM: store inbound and outbound directly with applied seeds.
+  if (mode === 'live' && turnDef.replay) {
+    ctx.repos.runInTransaction(() => {
+      ctx.repos.message.addMessage({
+        customer_phone: ctx.customerPhone,
+        direction: 'inbound',
+        message_type: 'text',
+        body: turnDef.user.slice(0, 1500),
+        created_at: new Date().toISOString(),
+      });
+      ctx.repos.message.addMessage({
+        customer_phone: ctx.customerPhone,
+        direction: 'outbound',
+        message_type: 'text',
+        body: turnDef.mockReply,
+        created_at: new Date().toISOString(),
+      });
+    });
+    // Return a minimal output for replay turns (no AI call, no analysis).
+    const replayOutput: ProcessMessageOutput = {
+      shouldSendReply: true,
+      reply: turnDef.mockReply,
+      usedAi: false,
+      shouldAlertOwner: false,
+      shouldSendImage: false,
+      shouldSendOwnerImage: false,
+      shouldSendGalleryImages: false,
+      priceJustGiven: false,
+      leadScore: ctx.repos.conversation.getByPhone(ctx.customerPhone)?.lead_score ?? 0,
+    };
+    return {
+      turnNumber,
+      user: turnDef.user,
+      reply: turnDef.mockReply,
+      processOutput: replayOutput,
+    };
+  }
+
+  const messageId = `sim_${Date.now()}_${turnNumber}`;
+  if (turnDef.consentAnswer === 'affirm') {
+    ctx.repos.followupSubscription.affirm(ctx.customerPhone, messageId, 'customer_reply');
+  } else if (turnDef.consentAnswer === 'decline') {
+    ctx.repos.followupSubscription.decline(ctx.customerPhone, messageId);
+  }
   const input: ProcessMessageInput = {
     repos: ctx.repos,
     customerPhone: ctx.customerPhone,
     message: turnDef.user.slice(0, 1500),
-    messageId: `sim_${Date.now()}_${turnNumber}`,
+    messageId,
+    consentAcceptedThisTurn: turnDef.consentAnswer === 'affirm',
+    consentDeclinedThisTurn: turnDef.consentAnswer === 'decline',
   };
 
   const output = await processMessage(input);

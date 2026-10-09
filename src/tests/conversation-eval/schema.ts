@@ -49,6 +49,8 @@ const conversationModeSchema = z.enum(['bot', 'bridge_active', 'referred', 'huma
 const turnSchema = z.object({
   user: z.string().min(1),
   mockReply: z.string(),
+  replay: z.boolean().optional(),
+  consentAnswer: z.enum(['affirm', 'decline', 'ambiguous']).optional(),
   expect: expectSchema.optional(),
   mockAnalysis: z.object({
     intent: z.enum(['cold', 'curious', 'qualified', 'price_aware_interested', 'ready_to_book', 'not_interested']),
@@ -68,6 +70,7 @@ const seedConversationSchema = z.object({
   softClosed: z.boolean().optional(),
   priceGiven: z.boolean().optional(),
   qualification: qualificationSeedSchema.optional(),
+  followupStatus: z.enum(['unasked', 'pending', 'active', 'declined', 'revoked']).optional(),
 }).strict();
 
 const seedSystemSchema = z.object({
@@ -143,6 +146,7 @@ const criterionRuleSchema = z.enum([
 ]);
 
 const outputFlagSchema = z.enum([
+  'leadScore',
   'shouldSendReply',
   'shouldAlertOwner',
   'shouldSendImage',
@@ -232,7 +236,16 @@ export const scenarioSchema = z.object({
   }).strict().optional(),
   turns: z.array(turnSchema).min(1),
   criteria: z.array(criterionSchema).min(1),
-}).strict();
+}).strict().superRefine((scenario, ctx) => {
+  for (const criterion of scenario.criteria) {
+    const checkedTurns = criterion.turn === undefined
+      ? scenario.turns
+      : [scenario.turns[criterion.turn - 1]];
+    if (checkedTurns.some(turn => turn?.replay)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${criterion.id} checks a replay turn` });
+    }
+  }
+});
 
 export type Scenario = z.infer<typeof scenarioSchema>;
 export type ScenarioTurn = z.infer<typeof turnSchema>;

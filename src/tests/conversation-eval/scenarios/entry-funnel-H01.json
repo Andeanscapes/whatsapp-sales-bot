@@ -8,10 +8,10 @@
   "criteria": [
     { "id": "marker-hidden", "rule": "reply_must_not_match", "patterns": ["H01|marcador|codigo de campana"], "turn": 1, "weight": 2, "critical": true },
     { "id": "no-brand-restart", "rule": "reply_must_not_match", "patterns": ["soy .{0,30}cofundador|somos Andean Scapes|te presento Andean Scapes"], "turn": 1, "weight": 2, "critical": true },
-    { "id": "recommends-next-fit", "rule": "reply_must_match", "patterns": ["recomiend|encaja|ideal|calz|conviene|mejor te|ajust"], "turn": 1, "weight": 1 },
+    { "id": "qualifies-lead", "rule": "reply_must_match", "patterns": ["(?:^|[¿.!?\\n])[^¿.!?\\n]*(?:pareja|sol[oa]s?\\b|grupo|cu[aá]nt[oa]s|personas|tiempo|intensidad|ritmo|naturaleza|actividades)[^¿.!?\\n]*\\?"], "turn": 1, "weight": 1 },
     { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 1, "weight": 2, "critical": true }
   ],
   "turns": [
-    { "user": "H01 - Me interesa saber cual plan me conviene", "mockReply": "Para elegir bien te recomiendo ajustar el plan al tiempo que quieras vivir la experiencia. ¿Prefieres una salida corta o pasar una noche en la zona?", "expect": { "shouldSendReply": true } }
+    { "user": "H01 - Hola, quiero conocer la experiencia en Chivor 💚", "mockReply": "Chivor es una mina de esmeraldas auténtica donde los mineros reales te muestran cómo trabajan. ¿Vienen en pareja, solos o en grupo?", "expect": { "shouldSendReply": true } }
   ]
 }

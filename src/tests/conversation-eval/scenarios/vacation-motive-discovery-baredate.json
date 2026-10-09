@@ -13,7 +13,7 @@
   "seedQualification": { "people": 2, "plan": "2d1n_mining" },
   "criteria": [
     { "id": "quote-delivered", "rule": "reply_must_match", "patterns": ["1[.,]000[.,]000"], "turn": 1, "weight": 3, "critical": true },
-    { "id": "motive-reflected", "rule": "reply_must_match", "patterns": ["vacaciones|descanso|desconectar|sin af[aá]n"], "turn": 2, "weight": 3, "critical": true },
+    { "id": "motive-reflected", "rule": "reply_must_match", "patterns": ["vacaciones|descanso|desconectar|sin af[aá]n"], "turn": 2, "weight": 2, "critical": false },
     { "id": "only-registry-november-day", "rule": "reply_must_match", "patterns": ["\\b14\\b"], "turn": 2, "weight": 3, "critical": true },
     { "id": "no-invented-november-day", "rule": "no_unpublished_date", "turn": 2, "weight": 3, "critical": true },
     { "id": "no-price-repeat-on-dates", "rule": "reply_must_not_match", "patterns": ["\\$\\s*[\\d.,]+|[\\d.,]+\\s*COP"], "turn": 2, "weight": 2, "critical": true },

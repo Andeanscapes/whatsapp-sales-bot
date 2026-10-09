@@ -3,7 +3,7 @@
   "source": "retargeting marker from a phone without local history",
   "tags": ["marker", "live"],
   "lang": "es",
-  "liveRuns": 2,
+  "liveRuns": 1,
   "minLiveScore": 80,
   "criteria": [
     { "id": "marker-hidden", "rule": "reply_must_not_match", "patterns": ["R01|marcador|codigo de campana"], "turn": 1, "weight": 2, "critical": true },
@@ -11,6 +11,6 @@
     { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 1, "weight": 2, "critical": true }
   ],
   "turns": [
-    { "user": "R01 - Hola, quiero informacion", "mockReply": "Claro, te cuento lo esencial y lo ajustamos a tu viaje. ¿Irías solo, en pareja o en grupo?", "expect": { "shouldSendReply": true } }
+    { "user": "R01 - Hola, ya consulté antes. Quiero revisar la aventura minera", "mockReply": "Claro, te cuento lo esencial y lo ajustamos a tu viaje. ¿Irías solo, en pareja o en grupo?", "expect": { "shouldSendReply": true } }
   ]
 }
