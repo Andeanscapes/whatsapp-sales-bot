@@ -67,15 +67,24 @@ const TRAILING_COURTESY = new Set(['gracias', 'thanks', 'please', 'porfa', 'porf
  * "Buenos días, si señor por favor y gracias" → "si senor".
  *
  * Iterative because a real reply stacks them ("… por favor y gracias"), and a single
- * pass leaves a dangling conjunction that then fails exact matching.
+ * pass leaves a dangling conjunction that then fails exact matching. Leading greetings
+ * are also applied iteratively ("Hola buenos días si..." → "si...").
  *
  * A trailing courtesy is NEVER stripped when it follows a bare negation: "no gracias"
  * and "no thanks" ARE the refusal, and splitting them turned a decline into a bare
  * "no", which this module deliberately reads as a sales answer rather than a refusal.
  */
 function stripCourtesyFrame(norm: string): string {
-  let words = norm
-    .replace(/^(buenos dias|buenas|buenos|hola|hi|hello|hey)\s*,?\s*/, '')
+  // Strip leading greetings iteratively because a single pass leaves dangling tokens.
+  let text = norm;
+  const GREETING_PATTERN = /^(buenos dias|buen dia|buenas tardes|buenas noches|buenos|buenas|hola|hi|hello|hey)(?:\s+|$)/;
+  for (;;) {
+    const newText = text.replace(GREETING_PATTERN, '');
+    if (newText === text) break;
+    text = newText;
+  }
+
+  let words = text
     .split(' ')
     .filter(word => word.length > 0);
 
@@ -88,7 +97,7 @@ function stripCourtesyFrame(norm: string): string {
     // "no gracias" / "no thanks" — the courtesy carries the refusal.
     if (BARE_NEGATIONS.has(previous)) break;
 
-    if (last === 'favor' && previous === 'por') {
+    if ((last === 'favor' || last === 'fa') && previous === 'por') {
       // "no por favor" is equally a refusal; keep it intact.
       if (count >= 3 && BARE_NEGATIONS.has(words[count - 3])) break;
       words = words.slice(0, count - 2);
@@ -143,7 +152,7 @@ function isBareEmojiAffirmation(text: string): boolean {
 // safe here. They would be far too greedy in the general sales path.
 const AFFIRM = [
   'si', 'si claro', 'claro', 'claro que si', 'dale', 'listo', 'bueno', 'dale pues',
-  'si porfa', 'si por favor', 'dale gracias', 'dale listo', 'dale si', 'dale ok',
+  'si porfa', 'si por favor', 'si por fa', 'dale gracias', 'dale listo', 'dale si', 'dale ok',
   'dale va', 'dale de una', 'de una', 'dale hazlo', 'esta bien', 'dale tranquilo',
   'ok', 'okey', 'oki', 'vale', 'va', 'perfecto', 'de acuerdo', 'me parece',
   'si me interesa', 'si quiero', 'acepto', 'autorizo', 'permiso concedido',
@@ -317,6 +326,7 @@ export function classifyConsentReply(text: string): ConsentDecision {
     // not permission to market (AGENTS.md: a permission answer is not buying
     // behaviour).
     const remainder = words.slice(affirmPrefix).join(' ');
+    if (remainder === 'cuando gustes' || remainder === 'cuando quieras') return 'affirm';
     if (AFFIRM.includes(remainder)) return 'affirm';
     if (CONSENT_CONTACT_CONTINUATION.test(remainder) && !COMMERCIAL_OBJECT_VETO.test(remainder)) {
       return 'affirm';

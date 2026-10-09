@@ -1,15 +1,16 @@
 {
   "name": "Andean Scapes golden conversation regression pack",
-  "version": "2026-08-20-plan-gallery",
-  "totalTests": 31,
+  "version": "2026-10-09-consent-audit",
+  "totalTests": 32,
   "scenarioIds": [
     "ad-info-then-group-asks-plan",
     "ad-price-date-opening",
     "big-group-12",
     "buying-signal-payment-facts",
     "consecutive-gallery-requests",
+    "consent-answer-not-buying",
+    "consent-granted-ack",
     "consult-with-partner",
-    "date-pick-close-T3b",
     "date-pick-price-then-close-T3b",
     "entry-cold-C01",
     "entry-X04-kids-gallery",
@@ -44,9 +45,10 @@
   "implementationNotes": [
     "Core scenarios are grounded in the full conversation export from 2026-08-02; six scenarios cover C/H/R campaign markers.",
     "Live-tagged message scenarios carry minLiveScore plus copy-quality criteria for bounded real-LLM runs.",
-    "Follow-up scenarios were removed with the automated follow-up feature.",
+    "Consent-testing scenarios (consent-answer-not-buying, consent-granted-ack) added 2026-10-09 to cover durable consent feature.",
     "price_after_min_fields counts name/people/date/transport only — plan is not a counted field, so quote scenarios gated on people+plan use minFields 1 and assert the plan question separately.",
     "Couple quotes assert the exact total instead of group_quote_integrity: the model says 'ustedes dos' rather than '2 personas', which is better copy and not a defect.",
-    "Entry segment expansion: H02 (funnel 4x4), R03 (retarget moto), and generic H01/R01 ensure vehicle-context and blocker-recall testing across themes."
+    "Entry segment expansion: H02 (funnel 4x4), R03 (retarget moto), and generic H01/R01 ensure vehicle-context and blocker-recall testing across themes.",
+    "Live-only replay (2026-10-09): 8 setup turns across 5 scenarios skip live engine calls; deterministic execution remains intact. Default live pack has 50 evaluated turns weighted by liveRuns, down from 74; provider retries and analyzer calls are additional. Three unchecked final turns and one redundant scenario were removed."
   ]
 }

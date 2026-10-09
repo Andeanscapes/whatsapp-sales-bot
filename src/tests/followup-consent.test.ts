@@ -277,6 +277,55 @@ describe('classifyConsentReply', () => {
   ])('keeps the channel-naming consent reply %s an affirm', text => {
     expect(classifyConsentReply(text)).toBe('affirm');
   });
+
+  // Real production replies from 2026-10-09 report: consent asks that succeeded,
+  // with customers who said yes and got the acknowledgment (PII-free).
+  describe('production consent affirmations (2026-10-09)', () => {
+    it.each([
+      'Ok',
+      'Si',
+      'Si claro',
+      'Si claro!',
+      'Si gracias',
+      'Si gracias por favor',
+      'Si perfecto',
+      'Si por favor',
+      'Sii más adelante',
+      '👍',
+    ])('recognises the affirmation %s', text => {
+      expect(classifyConsentReply(text)).toBe('affirm');
+    });
+
+    // These were real replies that the model acknowledged, but before this branch's
+    // classifier fix they would have been ambiguous (stranding consent).
+    it.each([
+      'Claro, cuando gustes',
+      'Si por fa',
+      'Hola buenos días si claro escribe',
+      'Buen día si por fa',
+      'Si cuando quieras',
+    ])('now recognises the fixed production reply %s', text => {
+      expect(classifyConsentReply(text)).toBe('affirm');
+    });
+
+    // Real production replies that are correctly ambiguous (carry intent or have no clear consent).
+    it.each([
+      'Buenos días',
+      'Gracias',
+      'Muchas gracias',
+      'Cuando gustes',
+      'Cuando quieras',
+      'highway si',
+      'hellohello si',
+      'Si cuando quieras reservar',
+      'Hola buen día que precio tiene para dos personas?',
+      'Claro que si, será un gusto recibir información de sus planes. Estoy organizando fechas y...',
+      'Buen día si me parece una experiencia bonita para llevar a la familia ya que lo viví hace...',
+      'Si por fa. Igual déjame miro si podemos cuadrar para ir en grupo y que nos salga más barato',
+    ])('keeps the production reply %s as ambiguous (not a bare yes/no)', text => {
+      expect(classifyConsentReply(text)).toBe('ambiguous');
+    });
+  });
 });
 
 describe('parseStoredTimestamp', () => {

@@ -24,6 +24,14 @@ los topes de formato (brevedad, **exactamente una** pregunta con un solo `¿` y 
 del skill de ventas. Si la `diagnosisQuestion` trae opciones (A, B o C), van **dentro**
 de esa única pregunta — nunca una segunda pregunta para listar las opciones.
 
+**Hook vacío no significa entrada genérica.** Si `valueHook` está vacío y hay una
+`diagnosisQuestion`, avanzá directamente a ese diagnóstico en el primer contacto.
+Un saludo o un pedido genérico de información no contradice el segmento. Conservá
+el eje concreto de la pregunta de DATOS; no lo reemplaces por una pregunta genérica
+de grupo. Si el diagnóstico trata logística, conectá brevemente con la ruta del
+CATALOGO y preguntá cómo llegarían, sin asumir que poseen el medio de transporte.
+Una contradicción explícita del cliente sí anula esa orientación.
+
 **El `valueHook` puede traer frases de anuncio:** usá el hecho, no el lema. Pero si el hook de retargeting trae su **pregunta de bloqueo** ("¿qué nos pasó…?", "¿qué te falta resolver…?"), conservala en tu voz: es tu pregunta de diagnóstico, no una frase de marca. **En retargeting con historial, la intro genérica del hook ("venías mirando la experiencia…") se reemplaza por el grupo+plan reales del historial** (ver RETARGET OVERRIDE en whatsapp-sales); solo se conserva la pregunta de bloqueo.
 
 **Una sola pregunta por turno, siempre:** si el `valueHook` o la `diagnosisQuestion` ya trae una pregunta, esa es tu única pregunta — no agregues otra.

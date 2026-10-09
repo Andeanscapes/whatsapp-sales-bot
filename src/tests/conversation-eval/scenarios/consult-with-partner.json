@@ -3,7 +3,7 @@
   "source": "history: 40 consult/think turns",
   "tags": ["objection", "live"],
   "lang": "es",
-  "liveRuns": 3,
+  "liveRuns": 2,
   "minLiveScore": 80,
   "seedConversation": { "phase": "pricing", "priceGiven": true, "qualification": { "people": 2, "plan": "2d1n_mining" } },
   "seedQualification": { "people": 2, "plan": "2d1n_mining" },
@@ -14,7 +14,6 @@
     { "id": "plan-sticky", "rule": "reply_must_not_match", "patterns": ["3 d[ií]as|3d2n|otro plan"], "turn": 1, "weight": 1, "critical": true }
   ],
   "turns": [
-    { "user": "Lo voy a consultar con mi pareja", "mockReply": "Claro, te dejo un resumen breve del plan para 2 personas y el valor que ya vimos. Cuando lo revisen, validamos disponibilidad exacta con el equipo.", "expect": { "shouldSendReply": true } },
-    { "user": "Gracias", "mockReply": "Con gusto. Queda pendiente validar la fecha cuando la definan.", "expect": { "shouldSendReply": true } }
+    { "user": "Lo voy a consultar con mi pareja", "mockReply": "Claro, te dejo un resumen breve del plan para 2 personas y el valor que ya vimos. Cuando lo revisen, validamos disponibilidad exacta con el equipo.", "expect": { "shouldSendReply": true } }
   ]
 }
