@@ -19,9 +19,9 @@
     { "id": "emoji-restraint-on-retarget", "rule": "max_emojis", "max": 1, "turn": 4, "weight": 1 }
   ],
   "turns": [
-    { "user": "Hola", "mockReply": "¡Hola! ¿Viajarías solo, en pareja o en grupo?", "expect": { "shouldSendReply": true } },
-    { "user": "Solo", "mockReply": "Perfecto. ¿Buscas un ritmo más intenso o uno más calmado con más tiempo en el lugar?", "expect": { "shouldSendReply": true } },
-    { "user": "Más calmado, 3 Dias", "mockReply": "Buena elección, el plan de 3 días es el más completo. ¿Qué fecha tienes en mente?", "expect": { "shouldSendReply": true } },
+    { "user": "Hola", "mockReply": "¡Hola! ¿Viajarías solo, en pareja o en grupo?", "replay": true, "expect": { "shouldSendReply": true } },
+    { "user": "Solo", "mockReply": "Perfecto. ¿Buscas un ritmo más intenso o uno más calmado con más tiempo en el lugar?", "replay": true, "expect": { "shouldSendReply": true } },
+    { "user": "Más calmado, 3 Dias", "mockReply": "Buena elección, el plan de 3 días es el más completo. ¿Qué fecha tienes en mente?", "replay": true, "expect": { "shouldSendReply": true } },
     { "user": "R01 hola", "mockReply": "Venías solo y te interesó el plan de 3 días. ¿Qué te falta resolver para avanzar: fecha, transporte, seguridad o presupuesto?", "expect": { "shouldSendReply": true } }
   ]
 }

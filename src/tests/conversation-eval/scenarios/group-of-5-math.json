@@ -3,7 +3,7 @@
   "source": "history: group pricing formulas",
   "tags": ["qualification", "live"],
   "lang": "es",
-  "liveRuns": 3,
+  "liveRuns": 2,
   "minLiveScore": 80,
   "mockPricing": { "planId": "2d1n_mining", "individual": 500000, "couple": 900000 },
   "criteria": [

@@ -4,6 +4,7 @@ import { canAccessConversation } from '../services/access-control.js';
 import {
   consentThresholdMs,
   devAllowlist,
+  hasFollowupPermission,
   parseStoredTimestamp,
   FREE_FORM_WINDOW_MS,
 } from '../services/followup-service.js';
@@ -70,6 +71,40 @@ export async function followupStatusHandler(ctx: CommandContext): Promise<string
     lines.push(`dev allowlist: ${allowlist.includes(phone) ? 'incluye este numero' : 'EXCLUYE este numero'}`);
   }
 
+  // Permission is one predicate over two provenances (AGENTS.md invariant 10), and
+  // the one-shot template reads exactly this. Showing only the subscription hid the
+  // operator grant, so an operator could not tell whether a template was authorised
+  // or by whom.
+  //
+  // The verdict itself comes from the predicate the SENDER uses — never a local copy
+  // of the OR. A duplicated expression here reported "SI" for a lead who had declined
+  // while still carrying an operator grant, i.e. the diagnostic contradicted the send
+  // path it exists to explain. The two provenance lines below stay independent reads,
+  // because their job is to show WHO authorised it, not whether it is authorised.
+  const operatorGrant = ctx.repos.followupConsent.hasConsent(phone);
+  const customerConsent = subscription?.status === 'active';
+  const authorised = hasFollowupPermission(ctx.repos, phone);
+  lines.push('', '*Permiso*');
+  lines.push(`plantilla autorizada: ${authorised ? 'SI' : 'NO'}`);
+  lines.push(`  via operador (/followupgrant): ${operatorGrant ? 'si' : 'no'}`);
+  lines.push(`  via cliente ("si"): ${customerConsent ? 'si' : 'no'}`);
+  if (!authorised && operatorGrant && subscription?.status === 'declined') {
+    lines.push('  NOTA: el cliente respondio NO; su negativa anula el permiso del operador.');
+  }
+
+  // The live rows above are mutable; this ledger is append-only and is the only
+  // place that can answer "when, and by whom?". An EMPTY history is not evidence of
+  // refusal — rows before 2026-09-03 do not exist.
+  const decisions = ctx.repos.followupConsentGrant.listByPhone(phone, 5);
+  if (decisions.length === 0) {
+    lines.push('historial: sin registros (anterior al ledger)');
+  } else {
+    for (const decision of decisions) {
+      const actor = decision.actor_id ? `, ${decision.actor_id}` : '';
+      lines.push(`historial: ${decision.decision} (${decision.source}${actor}) ${ago(decision.decided_at, now)}`);
+    }
+  }
+
   lines.push('', '*Suscripcion*');
   if (!subscription) {
     lines.push('sin registro (se crea al primer ask)');
@@ -126,7 +161,7 @@ export async function followupStatusHandler(ctx: CommandContext): Promise<string
   }
   // The failure mode this command exists for: the cycle burned every bounded
   // attempt, so `claim()` refuses forever while the SQL keeps serving the lead.
-  // Nothing recovers automatically — either a new session (deferral, cycle close or
+  // Nothing recovers automatically — either a new session (the bounded deferral or an
   // opt-out reopen) mints a fresh cycle_key, or an operator runs /followupretry.
   if (subscription) {
     const currentCycle = consentCycleKey(subscription.consent_session);

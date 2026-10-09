@@ -40,7 +40,7 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
 
     | Path | Switch | Timing | Channel | Consent |
     |---|---|---|---|---|
-    | One-shot post-24h template | `ALLOW_FOLLOWUP_TEMPLATE` | `FOLLOWUP_HOURS_AFTER_INBOUND` | approved template | operator `/followupgrant` |
+    | One-shot post-24h template | `ALLOW_FOLLOWUP_TEMPLATE` | `FOLLOWUP_HOURS_AFTER_INBOUND` | approved template | operator `/followupgrant` **OR** customer said yes |
     | Consent ask | `FOLLOWUP_CONSENT_ASK_ENABLED` | `FOLLOWUP_CONSENT_HOURS_AFTER_INBOUND` (max 23) | free-form, LLM-written | none needed (inside window) |
     | Recurring template | `FOLLOWUP_RECURRING_ENABLED` | production gaps multiply by 3 from `FOLLOWUP_RECURRING_INTERVAL_MONTHS` (1×, 3×, 9×…); dev uses fixed `FOLLOWUP_DEV_RECURRING_SECONDS`; capped by `FOLLOWUP_MAX_RECURRING_SENDS` | approved template | customer said yes |
 
@@ -49,7 +49,84 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
 
     Consent lifecycle lives in `followup_subscriptions`
     (`unasked → pending → active | declined`, any state `→ revoked`); per-stage
-    dispatch in `followup_subscription_events`. Rules:
+    dispatch in `followup_subscription_events`.
+
+    **Permission is one predicate over two provenances.** The one-shot template needs
+    an operator grant (`followup_consent`, written only by `/followupgrant`) **OR** an
+    `active` customer subscription. `listFollowupCandidates` and the post-claim
+    re-check must read the SAME predicate — before this, the one-shot INNER JOINed
+    `followup_consent`, so a customer "sí" unlocked the recurring cadence but never
+    the 7-day template, and with no operator grant in production the path was
+    unreachable for its entire life. Do not duplicate consent into both tables:
+    provenance must stay legible in `/followupstatus`.
+
+    **A `declined` subscription outranks BOTH provenances.** An operator grant is a
+    presumption of consent; a customer "no" is the answer to the question we asked.
+    `decline()` writes only `followup_subscriptions` and deliberately does not revoke
+    the operator row (provenance must survive), so the OR predicate on its own
+    re-enabled every declined lead that still carried an older `/followupgrant` and
+    shipped a marketing template **after a recorded refusal**. Three places must agree
+    and are asserted: the SQL clause (`COALESCE(fs.status,'') <> 'declined'`),
+    `hasFollowupPermission`, and `/followupstatus` — which must call the predicate
+    rather than re-deriving the OR, or the diagnostic contradicts the sender. Do not
+    "fix" this by revoking the operator grant on decline: that erases who authorised
+    what.     `/followupgrant` refuses on a `declined` subscription instead of writing a
+    grant the predicate would ignore. The pre-existing declined/revoked test passed
+    throughout because it seeded **no** operator grant — the regression test must seed
+    both.
+
+    **The live status alone cannot hold the refusal, because `revoke()` overwrites
+    `declined` with `revoked`.** `/followuprevoke` followed by `/followupgrant`
+    therefore erased the "no" from the only field the predicate read, and the template
+    shipped over a recorded refusal while `/followupstatus` reported `SI`. Both
+    `hasFollowupPermission` and `listFollowupCandidates` additionally consult the
+    newest `source = 'customer_reply'` row in `followup_consent_grants`
+    (`latestCustomerDecision`), and `/followupgrant` refuses on either provenance. It
+    is the NEWEST customer decision, not any decline ever: a later affirmation in a
+    new session is the customer changing their mind. Pre-ledger leads have no rows, so
+    absence still means "no refusal on record", never "no permission".
+
+    **`markAsked()` only writes over `unasked` or `pending`.** The sender calls it
+    after awaiting Meta, so the customer's reply can be classified during that await;
+    an unconditional write reset a fresh `active` or `declined` back to `pending` —
+    erasing durable consent, or erasing the refusal that blocks the one-shot template
+    when an operator grant is standing. The legitimate two-step write (pre-send with a
+    null id, post-send with the real one) still works, which the deferral gate needs.
+
+    **The consent classifier's contact continuation is vetoed by a commercial object.**
+    `CONSENT_CONTACT_CONTINUATION` matches `mand|envi` unanchored, which also matches
+    the *sales* senses of mandar/enviar: "si quiero enviar el anticipo", "dale mandame
+    la cuenta para pagar" and "si me mandas la cotizacion" all recorded durable
+    marketing consent from a payment message. Worse, a consent-answer turn freezes
+    `lead_score` and clears `isHot`, so the highest-intent turn in the funnel also
+    produced **no owner alert**.     `COMMERCIAL_OBJECT_VETO` keys on the object (pago,
+    anticipo, cotizacion, reserva, comprobante…), not the verb, so the legitimate
+    channel-naming forms ("mandame las promos", "mandame mensajes", "avisame") stay
+    affirms. Never widen the continuation verbs without extending the veto.
+    **The veto must gate BOTH continuation branches.** It was applied to the contact
+    branch only, so the question branch still read "si, ¿como pago?" and "si claro,
+    cuanto es el anticipo?" as permission — fabricating consent on the highest-intent
+    turn in the funnel and, because that turn freezes `lead_score` and clears `isHot`,
+    suppressing the owner alert with it. For the same reason the continuation stem
+    list carries no bare `perm`: unanchored it matched the *sales* verb permitir, so
+    "si permiten mascotas" (a policy question) granted marketing consent. The
+    permission sense is matched as `permiso|me permit`.
+
+    **Every permission change appends to `followup_consent_grants`** (append-only:
+    `affirm`/`decline`/`grant`/`revoke` × `customer_reply`/`operator_grant`/
+    `operator_revoke`/`customer_opt_out`). The live row is mutable and was previously
+    wiped on the next inbound, which is why "when was permission granted?" is
+    unanswerable for pre-ledger leads. Readers must NOT infer "no permission" from an
+    empty history — rows before 2026-09-03 simply do not exist.
+    All **five** writers append: webhook affirm/decline, `/followupgrant`,
+    `/followuprevoke`, `/block`, and the first customer opt-out. `/block` was the one
+    that did not, so the single action meant to be permanent was also the only one
+    with no provenance. `followup-consent-ledger.test.ts` asserts the callers, not the
+    repository — testing `record()` directly proved the table worked and nothing about
+    whether anything used it. An ambiguous reply is not a decision and must never
+    appear. Customer decisions store the consent `cycle_key`; operator actions store
+    the concrete `telegram:<chatId>` actor. Append-only means ordinary operation — the
+    explicit customer-data deletion path must erase these PII-bearing rows. Rules:
     - **Silence is not consent.** An unanswered ask stays `pending` and never
       receives a recurring send. If the customer keeps talking instead of answering,
       the pending ask may be deferred to `unasked` exactly once per consent session;
@@ -64,15 +141,24 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
       If the customer opts out, then later initiates a new conversation,
       `customer_opt_out` may reopen to `unasked`; a fresh silence may produce a new
       ask (`c2`, `c3`…). Operator revocations never reopen automatically.
-    - **Consent is session-scoped.** Any customer-initiated inbound closes an
-      `active` cycle back to `unasked`
-      (`followupSubscription.closeCycleOnCustomerInbound()`): recurring templates
-      stop until a fresh "sí", and a new ask becomes eligible once that new session
-      goes silent. The turn that grants consent is exempt
-      (`consentAcceptedThisTurn`). `declined`/`revoked` are untouched; `pending` has
-      only the bounded one-time deferral above. Permission is
-      therefore re-earned per conversation instead of ageing indefinitely, and
-      `FOLLOWUP_MAX_RECURRING_SENDS` counts per cycle (scoped by `activated_at`).
+    - **Consent is durable until explicitly ended** (changed 2026-09-03; was
+      session-scoped). An `active` subscription survives ordinary conversation
+      turns. It ends ONLY on an explicit decline, a customer opt-out, or an operator
+      `/followuprevoke`. `closeCycleOnCustomerInbound()` is **deleted** — do not
+      reintroduce it.
+      Session-scoping was removed because it destroyed the permission it was
+      protecting: `activated_at` was NULLed on the next inbound, so **7 of 10** real
+      production affirmations lost consent before any template could become due, and
+      those leads were then asked for permission a second time. The rule also made
+      the 1-month recurring cadence unreachable in principle — a lead had to say yes
+      and then never speak again for a month.
+      What replaces it: a template still cannot interrupt a live chat, because the
+      **dormancy floor is independent of consent** (next bullet). Permission
+      authorises writing later; dormancy decides when.
+      Consequence to keep in mind: a consent cycle now lives until revoked, so
+      `FOLLOWUP_MAX_RECURRING_SENDS` (scoped by `activated_at`) is a **per-consent**
+      cap, no longer a per-conversation one. Reducing total sends means lowering that
+      cap or lengthening the cadence, not relying on chat activity to reset it.
     - A recurring template only goes to a **dormant** customer: the last message in
       the thread must be ours **and** the customer must have been silent for
       `FOLLOWUP_RECURRING_MIN_SILENCE_HOURS`, re-checked after the claim. That floor
@@ -125,6 +211,16 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
       to be scored as a sales objection. Real interest still scores normally on the
       next turn — e.g. when the customer answers a template asking about dates —
       because a message with sales content classifies as `ambiguous`.
+      **A leading affirmative does not make the rest of the message disappear.** Both
+      the one- and two-word affirmative prefixes must validate the remainder against
+      `CONSENT_CONTINUATION`. The two-word prefix used to short-circuit to `affirm`,
+      routing around that check: "si claro un ritmo tranquilo" and "de acuerdo para
+      diciembre" recorded consent from a plain sales answer, and the same shortcut
+      froze the lead score on a booking reply ("si quiero reservar para el 14"),
+      which is now `ambiguous` and takes the normal sales path. A real yes must ask
+      what is coming ("si cuales?") or name the contact being authorised ("si claro
+      escribeme"). Bare-emoji assent is `👍 👌 ✅` only: 🙏, 💪, 👏 and ❤️ are
+      reactions, not permission to market.
     - Consent-ask `cycle_key` is a session sequence (`c1`, `c2`…); recurring
       `cycle_key` is consent-scoped (`c1-r1`, `c2-r1`…), never `YYYY-MM` — a
       calendar key silently caps sends at one per month.

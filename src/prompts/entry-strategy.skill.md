@@ -19,14 +19,18 @@ Si RUNTIME trae `SEGMENT_DETECTED`, el bloque `ENTRY_SEGMENT` de DATOS te da tre
 | `diagnosisQuestion` | FASE 2: es tu pregunta de diagnóstico, en lugar de la genérica. |
 | `planMatch` | FASE 2b: guía para la recomendación. Es orientación, no un guion. |
 
-Usalos **parafraseados en tu voz**, no como bloque de texto pegado. Respetá siempre
-los topes de formato (brevedad, **exactamente una** pregunta con un solo `¿` y un solo `?`)
-del skill de ventas. Si la `diagnosisQuestion` trae opciones (A, B o C), van **dentro**
-de esa única pregunta — nunca una segunda pregunta para listar las opciones.
+Parafraseá en tu voz, con brevedad y **una pregunta** (un `¿` y un `?`). Las opciones
+de `diagnosisQuestion` van dentro de esa pregunta, nunca en otra.
 
-**El `valueHook` puede traer frases de anuncio:** usá el hecho, no el lema. Pero si el hook de retargeting trae su **pregunta de bloqueo** ("¿qué nos pasó…?", "¿qué te falta resolver…?"), conservala en tu voz: es tu pregunta de diagnóstico, no una frase de marca. **En retargeting con historial, la intro genérica del hook ("venías mirando la experiencia…") se reemplaza por el grupo+plan reales del historial** (ver RETARGET OVERRIDE en whatsapp-sales); solo se conserva la pregunta de bloqueo.
+**Hook vacío:** usá `diagnosisQuestion` desde el primer contacto, no grupo genérico.
+Saludar o pedir información no contradice el segmento. En logística, conectá con
+la ruta del CATALOGO sin asumir vehículo propio. Una contradicción explícita sí manda.
 
-**Una sola pregunta por turno, siempre:** si el `valueHook` o la `diagnosisQuestion` ya trae una pregunta, esa es tu única pregunta — no agregues otra.
+**`valueHook`: usá hechos, no lemas.** Conservá su pregunta de bloqueo en tu voz.
+En retargeting con historial, reemplazá la intro genérica por grupo+plan reales
+(RETARGET OVERRIDE en whatsapp-sales), manteniendo esa pregunta.
+
+Si `valueHook` o `diagnosisQuestion` trae pregunta, usá esa y ninguna otra.
 
 Sin `SEGMENT_DETECTED`, usá `cold-info-handler` y el diagnóstico genérico.
 

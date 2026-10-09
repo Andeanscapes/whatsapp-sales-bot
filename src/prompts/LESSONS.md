@@ -36,6 +36,36 @@ change: `partitionLiveScenarios` honors the `live` tag with `--all` override; es
 metrics_before: live_scenarios_actually_run=19; eval_cost_cap=0.10
 metrics_after: live_scenarios_actually_run~11; eval_cost_cap=0.50
 
+## 2026-10-09 Campaign diagnosis compliance (live verification)
+
+symptom: H01 rejected an intensity/nature qualification question; H02 gave a generic group opening instead of the vehicle/route diagnosis.
+change: H01 matches qualification inside a question, with generic-question negative tests. Captured H02 prompts contain the feed diagnosis and planMatch. The entry skill now directs an empty hook to the segment diagnosis on first contact, without treating a greeting as a contradiction or assuming vehicle ownership.
+metrics_before: H01=86; H02=67 in the user-provided live run.
+metrics_after: targeted H01=100 (3/3), H02=100 (3/3); final full pack H01=100 and H02=100. These samples do not establish long-term reliability.
+
+## 2026-10-09 First-plan gallery prompt experiment (NOT FIXED)
+
+symptom: First concrete plan selection quotes correctly but omits the photo marker.
+change: Captured engine prompts in deterministic and live-replay setup tests confirm the settled plan, available mine theme, positive image allowance, and absence of prior-gallery state. Tightened the gallery skill to cover activity-based plan names and distinguish a post-diagnosis choice from first contact; no retry expansion or deterministic marker insertion.
+metrics_before: plan-selection-gallery=67 (0/2).
+metrics_after: targeted=67 (0/3), so the prompt-only experiment is insufficient. Final full pack average=97, hard_fails=2, cost_usd=0.2535237: gallery omission and vacation closing re-quote. Group quote and date-pick-price-then-close scenarios passed. Payment-facts lost noncritical points for two questions.
+baseline: the full live artifact replaces targeted artifacts; the live comparison reference contains no comparable scenarios, so comparison cannot establish absence of regressions. Do not promote this run as a clean baseline.
+
+## 2026-10-09 Consent classifier hardening and eval suite optimization
+
+profile: durable-consent@1 (AND-XXX-improve-follow-up branch)
+symptom: Production audit (1787 conversations) revealed three classifier regressions: "Claro, cuando gustes" (ambiguous), "Si por fa" (ambiguous), and iterative greeting stripping left dangling tokens ("Hola buenos dias si claro escribe"). Also: 74 live calls across 31 scenarios with ~22 unchecked setup turns.
+change:
+  - Classifier: token-bounded iterative greeting stripping, including `buen dia`, paired `por fa` handling, and exact `cuando gustes`/`cuando quieras` continuations after an affirmative prefix.
+  - Test harness: live-only replay bypasses LLM; deterministic turns still execute the engine. Schema validation rejects criteria targeting replay turns, including implicit whole-conversation checks. Consent inputs transition the subscription before the engine call.
+  - Eval scenarios: 5 scenarios use live-only replay (8 context turns), 4 scenarios capped liveRuns, 3 unchecked final turns trimmed, 1 redundant scenario deleted, 2 new consent-focused scenarios (deterministic + live).
+  - Production text: C01/H01/H02/R01 entry markers updated to real production copies from 2026-10-09 report.
+metrics_before: scenarios=31; live_calls=74; replay_mode=none; consent_scenarios=0
+metrics_after: scenarios=32; live_scenarios=20; live_evaluated_turns=50 (weighted by liveRuns, versus 74 before); replay_turns=8; consent_scenarios=2. Provider retries and analyzer calls are additional; token savings are not yet measured.
+coverage: actual consent acknowledgment and subscription activation; bare permission answer freezes score and suppresses alerts despite high-intent analysis; subsequent booking intent scores normally; repeated stop remains silent.
+baseline: master-deterministic.json remains the prior comparison reference; eval writes current results to artifacts/conversation-eval.json. Live results and provider cost require a user-run evaluation.
+production_data: 1787 conversations (2026-06-25 to 2026-10-08); 483 since 2026-08-20; heuristic detection found 120 consent asks; 11 templates sent (0 replies). Added PII-free reply fixtures; this is not a measured classifier-accuracy benchmark.
+
 ## 2026-08-04 Consent ask lessons (HISTORICAL — feature removed)
 
 profile: andean-scapes-co@1

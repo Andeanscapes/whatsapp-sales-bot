@@ -125,7 +125,7 @@ async function main(): Promise<void> {
       try {
         restoreSeeds = applyScenarioSeeds(ctx, scenario);
         for (let turnIndex = 0; turnIndex < scenario.turns.length; turnIndex++) {
-          ctx.turns.push(await runTurn(ctx, scenario.turns[turnIndex], turnIndex + 1));
+          ctx.turns.push(await runTurn(ctx, scenario.turns[turnIndex], turnIndex + 1, 'live'));
           console.log(`${progress} ${scenario.id} run ${run + 1}/${runCount} turn ${turnIndex + 1}/${scenario.turns.length}`);
         }
         const evaluation = evaluateScenario(scenario, ctx.turns);

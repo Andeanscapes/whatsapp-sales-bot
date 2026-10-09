@@ -38,7 +38,12 @@ vi.mock('../services/contextual-media.js', () => ({
   selectThemedImage: mockSelectThemedImage,
 }));
 
-import { runConsentAskCycle, runFollowupCycle, runRecurringCycle } from '../services/followup-service.js';
+import {
+  hasFollowupPermission,
+  runConsentAskCycle,
+  runFollowupCycle,
+  runRecurringCycle,
+} from '../services/followup-service.js';
 import { WhatsAppSendError } from '../services/whatsapp-client.js';
 import { env } from '../config/env.js';
 import { llmClient } from '../services/response-engine.js';
@@ -454,6 +459,43 @@ describe('followup scheduler — recurring batch selection', () => {
     expect(mockSendTemplate).toHaveBeenCalledTimes(1);
     expect(mockSendTemplate.mock.calls[0][0]).toBe(duePhone);
   });
+
+  it('re-checks the last message direction after claiming', async () => {
+    seedEligibleLead(PHONE, { hoursAgo: 24 * 70 });
+    repos.followupSubscription.ensureExists(PHONE);
+    repos.followupSubscription.markAsked(PHONE, 'wamid.ask');
+    repos.followupSubscription.affirm(PHONE, 'wamid.yes', 'customer_reply');
+
+    vi.spyOn(env, 'FOLLOWUP_RECURRING_ENABLED', 'get').mockReturnValue(true);
+    vi.spyOn(env, 'FOLLOWUP_DEV_RECURRING_SECONDS', 'get').mockReturnValue(0);
+    vi.spyOn(env, 'FOLLOWUP_RECURRING_INTERVAL_MONTHS', 'get').mockReturnValue(1);
+    vi.spyOn(env, 'FOLLOWUP_RECURRING_TEMPLATE_NAME', 'get').mockReturnValue('tour_followup_nodate_v1');
+    vi.spyOn(env, 'FOLLOWUP_RECURRING_TEMPLATE_HEADER', 'get').mockReturnValue('none');
+
+    vi.spyOn(repos.conversation, 'listRecurringCandidates').mockImplementation(() => {
+      // Race: this arrives after the scan snapshot but before the post-claim guard.
+      repos.message.addMessage({
+        customer_phone: PHONE,
+        direction: 'inbound',
+        message_type: 'text',
+        body: 'una duda',
+        created_at: new Date().toISOString(),
+      });
+      return [{
+        customer_phone: PHONE,
+        language: 'es',
+        collected_plan: 'plan_2d1n',
+        selected_experience_id: null,
+        sends_so_far: 0,
+        consent_cycle: 1,
+        last_send_at: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString(),
+      }];
+    });
+
+    await runRecurringCycle(repos);
+
+    expect(mockSendTemplate).not.toHaveBeenCalled();
+  });
 });
 
 describe('followup scheduler — dev timing and allowlist', () => {
@@ -591,6 +633,169 @@ describe('followup consent repository', () => {
     repos.followupConsent.revokeConsent(PHONE);
     repos.followupConsent.grantConsent(PHONE, 'telegram:2');
     expect(repos.followupConsent.hasConsent(PHONE)).toBe(true);
+  });
+});
+
+// The one-shot template used to INNER JOIN `followup_consent`, which only
+// `/followupgrant` writes. A customer "sí" unlocked the recurring cadence but never
+// the 7-day template, and with no operator grant in production the path was
+// unreachable for its entire life. Permission is now one predicate over two
+// provenances.
+describe('followup one-shot permission bridge', () => {
+  /** Same shape as seedEligibleLead but with NO operator grant. */
+  function seedWithoutOperatorGrant(phone = PHONE, hoursAgo = 48): void {
+    const inboundAt = new Date(Date.now() - hoursAgo * 60 * 60 * 1000).toISOString();
+    const outboundAt = new Date(Date.now() - (hoursAgo - 0.5) * 60 * 60 * 1000).toISOString();
+    repos.conversation.upsert(phone, { language: 'es', collected_plan: 'plan_2d1n', collected_people: 2 });
+    repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'hola', created_at: inboundAt });
+    repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: 'respuesta', created_at: outboundAt });
+  }
+
+  it('sends the one-shot on a customer affirmation alone, with no operator grant', async () => {
+    seedWithoutOperatorGrant();
+    repos.followupSubscription.ensureExists(PHONE);
+    repos.followupSubscription.markAsked(PHONE, 'wamid.ask');
+    repos.followupSubscription.affirm(PHONE, 'wamid.yes', 'customer_reply');
+    expect(repos.followupConsent.hasConsent(PHONE)).toBe(false);
+
+    await runFollowupCycle(repos);
+
+    expect(mockSendTemplate).toHaveBeenCalledTimes(1);
+  });
+
+  it('still sends on an operator grant with no customer subscription', async () => {
+    seedWithoutOperatorGrant();
+    repos.followupConsent.grantConsent(PHONE, 'telegram:1');
+
+    await runFollowupCycle(repos);
+
+    expect(mockSendTemplate).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends nothing when neither provenance granted permission', async () => {
+    seedWithoutOperatorGrant();
+    repos.followupSubscription.ensureExists(PHONE);
+    repos.followupSubscription.markAsked(PHONE, 'wamid.ask');
+
+    await runFollowupCycle(repos);
+
+    expect(mockSendTemplate).not.toHaveBeenCalled();
+  });
+
+  it.each(['declined', 'revoked'] as const)('sends nothing for a %s subscription', async status => {
+    seedWithoutOperatorGrant();
+    repos.followupSubscription.ensureExists(PHONE);
+    repos.followupSubscription.markAsked(PHONE, 'wamid.ask');
+    if (status === 'declined') repos.followupSubscription.decline(PHONE, 'wamid.no');
+    else repos.followupSubscription.revoke(PHONE, 'operator');
+
+    await runFollowupCycle(repos);
+
+    expect(mockSendTemplate).not.toHaveBeenCalled();
+  });
+
+  // A customer "no" outranks an operator grant. The case above seeds NO operator
+  // grant, so it passed while the OR predicate happily re-enabled any declined lead
+  // that still carried one — `decline()` writes the subscription and never revokes
+  // `followup_consent`. That shipped a marketing template AFTER a recorded refusal.
+  it('sends nothing when the customer declined despite a standing operator grant', async () => {
+    seedWithoutOperatorGrant();
+    repos.followupConsent.grantConsent(PHONE, 'telegram:1');
+    repos.followupSubscription.ensureExists(PHONE);
+    repos.followupSubscription.markAsked(PHONE, 'wamid.ask');
+    repos.followupSubscription.decline(PHONE, 'wamid.no');
+    // The operator row is deliberately still live — provenance is not destroyed.
+    expect(repos.followupConsent.hasConsent(PHONE)).toBe(true);
+
+    await runFollowupCycle(repos);
+
+    expect(mockSendTemplate).not.toHaveBeenCalled();
+  });
+
+  // The scan and the post-claim re-check must agree. If only one learned the rule,
+  // the lead is selected and then silently dropped as `consent_revoked`.
+  it('excludes a declined-with-grant lead from the candidate scan itself', () => {
+    seedWithoutOperatorGrant();
+    repos.followupConsent.grantConsent(PHONE, 'telegram:1');
+    repos.followupSubscription.ensureExists(PHONE);
+    repos.followupSubscription.markAsked(PHONE, 'wamid.ask');
+    repos.followupSubscription.decline(PHONE, 'wamid.no');
+
+    const candidates = repos.conversation.listFollowupCandidates({
+      silentSinceIso: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+      limit: 25,
+    });
+
+    expect(candidates.map(candidate => candidate.customer_phone)).not.toContain(PHONE);
+    expect(hasFollowupPermission(repos, PHONE)).toBe(false);
+  });
+
+  // An operator revocation must beat a stale active subscription, and vice versa:
+  // both provenances are checked, so neither may resurrect a revoked lead.
+  it('sends nothing once an opted-out customer has both provenances revoked', async () => {
+    seedWithoutOperatorGrant();
+    repos.followupConsent.grantConsent(PHONE, 'telegram:1');
+    repos.followupSubscription.ensureExists(PHONE);
+    repos.followupSubscription.markAsked(PHONE, 'wamid.ask');
+    repos.followupSubscription.affirm(PHONE, 'wamid.yes', 'customer_reply');
+
+    repos.followupConsent.revokeConsent(PHONE);
+    repos.followupSubscription.revoke(PHONE, 'customer_opt_out');
+
+    await runFollowupCycle(repos);
+
+    expect(mockSendTemplate).not.toHaveBeenCalled();
+  });
+});
+
+// The live subscription row is mutable, so it cannot answer "when was permission
+// granted, and by whom?". This ledger is append-only and must survive every mutation.
+describe('followup consent grant ledger', () => {
+  it('records an affirmation and survives later subscription mutations', () => {
+    repos.followupSubscription.ensureExists(PHONE);
+    repos.followupSubscription.markAsked(PHONE, 'wamid.ask');
+    repos.followupSubscription.affirm(PHONE, 'wamid.yes', 'customer_reply');
+    repos.followupConsentGrant.record({
+      customer_phone: PHONE,
+      decision: 'affirm',
+      decided_at: new Date().toISOString(),
+      inbound_message_id: 'wamid.yes',
+      source: 'customer_reply',
+    });
+
+    // Whatever happens to the live row, the history stands.
+    repos.followupSubscription.revoke(PHONE, 'operator');
+
+    const history = repos.followupConsentGrant.listByPhone(PHONE);
+    expect(history).toHaveLength(1);
+    expect(history[0].decision).toBe('affirm');
+    expect(history[0].source).toBe('customer_reply');
+    expect(history[0].inbound_message_id).toBe('wamid.yes');
+    expect(repos.followupSubscription.getByPhone(PHONE)?.status).toBe('revoked');
+  });
+
+  it('keeps every decision in order, newest first', () => {
+    repos.followupConsentGrant.record({ customer_phone: PHONE, decision: 'affirm', decided_at: '2026-09-01T10:00:00.000Z', source: 'customer_reply' });
+    repos.followupConsentGrant.record({ customer_phone: PHONE, decision: 'revoke', decided_at: '2026-09-02T10:00:00.000Z', source: 'operator_revoke' });
+    repos.followupConsentGrant.record({ customer_phone: PHONE, decision: 'grant', decided_at: '2026-09-03T10:00:00.000Z', source: 'operator_grant' });
+
+    const history = repos.followupConsentGrant.listByPhone(PHONE);
+    expect(history.map(row => row.decision)).toEqual(['grant', 'revoke', 'affirm']);
+    expect(repos.followupConsentGrant.latestDecision(PHONE)?.source).toBe('operator_grant');
+  });
+
+  it('scopes reads by phone and counts a date range', () => {
+    repos.followupConsentGrant.record({ customer_phone: PHONE, decision: 'affirm', decided_at: '2026-09-01T10:00:00.000Z', source: 'customer_reply' });
+    repos.followupConsentGrant.record({ customer_phone: '573009990999', decision: 'decline', decided_at: '2026-09-01T11:00:00.000Z', source: 'customer_reply' });
+
+    expect(repos.followupConsentGrant.listByPhone(PHONE)).toHaveLength(1);
+    expect(repos.followupConsentGrant.countBetween('2026-09-01T00:00:00.000Z', '2026-09-02T00:00:00.000Z')).toBe(2);
+    expect(repos.followupConsentGrant.countBetween('2026-09-02T00:00:00.000Z', '2026-09-03T00:00:00.000Z')).toBe(0);
+  });
+
+  it('has no history for a lead who decided before the ledger existed', () => {
+    expect(repos.followupConsentGrant.listByPhone(PHONE)).toEqual([]);
+    expect(repos.followupConsentGrant.latestDecision(PHONE)).toBeNull();
   });
 });
 

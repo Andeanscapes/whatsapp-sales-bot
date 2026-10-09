@@ -47,21 +47,125 @@ function normalize(text: string): string {
     .trim();
 }
 
+/**
+ * Normalize affirmative variants. Catches:
+ *   sii, siii, siiii → si
+ *   yea, yeaa, yeah → yes
+ */
+function normalizeAffirmatives(norm: string): string {
+  return norm
+    .replace(/\bs(i+)\b/g, 'si')        // sii, siii, etc. → si
+    .replace(/\by(e+)(a+|h)\b/g, 'yes'); // yea, yeaa, yeah → yes
+}
+
+/** Single-token trailing courtesy. `por favor` is handled as a pair below. */
+const TRAILING_COURTESY = new Set(['gracias', 'thanks', 'please', 'porfa', 'porfavor']);
+
+/**
+ * Strips a leading greeting and any trailing courtesy so the ≤6-word test measures
+ * the ANSWER, not the politeness around it. Recovers the real production reply
+ * "Buenos días, si señor por favor y gracias" → "si senor".
+ *
+ * Iterative because a real reply stacks them ("… por favor y gracias"), and a single
+ * pass leaves a dangling conjunction that then fails exact matching. Leading greetings
+ * are also applied iteratively ("Hola buenos días si..." → "si...").
+ *
+ * A trailing courtesy is NEVER stripped when it follows a bare negation: "no gracias"
+ * and "no thanks" ARE the refusal, and splitting them turned a decline into a bare
+ * "no", which this module deliberately reads as a sales answer rather than a refusal.
+ */
+function stripCourtesyFrame(norm: string): string {
+  // Strip leading greetings iteratively because a single pass leaves dangling tokens.
+  let text = norm;
+  const GREETING_PATTERN = /^(buenos dias|buen dia|buenas tardes|buenas noches|buenos|buenas|hola|hi|hello|hey)(?:\s+|$)/;
+  for (;;) {
+    const newText = text.replace(GREETING_PATTERN, '');
+    if (newText === text) break;
+    text = newText;
+  }
+
+  let words = text
+    .split(' ')
+    .filter(word => word.length > 0);
+
+  for (;;) {
+    const count = words.length;
+    if (count < 2) break;
+    const last = words[count - 1];
+    const previous = words[count - 2];
+
+    // "no gracias" / "no thanks" — the courtesy carries the refusal.
+    if (BARE_NEGATIONS.has(previous)) break;
+
+    if ((last === 'favor' || last === 'fa') && previous === 'por') {
+      // "no por favor" is equally a refusal; keep it intact.
+      if (count >= 3 && BARE_NEGATIONS.has(words[count - 3])) break;
+      words = words.slice(0, count - 2);
+      continue;
+    }
+    if (TRAILING_COURTESY.has(last)) {
+      words = words.slice(0, count - 1);
+      continue;
+    }
+    // Conjunction left dangling by a strip above ("… por favor y gracias").
+    if (last === 'y') {
+      words = words.slice(0, count - 1);
+      continue;
+    }
+    break;
+  }
+
+  return words.join(' ');
+}
+
+/**
+ * Emoji that stand alone as a permission answer.
+ *
+ * Deliberately NOT a character class: a class of astral-plane codepoints without the
+ * `u` flag is a class of surrogate HALVES, so `^[👍]$` never matches the two-code-unit
+ * emoji it appears to describe — it silently classified every 👍 as ambiguous, and
+ * `no-misleading-character-class` fails lint on it.
+ *
+ * Kept to unambiguous assent. A generic reaction (💪, 👏, ❤️) is not permission to
+ * send marketing, and treating it as one records a grant the customer never gave.
+ * 🙏 is excluded for the same reason: in WhatsApp it reads as thanks or a plea far
+ * more often than as "yes, write to me".
+ */
+const AFFIRM_EMOJI = new Set(['👍', '👌', '✅']);
+
+/**
+ * Variation selectors and skin-tone modifiers, so "👍🏽" is the same answer as "👍".
+ *
+ * Written as an alternation rather than a character class: a class mixing a variation
+ * selector with emoji fails `no-misleading-character-class`, because a class element
+ * can silently combine with its neighbour.
+ */
+const EMOJI_MODIFIERS =
+  /\u{FE0E}|\u{FE0F}|\u{1F3FB}|\u{1F3FC}|\u{1F3FD}|\u{1F3FE}|\u{1F3FF}/gu;
+
+function isBareEmojiAffirmation(text: string): boolean {
+  const bare = text.trim().replace(EMOJI_MODIFIERS, '');
+  return AFFIRM_EMOJI.has(bare);
+}
+
 // Affirmatives are matched only while a consent ask is pending, so short tokens are
 // safe here. They would be far too greedy in the general sales path.
 const AFFIRM = [
   'si', 'si claro', 'claro', 'claro que si', 'dale', 'listo', 'bueno', 'dale pues',
-  'si porfa', 'si por favor', 'dale gracias', 'dale listo', 'dale si', 'dale ok',
+  'si porfa', 'si por favor', 'si por fa', 'dale gracias', 'dale listo', 'dale si', 'dale ok',
   'dale va', 'dale de una', 'de una', 'dale hazlo', 'esta bien', 'dale tranquilo',
   'ok', 'okey', 'oki', 'vale', 'va', 'perfecto', 'de acuerdo', 'me parece',
   'si me interesa', 'si quiero', 'acepto', 'autorizo', 'permiso concedido',
+  // Explicit grant phrases
+  'si senor', 'si sr', 'escribeme', 'escribame', 'puedes escribirme',
+  'me avisas', 'si mas adelante', 'mas adelante si',
   'yes', 'yes please', 'yeah', 'yep', 'yup', 'sure', 'sure thing', 'of course',
   'okay', 'alright', 'fine', 'go ahead', 'sounds good', 'please do', 'i accept',
   'that works', 'no problem',
 ];
 
 const DECLINE = [
-  'no', 'no gracias', 'nope', 'negativo', 'mejor no', 'no por ahora',
+  'no', 'no gracias', 'no por favor', 'nope', 'negativo', 'mejor no', 'no por ahora',
   'no me interesa', 'no quiero', 'preferiria no', 'prefiero no', 'no hace falta',
   'no necesito', 'ahora no', 'por ahora no', 'no thanks', 'no thank you',
   'nah', 'not now', 'not interested', 'rather not', 'no need', 'dont',
@@ -106,6 +210,44 @@ function containsPhrase(normalized: string, phrase: string): boolean {
   return new RegExp(`(?:^|\\s)${escaped}(?:\\s|$)`).test(normalized);
 }
 
+/**
+ * What keeps a LEADING affirmative token a real yes rather than the first word of a
+ * sales answer.
+ *
+ * Two shapes only:
+ * - an interrogative asking what is coming ("si cuales?", "si que promociones tienen");
+ * - the contact being authorised ("si escribeme cuando quieras", "claro mandame las promos").
+ *
+ * Everything else — "si un ritmo tranquilo", "si 4 personas", "si para diciembre" —
+ * answers the SALES question and must leave consent untouched.
+ */
+// `perm` was unanchored, so it also matched the SALES verb permitir: "si permiten
+// mascotas" (a policy question) recorded durable marketing consent. The permission
+// sense always carries the noun or a first-person object ("me permites"), and the
+// forms that matter most already match on `escrib`, so the narrow shapes are enough.
+const CONSENT_CONTACT_CONTINUATION = /escrib|avis|mensaje|contact|mand|envi|permiso|me permit/;
+const CONSENT_QUESTION_CONTINUATION =
+  /\b(cual|cuales|que|cuando|como|donde|cuanto|cuantos|what|which|when)\b/;
+
+/**
+ * Vetoes the contact continuation when the thing being sent is COMMERCIAL.
+ *
+ * `mand` and `envi` are unanchored, so they match the sales senses of mandar/enviar
+ * just as well as the contact sense. Live-verified before this veto existed:
+ * "si quiero enviar el anticipo", "dale mandame la cuenta para pagar" and
+ * "si me mandas la cotizacion" all classified as `affirm` — recording durable
+ * marketing consent from a payment message, and (because a consent-answer turn
+ * freezes `lead_score` and clears `isHot`) suppressing the owner alert on the
+ * highest-intent turn in the funnel.
+ *
+ * The split is clean: a real permission continuation names the CHANNEL
+ * ("escribeme", "mandame mensajes", "avisame", "mandame las promos"), never money
+ * or a quote. So veto on the commercial object rather than narrowing the verbs,
+ * which would also drop the legitimate "mandame"/"enviame" forms.
+ */
+const COMMERCIAL_OBJECT_VETO =
+  /pago|pagar|pagos|pague|anticip|deposit|transferenc|consign|cotizac|factur|precio|abono|saldo|comprobante|reserv|\bcuenta\b|\bplata\b|dinero/;
+
 export type ConsentDecision = 'affirm' | 'decline' | 'ambiguous';
 
 /**
@@ -119,19 +261,30 @@ export type ConsentDecision = 'affirm' | 'decline' | 'ambiguous';
  * and the safe failure mode is to not collect consent.
  */
 export function classifyConsentReply(text: string): ConsentDecision {
+  // Bare emoji affirmation (thumbs up, check, etc.)
+  if (isBareEmojiAffirmation(text)) return 'affirm';
+
   const norm = normalize(text);
   if (!norm) return 'ambiguous';
 
-  // Long messages are a real conversation turn, not a yes/no answer.
-  const words = norm.split(' ');
-  if (words.length > 6) return 'ambiguous';
+  // "sii"/"siii"/"yeaa" are the same answer as "si"/"yes". Normalised before the
+  // length test so the elongation cannot push a one-word reply out of the window.
+  const normalized = normalizeAffirmatives(norm);
 
-  if (DECLINE.includes(norm)) return 'decline';
-  if (AFFIRM.includes(norm)) return 'affirm';
+  // Politeness is not part of the answer, so it is stripped before the ≤6-word test.
+  const stripped = stripCourtesyFrame(normalized);
+
+  const words = stripped.split(' ').filter(word => word.length > 0);
+  // Long messages are a real conversation turn, not a yes/no answer.
+  if (words.length > 6) return 'ambiguous';
+  if (words.length === 0) return 'ambiguous';
+
+  if (DECLINE.includes(stripped)) return 'decline';
+  if (AFFIRM.includes(stripped)) return 'affirm';
 
   // An unmistakable refusal wins wherever it sits, so "si, pero no quiero
   // mensajes" can never activate marketing consent.
-  if (DECLINE_ANYWHERE.some(phrase => containsPhrase(norm, phrase))) return 'decline';
+  if (DECLINE_ANYWHERE.some(phrase => containsPhrase(stripped, phrase))) return 'decline';
 
   // Narrow leading-token fallback for "si, escribeme" / "no gracias igual".
   //
@@ -143,8 +296,53 @@ export function classifyConsentReply(text: string): ConsentDecision {
   // still match, and anything genuinely refusing contact is caught above.
   const first = words[0];
   const firstTwo = words.slice(0, 2).join(' ');
+
   if (DECLINE.includes(firstTwo)) return 'decline';
-  if (AFFIRM.includes(firstTwo) || AFFIRM.includes(first)) return 'affirm';
+
+  // How many leading words form a known affirmative: "de acuerdo" (2), "si" (1), or
+  // none. The longer prefix wins so the remainder under test is the smallest.
+  //
+  // BOTH lengths must validate the remainder. A two-word prefix used to short-circuit
+  // straight to `affirm`, which routed around the check below entirely: "si claro un
+  // ritmo tranquilo" and "de acuerdo para diciembre" recorded marketing consent from a
+  // plain sales answer — the exact bug the one-word branch was added to stop.
+  const affirmPrefix = words.length >= 2 && AFFIRM.includes(firstTwo)
+    ? 2
+    : AFFIRM.includes(first) ? 1 : 0;
+
+  if (affirmPrefix > 0) {
+    if (words.length === affirmPrefix) return 'affirm';
+
+    // A LEADING affirmative token is not by itself a yes: it is also the first word
+    // of a sales answer. Live 2026-09-02 the reply "Si un ritmo tranquilo" — an
+    // answer about trip pace — was recorded as marketing consent the customer never
+    // gave, because the leading token alone decided it.
+    //
+    // The continuation is what disambiguates: a real yes either asks WHAT is coming
+    // ("si cuales?", "si que promociones tienen") or names the contact being
+    // authorised ("si escribeme cuando quieras"). Anything else answers a sales
+    // question and must stay ambiguous, leaving consent untouched — including
+    // booking intent ("si quiero reservar para el 14"), which is a sales answer and
+    // not permission to market (AGENTS.md: a permission answer is not buying
+    // behaviour).
+    const remainder = words.slice(affirmPrefix).join(' ');
+    if (remainder === 'cuando gustes' || remainder === 'cuando quieras') return 'affirm';
+    if (AFFIRM.includes(remainder)) return 'affirm';
+    if (CONSENT_CONTACT_CONTINUATION.test(remainder) && !COMMERCIAL_OBJECT_VETO.test(remainder)) {
+      return 'affirm';
+    }
+    // The commercial veto applies here too. Without it "si, ¿como pago?" and
+    // "si claro, cuanto es el anticipo?" were affirmations: an interrogative about
+    // MONEY is the highest-intent sales turn in the funnel, and classifying it as a
+    // permission answer both fabricated consent and (because a consent-answer turn
+    // freezes `lead_score` and clears `isHot`) suppressed the owner alert.
+    if (/[?¿]/.test(text)
+      && CONSENT_QUESTION_CONTINUATION.test(remainder)
+      && !COMMERCIAL_OBJECT_VETO.test(remainder)) {
+      return 'affirm';
+    }
+    return 'ambiguous';
+  }
 
   return 'ambiguous';
 }
@@ -152,14 +350,21 @@ export function classifyConsentReply(text: string): ConsentDecision {
 /**
  * Exact-match affirmation only — no leading-token fallback.
  *
- * `classifyConsentReply` deliberately accepts "si quiero reservar para el 14" as an
- * affirmation, which is right when deciding a pending consent ask but wrong for the
- * duplicate-echo window: that message carries booking intent and must be treated as
- * re-engagement.
+ * Narrower than `classifyConsentReply` on purpose. That function accepts a leading
+ * affirmative plus a permission-shaped continuation ("si escribeme"), which is right
+ * when deciding a pending ask but wrong for the duplicate-echo window: the echo
+ * window exists only to absorb a double-tapped bare "sí", so anything carrying extra
+ * content must fall through as an ordinary turn.
+ *
+ * Uses the same affirmative normalization as the classifier so "Sii" and "Si" are
+ * recognized as the same affirmation.
  */
 function isBareAffirmation(text: string): boolean {
+  if (isBareEmojiAffirmation(text)) return true;
   const norm = normalize(text);
-  return norm !== '' && AFFIRM.includes(norm);
+  if (norm === '') return false;
+  const normalized = normalizeAffirmatives(norm);
+  return AFFIRM.includes(normalized);
 }
 
 /**

@@ -13,6 +13,6 @@
     { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 1, "weight": 2, "critical": true }
   ],
   "turns": [
-    { "user": "H02 - Nos interesa hacer la ruta en 4x4", "mockReply": "Excelente. La ruta a Chivor es un reto 4x4: carretera destapada y caminos que preparan bien las suspensiones. ¿Traen su 4x4 para vivir la ruta completa, o llevan un auto normal?", "expect": { "shouldSendReply": true } }
+    { "user": "H02 - Hola, quiero conocer la experiencia en Chivor 💚", "mockReply": "Excelente. La ruta a Chivor es un reto 4x4: carretera destapada y caminos que preparan bien las suspensiones. ¿Traen su 4x4 para vivir la ruta completa, o llevan un auto normal?", "expect": { "shouldSendReply": true } }
   ]
 }

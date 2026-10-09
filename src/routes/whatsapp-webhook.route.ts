@@ -6,7 +6,7 @@ import type { ProcessMessageOutput } from '../services/types.js';
 import { env } from '../config/env.js';
 import { getSkills } from '../services/skill-loader.js';
 import { buildHandedOffReply, isOptOutMessage, processMessage } from '../services/response-engine.js';
-import { classifyConsentReply } from '../services/followup-consent.js';
+import { classifyConsentReply, consentCycleKey } from '../services/followup-consent.js';
 import { sendText, sendImageUrl, downloadMedia, WhatsAppSendError, MAX_IMAGE_CAPTION_CHARS } from '../services/whatsapp-client.js';
 import { canSendImage, galleryMediaId, galleryMediaIdFromUrl, markLlmGalleryShown, releaseImageReservation, remainingGalleryImageBudget, reserveImageSend, reserveRequestedGalleryImageSend, selectPlanImage } from '../services/media-service.js';
 import { sendAlert } from '../services/alert-service.js';
@@ -601,7 +601,7 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
             const decision = subscription?.status === 'pending'
               ? classifyConsentReply(msg.text)
               : 'ambiguous';
-            if (decision !== 'ambiguous') {
+            if (subscription?.status === 'pending' && decision !== 'ambiguous') {
               // The inbound is stored inside the same transaction as the decision so
               // the audit trail can never show a consent change without its message.
               repos.runInTransaction(() => {
@@ -619,6 +619,17 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
                 } else {
                   repos.followupSubscription.decline(msg.from, msg.id);
                 }
+                // Every permission change appends one row: the live subscription is
+                // mutable, so only this ledger can answer "when, and from which ask?".
+                repos.followupConsentGrant.record({
+                  customer_phone: msg.from,
+                  decision,
+                  decided_at: new Date().toISOString(),
+                  inbound_message_id: msg.id,
+                  source: 'customer_reply',
+                  ask_cycle_key: consentCycleKey(subscription.consent_session),
+                  app_version: env.APP_VERSION,
+                });
               });
               consentAcceptedThisTurn = decision === 'affirm';
               consentDeclinedThisTurn = decision === 'decline';

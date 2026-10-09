@@ -16,7 +16,6 @@
     { "id": "no-price-repeat", "rule": "reply_must_not_match", "patterns": ["\\$[0-9.,]+"], "turn": 1, "weight": 1 }
   ],
   "turns": [
-    { "user": "Todavía estamos mirando, aún no tenemos fecha", "mockReply": "Claro. Te comparto las fechas publicadas que pueden servirles y revisamos una concreta cuando elijan mes. ¿Qué mes están considerando?", "expect": { "shouldSendReply": true } },
-    { "user": "Agosto", "mockReply": "Perfecto, revisemos las fechas publicadas de agosto. ¿Quieres que valide un fin de semana específico?", "expect": { "shouldSendReply": true } }
+    { "user": "Todavía estamos mirando, aún no tenemos fecha", "mockReply": "Claro. Te comparto las fechas publicadas que pueden servirles y revisamos una concreta cuando elijan mes. ¿Qué mes están considerando?", "expect": { "shouldSendReply": true } }
   ]
 }

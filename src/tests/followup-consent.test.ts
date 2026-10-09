@@ -121,10 +121,210 @@ describe('classifyConsentReply', () => {
   // §PERMISO-CONCEDIDO is what answers the attached question in the same turn.
   it.each([
     'si cuales?',
-    'si que promociones tienen',
+    'si que promociones tienen?',
     'claro, mandame las promos',
   ])('grants consent for %s even though it carries a question', text => {
     expect(classifyConsentReply(text)).toBe('affirm');
+  });
+
+  // A LEADING affirmative token is also the first word of a sales answer. Live
+  // 2026-09-02 "Si un ritmo tranquilo" (an answer about trip pace) was recorded as
+  // marketing consent the customer never gave. Only a continuation that asks what is
+  // coming, or names the contact being authorised, makes it a real yes.
+  it.each([
+    'Si un ritmo tranquilo',
+    'si 4 personas',
+    'si para diciembre',
+    'si somos dos adultos',
+  ])('never fabricates consent from the sales answer %s', text => {
+    expect(classifyConsentReply(text)).toBe('ambiguous');
+  });
+
+  // Elongated assent. Live 2026-09-01 "Sii más adelante" was read as ambiguous, so the
+  // yes was lost and the lead was asked a second time.
+  it.each(['sii', 'Siii', 'siiii', 'Sii más adelante', 'yeaa', 'yeah'])(
+    'treats the elongated affirmation %s as affirm',
+    text => {
+      expect(classifyConsentReply(text)).toBe('affirm');
+    },
+  );
+
+  // Politeness is not part of the answer. Live 2026-08-31: "Buenos días, si señor por
+  // favor y gracias" exceeded the six-word window and lost the consent.
+  it.each([
+    'Buenos días, si señor por favor y gracias',
+    'hola si claro',
+    'si gracias',
+    'buenas, dale por favor',
+  ])('strips the courtesy frame around %s before deciding', text => {
+    expect(classifyConsentReply(text)).toBe('affirm');
+  });
+
+  // ...but courtesy that IS the refusal must survive the strip, or a decline decays
+  // into a bare "no", which this module deliberately reads as a sales answer.
+  it.each(['no gracias', 'no por favor', 'no thanks', 'no thank you', 'ok no gracias'])(
+    'keeps %s a decline after courtesy stripping',
+    text => {
+      expect(classifyConsentReply(text)).toBe('decline');
+    },
+  );
+
+  // Unambiguous assent only. A generic reaction is not permission to send marketing,
+  // and the emoji class was previously written without the `u` flag, so EVERY emoji
+  // silently classified as ambiguous.
+  it.each(['👍', '👍🏽', '👌', '✅'])('treats the bare emoji %s as affirm', text => {
+    expect(classifyConsentReply(text)).toBe('affirm');
+  });
+
+  // 🙏 reads as thanks or a plea far more often than as "yes, write to me", so it
+  // sits with the generic reactions rather than with assent.
+  it.each(['💪', '👏', '❤️', '😀', '🙏'])('leaves the generic reaction %s ambiguous', text => {
+    expect(classifyConsentReply(text)).toBe('ambiguous');
+  });
+
+  // A TWO-word affirmative prefix used to short-circuit to `affirm`, routing around
+  // the remainder check that the one-word branch applies. That let a plain sales
+  // answer record marketing consent — the very bug the one-word branch prevents.
+  it.each([
+    'si claro un ritmo tranquilo',
+    'si claro que somos cuatro',
+    'si claro que para diciembre',
+    'si claro informacion de precios',
+    'de acuerdo para diciembre',
+    'dale pues somos cuatro',
+    'esta bien dos noches',
+  ])('never fabricates consent from the two-word-prefixed sales answer %s', text => {
+    expect(classifyConsentReply(text)).toBe('ambiguous');
+  });
+
+  // Booking intent is a sales answer, not permission to market (AGENTS.md: "a
+  // permission answer is not buying behaviour"). It must not activate consent.
+  it.each([
+    'si quiero reservar para el 14',
+    'si quiero reservar ya',
+  ])('leaves the booking-intent reply %s ambiguous', text => {
+    expect(classifyConsentReply(text)).toBe('ambiguous');
+  });
+
+  // ...while a two-word prefix followed by a real permission continuation still is a
+  // yes, so the stricter rule does not cost us legitimate consent.
+  it.each([
+    'si claro escribeme',
+    'dale pues mandame las promos',
+    'de acuerdo avisame cuando haya novedades',
+    'si claro que promociones tienen?',
+  ])('still grants consent for %s', text => {
+    expect(classifyConsentReply(text)).toBe('affirm');
+  });
+
+  // `mand` and `envi` in CONSENT_CONTACT_CONTINUATION are unanchored, so they matched
+  // the SALES senses of mandar/enviar. Every string below classified as `affirm`
+  // before the commercial-object veto: durable marketing consent recorded from a
+  // payment message, and — because a consent-answer turn freezes `lead_score` and
+  // clears `isHot` — no owner alert on the highest-intent turn in the funnel.
+  it.each([
+    'si quiero enviar el anticipo',
+    'ok pero envio el pago manana',
+    'dale mandame la cuenta para pagar',
+    'si me mandas el pago',
+    'si me mandas la cotizacion',
+    'si quiero mandar el deposito',
+    'vale envio la transferencia hoy',
+    'si mandame la reserva',
+    'ok envio el abono',
+    'si mandame el comprobante',
+    'dale mandame el precio',
+    // The question branch bypassed the veto entirely: an interrogative about money
+    // is the highest-intent sales turn in the funnel, so reading it as a permission
+    // answer both fabricated consent AND suppressed the owner alert (the turn
+    // freezes `lead_score` and clears `isHot`).
+    'si, como pago?',
+    'si claro, cuanto es el anticipo?',
+    'ok y cuando pago la reserva?',
+    'si, que precio queda?',
+  ])('never reads the payment/quote message %s as marketing consent', text => {
+    expect(classifyConsentReply(text)).toBe('ambiguous');
+  });
+
+  // `perm` was unanchored in CONSENT_CONTACT_CONTINUATION, so the SALES verb
+  // permitir matched it: a policy question recorded durable marketing consent.
+  it.each([
+    'si permiten mascotas',
+    'si claro permiten ninos?',
+  ])('never reads the policy question %s as marketing consent', text => {
+    expect(classifyConsentReply(text)).toBe('ambiguous');
+  });
+
+  // The permission sense of permitir must survive that narrowing.
+  it.each([
+    'si me permites escribeme',
+    'si claro tienes mi permiso',
+  ])('keeps the permission-granting reply %s an affirm', text => {
+    expect(classifyConsentReply(text)).toBe('affirm');
+  });
+
+  // The veto keys on the commercial OBJECT, not the verb, so the legitimate
+  // channel-naming forms of mandar/enviar must survive it.
+  it.each([
+    'claro mandame las promos',
+    'si mandame mensajes',
+    'si mandame info',
+    'si avisame',
+    'dale avisame',
+    'si escribeme cuando quieras',
+    'si contactame',
+    'vale escribeme',
+  ])('keeps the channel-naming consent reply %s an affirm', text => {
+    expect(classifyConsentReply(text)).toBe('affirm');
+  });
+
+  // Real production replies from 2026-10-09 report: consent asks that succeeded,
+  // with customers who said yes and got the acknowledgment (PII-free).
+  describe('production consent affirmations (2026-10-09)', () => {
+    it.each([
+      'Ok',
+      'Si',
+      'Si claro',
+      'Si claro!',
+      'Si gracias',
+      'Si gracias por favor',
+      'Si perfecto',
+      'Si por favor',
+      'Sii más adelante',
+      '👍',
+    ])('recognises the affirmation %s', text => {
+      expect(classifyConsentReply(text)).toBe('affirm');
+    });
+
+    // These were real replies that the model acknowledged, but before this branch's
+    // classifier fix they would have been ambiguous (stranding consent).
+    it.each([
+      'Claro, cuando gustes',
+      'Si por fa',
+      'Hola buenos días si claro escribe',
+      'Buen día si por fa',
+      'Si cuando quieras',
+    ])('now recognises the fixed production reply %s', text => {
+      expect(classifyConsentReply(text)).toBe('affirm');
+    });
+
+    // Real production replies that are correctly ambiguous (carry intent or have no clear consent).
+    it.each([
+      'Buenos días',
+      'Gracias',
+      'Muchas gracias',
+      'Cuando gustes',
+      'Cuando quieras',
+      'highway si',
+      'hellohello si',
+      'Si cuando quieras reservar',
+      'Hola buen día que precio tiene para dos personas?',
+      'Claro que si, será un gusto recibir información de sus planes. Estoy organizando fechas y...',
+      'Buen día si me parece una experiencia bonita para llevar a la familia ya que lo viví hace...',
+      'Si por fa. Igual déjame miro si podemos cuadrar para ir en grupo y que nos salga más barato',
+    ])('keeps the production reply %s as ambiguous (not a bare yes/no)', text => {
+      expect(classifyConsentReply(text)).toBe('ambiguous');
+    });
   });
 });
 
@@ -477,8 +677,8 @@ describe('isDuplicateConsentEcho', () => {
     expect(isDuplicateConsentEcho(active, 'Si', 120, activatedMs + 121_000)).toBe(false);
   });
 
-  // The whole point of the session-scoped rule: real re-engagement must still close
-  // the cycle even seconds after consent.
+  // The echo window exists only to absorb a double-tapped "sí". It must never claim a
+  // message carrying real content, or a genuine turn would be misreported as an echo.
   it('does not shield a message carrying real content', () => {
     expect(isDuplicateConsentEcho(active, 'si quiero reservar para el 14', 120, activatedMs + 5_000)).toBe(false);
     expect(isDuplicateConsentEcho(active, 'cuanto vale?', 120, activatedMs + 5_000)).toBe(false);

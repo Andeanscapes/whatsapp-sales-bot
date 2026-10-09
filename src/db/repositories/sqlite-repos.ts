@@ -40,6 +40,8 @@ import type {
   PaymentReservationCreate,
   DateStatus,
   FollowupConsentRepository,
+  FollowupConsentGrantRepository,
+  FollowupConsentGrantRow,
   FollowupSubscriptionEventRepository,
   FollowupSubscriptionEventRow,
   FollowupSubscriptionEventKind,
@@ -122,14 +124,35 @@ export class SqliteConversationRepo implements ConversationRepository {
         SELECT customer_phone, MAX(created_at) AS created_at
         FROM messages WHERE direction = 'inbound' GROUP BY customer_phone
       ) last_in ON last_in.customer_phone = c.customer_phone
-      JOIN followup_consent fc ON fc.customer_phone = c.customer_phone
+      LEFT JOIN followup_consent fc ON fc.customer_phone = c.customer_phone
+      LEFT JOIN followup_subscriptions fs ON fs.customer_phone = c.customer_phone
       WHERE c.opt_out_at IS NULL
         AND c.converted_at IS NULL
         AND c.handed_off_at IS NULL
         AND c.soft_closed_at IS NULL
         AND COALESCE(c.conversation_mode, 'bot') IN ('bot', 'human_pending')
         AND ${QUALIFIED_FOR_FOLLOWUP_SQL}
-        AND fc.revoked_at IS NULL
+        -- A recorded customer refusal outranks BOTH provenances. An operator grant
+        -- is a presumption of consent; "no" is the customer answering the question.
+        -- Without this the OR below re-enabled every declined lead that happened to
+        -- carry an older /followupgrant, because decline() writes only the
+        -- subscription and never revokes the operator row.
+        AND COALESCE(fs.status, '') <> 'declined'
+        -- ...and the refusal must survive an operator revocation. revoke() rewrites
+        -- declined to revoked, so /followuprevoke + /followupgrant used to erase the
+        -- "no" from the clause above. The append-only ledger keeps it. Absence of
+        -- rows (pre-ledger leads) is deliberately not a refusal.
+        AND COALESCE((
+          SELECT g.decision FROM followup_consent_grants g
+          WHERE g.customer_phone = c.customer_phone AND g.source = 'customer_reply'
+          ORDER BY datetime(g.decided_at) DESC, g.id DESC
+          LIMIT 1
+        ), '') <> 'decline'
+        -- Permission check: operator grant (not revoked) OR customer active consent
+        AND (
+          (fc.customer_phone IS NOT NULL AND fc.revoked_at IS NULL)
+          OR (fs.customer_phone IS NOT NULL AND fs.status = 'active')
+        )
         AND datetime(last_in.created_at) <= datetime(@silentSinceIso)
         -- Never template over an inbound we never answered.
         AND EXISTS (
@@ -1478,6 +1501,7 @@ export class SqliteCustomerDataRepo implements CustomerDataRepository {
       const followupEvents = this.db.prepare('DELETE FROM followup_events WHERE customer_phone = ?').run(customerPhone).changes;
       const followupSubscriptions = this.db.prepare('DELETE FROM followup_subscriptions WHERE customer_phone = ?').run(customerPhone).changes;
       const followupConsent = this.db.prepare('DELETE FROM followup_consent WHERE customer_phone = ?').run(customerPhone).changes;
+      const followupConsentGrants = this.db.prepare('DELETE FROM followup_consent_grants WHERE customer_phone = ?').run(customerPhone).changes;
       const mediaSends = this.db.prepare('DELETE FROM media_sends WHERE customer_phone = ?').run(customerPhone).changes;
       const ownerAlerts = this.db.prepare('DELETE FROM owner_alerts WHERE customer_phone = ?').run(customerPhone).changes;
       const aiUsage = this.db.prepare('DELETE FROM ai_usage WHERE customer_phone = ?').run(customerPhone).changes;
@@ -1493,6 +1517,7 @@ export class SqliteCustomerDataRepo implements CustomerDataRepository {
         mediaSends,
         bridgeSessions,
         followupConsent,
+        followupConsentGrants,
         followupEvents,
         followupSubscriptions,
         followupSubscriptionEvents,
@@ -1853,6 +1878,71 @@ export class SqliteFollowupConsentRepo implements FollowupConsentRepository {
   }
 }
 
+export class SqliteFollowupConsentGrantRepo implements FollowupConsentGrantRepository {
+  constructor(private db: Database.Database) {}
+
+  record(grant: FollowupConsentGrantRow): void {
+    this.db.prepare(`
+      INSERT INTO followup_consent_grants (customer_phone, decision, decided_at, inbound_message_id, source, actor_id, ask_cycle_key, app_version)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      grant.customer_phone,
+      grant.decision,
+      grant.decided_at,
+      grant.inbound_message_id ?? null,
+      grant.source,
+      grant.actor_id ?? null,
+      grant.ask_cycle_key ?? null,
+      grant.app_version ?? null
+    );
+  }
+
+  listByPhone(phone: string, limit = 100): FollowupConsentGrantRow[] {
+    return this.db.prepare(`
+      SELECT id, customer_phone, decision, decided_at, inbound_message_id, source, actor_id, ask_cycle_key, app_version, created_at
+      FROM followup_consent_grants
+      WHERE customer_phone = ?
+      ORDER BY datetime(decided_at) DESC, id DESC
+      LIMIT ?
+    `).all(phone, limit) as FollowupConsentGrantRow[];
+  }
+
+  /** Newest decision of any kind — may be a decline or a revocation, not only a grant. */
+  latestDecision(phone: string): FollowupConsentGrantRow | null {
+    // `.get()` yields undefined for no row; the contract is `null`, and an undefined
+    // leaking out makes `=== null` checks silently false.
+    const row = this.db.prepare(`
+      SELECT id, customer_phone, decision, decided_at, inbound_message_id, source, actor_id, ask_cycle_key, app_version, created_at
+      FROM followup_consent_grants
+      WHERE customer_phone = ?
+      ORDER BY datetime(decided_at) DESC, id DESC
+      LIMIT 1
+    `).get(phone) as FollowupConsentGrantRow | undefined;
+    return row ?? null;
+  }
+
+  latestCustomerDecision(phone: string): FollowupConsentGrantRow | null {
+    const row = this.db.prepare(`
+      SELECT id, customer_phone, decision, decided_at, inbound_message_id, source, actor_id, ask_cycle_key, app_version, created_at
+      FROM followup_consent_grants
+      WHERE customer_phone = ? AND source = 'customer_reply'
+      ORDER BY datetime(decided_at) DESC, id DESC
+      LIMIT 1
+    `).get(phone) as FollowupConsentGrantRow | undefined;
+    return row ?? null;
+  }
+
+  countBetween(startIso: string, endIso: string): number {
+    // datetime() on both sides: writers mix JS ISO strings with SQLite's
+    // 'YYYY-MM-DD HH:MM:SS', which compare wrong as plain text.
+    const row = this.db.prepare(`
+      SELECT COUNT(*) as cnt FROM followup_consent_grants
+      WHERE datetime(decided_at) >= datetime(?) AND datetime(decided_at) < datetime(?)
+    `).get(startIso, endIso) as { cnt: number };
+    return row.cnt;
+  }
+}
+
 export class SqliteFollowupEventRepo implements FollowupEventRepository {
   constructor(private db: Database.Database) {}
 
@@ -2015,11 +2105,19 @@ export class SqliteFollowupSubscriptionRepo implements FollowupSubscriptionRepos
     `).run(phone);
   }
 
+  /**
+   * Only an `unasked` or already-`pending` cycle may be marked as asked.
+   *
+   * The sender calls this AFTER awaiting Meta, and the customer's reply can land
+   * during that await: an unconditional write reset a freshly recorded `active` or
+   * `declined` back to `pending`, erasing durable consent — or, with a standing
+   * operator grant, erasing the refusal that blocks the one-shot template.
+   */
   markAsked(phone: string, outboundMessageId: string | null): void {
     this.db.prepare(`
       UPDATE followup_subscriptions
       SET status = 'pending', asked_at = datetime('now'), ask_outbound_message_id = ?, updated_at = datetime('now')
-      WHERE customer_phone = ?
+      WHERE customer_phone = ? AND status IN ('unasked', 'pending')
     `).run(outboundMessageId, phone);
   }
 
@@ -2085,26 +2183,6 @@ export class SqliteFollowupSubscriptionRepo implements FollowupSubscriptionRepos
       WHERE customer_phone = @phone
     `).run({ source: revokeSource, phone });
   }
-
-  /**
-   * Consent is SESSION-scoped: a customer-initiated inbound closes the authorised
-   * cycle. Recurring templates stop until they say yes again, and a fresh ask
-   * becomes eligible once this new session goes silent.
-   *
-   * Only `active` is closed. `pending` is managed separately by the bounded
-   * continuation deferral; `declined` / `revoked` are never reopened by this path.
-   */
-   closeCycleOnCustomerInbound(phone: string): boolean {
-     const result = this.db.prepare(`
-       UPDATE followup_subscriptions
-       SET status = 'unasked', asked_at = NULL, ask_outbound_message_id = NULL,
-           decided_at = NULL, decision_inbound_message_id = NULL, consent_source = NULL,
-           activated_at = NULL, deferred_reask_used = 0, consent_session = consent_session + 1,
-           updated_at = datetime('now')
-       WHERE customer_phone = ? AND status = 'active'
-     `).run(phone);
-     return result.changes > 0;
-   }
 
    reopenAfterCustomerInbound(phone: string): boolean {
      const result = this.db.prepare(`

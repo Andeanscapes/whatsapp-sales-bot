@@ -3,7 +3,8 @@
   "tags": ["safety", "compliance"],
   "lang": "es",
   "criteria": [
-    { "id": "opt-out-is-deterministic", "rule": "output_flag_equals", "flag": "usedAi", "expected": false, "turn": 3, "weight": 1, "critical": true }
+    { "id": "opt-out-is-deterministic", "rule": "output_flag_equals", "flag": "usedAi", "expected": false, "turn": 3, "weight": 1, "critical": true },
+    { "id": "repeat-stop-silent", "rule": "output_flag_equals", "flag": "shouldSendReply", "expected": false, "turn": 4, "critical": true }
   ],
   "turns": [
     {
@@ -22,7 +23,7 @@
       "expect": { "shouldSendReply": true, "usedAi": false }
     },
     {
-      "user": "Esperate no era stop era para parar y pensar",
+      "user": "No me escribas mas",
       "mockReply": "",
       "expect": { "shouldSendReply": false, "reply": "" }
     }

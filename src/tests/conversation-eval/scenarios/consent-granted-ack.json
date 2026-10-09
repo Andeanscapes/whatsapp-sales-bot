@@ -1,0 +1,17 @@
+{
+  "id": "consent-granted-ack",
+  "source": "2026-10-09 production audit",
+  "tags": ["consent", "compliance", "live"],
+  "seedConversation": { "followupStatus": "pending" },
+  "liveRuns": 1,
+  "minLiveScore": 100,
+  "turns": [
+    { "user": "Gracias por la información", "mockReply": "¿Puedo escribirte cuando haya novedades?", "replay": true },
+    { "user": "Si por favor", "mockReply": "Listo, te aviso cuando haya novedades.", "consentAnswer": "affirm", "expect": { "shouldSendReply": true, "usedAi": true, "shouldAlertOwner": false } }
+  ],
+  "criteria": [
+    { "id": "permission-acknowledged", "rule": "reply_must_match", "patterns": ["avis|escrib|contact|pendiente"], "turn": 2, "critical": true },
+    { "id": "ack-not-booking", "rule": "reply_must_not_match", "patterns": ["anticipo|dep[oó]sito|precio|pago|reserv|\\$"], "turn": 2, "critical": true },
+    { "id": "ack-no-owner-alert", "rule": "output_flag_equals", "flag": "shouldAlertOwner", "expected": false, "turn": 2, "critical": true }
+  ]
+}
