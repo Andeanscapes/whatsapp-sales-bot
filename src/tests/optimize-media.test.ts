@@ -61,7 +61,9 @@ describe('source and delivery keys', () => {
   });
 });
 
-describe('optimizeMediaCache', () => {
+// Real sharp encodes of multi-megapixel photos: ~3s alone, past the 5s default
+// under full-suite load on CI runners.
+describe('optimizeMediaCache', { timeout: 15_000 }, () => {
   it('re-encodes an oversized .jpg in place: mobile size, no metadata', async () => {
     const file = path.join(cache, DIR, '01.jpg');
     writeFileSync(file, await photo(3000, 4000));

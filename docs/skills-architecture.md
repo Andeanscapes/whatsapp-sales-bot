@@ -301,7 +301,7 @@ keeps the worst run, so `0/2 passed` means both runs failed while the report sho
 only one representative transcript.
 
 Only `live`-tagged scenarios are sent by default (`partitionLiveScenarios`); `--all`
-or an explicit `--scenario` overrides that. `EVAL_MAX_COST_USD` (default `0.50`)
+or an explicit `--scenario` overrides that. `EVAL_MAX_COST_USD` (default `1.00`)
 aborts a runaway pass — raise it before running `--all`. Do not treat deterministic
 mock replies as proof of LLM copy quality: mock replies are authored to satisfy the
 criteria, so copy criteria only bite in live mode. Conversely, a `live`-only failure

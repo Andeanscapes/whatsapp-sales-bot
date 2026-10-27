@@ -673,7 +673,7 @@ columns from the old feature remain in place and are ignored.
   pushing.
 - `npm run eval:conversations` — deterministic conversation-eval pack (49 scenarios).
 - `npm run eval:conversations:llm-bot` — live LLM quality suite (32 `live`-tagged
-  scenarios, ~$0.50 per pass; costs tokens).
+  scenarios, ~$0.60 per pass, estimated; costs tokens).
 - `npm run simulate -- "text"` — offline bot test.
 - `npm run typecheck` — must pass clean.
 - `npm run lint` — must pass.
