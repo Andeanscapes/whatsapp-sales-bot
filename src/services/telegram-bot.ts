@@ -20,6 +20,10 @@ import { resumeHandler } from '../commands/resume.command.js';
 import { statusHandler } from '../commands/status.command.js';
 import { statsHandler } from '../commands/stats.command.js';
 import { deleteHandler } from '../commands/delete.command.js';
+import { resetmeHandler } from '../commands/resetme.command.js';
+import { plansHandler } from '../commands/plans.command.js';
+import { datesHandler } from '../commands/dates.command.js';
+import { imagesHandler } from '../commands/images.command.js';
 import { daysummaryHandler } from '../commands/daysummary.command.js';
 import { metaLeadsHandler } from '../commands/meta-leads.command.js';
 import { versionHandler } from '../commands/version.command.js';
@@ -803,6 +807,34 @@ export function registerCommands(): void {
     usage: '<telefono>',
     ownerOnly: true,
     handler: deleteHandler,
+  });
+
+  registerCommand({
+    name: 'resetme',
+    description: 'Borrar tus propios datos de prueba (número owner)',
+    ownerOnly: true,
+    handler: resetmeHandler,
+  });
+
+  registerCommand({
+    name: 'plans',
+    description: 'Tarjetas de planes por sitio (chivor, coscuez)',
+    usage: '<sitio>',
+    handler: plansHandler,
+  });
+
+  registerCommand({
+    name: 'dates',
+    description: 'Fechas disponibles por sitio',
+    usage: '[sitio]',
+    handler: datesHandler,
+  });
+
+  registerCommand({
+    name: 'images',
+    description: 'Fotos por tema (hotel, car, mine...) y sitio opcional',
+    usage: '<tema> [sitio]',
+    handler: imagesHandler,
   });
 
   registerCommand({
