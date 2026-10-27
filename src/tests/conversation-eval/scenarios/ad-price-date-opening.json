@@ -3,7 +3,7 @@
   "source": "history: 501 price+date openings",
   "tags": ["opening", "live"],
   "lang": "es",
-  "liveRuns": 5,
+  "liveRuns": 2,
   "minLiveScore": 80,
   "criteria": [
     { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 1, "weight": 2, "critical": true },

@@ -3,8 +3,9 @@ import { env } from '../config/env.js';
 import { MS_72H, MS_MINUTE } from './constants.js';
 import type { InternalGalleryImage } from './dynamic-data-service.js';
 import { normalizeText } from './language-service.js';
-import { getEntrySegment, getGalleryImages, getTypeKeywords } from './product-registry.js';
-import { canSendImage, followupGalleryMediaId, galleryImageLastSentAt, GALLERY_MEDIA_ID_PREFIX, selectEligibleGalleryImages, selectGalleryImages, selectUnseenConversationGalleryImages } from './media-service.js';
+import { findActiveExperience, getDynamicPlanImages, getEntrySegment, getGalleryImages, getMediaTypes, getPlans, getSiteFallbackGalleryTheme, getSites, getTypeKeywords, scopeGalleryToPlan } from './product-registry.js';
+import { canSendImage, findPlanBrochureImage, followupGalleryMediaId, galleryImageLastSentAt, GALLERY_MEDIA_ID_PREFIX, PLAN_BROCHURE_THEME, selectEligibleGalleryImages, selectGalleryImages, selectUnseenConversationGalleryImages } from './media-service.js';
+import { isGenericGalleryRequest, isPlanBrochureRequest } from './reply-guard.js';
 import type { Skills } from './skill-loader.js';
 import type { EntryMarker } from './entry-marker.js';
 
@@ -65,8 +66,19 @@ export function detectRequestedGalleryThemes(
   message: string,
   experienceId: string | null | undefined,
   preferredSiteId?: string | null,
+  activePlanId?: string | null,
+  photoSiteCorrection = false,
 ): string[] {
-  const images = getGalleryImages(skills, experienceId);
+  const brochureThemes = isPlanBrochureRequest(message)
+    && findPlanBrochureImage(getDynamicPlanImages(skills), experienceId, activePlanId)
+    ? [PLAN_BROCHURE_THEME]
+    : [];
+  // No destination chosen on a multi-site experience: cueing a theme would have
+  // the model emit a marker that resolveMediaThemes refuses (or another site's photos).
+  const experience = experienceId ? findActiveExperience(skills, experienceId) : null;
+  if (!preferredSiteId && experience && getSites(experience).length > 1) return brochureThemes;
+  const planSkills = scopeGalleryToPlan(skills, activePlanId);
+  const images = getGalleryImages(planSkills, experienceId);
   const siteIds = [...new Set(images.map(image => image.siteId ?? ''))]
     .filter(siteId => !preferredSiteId || siteId === preferredSiteId);
   const sitesByType = new Map<string, Set<string>>();
@@ -84,9 +96,19 @@ export function detectRequestedGalleryThemes(
   // `siteIds` is already narrowed to the preferred site when there is one, so a
   // type surviving here with more than one site is genuinely ambiguous: drop it
   // rather than cue a theme that resolveMediaThemes will refuse.
-  return [...sitesByType.entries()]
+  const themes = [...brochureThemes, ...[...sitesByType.entries()]
     .filter(([, sites]) => sites.size === 1)
-    .map(([type]) => type);
+    .map(([type]) => type)];
+  if (themes.length > 0 || isPlanBrochureRequest(message)
+    || (!photoSiteCorrection && !isGenericGalleryRequest(message))) return themes;
+
+  const plan = experience ? getPlans(experience).find(candidate => candidate.id === activePlanId) : undefined;
+  const siteId = preferredSiteId ?? plan?.siteId ?? (experience ? getSites(experience).at(0)?.id : undefined);
+  if (!siteId) return [];
+  const planTheme = plan?.siteId === siteId ? plan.galleryTheme : undefined;
+  if (planTheme && images.some(image => image.siteId === siteId && image.type === planTheme)) return [planTheme];
+  const fallback = getSiteFallbackGalleryTheme(planSkills, experienceId, siteId, activePlanId);
+  return fallback ? [fallback] : [];
 }
 
 export interface ContextualImageSelection {
@@ -205,9 +227,18 @@ export function selectContextualImage(
  * probability roll and no cadence gate, because the caller sends at most one of
  * these per conversation cycle. The 72h dedup is a *preference*, not a veto — if
  * every photo of the theme was already seen, one is reused rather than degrading
- * the ask to plain text. Returns `null` when images are disabled, the theme is
- * empty/unknown, or the feed has no photo of that theme — never a wrong-theme
- * image.
+ * the ask to plain text.
+ *
+ * `siteFallback` (opt-in): when the preferred site has no photo of `type` (a site
+ * still waiting for that category), the site's plan gallery theme stands in
+ * (`getSiteFallbackGalleryTheme`, stored plan first), always from the same site.
+ * Only for a real category: `type` must be declared by some site's `media.types`,
+ * so a misconfigured env value still returns null instead of hiding the typo.
+ * The template header does not opt in: its next candidate is the plan card, which
+ * fits a header better than a substitute theme.
+ *
+ * Returns `null` when images are disabled, the theme is empty, or no photo
+ * qualifies — never another site's image.
  */
 export function selectThemedImage(
   skills: Skills,
@@ -216,16 +247,29 @@ export function selectThemedImage(
   type: string,
   experienceId?: string | null,
   preferredSiteId?: string | null,
+  siteFallback?: { planId?: string | null },
 ): InternalGalleryImage | null {
   if (!type) return null;
   if (!canSendImage(repos, phone)) return null;
+  // With several destinations and none known, any photo could be the wrong site:
+  // a Coscuez lead got a Chivor photo because Coscuez had no gallery yet.
+  const experience = findActiveExperience(skills, experienceId);
+  if (!preferredSiteId && experience && getSites(experience).length > 1) return null;
 
-  const typedCandidates = getGalleryImages(skills, experienceId).filter(image => image.type === type);
+  const gallery = getGalleryImages(skills, experienceId);
+  const typedCandidates = gallery.filter(image => image.type === type);
   const candidateSites = new Set(typedCandidates.map(image => image.siteId ?? ''));
   if (!preferredSiteId && candidateSites.size > 1) return null;
-  const candidates = preferredSiteId
+  const siteCandidates = preferredSiteId
     ? typedCandidates.filter(image => (image.siteId ?? '') === preferredSiteId)
     : typedCandidates;
+  const fallbackTheme = siteFallback && siteCandidates.length === 0 && preferredSiteId
+    && getMediaTypes(skills, experienceId).includes(type)
+    ? getSiteFallbackGalleryTheme(skills, experienceId, preferredSiteId, siteFallback.planId)
+    : null;
+  const candidates = fallbackTheme
+    ? gallery.filter(image => image.type === fallbackTheme && image.siteId === preferredSiteId)
+    : siteCandidates;
   if (candidates.length === 0) return null;
 
   const cutoff = new Date(Date.now() - MS_72H).toISOString();

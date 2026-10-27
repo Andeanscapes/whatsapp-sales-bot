@@ -5,10 +5,10 @@ import type { Repositories } from '../db/repositories/index.js';
 import type { ProcessMessageOutput } from '../services/types.js';
 import { env } from '../config/env.js';
 import { getSkills } from '../services/skill-loader.js';
-import { buildHandedOffReply, isOptOutMessage, processMessage } from '../services/response-engine.js';
-import { classifyConsentReply } from '../services/followup-consent.js';
+import { buildHandedOffReply, isConsentAskSuperseded, isOptOutMessage, processMessage } from '../services/response-engine.js';
+import { classifyPendingConsentReply, consentCycleKey } from '../services/followup-consent.js';
 import { sendText, sendImageUrl, downloadMedia, WhatsAppSendError, MAX_IMAGE_CAPTION_CHARS } from '../services/whatsapp-client.js';
-import { canSendImage, galleryMediaId, galleryMediaIdFromUrl, markLlmGalleryShown, releaseImageReservation, remainingGalleryImageBudget, reserveImageSend, reserveRequestedGalleryImageSend, selectPlanImage } from '../services/media-service.js';
+import { canSendImage, galleryMediaId, galleryMediaIdFromUrl, markLlmGalleryShown, planCardSentRecently, releaseImageReservation, remainingGalleryImageBudget, reserveImageSend, reserveRequestedGalleryImageSend, selectPlanImage } from '../services/media-service.js';
 import { sendAlert } from '../services/alert-service.js';
 import { sendTelegramMessage, sendTelegramPhoto, sendTelegramVoice } from '../services/telegram-bot.js';
 import { getLineById, hasRoutingConfig, isBridgeTelegramChat, isReferralLine } from '../services/lead-routing.js';
@@ -16,7 +16,7 @@ import { findActiveExperience, getOwnerImage, getDynamicPlanImages, resolveExper
 import { isBridgeActive } from '../services/bridge-service.js';
 import { scoreBridgeInbound } from '../services/bridge-lead-scoring.js';
 import { bridgeMessages } from '../services/bridge-messages.js';
-import { isSoftCloseMessage } from '../services/reply-guard.js';
+import { isPlanBrochureRequest, isSoftCloseMessage } from '../services/reply-guard.js';
 import { normalizePhone } from '../services/report-exclusions.js';
 import { logger } from '../config/logger.js';
 import { logSystemError } from '../services/error-logger.js';
@@ -425,6 +425,13 @@ interface ReplyCarryingImage {
   fallbackCaption: string;
 }
 
+/** A price turn, or a switch to another plan after a quote, shows the plan card. */
+function showsPlanCard(result: ProcessMessageOutput): boolean {
+  // A plan switch keeps its own card; only a pure objection turn is restricted.
+  if (result.priceObjectionThisTurn && !result.planSwitchedAfterQuote) return Boolean(result.quotedPlanId);
+  return result.priceJustGiven || result.planSwitchedAfterQuote === true;
+}
+
 /**
  * The single image that carries the reply as its caption, or null for a plain
  * text reply. A price turn shows the plan card; any other turn may show a themed
@@ -439,7 +446,7 @@ function resolveReplyCarryingImage(
   phone: string,
   result: ProcessMessageOutput,
 ): ReplyCarryingImage | null {
-  if (result.priceJustGiven) {
+  if (showsPlanCard(result)) {
     const skills = getSkills();
     // findActiveExperience (not resolveExperience) so an empty catalog degrades to a
     // plain text reply instead of throwing inside the delivery path.
@@ -447,12 +454,13 @@ function resolveReplyCarryingImage(
     if (!experience) return null;
     const planImage = selectPlanImage(
       getDynamicPlanImages(skills),
-      repos.conversation.getCollectedPlan(phone),
+      result.quotedPlanId ?? repos.conversation.getCollectedPlan(phone),
       experience.id,
     );
-    return planImage
-      ? { url: planImage.url, mediaId: planImage.id, flow: 'price_image', fallbackCaption: planImage.caption }
-      : null;
+    // Includes a card the customer already got through `[[FOTOS:plan]]`, whose
+    // claim lives in the gallery namespace rather than under the card id.
+    if (!planImage || planCardSentRecently(repos, phone, planImage)) return null;
+    return { url: planImage.url, mediaId: planImage.id, flow: 'price_image', fallbackCaption: planImage.caption };
   }
   return result.contextualImage
     ? {
@@ -599,9 +607,9 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
           if (!optOutRequest) {
             const subscription = repos.followupSubscription.getByPhone(msg.from);
             const decision = subscription?.status === 'pending'
-              ? classifyConsentReply(msg.text)
+              ? classifyPendingConsentReply(msg.text, isConsentAskSuperseded(repos, msg.from, subscription))
               : 'ambiguous';
-            if (decision !== 'ambiguous') {
+            if (subscription?.status === 'pending' && decision !== 'ambiguous') {
               // The inbound is stored inside the same transaction as the decision so
               // the audit trail can never show a consent change without its message.
               repos.runInTransaction(() => {
@@ -619,6 +627,17 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
                 } else {
                   repos.followupSubscription.decline(msg.from, msg.id);
                 }
+                // Every permission change appends one row: the live subscription is
+                // mutable, so only this ledger can answer "when, and from which ask?".
+                repos.followupConsentGrant.record({
+                  customer_phone: msg.from,
+                  decision,
+                  decided_at: new Date().toISOString(),
+                  inbound_message_id: msg.id,
+                  source: 'customer_reply',
+                  ask_cycle_key: consentCycleKey(subscription.consent_session),
+                  app_version: env.APP_VERSION,
+                });
               });
               consentAcceptedThisTurn = decision === 'affirm';
               consentDeclinedThisTurn = decision === 'decline';
@@ -696,7 +715,20 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
             // reply would fall back to a trailing text — the exact ordering the
             // caption exists to prevent.
             const bridgeActiveAtDelivery = isBridgeActive(repos, msg.from);
-            const requestedGallery = bridgeActiveAtDelivery ? [] : (result.requestedGalleryImages ?? []);
+            // A price/switch turn owns its plan card; a proactive first-selection
+            // gallery must not displace it. Only an explicit customer photo/brochure
+            // request keeps gallery priority. The card is resolved here and reused
+            // below, so both delivery paths can never select different media.
+            const cardTurn = showsPlanCard(result);
+            const resolvedReplyImage = bridgeActiveAtDelivery
+              ? null
+              : resolveReplyCarryingImage(repos, msg.from, result);
+            const proactiveGallerySuppressed = cardTurn
+              && resolvedReplyImage != null
+              && result.galleryRequestedByCustomer !== true;
+            const requestedGallery = bridgeActiveAtDelivery || proactiveGallerySuppressed
+              ? []
+              : (result.requestedGalleryImages ?? []);
             if (bridgeActiveAtDelivery && (result.requestedGalleryImages?.length ?? 0) > 0) {
               logger.info({ phone: msg.from }, '[WEBHOOK] requested photos cancelled — bridge activated during reply generation');
             }
@@ -790,9 +822,12 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
             // media flood. Logged because a price turn silently loses its card.
             const replyImage = bridgeActiveAtDelivery || requestedGallery.length > 0
               ? null
-              : resolveReplyCarryingImage(repos, msg.from, result);
-            if (requestedGallery.length > 0 && result.priceJustGiven) {
+              : resolvedReplyImage;
+            if (requestedGallery.length > 0 && showsPlanCard(result)) {
               logger.info({ phone: msg.from }, '[WEBHOOK] plan card suppressed — requested gallery carries this reply');
+            }
+            if (proactiveGallerySuppressed && (result.requestedGalleryImages?.length ?? 0) > 0) {
+              logger.info({ phone: msg.from }, '[WEBHOOK] proactive gallery suppressed — plan card carries this reply');
             }
             let replyImageAttempted = false;
             // `.length` counts UTF-16 units while Meta counts characters, so surrogate
@@ -908,7 +943,7 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
               // (reply too long to caption, or no claim available). Otherwise this
               // would send the same card twice. Reuses the image resolved above so
               // both paths can never disagree on which card to show.
-              if (result.priceJustGiven && !replyImageAttempted && !isBridgeActive(repos, msg.from)) {
+              if (showsPlanCard(result) && !replyImageAttempted && !isBridgeActive(repos, msg.from)) {
                 const image = replyImage;
                 const reservationId = image && canSendImage(repos, msg.from)
                   ? reserveImageSend(repos, msg.from, image.mediaId)
@@ -950,7 +985,7 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
                 }
               }
 
-              if (result.shouldSendImage && !result.priceJustGiven && !isBridgeActive(repos, msg.from)) {
+              if (result.shouldSendImage && !showsPlanCard(result) && !isBridgeActive(repos, msg.from)) {
                 const skills = getSkills();
                 const collectedPlan = repos.conversation.getCollectedPlan(msg.from);
                 const experienceId = resolveExperience(skills, repos.conversation.getSelectedExperienceId(msg.from)).id;
@@ -991,6 +1026,9 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
           if (result.shouldAlertOwner) {
             const conversation = repos.conversation.getByPhone(msg.from);
             try {
+              const alertReason = result.ownerAlertType === 'media_marker_unhonoured'
+                ? `Pidió ${isPlanBrochureRequest(msg.text) ? 'brochure' : 'fotos'} — no se pudo enviar`
+                : undefined;
               const delivered = await sendAlert({
                 customerPhone: msg.from,
                 score: result.leadScore,
@@ -1000,6 +1038,7 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
                 date: String(conversation?.collected_date ?? 'unknown'),
                 people: String(conversation?.collected_people ?? 'unknown'),
                 transport: String(conversation?.collected_transport_need ?? 'unknown'),
+                reason: alertReason,
               }, repos);
               // sendAlert() returning false means every configured channel (assigned
               // line, fallback owner chat, or ALERT_CHANNEL) failed to deliver — the

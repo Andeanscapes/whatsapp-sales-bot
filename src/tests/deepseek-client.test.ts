@@ -56,7 +56,7 @@ describe('buildSystemPrompt (skills assembly)', () => {
       currency: 'COP',
       lastUpdated: '2026-01-01',
       items: [
-        { id: 'couple', planId: '2d1n_mining', label: 'Pareja', couplePrice: 1000000, peopleIncluded: 2, publiclyShow: true },
+        { id: 'couple', planId: 'core_2d1n_chivor', label: 'Pareja', couplePrice: 1000000, peopleIncluded: 2, publiclyShow: true },
       ],
       botRules: ['REMOTE: 15% deposito via Nequi o Mercado Pago'],
       businessRules: [],
@@ -66,7 +66,7 @@ describe('buildSystemPrompt (skills assembly)', () => {
       dynExp.pricing = {
         ...dynExp.pricing,
         items: [{
-          id: 'couple', kind: 'plan', siteId: 'chivor', planId: '2d1n_mining',
+          id: 'couple', kind: 'plan', siteId: 'chivor', planId: 'core_2d1n_chivor',
           label: 'Pareja', couplePrice: 1000000, peopleIncluded: 2, publiclyShow: true,
         }],
         botRules: ['REMOTE: 15% deposito via Nequi o Mercado Pago'],

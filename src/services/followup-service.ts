@@ -8,7 +8,8 @@ import type {
 } from '../db/repositories/index.js';
 import { sendTemplate, sendImageUrlWithId, sendTextWithId, MAX_IMAGE_CAPTION_CHARS, WhatsAppSendError } from './whatsapp-client.js';
 import { getSkills } from './skill-loader.js';
-import { findActiveExperience, getActiveExperience, getDynamicPlanImages, getOwnerImage, getPlans } from './product-registry.js';
+import { findActiveExperience, getActiveExperience, getDynamicPlanImages, getOwnerImage, getPlans, isPlanPaused, scopeGalleryToPlan, type ActiveExperience } from './product-registry.js';
+import { resolveSiteContext } from './qualification-engine.js';
 import { selectThemedImage } from './contextual-media.js';
 import { followupGalleryMediaId, recordImageSend } from './media-service.js';
 import { recordOutboundMedia } from './conversation-media.js';
@@ -45,6 +46,41 @@ export function devAllowlist(): string[] {
   return env.FOLLOWUP_DEV_ALLOWLIST_PHONES.split(',').map(entry => entry.trim()).filter(Boolean);
 }
 
+/**
+ * Permission to send the one-shot post-24h template: an operator grant OR the
+ * customer's own "sí". Two provenances, one predicate.
+ *
+ * MUST stay the exact complement of the permission clause in
+ * `listFollowupCandidates`. The scan and this post-claim re-check drifting apart is
+ * not a theoretical risk — it is the bug this function exists to prevent: widening
+ * only the SQL left every customer-consented candidate failing here as
+ * `consent_revoked`, i.e. selected for sending and then silently discarded.
+ *
+ * Deliberately NOT a duplicated write into `followup_consent`: the two tables must
+ * keep their provenance distinct so `/followupstatus` can say WHO granted it.
+ *
+ * A recorded `declined` outranks both provenances. An operator grant is only a
+ * presumption of consent; a customer "no" is the answer to the question we asked,
+ * and `decline()` writes the subscription WITHOUT revoking the operator row — so
+ * without this check the OR below sent a marketing template to a lead who had
+ * explicitly refused, whenever an older `/followupgrant` existed.
+ *
+ * The live status is not sufficient on its own, because `revoke()` overwrites
+ * `declined` with `revoked`: an operator running `/followuprevoke` and then
+ * `/followupgrant` erased the refusal from the only field this predicate could see,
+ * and the template shipped after a recorded "no". The append-only ledger is
+ * therefore consulted for the customer's own latest decision. Leads who decided
+ * before the ledger existed have no rows, so absence still means "no refusal on
+ * record" — never "no permission".
+ */
+export function hasFollowupPermission(repos: Repositories, phone: string): boolean {
+  const subscription = repos.followupSubscription.getByPhone(phone);
+  if (subscription?.status === 'declined') return false;
+  if (repos.followupConsentGrant.latestCustomerDecision(phone)?.decision === 'decline') return false;
+  if (repos.followupConsent.hasConsent(phone)) return true;
+  return subscription?.status === 'active';
+}
+
 /** ES and EN are separate approved templates; an unset EN name means EN leads are skipped. */
 function resolveTemplateName(language: string | null): string | null {
   if (language === 'en') return env.FOLLOWUP_TEMPLATE_NAME_EN.trim() || null;
@@ -62,6 +98,30 @@ function isPublicHttpsUrl(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Destination for follow-up media: the stored plan's site, else the site the
+ * conversation chose. Same predicate as the reply path, so a Coscuez lead with no
+ * plan stored never gets a Chivor photo.
+ */
+function followupSiteId(
+  repos: Repositories,
+  phone: string,
+  experience: ActiveExperience,
+  planId: string | null | undefined,
+): string | undefined {
+  const inboundBodies = repos.message.getLastInboundBodies(phone, 20).map(row => row.body ?? '');
+  return resolveSiteContext(experience, planId, inboundBodies);
+}
+
+/**
+ * A lead whose stored plan belongs to a paused destination receives no automated
+ * outbound: the plan cannot be sold, and a template would advertise it. The lead
+ * becomes eligible again on its own once the destination is reactivated.
+ */
+function isStoredPlanPaused(experienceId: string | null, planId: string | null): boolean {
+  return isPlanPaused(findActiveExperience(getSkills(), experienceId), planId);
 }
 
 interface TemplatePayload {
@@ -105,12 +165,12 @@ function buildTemplatePayload(
   if (header === 'none') return { bodyParams: [bodyParam] };
 
   const themed = selectThemedImage(
-    skills,
+    scopeGalleryToPlan(skills, candidate.collected_plan),
     repos,
     candidate.customer_phone,
     env.FOLLOWUP_TEMPLATE_IMAGE_TYPE,
     experience.id,
-    plan?.siteId,
+    followupSiteId(repos, candidate.customer_phone, experience, candidate.collected_plan),
   );
   const planImage = plan
     ? getDynamicPlanImages(skills).find(image =>
@@ -137,6 +197,11 @@ async function processCandidate(repos: Repositories, candidate: FollowupCandidat
   const templateName = resolveTemplateName(candidate.language);
   if (!templateName) {
     logger.warn({ phone, language: candidate.language }, '[FOLLOWUP] no approved template for language — skipped');
+    return false;
+  }
+
+  if (isStoredPlanPaused(candidate.selected_experience_id, candidate.collected_plan)) {
+    logger.info({ phone, plan: candidate.collected_plan }, '[FOLLOWUP] stored plan is paused — template skipped');
     return false;
   }
 
@@ -179,13 +244,18 @@ async function processCandidate(repos: Repositories, candidate: FollowupCandidat
     repos.followupEvent.markFailed(claimId, 'guard_state_changed');
     return false;
   }
-  if (!repos.followupConsent.hasConsent(phone)) {
+  if (!hasFollowupPermission(repos, phone)) {
     repos.followupEvent.markFailed(claimId, 'consent_revoked');
     return false;
   }
   if (!stillDormantAtAnchor(repos, phone, candidate.anchor_at)) {
     repos.followupEvent.releaseClaim(claimId);
     logger.info({ phone }, '[FOLLOWUP] one-shot skipped — customer active again');
+    return false;
+  }
+
+  if (isStoredPlanPaused(conversation.selected_experience_id, conversation.collected_plan)) {
+    repos.followupEvent.releaseClaim(claimId);
     return false;
   }
 
@@ -413,6 +483,21 @@ async function processConsentAsk(repos: Repositories, candidate: ConsentAskCandi
     logger.info({ phone, reason: blocked }, '[FOLLOWUP] consent ask skipped — state guard');
     return false;
   }
+  // Consent-ask only (owner decision 2026-10-26): the candidate SQL already excludes
+  // human_pending, but the mode can flip between the scan and this claim. The shared
+  // isBlockedState is not changed because the template paths keep human_pending.
+  if (repos.conversation.getMode(phone) === 'human_pending') {
+    repos.followupSubscriptionEvent.releaseClaim(eventId);
+    logger.info({ phone }, '[FOLLOWUP] consent ask skipped — team holds the booking');
+    return false;
+  }
+  // Same transient treatment as the state guard: release, so a reactivated
+  // destination makes the lead eligible again without burning an attempt.
+  if (isStoredPlanPaused(repos.conversation.getSelectedExperienceId(phone), repos.conversation.getCollectedPlan(phone))) {
+    repos.followupSubscriptionEvent.releaseClaim(eventId);
+    logger.info({ phone }, '[FOLLOWUP] consent ask skipped — stored plan is paused');
+    return false;
+  }
   // Re-check the window after the claim: the row may have sat through a stale lease.
   const anchorMs = parseStoredTimestamp(candidate.anchor_at);
   const windowClosesMs = anchorMs + FREE_FORM_WINDOW_MS;
@@ -522,7 +607,9 @@ async function processConsentAsk(repos: Repositories, candidate: ConsentAskCandi
   const subscription = repos.followupSubscription.getByPhone(phone);
   if (
     !stillDormantAtAnchor(repos, phone, candidate.anchor_at)
+    || repos.conversation.getMode(phone) === 'human_pending'
     || (subscription !== null && subscription.status !== 'unasked')
+    || isStoredPlanPaused(repos.conversation.getSelectedExperienceId(phone), repos.conversation.getCollectedPlan(phone))
   ) {
     repos.followupSubscriptionEvent.releaseClaim(eventId);
     logger.info({ phone }, '[FOLLOWUP] consent ask skipped — customer active or consent state changed');
@@ -550,18 +637,19 @@ async function processConsentAsk(repos: Repositories, candidate: ConsentAskCandi
     const askExperience = askExperienceId
       ? findActiveExperience(askSkills, askExperienceId)
       : getActiveExperience(askSkills);
-    const askPlanId = repos.conversation.getCollectedPlan(phone);
-    const askPlanSiteId = askExperience && askPlanId
-      ? getPlans(askExperience).find(plan => plan.id === askPlanId)?.siteId
+    const askPlanSiteId = askExperience
+      ? followupSiteId(repos, phone, askExperience, repos.conversation.getCollectedPlan(phone))
       : undefined;
     const themedAsk = askExperience && validation.text.length <= MAX_IMAGE_CAPTION_CHARS
       ? selectThemedImage(
-        askSkills,
+        scopeGalleryToPlan(askSkills, repos.conversation.getCollectedPlan(phone)),
         repos,
         phone,
         env.FOLLOWUP_CONSENT_ASK_IMAGE_TYPE,
         askExperience.id,
         askPlanSiteId,
+        // The ask has no plan-card fallback: a site photo beats plain text.
+        { planId: repos.conversation.getCollectedPlan(phone) },
       )
       : null;
     // Same URL guard the template header applies. Feed URLs already pass
@@ -741,6 +829,11 @@ async function processRecurring(repos: Repositories, candidate: RecurringCandida
     return false;
   }
 
+  if (isStoredPlanPaused(candidate.selected_experience_id, candidate.collected_plan)) {
+    logger.info({ phone, plan: candidate.collected_plan }, '[FOLLOWUP] stored plan is paused — recurring skipped');
+    return false;
+  }
+
   // Reuses the one-shot payload builder: same approved template shape.
   const payload = buildTemplatePayload(repos, {
     customer_phone: phone,
@@ -786,9 +879,25 @@ async function processRecurring(repos: Repositories, candidate: RecurringCandida
   const lastInboundAt = repos.message.getLastInboundAt(phone);
   const lastInboundMs = lastInboundAt ? parseStoredTimestamp(lastInboundAt) : Number.NaN;
   const silenceThresholdMs = parseStoredTimestamp(recurringSilentSinceIso(Date.now()));
-  if (!Number.isNaN(lastInboundMs) && lastInboundMs > silenceThresholdMs) {
+  const lastDirection = repos.message.getLastMessageDirection(phone);
+  if (lastDirection !== 'outbound'
+    || (!Number.isNaN(lastInboundMs) && lastInboundMs > silenceThresholdMs)) {
     repos.followupSubscriptionEvent.releaseClaim(eventId);
     logger.info({ phone, cycleKey }, '[FOLLOWUP] recurring skipped — customer active again');
+    return false;
+  }
+  // A one-shot claimed or sent after the scan moves the anchor: this recurring send
+  // is now due one interval after it, not in this tick. A one-shot already counted
+  // in the scanned anchor is not newer, so it never blocks the cadence.
+  const oneShotAt = repos.followupEvent.latestSendAt(phone);
+  if (oneShotAt && parseStoredTimestamp(oneShotAt) > parseStoredTimestamp(candidate.last_send_at)) {
+    repos.followupSubscriptionEvent.releaseClaim(eventId);
+    logger.info({ phone, cycleKey }, '[FOLLOWUP] recurring skipped — one-shot moved the anchor');
+    return false;
+  }
+
+  if (isStoredPlanPaused(repos.conversation.getSelectedExperienceId(phone), repos.conversation.getCollectedPlan(phone))) {
+    repos.followupSubscriptionEvent.releaseClaim(eventId);
     return false;
   }
 

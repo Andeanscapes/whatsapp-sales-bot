@@ -14,7 +14,7 @@
     {
       "id": "plan-readiness",
       "trigger": "tiene grupo pero NO plan, y hay 2 o más opciones",
-      "do": "Pregunta duración primero (ritmo corto o más completo). Espera respuesta antes de recomendar.",
+      "do": "Pregunta duración primero (experiencia esencial o más completa). Espera respuesta antes de recomendar.",
       "never": "Asumir plan por tamaño del grupo, recomendar dos planes, o cotizar sin saber duración."
     },
     {

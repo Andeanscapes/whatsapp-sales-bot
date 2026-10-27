@@ -32,6 +32,14 @@
     "measure:prompt": "tsx src/scripts/measure-prompt.ts",
     "report:iteration": "tsx src/scripts/report-iteration.ts",
     "validate:dynamic": "tsx src/scripts/validate-dynamic.ts",
+    "sync:fixture": "tsx src/scripts/sync-dynamic-fixture.ts",
+    "media:optimize": "tsx src/scripts/media-optimize.ts",
+    "media:pull": "tsx src/scripts/media-pull.ts",
+    "media:push": "dotenv -e .env.wrangler -- tsx src/scripts/media-push.ts",
+    "media:sync": "dotenv -e .env.wrangler -- tsx src/scripts/media-sync.ts",
+    "media:restructure": "tsx src/scripts/media-restructure.ts",
+    "dynamic:pull": "tsx src/scripts/dynamic-sync.ts pull",
+    "dynamic:push": "dotenv -e .env.wrangler -- tsx src/scripts/dynamic-sync.ts push",
     "export:transcripts": "bash scripts/export-prod-transcripts.sh",
     "export:meta-leads": "bash scripts/export-meta-leads.sh",
     "export:debug-bundle": "bash scripts/export-prod-debug-bundle.sh",
@@ -61,11 +69,14 @@
     "@secretlint/secretlint-rule-preset-recommend": "^9.0.0",
     "@types/better-sqlite3": "^7.6.0",
     "@types/node": "^24.13.3",
+    "dotenv-cli": "^11.0.0",
     "eslint": "^9.39.4",
     "secretlint": "^9.0.0",
+    "sharp": "^0.35.5",
     "tsx": "^4.0.0",
     "typescript": "^5.5.0",
     "typescript-eslint": "^8.59.2",
-    "vitest": "^3.2.6"
+    "vitest": "^3.2.6",
+    "wrangler": "^4.151.1"
   }
 }

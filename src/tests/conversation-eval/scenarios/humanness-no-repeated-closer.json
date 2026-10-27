@@ -1,0 +1,26 @@
+{
+  "id": "humanness-no-repeated-closer",
+  "source": "live 2026-10-27: 'ok gracias' answered twice with the same stock closers ('Con gusto. Quedo pendiente.' / 'Cualquier cosa, acá estoy.')",
+  "tags": ["humanness", "live"],
+  "lang": "es",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "seedConversation": {
+    "phase": "closing",
+    "priceGiven": true,
+    "qualification": { "people": 2, "plan": "core_2d1n_chivor", "date": "14 de noviembre" }
+  },
+  "seedQualification": { "people": 2, "plan": "core_2d1n_chivor", "date": "14 de noviembre" },
+  "criteria": [
+    { "id": "no-stock-closer", "rule": "reply_must_not_match", "patterns": ["quedo (pendiente|atento)|ac[aá] estoy|cualquier cosa|con gusto\\.?\\s*$"], "turn": 1, "weight": 3, "critical": true },
+    { "id": "short-reply", "rule": "reply_length_at_most", "expected": 300, "turn": 1, "weight": 2 },
+    { "id": "single-question", "rule": "max_question_marks", "max": 1, "turn": 1, "weight": 2 }
+  ],
+  "turns": [
+    {
+      "user": "ok gracias",
+      "mockReply": "Dale, con gusto. Cuando el equipo confirme el cupo del 14 de noviembre te escribo por aquí.",
+      "expect": { "shouldSendReply": true }
+    }
+  ]
+}

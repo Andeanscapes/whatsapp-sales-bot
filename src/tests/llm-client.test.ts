@@ -52,7 +52,7 @@ describe('LlmTurn schema (prompt↔client contract)', () => {
       action: 'present_price',
       collected_fields: {
         name: 'Ana',
-        plan: '2d1n_mining',
+        plan: 'core_2d1n_chivor',
         people: 2,
         date: 'agosto',
         transport_need: 'from_bogota',
@@ -75,7 +75,7 @@ describe('LlmTurn schema (prompt↔client contract)', () => {
       expect(result.data.sales_phase).toBe('pricing');
       expect(result.data.action).toBe('present_price');
       expect(result.data.collected_fields.name).toBe('Ana');
-      expect(result.data.collected_fields.plan).toBe('2d1n_mining');
+      expect(result.data.collected_fields.plan).toBe('core_2d1n_chivor');
       expect(result.data.lead.intent).toBe('qualifying');
       expect(result.data.lead.score_delta).toBe(15);
       expect(result.data.img).toBe(false);

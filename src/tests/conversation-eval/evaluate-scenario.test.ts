@@ -79,38 +79,56 @@ describe('conversation criteria', () => {
   it('passes an exact group quote from the product registry', () => {
     loadSkills();
     const quote = calculatePriceQuote(getActiveExperience(getSkills()), {
-      planId: '2d1n_mining',
+      planId: 'core_2d1n_chivor',
       people: 4,
       transportNeed: 'own',
     });
     const expectedTotal = quote?.planTotal;
     expect(expectedTotal).toBeTypeOf('number');
     const formatted = expectedTotal!.toLocaleString('en-US');
-    const input = scenario([{ id: 'quote', rule: 'group_quote_integrity', people: 4, planId: '2d1n_mining', expectedTotal, weight: 1, critical: true }]);
+    const input = scenario([{ id: 'quote', rule: 'group_quote_integrity', people: 4, planId: 'core_2d1n_chivor', expectedTotal, weight: 1, critical: true }]);
     expect(evaluateScenario(input, [turn('Somos 4', `Para 4 personas, el valor total es $${formatted} COP.`)]).score).toBe(100);
+  });
+
+  it.each([
+    ['Para 2 personas son $740.000 COP, $370.000 COP por persona.', true],
+    ['Para 2 personas son $740.000 COP. Por persona serían $370.000 COP.', true],
+    ['For 2 people the total is $740.000 COP, $370.000 COP per person.', true],
+    ['Para 2 personas son $740.000 COP, $380.000 COP por persona.', false],
+    ['Para 2 personas son $740.000 COP o $370.000 COP.', false],
+    ['Para 2 personas son $370.000 COP por persona.', false],
+    ['Para 2 personas son $370.000 COP en total, $740.000 COP por persona.', false],
+    ['Para 2 personas son $740.000 COP o $500.000 COP, $370.000 COP por persona.', false],
+  ])('validates a labelled per-person equivalent: %s', (reply, passed) => {
+    loadSkills();
+    const input = scenario([{
+      id: 'quote', rule: 'group_quote_integrity', people: 2,
+      planId: 'basic_1d_chivor', expectedTotal: 740000, weight: 1, critical: true,
+    }]);
+    expect(evaluateScenario(input, [turn('Somos 2', reply)]).hardFail).toBe(!passed);
   });
 
   it('fails a quote for the wrong group size', () => {
     loadSkills();
     const quote = calculatePriceQuote(getActiveExperience(getSkills()), {
-      planId: '2d1n_mining',
+      planId: 'core_2d1n_chivor',
       people: 4,
       transportNeed: 'own',
     });
     const expectedTotal = quote?.planTotal ?? 0;
-    const input = scenario([{ id: 'quote', rule: 'group_quote_integrity', people: 4, planId: '2d1n_mining', expectedTotal, weight: 1, critical: true }]);
+    const input = scenario([{ id: 'quote', rule: 'group_quote_integrity', people: 4, planId: 'core_2d1n_chivor', expectedTotal, weight: 1, critical: true }]);
     expect(evaluateScenario(input, [turn('Somos 4', 'Para 2 personas, el valor total es $1,000,000 COP.')]).hardFail).toBe(true);
   });
 
   it('fails when a quote includes both a wrong and the expected total', () => {
     loadSkills();
     const quote = calculatePriceQuote(getActiveExperience(getSkills()), {
-      planId: '2d1n_mining',
+      planId: 'core_2d1n_chivor',
       people: 5,
       transportNeed: 'own',
     });
     const expectedTotal = quote?.planTotal ?? 0;
-    const input = scenario([{ id: 'quote', rule: 'group_quote_integrity', people: 5, planId: '2d1n_mining', expectedTotal, weight: 1, critical: true }]);
+    const input = scenario([{ id: 'quote', rule: 'group_quote_integrity', people: 5, planId: 'core_2d1n_chivor', expectedTotal, weight: 1, critical: true }]);
 
     expect(evaluateScenario(input, [turn('Somos 5', `Antes $2.500.000. Para 5 personas son $${expectedTotal.toLocaleString('en-US')} COP.`)]).hardFail).toBe(true);
   });

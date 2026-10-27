@@ -90,6 +90,7 @@ export interface ConversationRepository {
   clearSoftClosed(phone: string): void;
   getPriceGivenAt(phone: string): string | null;
   setPriceGiven(phone: string): void;
+  clearPriceQuote(phone: string): void;
   getLeadScore(phone: string): number;
   updateLeadScore(phone: string, score: number): void;
   getCollectedFields(phone: string): Record<string, unknown>;
@@ -103,6 +104,7 @@ export interface ConversationRepository {
   getCollectedDateWindow(phone: string): string | null;
   setCollectedDateWindow(phone: string, window: string | null): void;
   getCollectedPlan(phone: string): string | null;
+  clearCollectedPlan(phone: string): void;
   resetExperienceSalesState(phone: string): void;
   clearCollectedTransport(phone: string): void;
   getLanguage(phone: string): 'es' | 'en' | null;
@@ -132,6 +134,48 @@ export interface FollowupConsentRepository {
   hasConsent(phone: string): boolean;
   grantConsent(phone: string, grantedBy: string): void;
   revokeConsent(phone: string): void;
+}
+
+/**
+ * What the row records. `affirm`/`decline` are the customer's answer to a consent
+ * ask; `grant`/`revoke` are an operator or compliance action.
+ */
+export type FollowupConsentGrantDecision = 'affirm' | 'decline' | 'grant' | 'revoke';
+
+/** Who produced the row. Provenance is never inferred at read time. */
+export type FollowupConsentGrantSource =
+  | 'customer_reply'
+  | 'operator_grant'
+  | 'operator_revoke'
+  | 'customer_opt_out'
+  | 'backfill_2026_09';
+
+export interface FollowupConsentGrantRow {
+  id?: number;
+  customer_phone: string;
+  decision: FollowupConsentGrantDecision;
+  decided_at: string;
+  inbound_message_id?: string | null;
+  source: FollowupConsentGrantSource;
+  actor_id?: string | null;
+  ask_cycle_key?: string | null;
+  app_version?: string | null;
+  created_at?: string;
+}
+
+export interface FollowupConsentGrantRepository {
+  record(grant: FollowupConsentGrantRow): void;
+  listByPhone(phone: string, limit?: number): FollowupConsentGrantRow[];
+  /** Newest row of any decision — a decline or revocation, not necessarily a grant. */
+  latestDecision(phone: string): FollowupConsentGrantRow | null;
+  /**
+   * Newest row the CUSTOMER produced (`source = 'customer_reply'`), ignoring every
+   * operator action. This is what makes a refusal survive an operator revocation:
+   * `revoke()` overwrites `declined` with `revoked` in the live row, so the live
+   * status alone forgets that the customer ever said no.
+   */
+  latestCustomerDecision(phone: string): FollowupConsentGrantRow | null;
+  countBetween(startIso: string, endIso: string): number;
 }
 
 /**
@@ -187,13 +231,6 @@ export interface FollowupSubscriptionRepository {
   decline(phone: string, inboundMessageId: string): void;
   /** Revoke consent: transition to 'revoked'. */
   revoke(phone: string, revokeSource: string): void;
-  /**
-   * Consent is session-scoped: a customer-initiated inbound closes an `active`
-   * cycle back to `unasked`, so recurring templates stop until a fresh "sí" and a
-   * new ask becomes eligible after this session goes silent. Returns true when a
-   * cycle was actually closed. `pending`/`declined`/`revoked` are untouched.
-   */
-  closeCycleOnCustomerInbound(phone: string): boolean;
   /**
    * A customer who previously revoked may reopen a NEW consent opportunity by
    * initiating a later inbound. This never grants consent; it only returns to
@@ -383,6 +420,12 @@ export interface FollowupEventRepository {
   releaseClaim(claimId: number): void;
   getLatest(phone: string): FollowupEventRow | null;
   /**
+   * Timestamp of the newest one-shot that is in flight or may have reached Meta
+   * (`pending` → claimed_at, `sent` → sent_at, `uncertain` → failed_at). Null when
+   * none exists. The recurring path compares it with its scanned anchor.
+   */
+  latestSendAt(phone: string): string | null;
+  /**
    * One-shot rows that actually reached Meta inside a window, for the operator digest.
    *
    * The terminal instant is `COALESCE(sent_at, failed_at)`: `uncertain` leaves
@@ -397,6 +440,8 @@ export interface MessageRepository {
   addMessage(msg: StoredMessage): void;
   getLastOutboundBody(phone: string): string | null;
   getLastOutboundTextBody(phone: string): string | null;
+  /** True when we sent anything after the stored outbound with this WhatsApp id. Unknown id → false. */
+  hasOutboundAfterMessage(phone: string, whatsappMessageId: string): boolean;
   getRecentMessages(phone: string, limit?: number): RecentMessage[];
   getLastInboundBodies(phone: string, limit?: number): { body: string | null }[];
   getLastInboundBody(phone: string): string | null;
@@ -605,6 +650,7 @@ export interface ConversationRow {
   collected_child_ages_json: string | null;
   collected_travel_origin: string | null;
   price_given_at: string | null;
+  quote_fingerprint: string | null;
   handed_off_at: string | null;
   soft_closed_at: string | null;
   gallery_nudged_at: string | null;
@@ -708,6 +754,7 @@ export interface CustomerDataRepository {
     mediaSends: number;
     bridgeSessions: number;
     followupConsent: number;
+    followupConsentGrants: number;
     followupEvents: number;
     followupSubscriptions: number;
     followupSubscriptionEvents: number;
@@ -819,6 +866,7 @@ export interface TranscriptRepository {
 
 export interface Repositories {
   followupConsent: FollowupConsentRepository;
+  followupConsentGrant: FollowupConsentGrantRepository;
   followupSubscription: FollowupSubscriptionRepository;
   followupEvent: FollowupEventRepository; // LIVE: one-shot post-24h template
   followupSubscriptionEvent: FollowupSubscriptionEventRepository;

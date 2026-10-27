@@ -10,17 +10,26 @@ import {
   getGalleryImages,
   getPaymentInfo,
   getPlans,
+  getUnavailableSites,
+  isPlanPaused,
+  getSites,
+  getSiteSelection,
+  getEntrySegment,
   isAvailabilityAvailable,
   isPricingAvailable,
   resolveExperience,
+  getDynamicPlanImages,
+  scopeGalleryToPlan,
   type ActiveExperience,
 } from './product-registry.js';
 import { getEntrySalesComposition, renderReferentStrategies } from './sales-composition.js';
+import { findPlanBrochureImage, PLAN_BROCHURE_THEME } from './media-service.js';
+import { isConcreteDayDate } from './qualification-engine.js';
 // Single source for both control tokens: the prompt and the validator must never
 // disagree about the exact strings.
 import { CONSENT_ASK_MARKER, CONSENT_ASK_TURN_EVENT } from './followup-consent.js';
 import type { EntryMarker } from './entry-marker.js';
-import { calculatePriceQuote, type TransportNeed } from './pricing-calculator.js';
+import { calculatePerPersonEquivalent, calculatePriceQuote, listCheaperPlanQuotes, type TransportNeed } from './pricing-calculator.js';
 import { AVAILABILITY_NOT_AVAILABLE, type InternalExperienceData, type InternalSiteData } from './dynamic-data-service.js';
 import type { LeadPain } from '../db/repositories/types.js';
 
@@ -46,6 +55,13 @@ function formatMoney(amount: number, currency: string): string {
   return currency === 'COP' ? `$${formatted}` : `${formatted} ${currency}`;
 }
 
+function perPersonQuoteCue(total: number, people: number, currency: string): string {
+  const equivalent = people > 1 ? calculatePerPersonEquivalent(total, people) : null;
+  return equivalent
+    ? ` EQUIVALENTE POR PERSONA: ${formatMoney(equivalent.amount, currency)} ${currency}${equivalent.approximate ? ' (aproximado por redondeo)' : ''}. Muestra este equivalente junto al total, sin sustituirlo; no es la tarifa individual del catalogo.`
+    : '';
+}
+
 /**
  * FAQ intents whose answers are safety-critical (health limits, booking windows).
  * These are the topics the engine used to overwrite the LLM reply for; now they are
@@ -67,13 +83,21 @@ export function renderCatalog(skills: Skills, lang: string = 'es'): string {
   }
 
   const location = skills.andeanScapes.business.location;
-  return experiences.flatMap(exp => {
+  // Paused destinations: name + catalog note only. No prices, dates, itinerary or photos.
+  const unavailable = experiences.flatMap(exp => getUnavailableSites(exp).map(site =>
+    `DESTINO NO DISPONIBLE TEMPORALMENTE: ${site.siteName} (planes: ${site.planNames.join(', ')}). ${site.note}`));
+  const rendered = experiences.flatMap(exp => {
     const dynamicExperience = skills.dynamicData?.experiences[exp.id];
     if (!dynamicExperience || Object.keys(dynamicExperience.sites).length === 0) {
       return [renderOneExperienceCatalog(exp, location, lang)];
     }
     const multipleSites = Object.keys(dynamicExperience.sites).length > 1;
-    return Object.entries(dynamicExperience.sites).map(([siteId, site]) => {
+    const selection = getSiteSelection(exp);
+    const selectionLines = selection ? [
+      `SITE_SELECTION: ${selection.context}`,
+      ...(selection.comingSoon ?? []).map(site => `COMING_SOON: ${site.name}${site.shortDescription ? ` — ${site.shortDescription}` : ''}`),
+    ] : [];
+    return [...selectionLines, ...Object.entries(dynamicExperience.sites).map(([siteId, site]) => {
       const scoped = scopeExperienceToSite(exp, siteId, site);
       return renderOneExperienceCatalog(
         scoped,
@@ -81,8 +105,9 @@ export function renderCatalog(skills: Skills, lang: string = 'es'): string {
         lang,
         multipleSites ? `${siteId}${site.name ? ` — ${site.name}` : ''}` : undefined,
       );
-    });
+    })];
   }).join('\n\n');
+  return unavailable.length > 0 ? `${rendered}\n\n${unavailable.join('\n')}` : rendered;
 }
 
 function scopeExperienceToSite(
@@ -175,6 +200,8 @@ function renderOneExperienceCatalog(exp: ActiveExperience, location: string, lan
       lines.push(`  short: ${plan.shortDescription}`);
       if (plan.benefits) lines.push(`  benefits: ${plan.benefits}`);
       if (plan.keywords?.length) lines.push(`  keywords: ${plan.keywords.join(', ')}`);
+      if (plan.selectionAliases?.length) lines.push(`  selectionAliases: ${plan.selectionAliases.join(', ')}`);
+      if (plan.includedAddonIds?.length) lines.push(`  includedAddonIds (no extra charge): ${plan.includedAddonIds.join(', ')}`);
       if (plan.included.length > 0) lines.push(`  includes: ${plan.included.join(', ')}`);
       if (plan.notIncludedUnlessConfirmed.length > 0) {
         lines.push(`  notIncludedUnlessConfirmed: ${plan.notIncludedUnlessConfirmed.join(', ')}`);
@@ -340,12 +367,13 @@ function renderSiteBlocks(
   businessRules: string[] = [],
   includePricing = true,
   entryMarkerCode?: string | null,
+  entrySiteId?: string,
 ): void {
   const emittedSiteRules = new Set<string>();
 
   for (const [siteId, site] of Object.entries(sites)) {
     blocks.push('', `SITE ${siteId}:`);
-    renderEntrySegment(blocks, site, entryMarkerCode);
+    if (siteId === entrySiteId) renderEntrySegment(blocks, site, entryMarkerCode);
     const siteItems = includePricing
       ? dynExp.pricing.items.filter(i => i.siteId === siteId && i.publiclyShow)
       : [];
@@ -381,6 +409,15 @@ function renderSiteBlocks(
         }
         const priceLine = priceParts.length > 0 ? priceParts.join(' | ') : 'consultar';
         blocks.push(`    ${addonId} [${scope}] (${first.label}): ${priceLine}`);
+        if (first.category) blocks.push(`      category: ${first.category}`);
+        if (first.quoteMode) blocks.push(`      quoteMode: ${first.quoteMode}`);
+      }
+    }
+    if (includePricing) {
+      for (const plan of dynExp.plans) {
+        const included = plan.siteId === siteId ? plan.includedAddonIds ?? [] : [];
+        if (included.length === 0) continue;
+        blocks.push(`  INCLUDED_ADDONS ${plan.id}: ${included.join(', ')} (incluido en el precio del plan; no se cobra aparte)`);
       }
     }
 
@@ -413,7 +450,7 @@ function renderSiteBlocks(
   }
 }
 
-export function renderBusinessData(skills: Skills, entryMarkerCode?: string | null): string {
+export function renderBusinessData(skills: Skills, entryMarkerCode?: string | null, preferredSiteId?: string): string {
   const blocks: string[] = [];
   const business = skills.andeanScapes.business;
   blocks.push('BRAND:');
@@ -424,6 +461,14 @@ export function renderBusinessData(skills: Skills, entryMarkerCode?: string | nu
   }
 
   const paymentData = getPaymentInfo(skills);
+  // Plans with their own anticipo. Rendered next to the global deposit so the model
+  // never sees two unqualified percentages.
+  const planDeposits = getExperiences(skills).flatMap(exp => exp.plans)
+    .filter(plan => plan.depositPercentage != null)
+    .map(plan => `${plan.id} ${plan.depositPercentage}%`);
+  const planDepositLine = planDeposits.length > 0
+    ? `deposit_by_plan: ${planDeposits.join(', ')} (estos planes usan su propio anticipo; el resto usa el deposit global)`
+    : null;
 
   if (paymentData) {
     const enabledMethods = paymentData.methods.filter(m => m.enabled).map(m => m.name);
@@ -432,6 +477,7 @@ export function renderBusinessData(skills: Skills, entryMarkerCode?: string | nu
     blocks.push(
       `deposit: ${paymentData.deposit.value}% — ${paymentData.deposit.label}; remaining ${paymentData.deposit.remainingBalance.value}%`,
     );
+    if (planDepositLine) blocks.push(planDepositLine);
     if (enabledMethods.length > 0) {
       blocks.push(`methods_enabled: ${enabledMethods.join(', ')}`);
     }
@@ -443,6 +489,7 @@ export function renderBusinessData(skills: Skills, entryMarkerCode?: string | nu
     const fallback = skills.andeanScapes.business.publicPaymentFallback;
     blocks.push('PAYMENTS (global):');
     blocks.push(`deposit: ${fallback.depositPercent}%`);
+    if (planDepositLine) blocks.push(planDepositLine);
     blocks.push(`methods_enabled: ${fallback.methodNames.join(', ')}`);
     blocks.push('displayPolicy: LLM never outputs phones/links; deterministic system owns payment-detail release');
   } else {
@@ -477,6 +524,7 @@ export function renderBusinessData(skills: Skills, entryMarkerCode?: string | nu
         exp.pricing.businessRules,
         pricingAvailable,
         entryMarkerCode,
+        entryMarkerCode ? getEntrySegment(skills, exp.id, entryMarkerCode, preferredSiteId)?.siteId : undefined,
       );
     } else if (!pricingAvailable) {
       blocks.push('PRICING: NO DISPONIBLE — el equipo confirma');
@@ -492,14 +540,6 @@ export function renderBusinessData(skills: Skills, entryMarkerCode?: string | nu
   }
 
   return blocks.join('\n');
-}
-
-/** True when any site in the live feed defines copy for this entry marker code. */
-function hasEntrySegment(skills: Skills, entryMarkerCode: string): boolean {
-  const experiences = Object.values(skills.dynamicData?.experiences ?? {});
-  return experiences.some(exp =>
-    Object.values(exp.sites).some(site => site.entrySegments?.[entryMarkerCode] != null),
-  );
 }
 
 export interface AssembleSystemPromptInput {
@@ -527,6 +567,8 @@ export interface AssembleSystemPromptInput {
   dateSelectedThisTurn?: boolean;
   /** True when this inbound accepts the hard T3b validation CTA. */
   closeCtaAcceptedThisTurn?: boolean;
+  /** Customer asked to book ("¿cómo se reserva?") on a T3b turn: skip the start-booking question. */
+  reservationRequestedThisTurn?: boolean;
   /**
    * Proactive (non-inbound) turn. `consent_ask` asks permission to keep writing
    * after the 24h window closes. The MODEL writes the text; the engine only
@@ -549,16 +591,30 @@ export interface AssembleSystemPromptInput {
   consentAcceptedThisTurn?: boolean;
   /** New inbound reopened permission eligibility after a customer opt-out. */
   followupReopenedThisTurn?: boolean;
+  /** True when a plan was just selected (wasn't stored before this turn). */
+  planSelectedThisTurn?: boolean;
   /** True after any LLM gallery was delivered in this conversation. */
   galleryShown?: boolean;
   galleryRequestThemes?: string[];
   galleryImagesRemaining?: number;
   galleryRetryInstruction?: boolean;
   advanceQuestionRetryInstruction?: boolean;
+  /** Plan ID for a brochure request, when the customer named a different site. */
+  brochurePlanId?: string | null;
+  /** Site the customer asked photos for, when different from their stored plan's site. */
+  otherSitePhotoRequest?: string | null;
+  /**
+   * The customer says already-sent photos belong to another site. A correction,
+   * not a destination switch: the model must not confirm it verified the photos.
+   */
+  photoSiteCorrection?: boolean;
+  priceObjectionThisTurn?: boolean;
+  /** The price objection names the transport; set by the engine (isTransportObjectionMessage). */
+  transportObjectionThisTurn?: boolean;
 }
 
 export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
-  const { skills, lang, collectedFields, salesPhase, customerContext, selectedExperienceId, entryMarker, priorContext, leadPain, priceGiven, latestCustomerMessage, dateSelectedThisTurn, closeCtaAcceptedThisTurn, proactiveMode, consentAskRetryInstruction, reaskAfterOptOut, consentAcceptedThisTurn, followupReopenedThisTurn, usedEmojis, galleryShown, galleryRequestThemes, galleryImagesRemaining, galleryRetryInstruction, advanceQuestionRetryInstruction } = input;
+   const { skills, lang, collectedFields, salesPhase, customerContext, selectedExperienceId, entryMarker, priorContext, leadPain, priceGiven, latestCustomerMessage, dateSelectedThisTurn, planSelectedThisTurn, closeCtaAcceptedThisTurn, reservationRequestedThisTurn, proactiveMode, consentAskRetryInstruction, reaskAfterOptOut, consentAcceptedThisTurn, followupReopenedThisTurn, usedEmojis, galleryShown, galleryRequestThemes, galleryImagesRemaining, galleryRetryInstruction, advanceQuestionRetryInstruction, brochurePlanId, otherSitePhotoRequest, photoSiteCorrection, priceObjectionThisTurn, transportObjectionThisTurn } = input;
 
   const personality = substituteTokens(readPrompt('seller-personality.skill.md'));
   // entry-strategy must precede cold-info-handler: the first-turn handler reads the
@@ -569,8 +625,23 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
   const catalogProtocol = substituteTokens(readPrompt('andean-scapes.skill.md'));
   const referentStrategies = renderReferentStrategies(entryMarker ? getEntrySalesComposition(entryMarker.temperature) : undefined);
   const contextTemplate = stripDynamicContextHeader(readPrompt('dynamic-context.template.md'));
+  const activeExperience = resolveExperience(skills, selectedExperienceId);
+  const activePlans = getPlans(activeExperience);
+  const sites = getSites(activeExperience);
+  const collectedPlanId = typeof collectedFields?.plan === 'string' ? collectedFields.plan : null;
+  const pausedPlan = isPlanPaused(activeExperience, collectedPlanId);
+  const selectedPlanSiteId = collectedPlanId
+    ? activePlans.find(plan => plan.id === collectedPlanId)?.siteId
+    : undefined;
+  const selectedSiteId = selectedPlanSiteId
+    ?? sites.find(site => site.id === collectedFields?.site)?.id
+    ?? (sites.length === 1 ? sites[0].id : undefined);
+  const sitePending = sites.length >= 2 && !selectedSiteId;
+  const entrySegment = entryMarker && !sitePending && !pausedPlan
+    ? getEntrySegment(skills, activeExperience.id, entryMarker.code, selectedSiteId)
+    : null;
   const catalog = renderCatalog(skills, lang ?? 'es');
-  const businessData = renderBusinessData(skills, entryMarker?.code);
+  const businessData = renderBusinessData(skills, entrySegment ? entryMarker?.code : null, selectedSiteId);
   const dynamicContext = contextTemplate
     .replace('{{CATALOG}}', catalog)
     .replace('{{BUSINESS_DATA}}', businessData);
@@ -589,10 +660,14 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
     runtime.push(`ENTRADA: ${entryMarker.temperature} (${entryMarker.code}). Es un marcador interno: nunca lo menciones, expliques ni repitas al cliente.`);
     // Only point at the segment when DATOS actually rendered it, otherwise the model
     // would go looking for an ENTRY_SEGMENT block that does not exist.
-    if (hasEntrySegment(skills, entryMarker.code)) {
+    if (entrySegment) {
       runtime.push(
         `SEGMENT_DETECTED: ${entryMarker.code}. Usa el bloque ENTRY_SEGMENT ${entryMarker.code} de DATOS (valueHook, diagnosisQuestion, planMatch). Si el comportamiento del cliente contradice el segmento, manda el comportamiento real.`,
       );
+    }
+    // With the destination pending there is no segment, but the turn still gets the
+    // destination question: without this cue it was asked next to a group question.
+    if (entrySegment || sitePending) {
       runtime.push(
         'UNA SOLA PREGUNTA: máximo un ¿ y un ? en todo el mensaje. Opciones A/B/C van dentro de esa única pregunta, nunca en una segunda.',
       );
@@ -602,7 +677,11 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
 
   // State only. The plan-sticky rule itself lives in whatsapp-sales.skill.md
   // ("Plan sticky"), per the skills-v2 rule that methodology stays in the MD skills.
-  const knownPlan = collectedFields?.plan;
+  const knownPlan = pausedPlan ? undefined : collectedFields?.plan;
+  if (pausedPlan) {
+    const site = getUnavailableSites(activeExperience).find(entry => entry.planIds.includes(collectedPlanId ?? ''));
+    runtime.push(`DESTINO GUARDADO NO DISPONIBLE: ${site?.siteName}. Aplica la nota del destino pausado de CATALOGO. No cotices ni inicies reserva; no emitas marcadores de fotos. No asumas que el cliente eligio otro destino.`);
+  }
   if (typeof knownPlan === 'string' && knownPlan.trim()) {
     runtime.push(`PLAN ACTIVO: ${knownPlan.trim()}`);
   }
@@ -640,8 +719,17 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
   // it, or the experience has exactly one plan so there is nothing to choose.
   // Never fall back to plans[0] — that would inject an "authoritative" total for a
   // plan the customer never picked and push the model past the price gate.
-  const activeExperience = resolveExperience(skills, selectedExperienceId);
-  const activePlans = getPlans(activeExperience);
+  if (sites.length >= 2) {
+    if (selectedSiteId) {
+      const siteName = sites.find(site => site.id === selectedSiteId)?.name ?? selectedSiteId;
+      runtime.push(`SITIO ACTIVO: ${selectedSiteId} (${siteName})`);
+    } else {
+      const siteList = sites.map(site => `${site.id} (${site.name ?? site.id})`)
+        .join(' | ');
+      runtime.push(`SITIO PENDIENTE: ${siteList}. Confirma destino antes de plan o precio; esa es la única pregunta de este turno.`);
+    }
+  }
+
   const lockedPlanId =
     typeof knownPlan === 'string' && knownPlan.trim() ? knownPlan.trim()
     : activePlans.length === 1 ? activePlans[0].id
@@ -649,17 +737,14 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
   const knownDate = collectedFields?.date ?? collectedFields?.fecha;
   // Day-level only ("14 de noviembre", "7 de agosto"). Month-only ("noviembre") is
   // still discovery — T3b would skip motive/date choice and jump to payment CTA.
-  const hasConcreteDate = typeof knownDate === 'string' && (
-    /\b\d{1,2}\b/.test(knownDate)
-    || /\b\d{4}-\d{2}-\d{2}\b/.test(knownDate)
-  );
+  const hasConcreteDate = isConcreteDayDate(knownDate);
   // Date accept without price: must deliver exact total first (T3a).
   // Date accept with price: close CTA + anticipo flow (T3b).
   const priceBeforeCloseTurn = Boolean(
     !priceGiven && dateSelectedThisTurn && hasConcreteDate && typeof knownPeople === 'number' && lockedPlanId,
   );
   const t3bCloseTurn = Boolean(
-    !closeCtaAcceptedThisTurn && priceGiven && hasConcreteDate && typeof knownPeople === 'number' && lockedPlanId,
+    !priceObjectionThisTurn && !closeCtaAcceptedThisTurn && priceGiven && hasConcreteDate && typeof knownPeople === 'number' && lockedPlanId,
   );
   // Pushed here, not with the other phase cues, because its wording depends on
   // `t3bCloseTurn`. The generic tail ("Fechas/motivo → solo fechas + 1 pregunta") is right
@@ -669,11 +754,45 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
   // (live `vacation-motive-discovery-baredate`, 1/3 runs). The no-re-quote half must stay
   // in both variants: it is what stops the model re-pricing a DIFFERENT plan on the close.
   if (priceGiven) {
-    runtime.push(
-      t3bCloseTurn
-        ? 'PRECIO YA ENTREGADO: no repitas el total ni $ ni COP, y no cotices otro plan. Este turno cierra (T3b), no vuelve a ofrecer fechas.'
-        : 'PRECIO YA ENTREGADO: no repitas $ ni COP del plan salvo que el cliente pida otra cotización. Fechas/motivo → solo fechas + 1 pregunta.',
-    );
+    const transportObjection = priceObjectionThisTurn && transportObjectionThisTurn && !t3bCloseTurn && !closeCtaAcceptedThisTurn;
+    if (transportObjection) {
+      // The transport is the objection, not the plan: keep the plan and price it
+      // WITHOUT transport. Cheaper plans are only listed, also without transport, for
+      // a customer who says the plan itself weighs too.
+      const planOnly = typeof knownPeople === 'number' && lockedPlanId
+        ? calculatePriceQuote(activeExperience, { planId: lockedPlanId, people: knownPeople, transportNeed: 'own' })
+        : null;
+      const alternatives = planOnly && lockedPlanId && typeof knownPeople === 'number'
+        ? listCheaperPlanQuotes(activeExperience, lockedPlanId, knownPeople, 'own') ?? []
+        : [];
+      const planLine = planOnly
+        ? `el plan ${lockedPlanId} para ${planOnly.people} personas queda en ${formatMoney(planOnly.planTotal, planOnly.currency)} ${planOnly.currency} sin transporte; ese total no cambia.`
+        : 'el plan elegido no cambia.';
+      const alternativesLine = alternatives.length > 0
+        ? ` salvo que el cliente diga que el plan tambien le pesa; en ese caso solo puedes cotizar sin transporte: ${alternatives.map(option => `- ${option.planId}: ${formatMoney(option.total, option.currency)} ${option.currency}`).join(' | ')}`
+        : '';
+      runtime.push(`OBJECION DE TRANSPORTE: el cliente objeta el transporte privado, no el plan. Separa los valores: ${planLine} El transporte privado es opcional y aparte. Explica en 1 frase por que cuesta eso usando solo hechos del CATALOGO de este sitio (CLARIFICACIONES, rules, LOGISTICS / ROUTE), sin dramatizar; si el CATALOGO no lo explica, no inventes razones. Ofrece la alternativa de llegada que el CATALOGO de este sitio indique. No ofrezcas otros planes${alternativesLine}. No inventes descuentos. Una sola pregunta: como prefiere llegar.`);
+    } else if (priceObjectionThisTurn && !t3bCloseTurn && !closeCtaAcceptedThisTurn) {
+      const alternatives = typeof knownPeople === 'number' && lockedPlanId
+        ? listCheaperPlanQuotes(activeExperience, lockedPlanId, knownPeople, typeof collectedFields?.transporte === 'string'
+          ? collectedFields.transporte as TransportNeed
+          : undefined)
+        : null;
+      const missingComparisonInput = typeof knownPeople !== 'number'
+        ? 'grupo'
+        : !lockedPlanId ? 'plan' : 'precio completo o transporte confirmado';
+      runtime.push(alternatives == null
+        ? `OBJECION DE PRECIO: COMPARACION INCOMPLETA. Falta ${missingComparisonInput}. No afirmes que no existen opciones mas economicas ni compares totales parciales con completos. Pide el dato faltante o explica que el equipo debe validar el precio pendiente; usa CATALOGO para describir diferencias de alcance sin inventar valores.`
+        : alternatives.length > 0
+        ? `OBJECION DE PRECIO: el cliente cuestiona el valor. Puedes cotizar solo estas alternativas realmente mas economicas para ${knownPeople} personas; cada total es autoritativo: ${alternatives.map(option => `- ${option.planId} (${option.siteName}): ${formatMoney(option.total, option.currency)} ${option.currency}.${typeof knownPeople === 'number' ? perPersonQuoteCue(option.total, knownPeople, option.currency) : ''}`).join(' | ')}. No inventes descuentos. La sede alternativa solo aparece porque su total es menor que la opcion mas economica de la sede activa.`
+        : 'OBJECION DE PRECIO: el cliente cuestiona el valor. No hay una alternativa de plan con menor precio en el catalogo para este grupo. No inventes descuentos ni presentes otra sede como mas economica. Explica con brevedad que cambia entre los planes disponibles en CATALOGO y pregunta si quiere comparar su alcance.');
+    } else {
+      runtime.push(
+        t3bCloseTurn
+          ? 'PRECIO YA ENTREGADO: no repitas el total ni $ ni COP, y no cotices otro plan. Este turno cierra (T3b), no vuelve a ofrecer fechas.'
+          : 'PRECIO YA ENTREGADO: no repitas $ ni COP del plan salvo que el cliente pida otra cotización. Fechas/motivo → solo fechas + 1 pregunta.',
+      );
+    }
   }
   if (priceBeforeCloseTurn) {
     const quote = calculatePriceQuote(activeExperience, {
@@ -689,28 +808,50 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
       );
     }
   }
-  if (t3bCloseTurn) {
+  const missingOperationalField = collectedFields?.nombre == null
+    ? 'nombre'
+    : collectedFields?.transporte == null
+      ? 'transporte'
+      : 'ninguno';
+  if (t3bCloseTurn && reservationRequestedThisTurn) {
+    runtime.push(
+      `ESTADO DE TURNO: T3b RESERVA PEDIDA. Hay fecha concreta, el precio ya fue entregado y el cliente ya pidió reservar en este inbound. Aplica whatsapp-sales.skill.md §T3b (variante reserva pedida): sin preguntar si quiere iniciar la reserva. DATO OPERATIVO FALTANTE: ${missingOperationalField}.`,
+    );
+  } else if (t3bCloseTurn) {
     runtime.push(
       'ESTADO DE TURNO: T3b. Hay fecha concreta y el precio ya fue entregado. Aplica whatsapp-sales.skill.md §T3b.',
     );
   }
   if (closeCtaAcceptedThisTurn) {
-    const missingOperationalField = collectedFields?.nombre == null
-      ? 'nombre'
-      : collectedFields?.transporte == null
-        ? 'transporte'
-        : 'ninguno';
     runtime.push(`ESTADO DE TURNO: POST-CTA. El cliente aceptó iniciar la validación y la alerta al equipo ya está en curso. Aplica whatsapp-sales.skill.md §POST-CTA. DATO OPERATIVO FALTANTE: ${missingOperationalField}.`);
   }
   const asksHowToReserve = typeof latestCustomerMessage === 'string'
     && /\b(?:c[oó]mo\s+reservo|como\s+reservo|c[oó]mo\s+pago|como\s+pago|c[oó]mo\s+se\s+reserva|quiero\s+reservar|how\s+(?:do\s+i\s+)?(?:book|reserve|pay)|what(?:'s|\s+is)\s+next\s+to\s+book)\b/i.test(latestCustomerMessage);
-  if (!priceBeforeCloseTurn && !closeCtaAcceptedThisTurn && (asksHowToReserve || salesPhase === 'closing')) {
+  if (!priceObjectionThisTurn && !priceBeforeCloseTurn && !closeCtaAcceptedThisTurn && (asksHowToReserve || salesPhase === 'closing')) {
     runtime.push('INTENCION DE RESERVA: el cliente preguntó cómo continuar. Aplica el turno correspondiente de whatsapp-sales.skill.md según los datos conocidos.');
   }
   if (typeof knownPeople === 'number' && !lockedPlanId && activePlans.length > 1) {
-    runtime.push('PRICE GATE ACTIVO: ya conoces el grupo, pero falta elegir plan. No escribas precios ni totales; pregunta por el plan o la duracion.');
+    runtime.push('PRICE GATE ACTIVO: ya conoces el grupo, pero falta elegir plan. No escribas precios ni totales de planes; pregunta por el plan o la duracion. Si pregunta solo por transporte, responde su precio del CATALOGO por separado, sin sumarlo a un plan no elegido.');
+    const sitePlans = activePlans.filter(plan => plan.siteId === selectedSiteId);
+    // A campaign segment owns its diagnosis question; its catalog copy decides whether to list plans.
+    if (!sitePending && !pausedPlan && !entrySegment && !proactiveMode && !consentAcceptedThisTurn
+      && !otherSitePhotoRequest && entryMarker?.temperature !== 'retargeting' && sitePlans.length > 2) {
+      runtime.push(`OPCIONES DE PLAN ESTE TURNO: ${sitePlans.map(plan => `${plan.name} (${plan.duration})`).join(' | ')}. Presenta todas estas opciones por nombre y una diferencia breve de CATALOGO, sin precios. No reduzcas la eleccion a esencial/completa. Una sola pregunta para elegir.`);
+    }
   }
-  if (!t3bCloseTurn && typeof knownPeople === 'number' && lockedPlanId && isPricingAvailable(activeExperience)) {
+  // Explicit choice only: a single-plan catalog sets lockedPlanId from "Hola" onward.
+  // Close, consent, proactive and other-site turns own their question.
+  if (
+    collectedPlanId && !pausedPlan && typeof knownPeople !== 'number' && !sitePending
+    && !closeCtaAcceptedThisTurn && !consentAcceptedThisTurn && !proactiveMode && !otherSitePhotoRequest
+  ) {
+    runtime.push('GRUPO DESCONOCIDO: el cliente eligió plan pero no dijo cuántas personas viajan. No escribas totales ni asumas un tamaño de grupo; la pregunta de avance de este turno es cuántas personas viajan.');
+  }
+  // Gated on `!priceGiven`: QUOTE LOCK must never coexist with the
+  // `PRECIO YA ENTREGADO` cue, which forbids repeating the total. Their
+  // contradiction made live `buying-signal-payment-facts` re-quote instead of
+  // naming anticipo + methods (§T8).
+  if (!t3bCloseTurn && !priceGiven && typeof knownPeople === 'number' && lockedPlanId && isPricingAvailable(activeExperience)) {
     const quote = calculatePriceQuote(activeExperience, {
       planId: lockedPlanId,
       people: knownPeople,
@@ -723,17 +864,8 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
       const transportNote = quote.requiresTransportConfirmation
         ? ' Transporte adicional pendiente de confirmacion; no inventes ese valor.'
         : '';
-      // The plan is settled and no price has gone out yet, so the total belongs in
-      // THIS reply. Live `plan-selection-gallery` (0/2 runs) described the chosen plan
-      // and asked for a month instead, stranding the lead one turn short of the quote
-      // that §FASE 3 already required. Gated on `!priceGiven` so it can never
-      // contradict the `PRECIO YA ENTREGADO` cue pushed above, which forbids
-      // repeating the total — that contradiction class already cost a live suite once.
-      const quoteDueNote = priceGiven
-        ? ''
-        : ' Este turno entrega ese total; no lo pospongas para despues de preguntar fecha o mes.';
       runtime.push(
-        `QUOTE LOCK: escribe "Para ${quote.people} personas, el plan queda en ${formatMoney(amount, quote.currency)} ${quote.currency}". Copia esas personas y ese total; no recalcules ni redondees otra cifra.${transportNote}${quoteDueNote}`,
+        `QUOTE LOCK: escribe "Para ${quote.people} personas, el plan queda en ${formatMoney(amount, quote.currency)} ${quote.currency}". Copia esas personas y ese total; no recalcules ni redondees otra cifra.${quote.requiresTransportConfirmation ? '' : perPersonQuoteCue(amount, quote.people, quote.currency)}${transportNote} Este turno entrega ese total; no lo pospongas para despues de preguntar fecha o mes.`,
       );
     }
   }
@@ -764,12 +896,9 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
     );
   }
 
-  // GALERIA: list available themes so LLM can emit valid markers
-  const galleryImages = getGalleryImages(skills, selectedExperienceId ?? activeExperience.id);
-  const collectedPlanId = typeof collectedFields?.plan === 'string' ? collectedFields.plan : null;
-  const selectedPlanSiteId = collectedPlanId
-    ? activeExperience.plans.find(plan => plan.id === collectedPlanId)?.siteId
-    : undefined;
+  // GALERIA: list available themes so LLM can emit valid markers. Plan-only photos
+  // (gallery[].planIds) are advertised only to that plan's customers.
+  const galleryImages = getGalleryImages(scopeGalleryToPlan(skills, collectedPlanId), selectedExperienceId ?? activeExperience.id);
   const sitesByTheme = new Map<string, Set<string>>();
   for (const image of galleryImages) {
     if (!image.type) continue;
@@ -777,15 +906,39 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
     sites.add(image.siteId ?? '');
     sitesByTheme.set(image.type, sites);
   }
-  const galleryThemes = [...sitesByTheme.entries()]
-    .filter(([, sites]) => selectedPlanSiteId ? sites.has(selectedPlanSiteId) : sites.size === 1)
-    .map(([theme]) => theme);
-  if (galleryThemes.length > 0) {
-    runtime.push(`TEMAS DE GALERIA DISPONIBLES: ${galleryThemes.join(', ')}.`);
+  const galleryThemes = !sitePending && !pausedPlan
+    ? [...sitesByTheme.entries()]
+      .filter(([, themeSites]) => selectedSiteId ? themeSites.has(selectedSiteId) : themeSites.size === 1)
+      .map(([theme]) => theme)
+    : [];
+  const brochureCheckPlanId = brochurePlanId === undefined ? collectedPlanId : brochurePlanId;
+  const hasPlanBrochure = !!findPlanBrochureImage(
+    getDynamicPlanImages(skills),
+    selectedExperienceId ?? activeExperience.id,
+    brochureCheckPlanId,
+  );
+  const advertisedThemes = hasPlanBrochure ? [...galleryThemes, PLAN_BROCHURE_THEME] : galleryThemes;
+  if (advertisedThemes.length > 0) {
+    runtime.push(`TEMAS DE GALERIA DISPONIBLES: ${advertisedThemes.join(', ')}.`);
+  }
+  if (planSelectedThisTurn && !galleryShown && galleryImagesRemaining && galleryImagesRemaining > 0) {
+    const selectedPlan = getPlans(activeExperience).find(plan => plan.id === collectedFields?.plan);
+    const planTheme = selectedPlan?.galleryTheme;
+    if (planTheme && galleryThemes.includes(planTheme)) {
+      runtime.push(
+        `ESTADO DE TURNO: PLAN ELEGIDO. Primera elección de plan (§GALERIA): conserva el turno que corresponda y termina literalmente con [[FOTOS:${planTheme}]] en su propia línea, después de la pregunta. No anuncies el envío.`,
+      );
+    }
   }
   if (galleryShown) runtime.push('GALERIA_YA_MOSTRADA: true');
   if (galleryRequestThemes && galleryRequestThemes.length > 0) {
     runtime.push(`PEDIDO DE FOTOS ESTE TURNO: ${galleryRequestThemes.join(', ')}.`);
+  }
+  if (otherSitePhotoRequest) {
+    runtime.push(`CLIENTE PIDIO FOTOS DE OTRO SITIO: "${otherSitePhotoRequest}". No emitas [[FOTOS:...]] en este turno. Pregunta si quiere revisar los planes y la info de ese sitio primero, y avanza en la conversacion.`);
+  }
+  if (photoSiteCorrection) {
+    runtime.push('CLIENTE CUESTIONA EL SITIO DE LAS FOTOS. Su afirmacion no esta verificada: no confirmes la procedencia ni digas que comprobaste las imagenes. El reclamo por si solo no cambia el destino; respeta cualquier eleccion explicita de este turno. Aplica §GALERIA y los temas del pedido; sin destino elegido, pregunta cual quiere.');
   }
   if (galleryImagesRemaining !== undefined) {
     runtime.push(`CUPO_FOTOS_RESTANTE: ${galleryImagesRemaining}.`);

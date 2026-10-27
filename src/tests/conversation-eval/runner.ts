@@ -8,6 +8,7 @@ import type { LlmResult, LlmTurn } from '../../services/llm/llm-client.js';
 import type { LlmClientInput } from '../../services/llm/llm-client.js';
 import type { Scenario, ScenarioTurn } from './schema.js';
 import { getDynamicService, getSkills, loadSkills, setDynamicService } from '../../services/skill-loader.js';
+import { useAllSitesActive } from '../helpers/all-sites-catalog.js';
 import { getActiveExperience } from '../../services/product-registry.js';
 import { DynamicDataService, PRICING_NOT_AVAILABLE } from '../../services/dynamic-data-service.js';
 import type { InternalDynamicData, InternalPaymentData } from '../../services/dynamic-data-service.js';
@@ -108,6 +109,10 @@ function createDynamicData(scenario: Scenario): InternalDynamicData {
           shortDescription: plan.shortDescription,
           benefits: plan.benefits,
           keywords: plan.keywords,
+          galleryTheme: plan.galleryTheme,
+          selectionAliases: plan.selectionAliases,
+          includedAddonIds: plan.includedAddonIds,
+          calculation: plan.calculation,
           clarifications: plan.clarifications ?? [],
           imageId: plan.imageId,
         })),
@@ -116,6 +121,10 @@ function createDynamicData(scenario: Scenario): InternalDynamicData {
           lastUpdated: seed?.currentDate ?? '2026-01-01',
           items: experience.pricing.items.map(item => ({
             id: item.id,
+            kind: item.kind,
+            category: item.category,
+            quoteMode: item.quoteMode,
+            role: item.role,
             siteId: DEFAULT_SITE_ID,
             planId: item.planId,
             label: item.label,
@@ -201,10 +210,39 @@ export function applyScenarioSeeds(ctx: RunContext, scenario: Scenario): () => v
     if (seed.conversationMode) ctx.repos.conversation.setMode(ctx.customerPhone, seed.conversationMode as ConversationMode);
     if (seed.softClosed) ctx.repos.conversation.setSoftClosed(ctx.customerPhone);
     if (seed.priceGiven) ctx.repos.conversation.setPriceGiven(ctx.customerPhone);
+    // Seed followup subscription status: primarily for consent-path testing.
+    if (seed.followupStatus) {
+      ctx.repos.followupSubscription.ensureExists(ctx.customerPhone);
+      const status = seed.followupStatus;
+      if (status === 'pending') {
+        ctx.repos.followupSubscription.markAsked(ctx.customerPhone, null);
+      } else if (status === 'active') {
+        ctx.repos.followupSubscription.markAsked(ctx.customerPhone, null);
+        ctx.repos.followupSubscription.affirm(ctx.customerPhone, `test_seed_${Date.now()}`, 'test_seed');
+      } else if (status === 'declined') {
+        ctx.repos.followupSubscription.markAsked(ctx.customerPhone, null);
+        ctx.repos.followupSubscription.decline(ctx.customerPhone, `test_seed_${Date.now()}`);
+      } else if (status === 'revoked') {
+        ctx.repos.followupSubscription.markAsked(ctx.customerPhone, null);
+        ctx.repos.followupSubscription.affirm(ctx.customerPhone, `test_seed_${Date.now()}`, 'test_seed');
+        ctx.repos.followupSubscription.revoke(ctx.customerPhone, 'test_seed');
+      }
+      // 'unasked' is the default state, so no action needed
+    }
   }
 
   const dynamicAvailable = scenario.seedSystem?.dynamicSkillAvailable;
-  const previousDynamicService = dynamicAvailable !== undefined ? getDynamicService() : null;
+  const reopenPausedSites = scenario.seedSystem?.reopenPausedSites === true;
+  if (reopenPausedSites && dynamicAvailable !== undefined) {
+    throw new Error(`${scenario.id}: reopenPausedSites cannot be combined with dynamicSkillAvailable`);
+  }
+  const previousDynamicService = dynamicAvailable !== undefined || reopenPausedSites ? getDynamicService() : null;
+  if (reopenPausedSites) useAllSitesActive();
+  const restoreReopened = (): void => {
+    if (!reopenPausedSites) return;
+    setDynamicService(previousDynamicService);
+    loadSkills();
+  };
   if (dynamicAvailable !== undefined) {
     setDynamicService(createDynamicService(dynamicAvailable ? createDynamicData(scenario) : null, dynamicAvailable));
     loadSkills();
@@ -214,6 +252,7 @@ export function applyScenarioSeeds(ctx: RunContext, scenario: Scenario): () => v
     exp.pricing.botRules = exp.pricing.botRules.filter(rule => rule !== PRICING_NOT_AVAILABLE);
     return () => {
       exp.pricing.botRules = prevRules;
+      restoreReopened();
     };
   }
 
@@ -229,15 +268,63 @@ export async function runTurn(
   ctx: RunContext,
   turnDef: ScenarioTurn,
   turnNumber: number,
+  mode: 'deterministic' | 'live' = 'deterministic',
 ): Promise<TurnRecord> {
   if (turnDef.seedPriceGiven) ctx.repos.conversation.setPriceGiven(ctx.customerPhone);
   if (turnDef.seedLeadScore !== undefined) ctx.repos.conversation.updateLeadScore(ctx.customerPhone, turnDef.seedLeadScore);
   applyQualificationSeed(ctx.repos, ctx.customerPhone, turnDef.seedQualification);
+
+  // Replay turns bypass LLM: store inbound and outbound directly with applied seeds.
+  if (mode === 'live' && turnDef.replay) {
+    ctx.repos.runInTransaction(() => {
+      ctx.repos.message.addMessage({
+        customer_phone: ctx.customerPhone,
+        direction: 'inbound',
+        message_type: 'text',
+        body: turnDef.user.slice(0, 1500),
+        created_at: new Date().toISOString(),
+      });
+      ctx.repos.message.addMessage({
+        customer_phone: ctx.customerPhone,
+        direction: 'outbound',
+        message_type: 'text',
+        body: turnDef.mockReply,
+        created_at: new Date().toISOString(),
+      });
+    });
+    // Return a minimal output for replay turns (no AI call, no analysis).
+    const replayOutput: ProcessMessageOutput = {
+      shouldSendReply: true,
+      reply: turnDef.mockReply,
+      usedAi: false,
+      shouldAlertOwner: false,
+      shouldSendImage: false,
+      shouldSendOwnerImage: false,
+      shouldSendGalleryImages: false,
+      priceJustGiven: false,
+      leadScore: ctx.repos.conversation.getByPhone(ctx.customerPhone)?.lead_score ?? 0,
+    };
+    return {
+      turnNumber,
+      user: turnDef.user,
+      reply: turnDef.mockReply,
+      processOutput: replayOutput,
+    };
+  }
+
+  const messageId = `sim_${Date.now()}_${turnNumber}`;
+  if (turnDef.consentAnswer === 'affirm') {
+    ctx.repos.followupSubscription.affirm(ctx.customerPhone, messageId, 'customer_reply');
+  } else if (turnDef.consentAnswer === 'decline') {
+    ctx.repos.followupSubscription.decline(ctx.customerPhone, messageId);
+  }
   const input: ProcessMessageInput = {
     repos: ctx.repos,
     customerPhone: ctx.customerPhone,
     message: turnDef.user.slice(0, 1500),
-    messageId: `sim_${Date.now()}_${turnNumber}`,
+    messageId,
+    consentAcceptedThisTurn: turnDef.consentAnswer === 'affirm',
+    consentDeclinedThisTurn: turnDef.consentAnswer === 'decline',
   };
 
   const output = await processMessage(input);

@@ -1,0 +1,25 @@
+{
+  "id": "chivor-solo-transport-objection",
+  "source": "customer replay 2026-10-26: solo traveler from the C01 ad, asks for door-to-door transport, then objects mainly to the transport",
+  "tags": ["objection", "transport", "live"],
+  "lang": "es",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "criteria": [
+    { "id": "transport-price-only", "rule": "reply_must_match", "patterns": ["1[., ]700[., ]000"], "turn": 3, "weight": 3, "critical": true },
+    { "id": "no-unchosen-plan-sum", "rule": "reply_must_not_match", "patterns": ["2[., ]660[., ]000|960[., ]000"], "turn": 3, "weight": 3, "critical": true },
+    { "id": "offers-realistic-arrival", "rule": "reply_must_match", "patterns": ["bus|carro propio|moto|tu (?:propio )?carro|vehiculo propio|veh[ií]culo propio"], "turn": 5, "weight": 3, "critical": true },
+    { "id": "no-discount", "rule": "reply_must_not_match", "patterns": ["descuento|rebaja|gratis|promoci[oó]n"], "turn": 5, "weight": 3, "critical": true },
+    { "id": "no-transport-in-total", "rule": "reply_must_not_match", "patterns": ["2[., ]660[., ]000"], "turn": 5, "weight": 2, "critical": true },
+    { "id": "keeps-plan-no-downsell", "rule": "reply_must_not_match", "patterns": ["480[., ]000|620[., ]000"], "turn": 5, "weight": 2 },
+    { "id": "prime-solo-quote", "rule": "reply_must_match", "patterns": ["960[., ]000"], "turn": 4, "weight": 2, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 5, "weight": 2, "critical": true }
+  ],
+  "turns": [
+    { "user": "C01 - Hola, quiero informacion y fechas para la aventura minera en Chivor", "replay": true, "mockReply": "Es una aventura real en la zona esmeraldera: mina con guías locales y hacienda en la montaña. ¿Cuántos serían?" },
+    { "user": "viajo solo", "replay": true, "mockReply": "Buenísimo. Tenemos tres formas de vivirlo: BASIC es pasadía de un día, CORE es dos días con una mina y noche en la hacienda, y PRIME suma dos minas y cabalgata. ¿Cuál te llama más?" },
+    { "user": "que vale el transporte puerta a puerta?", "mockReply": "El transporte privado 4x4 puerta a puerta desde Bogotá vale $1.700.000 COP, ida y regreso, y cubre hasta 4 personas. ¿Qué plan te interesa más?", "expect": { "shouldSendReply": true } },
+    { "user": "el PRIME, cuanto vale para mi solo?", "mockReply": "Para 1 persona, PRIME queda en $960.000 COP, con dos minas, cabalgata y noche en la hacienda. ¿Tienes alguna fecha en mente?", "expect": { "priceJustGiven": true } },
+    { "user": "esta algo costoso el plan en particular el transporte", "mockReply": "Te entiendo. El plan sigue en $960.000 COP; el transporte privado es aparte y pesa porque es un 4x4 con conductor dedicado ida y regreso. Viajando solo, lo normal es el bus público o tu carro hasta Chivor pueblo, y desde ahí nuestro 4x4 te sube a la mina. ¿Cómo prefieres llegar?", "expect": { "shouldSendReply": true } }
+  ]
+}

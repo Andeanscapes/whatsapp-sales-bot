@@ -1,6 +1,6 @@
 {
-  "v": 11,
-  "updated": "2026-08-07T00:00:00Z",
+  "v": 19,
+  "updated": "2026-10-12T12:07:17Z",
   "referentAttribution": {
     "profileId": "andean-scapes-co",
     "version": 1,
@@ -10,58 +10,51 @@
         "sourceLabel": "CI fixture"
       },
       "referent.b": {
-        "role": "sales-flow",
+        "role": "connect-clarity",
         "sourceLabel": "CI fixture"
       },
       "referent.c": {
-        "role": "qualification",
+        "role": "warm-tone",
         "sourceLabel": "CI fixture"
       },
       "referent.d": {
-        "role": "safety",
+        "role": "payment-path",
         "sourceLabel": "CI fixture"
       },
       "referent.e": {
-        "role": "funnel",
+        "role": "funnel-recommend",
         "sourceLabel": "CI fixture"
       },
       "referent.f": {
-        "role": "recommendation",
+        "role": "logistics-safety",
         "sourceLabel": "CI fixture"
       },
       "referent.g": {
-        "role": "closing",
+        "role": "direct-close",
         "sourceLabel": "CI fixture"
       },
       "referent.h": {
-        "role": "retargeting",
+        "role": "retarget-rhythm",
         "sourceLabel": "CI fixture"
       },
       "referent.i": {
-        "role": "objections",
+        "role": "low-pressure-pause",
         "sourceLabel": "CI fixture"
       },
       "referent.j": {
-        "role": "follow-up",
+        "role": "fact-grounding",
         "sourceLabel": "CI fixture"
       }
-    }
-  },
-  "reservationPolicy": {
-    "rescheduling": {
-      "allowed": true,
-      "freeUntilDaysBefore": 7,
-      "lateChangeRule": "Después de ese plazo, la reprogramación queda sujeta a los gastos ya causados, como seguro o comidas solicitadas para la experiencia."
     }
   },
   "payments": {
     "currency": "COP",
     "deposit": {
       "type": "percentage",
-      "value": 15,
+      "value": 25,
       "label": "Anticipo para confirmar la reserva",
-      "calculationRule": "depositAmount = totalReservationAmount * 0.15",
-      "remainingBalancePercentage": 85
+      "calculationRule": "depositAmount = totalReservationAmount * 0.25",
+      "remainingBalancePercentage": 75
     },
     "methods": [
       {
@@ -69,12 +62,7 @@
         "name": "Nequi",
         "type": "mobile_transfer",
         "enabled": true,
-        "phoneNumber": "3000000000",
-        "formattedPhoneNumber": "300 000 0000",
-        "countryCode": "+57",
-        "fullPhoneNumber": "+573000000000",
         "currency": "COP",
-        "instructions": "Realiza la transferencia por Nequi al número de prueba del fixture CI.",
         "requiresPaymentProof": true
       },
       {
@@ -83,8 +71,14 @@
         "type": "payment_link",
         "enabled": true,
         "currency": "COP",
-        "paymentLink": null,
-        "instructions": "El enlace seguro se genera después de validar disponibilidad.",
+        "requiresPaymentProof": false
+      },
+      {
+        "id": "bold",
+        "name": "Bold",
+        "type": "payment_link",
+        "enabled": true,
+        "currency": "COP",
         "requiresPaymentProof": false
       }
     ],
@@ -94,16 +88,23 @@
       "message": "La reserva queda confirmada cuando el equipo valide la disponibilidad y el pago del anticipo."
     },
     "displayPolicy": {
+      "showAfterAvailabilityValidation": true,
       "showWhenCustomerWantsToReserve": true,
       "showWhenCustomerAsksHowToPay": true,
-      "showAfterAvailabilityValidation": true,
       "doNotRequestPaymentBeforeAvailabilityValidation": true,
       "neverRequestFullPaymentWithoutConfirmation": true
     }
   },
+  "reservationPolicy": {
+    "rescheduling": {
+      "allowed": true,
+      "freeUntilDaysBefore": 7,
+      "lateChangeRule": "Después de ese plazo, la reprogramación queda sujeta a los gastos ya causados, como seguro o comidas solicitadas para la experiencia."
+    }
+  },
   "media": {
     "ownerImage": {
-      "url": "https://cdn.andeanscapes.com/whatsapp_bot/emerald_mining_chivor/heinneryalexandra.jpg",
+      "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/brand/owner.jpg",
       "caption": "Heinner y Alexandra - Andean Scapes"
     }
   },
@@ -113,17 +114,19 @@
       "clarifications": [
         "Las minas que visitamos son minas reales de esmeralda de la zona esmeraldifera. Algunas tienen operacion artesanal y otras tienen mayor movimiento o escala. Ninguna es mina de carbon y no existe relacion con la mineria de carbon; tampoco son minas adaptadas o montadas para turismo.",
         "No se asegura una mina en particular. Se visita alguna de las minas aliadas segun disponibilidad y condiciones del dia; todas ofrecen la experiencia real con equipo de seguridad y guia local.",
-        "La cabalgata guiada es un adicional opcional por persona; no viene incluida en el plan base.",
-        "Cascadas, caminatas adicionales y otras actividades fuera del itinerario son extras: requieren validacion previa del equipo para confirmar precio, disponibilidad y requisitos."
+        "En Chivor, BASIC es pasadia de un dia sin alojamiento; CORE y PRIME son de 2 dias y 1 noche con alojamiento. La cabalgata es opcional en CORE e incluida en PRIME; si no se realiza en PRIME, se usa 4x4 sin cambiar el precio.",
+        "Los extras publicados corresponden a Chivor. El transporte privado desde Bogota es un servicio opcional aparte.",
+        "Coscuez pertenece al itinerario de San Pablo de Borbur, en el occidente de Boyaca. Chivor es otro destino, aproximadamente a 10 horas en carro de esta zona segun informacion del operador. No combines rutas, hospedajes, actividades ni fotografias de ambos destinos."
       ],
       "currency": "COP",
       "paymentPolicy": {
         "depositRequired": true,
-        "depositPercentage": 15,
-        "remainingBalancePercentage": 85,
+        "depositPercentage": 25,
+        "remainingBalancePercentage": 75,
         "paymentMethods": [
           "nequi",
-          "mercado_pago"
+          "mercado_pago",
+          "bold"
         ],
         "paymentDataReference": "payments",
         "requiresAvailabilityValidation": true,
@@ -132,139 +135,469 @@
       "sites": {
         "chivor": {
           "clarifications": [
-            "DURACION: la jornada de experiencia minera en Chivor dura en promedio unas 6 horas en total. Incluye traslados locales, preparacion, caminatas, ingreso y salida. El tiempo dentro de la mina es solo una parte, varia segun la mina y las condiciones del dia; nunca digas que son 6 horas continuas bajo tierra.",
-            "ASISTENCIA MEDICA: se incluye un seguro de asistencia medica, pero ningun medico, paramedico ni personal sanitario acompana presencialmente el tour. No lo describas como personal medico en sitio. Un seguro de viaje integral distinto a esta asistencia no esta incluido.",
-            "TIPO DE MINA: todas las minas aliadas son minas reales de esmeralda de la zona esmeraldifera. Algunas operan artesanalmente y otras tienen mayor movimiento o escala. Ninguna es mina de carbon y no existe relacion con la mineria de carbon. La mina especifica depende de disponibilidad y condiciones del dia."
+            "DURACION: la experiencia varía por plan. BASIC (pasadia): mina ~2h + caminata ~1h, el mismo dia. CORE: jornada minera ~2.5h (1 mina) + caminata ~2h. PRIME: jornada minera ~5h (2 minas) + cabalgata ~2h. Incluye traslados locales, preparacion, ingreso y salida. El tiempo dentro de la mina es solo una parte, varia segun las condiciones del dia; nunca digas que es tiempo continuo bajo tierra.",
+            "ASISTENCIA MEDICA: se incluye una poliza de asistencia medica, normalmente gestionada con Magenta Seguros de Medellin. En eventos normales contamos con personal operativo y apoyo ante cualquier eventualidad, pero no con personal sanitario presencial. En grupos grandes y eventos especiales podemos contar con personal de enfermeria solo cuando se haya coordinado y confirmado. Un seguro de viaje integral distinto a esta asistencia no esta incluido.",
+            "TIPO DE MINA: todas las minas aliadas son minas reales de esmeralda de la zona esmeraldifera. Algunas operan artesanalmente y otras tienen mayor movimiento o escala. Ninguna es mina de carbon y no existe relacion con la mineria de carbon. La mina especifica depende de disponibilidad y condiciones del dia. PRIME incluye acceso a 2 minas.",
+            "REALIDAD DEL VIAJE (explicala corta y honesta, una sola vez, cuando el cliente compare planes, pregunte por BASIC, por transporte o por como llegar; es informacion para elegir bien, no alarma ni presion): Chivor queda a unos 160 km de Bogota, pero son 5-6 horas por trayecto porque el ultimo tramo es de montana y via destapada. Las minas no estan en el pueblo: desde Chivor se sube en 4x4 por via rural, y ese 4x4 local ya va incluido en todos los planes. BASIC se puede, pero es un dia muy largo: salir de Bogota de madrugada, unas 9 horas de experiencia y otras 5-6 horas de regreso el mismo dia. Por eso CORE y PRIME incluyen la noche en Hacienda El Recuerdo con cena y desayuno: se descansa, no hay que regresar el mismo dia y la jornada minera se vive sin afan.",
+            "TRANSPORTE PRIVADO (por que cuesta lo que cuesta): no es un traslado urbano. Es un vehiculo 4x4 con conductor dedicado, ida y regreso Bogota-Chivor-Bogota, con 5-6 horas por trayecto y tramo destapado; son jornadas completas de conductor y vehiculo. El valor es por vehiculo y cubre hasta 4 personas, asi que compartido entre varios baja mucho por persona. Para 1 o 2 personas lo normal es bus publico (la opcion mas economica) o carro propio o moto hasta Chivor pueblo; desde ahi nuestro 4x4 local los sube a la mina. Si el cliente objeta el transporte, separa siempre el valor del plan del transporte: el transporte es opcional y no cambia el plan elegido."
           ],
           "addons": {
             "apiary_cattle": {
               "label": "Apicultura y ganadería (opcional, por persona)",
-              "pp": 55000
+              "pp": 55000,
+              "category": "optional",
+              "quoteMode": "separate"
             },
             "horseback_riding": {
               "label": "Cabalgata guiada (opcional, por persona, se cotiza aparte del total del plan)",
-              "pp": 120000
+              "pp": 120000,
+              "category": "optional",
+              "quoteMode": "separate"
             },
             "private_transport": {
               "label": "Transporte privado 4x4 puerta a puerta desde Bogotá",
               "price": 1700000,
-              "max": 4
+              "max": 4,
+              "category": "optional",
+              "quoteMode": "included_in_total",
+              "role": "transport"
             }
           },
           "rules": [
-            "Usa solo el precio del plan elegido. Apicultura/ganaderia extra solo en 2D/1N. Traductor con costo extra (consultar). Nunca inventes descuentos ni precios fuera del catalogo.",
+            "Usa solo el precio del plan elegido. Apicultura/ganaderia disponible en CORE y PRIME como addon opcional. Traductor con costo extra (consultar). Nunca inventes descuentos ni precios fuera del catalogo.",
             "Cada adulto o nino que participa en el plan cuenta como un cupo completo para calcular el precio. No hay tarifa infantil ni descuento por edad publicado; aplica la formula del grupo total.",
             "Transporte privado 4x4 puerta a puerta desde Bogotá: el mismo valor cubre hasta 4 personas. Incluye recogida en casa u hotel, ida y regreso Bogotá-Chivor-Bogotá; aproximadamente 5-6 horas por trayecto. Conviene más a grupos que comparten el valor; para una persona sola puede resultar costosa. Súmalo al plan base solo si lo piden. Para 5 o más personas se requieren vehículos adicionales: no inventes ese costo, el equipo lo confirma.",
             "Carro propio o moto: normalmente la alternativa más conveniente. Carro no 4x4 debe llegar por Chivor pueblo y usar transporte local 4x4 hacia la mina; la ruta por Ubalá solo aplica para moto o carro 4x4.",
             "Bus público: alternativa más económica desde Bogotá, Tunja u otra ciudad. NO sumar al plan; el cliente lo compra por su cuenta. Orientar y validar horarios para llegar a Chivor.",
             "Si RUNTIME incluye QUOTE LOCK, copia únicamente ese total exacto — aunque los precios individual/pareja visibles en DATOS produzcan otra cifra. La diferencia es intencional; QUOTE LOCK tiene prioridad. Nunca calcules, estimes ni reconstruyas el total desde DATOS.",
-            "Cabalgata guiada: $120.000 COP por persona, ambos planes. Es un adicional que se cotiza por separado del total del plan base — NUNCA la sumaras al total del QUOTE LOCK. Presenta la cabalgata como una línea aparte. Requiere confirmación previa del equipo sobre disponibilidad de caballos y guía para la fecha solicitada.",
+            "CORE: Cabalgata guiada es un addon opcional a $120.000 COP por persona; se cotiza por separado del total del plan base — NUNCA la sumaras al QUOTE LOCK. Presenta la cabalgata como una línea aparte solo si el cliente la pide.",
+            "PRIME: Cabalgata guiada está incluida en el precio base del plan. No se cobra extra. Si el cliente prefiere no hacer cabalgata, se usa 4x4 en su lugar; el precio no cambia.",
             "Cascadas, caminatas adicionales y otras actividades fuera del itinerario estándar son extras que requieren validación previa del equipo para confirmar precio, disponibilidad y requisitos. Nunca inventes valores ni prometas factibilidad de estas actividades.",
-            "Plan solo incluye la experiencia minera e introducción a la ruta. Sin guía dedicada en transporte (cliente llega en su vehículo o moto propia, no 4x4 entra por Chivor pueblo). Ruta guiada o más técnica se coordina con el equipo con costo adicional según grupo; no inventes ese valor, el equipo lo confirma."
+            "Plan incluye la experiencia minera (con duración y número de minas según plan), alojamiento rural y 4 comidas (CORE y PRIME), y traslados locales. BASIC es pasadia: 1 desayuno y 1 almuerzo tipo fiambre, sin alojamiento. Cabalgata/transporte al lugar se coordina según el plan. Sin guía dedicada separada en viaje desde Bogotá (cliente llega en su vehículo o moto propia). Ruta guiada o técnica se coordina con el equipo con costo adicional según grupo; no inventes ese valor, el equipo lo confirma.",
+            "BASIC pasadia: un solo dia, llegada sabado 9:00 am y regreso el mismo dia en la tarde. Sin alojamiento ni cena, sin cabalgata.",
+            "Al presentar opciones en Chivor, distingue los tres planes: BASIC pasadia sin noche, CORE con una mina y noche, PRIME con dos minas y cabalgata. No reduzcas la eleccion a esencial/completa: basica o basico corresponde a BASIC, no a CORE."
           ],
           "media": {
             "gallery": [
               {
-                "url": "https://cdn.andeanscapes.com/whatsapp_bot/emerald_mining_chivor/exp/exp_01.jpg",
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/mine/01.jpg",
                 "caption": "Experiencia minera esmeraldera en Chivor",
                 "type": "mine"
               },
               {
-                "url": "https://cdn.andeanscapes.com/whatsapp_bot/emerald_mining_chivor/exp/exp_02.jpg",
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/mine/02.jpg",
                 "caption": "Experiencia minera esmeraldera en Chivor",
                 "type": "mine"
               },
               {
-                "url": "https://cdn.andeanscapes.com/whatsapp_bot/emerald_mining_chivor/exp/exp_03.jpg",
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/mine/03.jpg",
                 "caption": "Experiencia minera esmeraldera en Chivor",
                 "type": "mine"
               },
               {
-                "url": "https://cdn.andeanscapes.com/whatsapp_bot/emerald_mining_chivor/exp/exp_61.jpg",
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/mine/04.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/mine/05.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/mine/06.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/hotel/07.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "hotel"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/mine/08.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/mine/09.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/mine/10.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/mine/11.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/mine/12.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/mine/13.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/hotel/14.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "hotel"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/hotel/15.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "hotel"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/hotel/16.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "hotel"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/beekeeping/17.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "beekeeping"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/beekeeping/18.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "beekeeping"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/beekeeping/19.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "beekeeping"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/mine/20.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/mine/21.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/mine/22.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/mine/23.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/mine/24.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/mine/31.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/mine/32.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/mine/33.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/mine/34.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/mine/35.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/mine/36.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/mine/37.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/mine/38.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/hotel/39.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "hotel"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/hotel/40.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "hotel"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/hotel/41.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "hotel"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/hotel/42.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "hotel"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/hotel/43.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "hotel"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/hotel/44.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "hotel"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/hotel/45.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "hotel"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/hotel/46.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "hotel"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/hotel/47.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "hotel"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/hotel/48.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "hotel"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/hotel/49.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "hotel"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/car/50.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "car"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/car/51.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "car"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/car/52.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "car"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/car/53.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "car"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/car/54.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "car"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/car/55.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "car"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/bike/56.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "bike"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/bike/57.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "bike"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/bike/58.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "bike"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/bike/59.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "bike"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/bike/60.jpg",
+                "caption": "Experiencia minera esmeraldera en Chivor",
+                "type": "bike"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/kids/61.jpg",
                 "caption": "Niños en la experiencia minera en Chivor",
                 "type": "kids"
               },
               {
-                "url": "https://cdn.andeanscapes.com/whatsapp_bot/emerald_mining_chivor/exp/exp_39.jpg",
-                "caption": "Hospedaje de la experiencia en Chivor",
-                "type": "hotel"
-              },
-              {
-                "url": "https://cdn.andeanscapes.com/whatsapp_bot/emerald_mining_chivor/exp/exp_40.jpg",
-                "caption": "Hospedaje de la experiencia en Chivor",
-                "type": "hotel"
-              },
-              {
-                "url": "https://cdn.andeanscapes.com/whatsapp_bot/emerald_mining_chivor/exp/exp_50.jpg",
-                "caption": "Vehículo 4x4 de la ruta en Chivor",
-                "type": "car"
-              },
-              {
-                "url": "https://cdn.andeanscapes.com/whatsapp_bot/emerald_mining_chivor/exp/exp_51.jpg",
-                "caption": "Vehículo 4x4 de la ruta en Chivor",
-                "type": "car"
-              },
-              {
-                "url": "https://cdn.andeanscapes.com/whatsapp_bot/emerald_mining_chivor/exp/exp_56.jpg",
-                "caption": "Moto de la ruta en Chivor",
-                "type": "bike"
-              },
-              {
-                "url": "https://cdn.andeanscapes.com/whatsapp_bot/emerald_mining_chivor/exp/exp_57.jpg",
-                "caption": "Moto de la ruta en Chivor",
-                "type": "bike"
-              },
-              {
-                "url": "https://cdn.andeanscapes.com/whatsapp_bot/emerald_mining_chivor/exp/exp_25.jpg",
-                "caption": "Apicultura de la experiencia en Chivor",
-                "type": "beekeping"
-              },
-              {
-                "url": "https://cdn.andeanscapes.com/whatsapp_bot/emerald_mining_chivor/exp/exp_62.jpg",
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/kids/62.jpg",
                 "caption": "Niños en la experiencia minera en Chivor",
                 "type": "kids"
               },
               {
-                "url": "https://cdn.andeanscapes.com/whatsapp_bot/emerald_mining_chivor/exp/exp_76.jpg",
-                "caption": "Paisaje de la ruta en Chivor",
-                "type": "nature"
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/kids/63.jpg",
+                "caption": "Niños en la experiencia minera en Chivor",
+                "type": "kids"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/kids/64.jpg",
+                "caption": "Niños en la experiencia minera en Chivor",
+                "type": "kids"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/kids/65.jpg",
+                "caption": "Niños en la experiencia minera en Chivor",
+                "type": "kids"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/kids/66.jpg",
+                "caption": "Niños en la experiencia minera en Chivor",
+                "type": "kids"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/kids/67.jpg",
+                "caption": "Niños en la experiencia minera en Chivor",
+                "type": "kids"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/kids/68.jpg",
+                "caption": "Niños en la experiencia minera en Chivor",
+                "type": "kids"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/kids/69.jpg",
+                "caption": "Niños en la experiencia minera en Chivor",
+                "type": "kids"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/kids/70.jpg",
+                "caption": "Niños en la experiencia minera en Chivor",
+                "type": "kids"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/kids/71.jpg",
+                "caption": "Niños en la experiencia minera en Chivor",
+                "type": "kids"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/kids/72.jpg",
+                "caption": "Niños en la experiencia minera en Chivor",
+                "type": "kids"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/kids/73.jpg",
+                "caption": "Niños en la experiencia minera en Chivor",
+                "type": "kids"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/kids/74.jpg",
+                "caption": "Niños en la experiencia minera en Chivor",
+                "type": "kids"
               }
             ],
-            "types": ["mine", "hotel", "food", "nature", "car", "bike", "beekeping", "kids"],
+            "types": [
+              "mine",
+              "hotel",
+              "car",
+              "bike",
+              "beekeeping",
+              "kids"
+            ],
             "typeKeywords": {
-              "mine": ["mina", "minas", "minera", "mineria", "minero", "mineros", "socavon", "esmeralda", "esmeraldas", "mining", "mine", "emerald"],
-              "hotel": ["hotel", "hospedaje", "alojamiento", "habitacion", "habitaciones", "hacienda", "room", "rooms", "lodging"],
-              "food": ["comida", "almuerzo", "desayuno", "gastronomia", "food"],
-              "nature": ["naturaleza", "paisaje", "paisajes", "represa", "mirador", "ruta", "camino", "carretera", "nature", "route", "road"],
-              "car": ["4x4", "camioneta", "carro", "carros", "transporte", "vehiculo"],
-              "bike": ["moto", "motos", "motocicleta", "motorcycle", "motorbike"],
-              "beekeping": ["abejas", "apiario", "miel", "apicultura"],
-              "kids": ["nino", "ninos", "nina", "ninas", "hijo", "hijos", "hija", "hijas", "peques", "pequenos", "chicos", "menores", "kid", "kids", "child", "children"]
+              "mine": [
+                "mina",
+                "minas",
+                "minera",
+                "mineria",
+                "minero",
+                "mineros",
+                "socavon",
+                "esmeralda",
+                "esmeraldas",
+                "mining",
+                "mine",
+                "emerald"
+              ],
+              "hotel": [
+                "hotel",
+                "hospedaje",
+                "alojamiento",
+                "habitacion",
+                "habitaciones",
+                "hacienda",
+                "room",
+                "rooms",
+                "lodging"
+              ],
+              "car": [
+                "4x4",
+                "camioneta",
+                "carro",
+                "carros",
+                "transporte",
+                "vehiculo"
+              ],
+              "bike": [
+                "moto",
+                "motos",
+                "motocicleta",
+                "motorcycle",
+                "motorbike"
+              ],
+              "beekeeping": [
+                "abejas",
+                "apiario",
+                "miel",
+                "apicultura"
+              ],
+              "kids": [
+                "nino",
+                "ninos",
+                "nina",
+                "ninas",
+                "hijo",
+                "hijos",
+                "hija",
+                "hijas",
+                "peques",
+                "pequenos",
+                "chicos",
+                "menores",
+                "kid",
+                "kids",
+                "child",
+                "children"
+              ]
             }
           },
           "availability": {
             "tz": "America/Bogota",
             "dates": [
-              {
-                "d": "2026-08-07",
-                "s": "limited",
-                "sl": 7
-              },
-              {
-                "d": "2026-08-15",
-                "s": "limited",
-                "sl": 9
-              },
-              {
-                "d": "2026-09-26",
-                "s": "limited",
-                "sl": 5
-              },
-              {
-                "d": "2026-10-10",
-                "s": "limited",
-                "sl": 7
-              },
               {
                 "d": "2026-10-24",
                 "s": "limited",
@@ -279,15 +612,91 @@
                 "d": "2026-11-14",
                 "s": "limited",
                 "sl": 7
+              },
+              {
+                "d": "2026-11-28",
+                "s": "limited",
+                "sl": 5
+              },
+              {
+                "d": "2026-12-12",
+                "s": "limited",
+                "sl": 5
+              },
+              {
+                "d": "2027-01-09",
+                "s": "limited",
+                "sl": 5
+              },
+              {
+                "d": "2027-01-23",
+                "s": "limited",
+                "sl": 5
               }
             ],
-            "rule": "Nunca digas que todo está vendido. El equipo valida disponibilidad para cualquier fecha. Si preguntan cuáles están libres, lista las fechas planeadas y di que el equipo las valida. Siempre deriva la confirmación al equipo."
+            "rule": "Nunca digas que todo está vendido. El equipo valida disponibilidad para cualquier fecha. Si preguntan cuáles están libres, lista las fechas planeadas y di que el equipo las valida. Siempre deriva la confirmación al equipo. Nunca ofrezcas fechas pasadas ni presentes los cupos publicados como disponibilidad confirmada."
           },
           "plans": {
-            "2d1n_mining": {
+            "basic_1d_chivor": {
               "pricing": {
-                "individual": 550000,
-                "couple": 1000000
+                "individual": 480000,
+                "couple": 740000,
+                "calculation": "couple_half_from_five"
+              },
+              "clarifications": [],
+              "addons": [],
+              "media": {
+                "planImages": [
+                  {
+                    "id": "basic_1d_preview",
+                    "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/plans/basic/card.png?v=bc956cae9283",
+                    "caption": "Plan BASIC: pasadia de 1 dia en Chivor"
+                  }
+                ]
+              },
+              "tier": "basic",
+              "depositPercentage": 30,
+              "name": "BASIC — Pasadia 1 Dia",
+              "duration": "1D/0N",
+              "shortDescription": "Pasadia minero en Chivor: 1 mina guiada + caminata al mirador del Pulpito, con desayuno y almuerzo tipo fiambre. En total ~9h de experiencia; el tiempo subterraneo es solo una parte y varia. Llegas sabado 9:00 am y regresas el mismo dia en la tarde. Sin alojamiento.",
+              "benefits": "La forma de conocer la mina sin noche de alojamiento.",
+              "keywords": [
+                "basic",
+                "basica",
+                "pasadia",
+                "pasadía",
+                "sin noche"
+              ],
+              "included": [
+                "Charla taller de esmeraldas (~1h)",
+                "1 mina guiada con equipo de seguridad (~2h)",
+                "Caminata guiada mirador del pulpito (~1h)",
+                "2 comidas por persona: 1 desayuno y 1 almuerzo tipo fiambre (~2h)",
+                "Visita zonas de interes en Chivor y la Playa (~1h)",
+                "Transporte 4x4 interno Chivor - Minas - Chivor (~2h)",
+                "Guias especializados de la region",
+                "Acompanamiento para compra de esmeraldas"
+              ],
+              "notIncludedUnlessConfirmed": [
+                "Alojamiento: BASIC es pasadia, sin noche"
+              ],
+              "imageId": "basic_1d_preview",
+              "galleryTheme": "mine",
+              "status": "active",
+              "selectionAliases": [
+                "basic",
+                "basica",
+                "basico",
+                "pasadia",
+                "pasadía"
+              ],
+              "includedAddonIds": []
+            },
+            "core_2d1n_chivor": {
+              "pricing": {
+                "individual": 620000,
+                "couple": 950000,
+                "calculation": "couple_half_from_five"
               },
               "clarifications": [],
               "addons": [
@@ -297,17 +706,19 @@
               "media": {
                 "planImages": [
                   {
-                    "id": "emerald_mining_preview_1",
-                    "url": "https://cdn.andeanscapes.com/whatsapp_bot/details/2d1n_1.png",
-                    "caption": "Imagen de referencia del plan 2D/1N"
+                    "id": "core_2d1n_preview",
+                    "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/plans/core/card.png?v=d6a8dd2cee2b",
+                    "caption": "Plan CORE: 1 mina + caminata 2D/1N"
                   }
                 ]
               },
-              "name": "2 Dias / 1 Noche — Mina Esmeralda",
+              "tier": "core",
+              "name": "CORE — 2 Dias / 1 Noche",
               "duration": "2D/1N",
-              "shortDescription": "Aventura minera en Chivor: jornada minera total de unas 6 horas, taller esmeraldero, alojamiento y 3 comidas. El tiempo subterraneo es solo una parte y varia. Pet-friendly.",
-              "benefits": "Plan ideal para quienes buscan una experiencia de aventura real en la mina. Puede hacerse llegando temprano en la manana para completar la mina ese mismo dia, o llegando con calma para tomar la charla minera al llegar y hacer la mina el segundo dia en la manana, regresando a Chivor al final del dia. Intenso, autentico, bien aprovechado.",
+              "shortDescription": "La experiencia esencial con noche: 1 mina guiada + caminata al mirador del Pulpito, 2 dias / 1 noche con alojamiento en Hacienda El Recuerdo. En total ~11.5h de experiencia. Inicio sabado 9:00 am, regreso domingo despues del mediodia. Pet-friendly.",
+              "benefits": "Aventura minera real en lo esencial. Se puede hacer la mina el dia de llegada (llegando temprano) o a la manana siguiente.",
               "keywords": [
+                "core",
                 "mina",
                 "esmeralda",
                 "emerald",
@@ -318,99 +729,275 @@
                 "2 dias",
                 "2 días",
                 "1 noche",
-                "un dia",
-                "una noche",
                 "minera"
               ],
-              "imageId": "emerald_mining_preview_1",
-              "status": "active"
+              "included": [
+                "Charla taller de esmeraldas (~1h)",
+                "1 mina guiada con equipo de seguridad (~2.5h)",
+                "Caminata guiada mirador del pulpito (~2h)",
+                "4 comidas por persona: 2 desayunos, 1 cena y 1 almuerzo tipo fiambre (~4h)",
+                "1 noche en habitacion con cama doble y bano privado en Hacienda El Recuerdo",
+                "Transporte 4x4 interno Chivor - Hacienda (~2h)",
+                "Guias especializados de la region"
+              ],
+              "imageId": "core_2d1n_preview",
+              "galleryTheme": "mine",
+              "status": "active",
+              "selectionAliases": [
+                "core",
+                "esencial"
+              ],
+              "includedAddonIds": []
             },
-            "3d2n_rural": {
+            "prime_2d1n_chivor": {
               "pricing": {
-                "individual": 750000,
-                "couple": 1400000
+                "individual": 960000,
+                "couple": 1700000,
+                "calculation": "couple_half_from_five"
               },
               "clarifications": [],
               "addons": [
-                "horseback_riding"
+                "apiary_cattle"
               ],
               "media": {
                 "planImages": [
                   {
-                    "id": "rural_experience_preview_1",
-                    "url": "https://cdn.andeanscapes.com/whatsapp_bot/details/3d2n_1.png",
-                    "caption": "Imagen de referencia del plan 3D/2N"
+                    "id": "prime_2d1n_preview",
+                    "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/plans/prime/card.png?v=61b11c8f405b",
+                    "caption": "Plan PRIME: 2 minas + cabalgata 2D/1N"
                   }
                 ]
               },
-              "name": "3 Dias / 2 Noches — Mina + Apicultura + Ganaderia",
-              "duration": "3D/2N",
-              "shortDescription": "Experiencia de 3 dias: charla esmeraldera, jornada minera total de unas 6 horas, apicultura y ganaderia. El tiempo subterraneo varia. Incluye 2 noches y 6 comidas. Pet-friendly.",
-              "benefits": "Itinerario relajado: charla el dia 1, jornada minera el dia 2 y actividades rurales el dia 3. Incluye 2 noches, 6 comidas y WiFi.",
+              "tier": "prime",
+              "name": "PRIME — 2 Dias / 1 Noche",
+              "duration": "2D/1N",
+              "shortDescription": "La experiencia mas completa: 2 minas guiadas + cabalgata a la segunda mina, 2 dias / 1 noche con alojamiento en Hacienda El Recuerdo. En total ~14h de experiencia; la jornada mas larga. Inicio sabado 8:00 am, regreso domingo despues del mediodia. Pet-friendly. Apicultura disponible como addon.",
+              "benefits": "Para quien quiere vivirlo todo: dos minas y cabalgata.",
               "keywords": [
-                "apicultura",
-                "abejas",
-                "abeja",
-                "ganaderia",
-                "ganado",
-                "vacas",
-                "vaca",
-                "ordeño",
-                "beekeeping",
-                "livestock",
-                "rural",
-                "3d",
-                "3 dias",
-                "3 días",
-                "2 noches",
-                "dos noches",
-                "completo",
-                "full",
-                "colmenas",
-                "apiario"
+                "prime",
+                "dos minas",
+                "2 minas",
+                "dos mina",
+                "cabalgata",
+                "cabalgata incluida",
+                "horseback",
+                "mina",
+                "esmeralda",
+                "emerald",
+                "mining",
+                "chivor",
+                "mineria",
+                "2d",
+                "2 dias",
+                "2 días",
+                "1 noche",
+                "minera",
+                "caballo"
               ],
-              "imageId": "rural_experience_preview_1",
-              "status": "active"
+              "included": [
+                "Charla taller de esmeraldas (~1h)",
+                "2 minas guiadas con equipo de seguridad (~5h)",
+                "Cabalgata guiada a la segunda mina (~2h)",
+                "4 comidas por persona: 2 desayunos, 1 cena y 1 almuerzo tipo fiambre (~4h)",
+                "1 noche en habitacion con cama doble y bano privado en Hacienda El Recuerdo",
+                "Transporte 4x4 interno Chivor - Hacienda (~2h)",
+                "Guias especializados de la region"
+              ],
+              "imageId": "prime_2d1n_preview",
+              "galleryTheme": "mine",
+              "status": "active",
+              "selectionAliases": [
+                "prime",
+                "mas completa",
+                "premium",
+                "la de dos minas",
+                "la de cabalgata",
+                "mas completo"
+              ],
+              "includedAddonIds": [
+                "horseback_riding"
+              ]
             }
           },
+          "entrySegments": {
+            "C01": {
+              "label": "Familiar Adventure / General",
+              "description": "Usuario que busca aventura familiar o grupal sin transporte específico.",
+              "valueHook": "Es una inmersión real en la zona esmeraldera: mina con guías locales, noche en hacienda y desconexión total. Adaptamos el ritmo para tu grupo.",
+              "diagnosisQuestion": "¿Qué les encaja más: BASIC pasadía sin noche, CORE con una mina y noche, o PRIME con dos minas y cabalgata?",
+              "planMatch": "BASIC (pasadia), CORE o PRIME segun alcance y tiempo buscado.",
+              "contextualMediaTypes": [
+                "mine"
+              ]
+            },
+            "C02": {
+              "label": "4x4 / Off-Road Adventure",
+              "description": "Usuario entusiasta de 4x4 y off-road.",
+              "valueHook": "La ruta a Chivor es todo un reto 4x4: carretera destapada, ferry en Macanal y acceso a la mina por caminos que solo vehículos preparados disfrutan.",
+              "diagnosisQuestion": "¿Traen su 4x4 para vivir la ruta completa, o prefieren llegar con su vehículo y que el equipo los mueva en nuestro 4x4 local?",
+              "planMatch": "2D/1N con énfasis en ruta desafiante. Si vienen en vehículo propio, confirmamos compatibilidad.",
+              "contextualMediaTypes": [
+                "car",
+                "mine"
+              ]
+            },
+            "C03": {
+              "label": "Moto / Bike Adventure",
+              "description": "Usuario interesado en rutas en motocicleta.",
+              "valueHook": "Por la Región del Guavio son unos 35 km de vía rural desde Ubalá hasta la Hacienda; esa ruta solo aplica para moto o 4x4. Conviene validar el estado de las vías antes de viajar.",
+              "diagnosisQuestion": "¿Vienen en moto para la ruta completa, o prefieren llegar por Chivor y que nos movamos en vehículo a la mina?",
+              "planMatch": "2D/1N diseñado para moto riders. Confirmamos que traen equipamiento adecuado.",
+              "contextualMediaTypes": [
+                "bike",
+                "mine"
+              ]
+            },
+            "C04": {
+              "label": "Kids / Family Mining Education",
+              "description": "Familia con niños interesada en experiencia educativa y minería.",
+              "valueHook": "Los niños aman las minas (¡Minecraft es real aquí!). Tenemos guías especializados en niños, comidas adaptadas y actividades como apicultura que los encantarán.",
+              "diagnosisQuestion": "¿Qué edades tienen los niños?",
+              "planMatch": "2D/1N con enfoque family-friendly, CORE o PRIME según edades. Ajustamos ritmo y comidas según necesidades.",
+              "contextualMediaTypes": [
+                "kids",
+                "mine"
+              ]
+            },
+            "H01": {
+              "label": "Hot Lead - General",
+              "description": "Lead con alto intent desde funnel, sin transporte específico.",
+              "valueHook": "",
+              "diagnosisQuestion": "¿Qué les encaja más: BASIC pasadía sin noche, CORE con una mina y noche, o PRIME con dos minas y cabalgata?",
+              "planMatch": "BASIC, CORE o PRIME. Confirmamos fechas disponibles.",
+              "contextualMediaTypes": [
+                "mine"
+              ]
+            },
+            "H02": {
+              "label": "Hot Lead - 4x4",
+              "description": "Lead con alto intent desde funnel, interesado en ruta 4x4.",
+              "valueHook": "",
+              "diagnosisQuestion": "¿Traen su 4x4 para vivir la ruta, o prefieren llevar su auto normal y que el equipo los mueva en nuestro 4x4 local?",
+              "planMatch": "2D/1N con énfasis en ruta 4x4. Confirmamos transporte y fechas.",
+              "contextualMediaTypes": [
+                "car",
+                "mine"
+              ]
+            },
+            "H03": {
+              "label": "Hot Lead - Moto",
+              "description": "Lead con alto intent desde funnel, interesado en ruta moto.",
+              "valueHook": "",
+              "diagnosisQuestion": "¿Vienen en moto para la ruta completa, o prefieren llegar por Chivor y que nos movamos en vehículo?",
+              "planMatch": "2D/1N diseñado para moto riders. Confirmamos equipamiento y fechas.",
+              "contextualMediaTypes": [
+                "bike",
+                "mine"
+              ]
+            },
+            "H04": {
+              "label": "Hot Lead - Kids",
+              "description": "Lead con alto intent desde funnel, interesado en experiencia para niños.",
+              "valueHook": "",
+              "diagnosisQuestion": "¿Qué edades traen?",
+              "planMatch": "2D/1N family-friendly, CORE o PRIME según edades. Ajustamos según preferencias.",
+              "contextualMediaTypes": [
+                "kids",
+                "mine"
+              ]
+            },
+            "R01": {
+              "label": "Returning - General",
+              "description": "Lead que tuvo conversación previa pero no reservó.",
+              "valueHook": "Venías mirando la experiencia y tenías un plan en mente. ¿Qué te frenó la última vez: fecha, precio, logística o seguridad?",
+              "diagnosisQuestion": "Cuando vimos la experiencia hace poco, ¿qué te frenó: disponibilidad de fecha, presupuesto, logística, o seguridad?",
+              "planMatch": "El plan que ya vieron o similar. Resolver el blocker concreto.",
+              "contextualMediaTypes": [
+                "mine"
+              ]
+            },
+            "R02": {
+              "label": "Returning - 4x4",
+              "description": "Lead que tuvo conversación previa pero no reservó, interesado en ruta 4x4.",
+              "valueHook": "Venías buscando la ruta 4x4 desafiante. Resolvamos qué te frenó: ¿fue fecha, precio, logística del viaje o seguridad del vehículo?",
+              "diagnosisQuestion": "Cuando vimos la ruta 4x4 hace poco, ¿qué te frenó: disponibilidad de fecha, presupuesto, cómo transportarte, o dudas sobre el camino?",
+              "planMatch": "2D/1N 4x4. Resolver blocker. Confirmar transporte y fechas disponibles.",
+              "contextualMediaTypes": [
+                "car",
+                "mine"
+              ]
+            },
+            "R03": {
+              "label": "Returning - Moto",
+              "description": "Lead que tuvo conversación previa pero no reservó, interesado en ruta moto.",
+              "valueHook": "Te interesó la ruta en moto por Ubalá. ¿Qué nos pasó: fecha que no cuadraba, presupuesto, o detalles de la ruta?",
+              "diagnosisQuestion": "La ruta en moto te había gustado. ¿Qué cambió o qué nos frenó: fecha, precio, logística, o preocupación por la ruta?",
+              "planMatch": "2D/1N moto. Resolver blocker. Confirmar disponibilidad y detalles técnicos.",
+              "contextualMediaTypes": [
+                "bike",
+                "mine"
+              ]
+            },
+            "R04": {
+              "label": "Returning - Kids",
+              "description": "Lead que tuvo conversación previa pero no reservó, interesado en experiencia para niños.",
+              "valueHook": "Los niños te fascinaba la idea de la mina. ¿Qué nos pasó para no avanzar: fechas, presupuesto, logística con los niños?",
+              "diagnosisQuestion": "Cuando miramos la experiencia para los niños, ¿qué nos frenó: fechas que no encajaban, presupuesto, preocupación por logística?",
+              "planMatch": "2D/1N family-friendly. Resolver blocker. Confirmar edades de niños y necesidades.",
+              "contextualMediaTypes": [
+                "kids",
+                "mine"
+              ]
+            }
+          },
+          "selectionAliases": [
+            "chivor",
+            "oriente"
+          ],
           "name": "Chivor",
           "location": "Chivor, Boyacá, Colombia",
           "meetingPoint": "Chivor town center",
           "route": {
-            "fromBogota": "Bogota → Tunja → bajar por El Sisga → Macanal (ferry) → via destapada → Chivor. Tiempo total aprox 5-6 horas. El ferry funciona lunes a domingo de 6:00 am a 5:20 pm. Despues del ferry son ~40 min hasta Chivor.",
+            "fromBogota": "Desde Bogota toma la via hacia Tunja. Al pasar por el sector del Sisga, gira a la derecha para bajar al Valle de Tenza y continuar hacia Chivor. No es necesario llegar a Tunja. En el sector de Macanal puedes cruzar en ferry dentro del horario de operacion o bordear la represa para llegar a Chivor. Tiempo orientativo Bogota-Chivor: 5-6 horas; confirmar segun trafico, punto de salida y acceso elegido.",
             "alternateRoute": "Via Region del Guavio por Ubala: Bogota → Ubala → Hacienda El Recuerdo/Chivor. Esta ruta NO es la recomendada para carro normal: solo aplica para moto o carro 4x4. Desde Ubala hasta la Hacienda son aprox 35 km por via rural. Siempre validar estado de las vias antes de viajar.",
             "localAccess": "El tour inicia y termina en Chivor. Para carro normal o carro no 4x4, la opcion correcta es llegar por Chivor pueblo, dejar el vehiculo seguro y usar nuestro transporte local 4x4 hacia la mina. La ruta por Ubala solo es para moto o 4x4.",
-            "arrivalTips": "Hay dos formas de programar la salida desde Bogota, y ambas son validas. OPCION A (la mas comun): salir muy temprano, alrededor de 4:30 am, para llegar a Chivor antes de 10:30 am y alcanzar a hacer la jornada minera ese mismo dia. OPCION B (llegada con calma): salir mas tarde, teniendo en cuenta que las 2:00 pm son la HORA LIMITE de salida, no la recomendada, para no terminar manejando de noche en zona rural; con esta opcion se llega en la tarde, se hace la charla esmeraldera al llegar y la mina queda para la manana siguiente. En cualquier caso, salir de Bogota minimo 5 horas antes del inicio del tour. Si el tour es al dia siguiente del dia de llegada, estos horarios aplican al dia anterior. Se puede llegar en moto o carro, pero carro no 4x4 debe entrar por Chivor, no por Ubala.",
-            "ferryInfo": "Ferry en Macanal. Horario: lunes a domingo 6:00 am a 5:20 pm. Es el unico cruce disponible para llegar a Chivor via Valle de Tenza.",
+            "arrivalTips": "Para hacer la jornada minera el dia de llegada: BASIC y CORE inician en Chivor a las 9:00 am (BASIC regresa el mismo dia); PRIME inicia a las 8:00 am porque necesita mas tiempo. Para PRIME, salir de Bogota alrededor de las 3:00 am es una referencia del operador, que solo permite llegar a las 8:00 am si el trayecto toma unas 5 horas; confirmar punto de salida y margen, y salir antes si se preven 6 horas o demoras. Para CORE, con 5-6 horas de viaje, planear estar fuera de Bogota entre 3:00 y 4:00 am, ajustando para iniciar a las 9:00 am. La alternativa es llegar en la tarde y hacer la mina al dia siguiente, previa coordinacion del itinerario. Para esa llegada en la tarde, se recomienda estar fuera de Bogota al mediodia o antes. Salir a las 2:00 pm puede llevar a una llegada hacia las 8:00 pm; no es el escenario recomendado y no evita manejar de noche. Validar el acceso elegido, incluido horario del ferry si se usa. No prometer una ruta nocturna por defecto.",
+            "ferryInfo": "En el sector de Macanal puedes cruzar en ferry, con horario de referencia de lunes a domingo de 6:00 am a 5:20 pm, sujeto a confirmacion antes de viajar. Tambien puedes bordear la represa para llegar a Chivor. El ferry no es el unico acceso; el equipo confirma la ruta recomendada y su tiempo para la fecha del viaje.",
             "botRules": [
-              "Comparti la ruta exacta si el cliente pregunta: Bogota → Tunja → Sisga → Macanal → ferry → Chivor (via Valle de Tenza).",
               "Tambien menciona la via alterna por Ubala (Region del Guavio), pero aclara que NO es la recomendada para carro normal: solo moto o 4x4. De Ubala a la Hacienda son ~35 km por via rural.",
-              "Menciona el horario del ferry (6am-5:20pm) si preguntan por logistica.",
               "Si el cliente tiene carro no 4x4, explicale que debe llegar por Chivor pueblo, dejarlo seguro en el pueblo y nosotros lo llevamos a la mina.",
               "El tour empieza y termina en Chivor. Si tienen vehiculo propio pueden llegar por Chivor; solo moto o 4x4 puede considerar Ubala.",
               "Si una persona pregunta por que el transporte privado es costoso, explica que es un servicio 4x4 puerta a puerta con recogida en casa u hotel e ida y regreso Bogota-Chivor-Bogota, de aproximadamente 5-6 horas por trayecto. El mismo valor cubre hasta 4 personas y conviene mas al compartirlo en grupo. Para una persona sola, recomienda primero carro propio o moto; como alternativa mas economica, bus publico desde Bogota o Tunja comprado por su cuenta.",
-              "Recomenda salir de Bogota con 5 horas de anticipacion o maximo 2pm. Siempre sugiere validar estado de vias antes de viajar.",
-              "Si el tour es al dia siguiente, el cliente puede llegar el dia anterior antes de las 2pm.",
               "Para bus publico: desde Bogota sale aproximadamente a las 7:00 am desde Terminal Salitre; desde Tunja, aproximadamente a las 5:00 am. Hay pocas salidas al dia. Estos horarios son de referencia, no una garantia.",
               "El pasaje de bus publico cuesta aproximadamente $60.000 COP por persona y por trayecto. El cliente lo compra por su cuenta y no se suma al valor del plan.",
               "Antes de viajar en bus publico, pide al cliente validar horario actualizado y disponibilidad directamente con Flota Valle de Tenza o Flota La Macarena. No asignes una empresa especifica a Bogota o Tunja ni inventes otros horarios, terminales, tarifas o disponibilidad.",
               "Quien llega en bus publico debe coordinar la experiencia para hacer la visita minera al dia siguiente; no prometas mina la misma manana de llegada.",
-              "La ruta y el ferry descritos para carro propio no aplican automaticamente al bus publico. No menciones ferry al explicar bus salvo que el cliente pregunte especificamente por ese cruce."
+              "La ruta y el ferry descritos para carro propio no aplican automaticamente al bus publico. No menciones ferry al explicar bus salvo que el cliente pregunte especificamente por ese cruce.",
+              "La via es hacia Tunja, con desvio a la derecha en el sector del Sisga hacia Valle de Tenza; no indicar que hay que llegar a Tunja y devolverse.",
+              "En Macanal hay dos opciones: ferry o bordear la represa. No afirmar que el ferry es el unico cruce ni inventar el tiempo de la ruta bordeando la represa.",
+              "BASIC y CORE: inicio 9am en Chivor. PRIME: inicio 8am en Chivor. Identificar el plan antes de recomendar hora de salida.",
+              "PRIME: salida alrededor de 3am desde Bogota es una referencia que requiere confirmar trayecto y margen. Con 6h de viaje hay que salir antes para iniciar a las 8am. No garantizar llegada a las 8am saliendo a las 3am.",
+              "Para llegada en la tarde, recomendar estar fuera de Bogota al mediodia o antes. No recomendar salida 2pm como forma de evitar conduccion nocturna.",
+              "El encuentro es en el centro del pueblo de Chivor; punto exacto y pin requieren confirmacion. No asignar automaticamente parque central. Coordinar parqueadero sin inventar precio ni inclusion.",
+              "Despues del cruce en ferry de Macanal, el tiempo aproximado hacia Chivor es 40 minutos. El horario publicado 06:00-17:20 de lunes a domingo es de referencia y requiere confirmacion; bordear la represa es otra opcion con ruta y tiempo por confirmar.",
+              "Confirmar horario y punto de salida del bus de regreso antes de comprar. No hay telefono, horario de regreso ni terminal en Tunja publicados para el bot; el equipo o la empresa los confirma.",
+              "Validar antes de viajar: punto de encuentro, inicio segun plan y margen de salida, ferry o represa, vehiculo y parqueadero, regreso del bus y condiciones operativas. No garantizar seguridad absoluta ni afirmar una verificacion de hoy sin confirmacion."
             ]
           },
-          "shortDescription": "Aventura Minera 2 Dias/1 Noche en Hacienda El Recuerdo, Chivor (Boyaca). Experiencia inmersiva de aventura real — no es un plan turistico convencional. Mina con lodo y agua, caminatas, comunidad local. Plan todo incluido: alojamiento, 3 comidas, mina, charla esmeraldera. Pet-friendly. Para quien busca algo autentico, no piscina con vista.",
-          "fullDescription": "Para que lo tengas claro: esta NO es una experiencia de descanso con piscina. Es una aventura real de 2 dias y 1 noche con caminatas, esfuerzo fisico, terrenos rurales, lodo y humedad dentro de la mina. El ultimo tramo de via es en carretera terciaria (destapada). Si vienes en carro propio, debe estar preparado para via sin pavimentar. No es un plan para quien busca un tour facil de pocas horas — es para quienes quieren vivir algo genuino al lado de la comunidad esmeraldera. Somos pet-friendly. Edad minima: 5 anios. Ideal para personas que les gusta caminar y las aventuras. La Hacienda El Recuerdo es una finca dedicada a la ganaderia y apicultura, con ambiente rural comodo para descansar. Tiene WiFi para trabajar remotamente si se requiere. La distancia desde Bogota hace necesario el hospedaje. Se recomienda llegar a Chivor maximo 10:30 am si se quiere hacer la mina el mismo dia, lo que implica salir de Bogota alrededor de 4:30 am; la alternativa es salir maximo a las 2:00 pm (hora limite para no manejar de noche), llegar en la tarde y hacer la mina a la manana siguiente. La experiencia minera dura ~6 horas y termina en la tarde, por eso se incluye alojamiento con 3 comidas. Menu local estandar, se tienen en cuenta restricciones alimentarias. Para vehiculo propio, la opcion mas segura y cercana es llegar por Chivor. Si el cliente tiene carro que no es 4x4, debe llegar a Chivor pueblo, dejarlo en un lugar seguro y nosotros lo transportamos a las minas en vehiculo 4x4 (~45 min). La ruta por Ubala solo aplica para moto o carro 4x4; desde Ubala hasta la Hacienda son ~35 km por via rural. Si el cliente viaja en bus publico, debe comprarlo directamente por su cuenta en la terminal que corresponda segun su ciudad de origen (Bogota, Tunja u otra). El costo del bus NO se suma al precio final del plan; solo se orienta al cliente y se validan horarios para cumplir el itinerario. Si se necesita transporte privado 4x4 desde Bogota, tiene costo adicional (capacidad maxima 4 personas, mismo precio para 1-4 personas; grupos mas grandes requieren vehiculos adicionales); el equipo confirma el valor. Cancelacion o reagendamiento: maximo 2 veces, hasta 4 dias antes del tour. Despues de eso no se hacen reembolsos de reservas. Traductor disponible con costo adicional.",
+          "shortDescription": "Aventura Minera en Hacienda El Recuerdo, Chivor (Boyaca). Elige BASIC (pasadia de un dia, sin noche), CORE (1 mina + caminata, 2 dias / 1 noche) o PRIME (2 minas + cabalgata, 2 dias / 1 noche). Experiencia inmersiva de aventura real — no es un plan turistico convencional. Mina con lodo y agua, actividades rurales, comunidad local. Pet-friendly.",
+          "fullDescription": "Para que lo tengas claro: esta NO es una experiencia de descanso con piscina. Los planes CORE y PRIME son aventuras reales de 2 dias y 1 noche con caminatas, esfuerzo fisico, terrenos rurales, lodo y humedad dentro de la mina (CORE) o dos minas (PRIME). El ultimo tramo de via es en carretera terciaria (destapada). Si vienes en carro propio, debe estar preparado para via sin pavimentar. No es un plan para quien busca un tour facil de pocas horas — es para quienes quieren vivir algo genuino al lado de la comunidad esmeraldera. Elige segun lo que quieras vivir: BASIC es el pasadia (1 mina + caminata, mismo dia), CORE la experiencia esencial con noche (1 mina + caminata) y PRIME la mas completa (2 minas + cabalgata, con noche). Somos pet-friendly. Edad minima: 5 anios. Ideal para personas que les gusta caminar y las aventuras. La Hacienda El Recuerdo es una finca dedicada a la ganaderia y apicultura, con ambiente rural comodo para descansar. Tiene WiFi para trabajar remotamente si se requiere. La distancia desde Bogota hace necesario el hospedaje. Para mina el dia de llegada, BASIC y CORE inician a las 9:00 am y PRIME a las 8:00 am. La salida debe ajustarse al plan y a las 5-6 horas orientativas de viaje; PRIME tiene referencia de salida 3:00 am, con confirmacion del margen necesario. Para llegada en la tarde y mina al dia siguiente, se recomienda estar fuera de Bogota al mediodia o antes, previa coordinacion del itinerario. La experiencia minera en CORE dura ~2.5h y en PRIME ~5h; en ambos termina en la tarde, por eso se incluye alojamiento con 4 comidas. Menu local estandar, se tienen en cuenta restricciones alimentarias. Para vehiculo propio, la opcion mas segura y cercana es llegar por Chivor. Si el cliente tiene carro que no es 4x4, debe llegar a Chivor pueblo, dejarlo en un lugar seguro y nosotros lo transportamos a las minas en vehiculo 4x4 (~45 min). La ruta por Ubala solo aplica para moto o carro 4x4; desde Ubala hasta la Hacienda son ~35 km por via rural. Si el cliente viaja en bus publico, debe comprarlo directamente por su cuenta en la terminal que corresponda segun su ciudad de origen (Bogota, Tunja u otra). El costo del bus NO se suma al precio final del plan; solo se orienta al cliente y se validan horarios para cumplir el itinerario. Si se necesita transporte privado 4x4 desde Bogota, tiene costo adicional de $1.700.000 COP para hasta 4 personas.",
           "included": [
-            "1 noche de alojamiento en Hacienda El Recuerdo",
-            "Habitacion privada con cama doble y bano privado",
-            "3 comidas completas por persona: desayuno, almuerzo fiambre, cena (menu local estandar, se tienen en cuenta restricciones alimentarias)",
-            "Jornada minera total de unas 6 horas; el tiempo subterraneo varia. Puede alcanzar aproximadamente 300m de profundidad.",
+            "CORE y PRIME: 1 noche de alojamiento en Hacienda El Recuerdo (BASIC es pasadia, sin noche)",
+            "CORE y PRIME: habitacion privada con cama doble y bano privado",
+            "CORE y PRIME: 4 comidas por persona: 2 desayunos, 1 almuerzo tipo fiambre y 1 cena (menu local estandar, se tienen en cuenta restricciones alimentarias). BASIC: 1 desayuno y 1 almuerzo tipo fiambre",
+            "Experiencia minera: BASIC ~2h (1 mina), CORE ~2.5h (1 mina) o PRIME ~5h (2 minas). El tiempo subterraneo varia. Puede alcanzar aproximadamente 300m de profundidad.",
             "Equipo de seguridad completo: casco, botas, guia durante toda la actividad",
-            "Seguro de asistencia medica, sin personal medico presencial.",
+            "Poliza de asistencia medica incluida, normalmente gestionada con Magenta Seguros de Medellin; en eventos normales hay personal operativo y apoyo, sin personal sanitario presencial. El apoyo de enfermeria solo aplica cuando se coordina y confirma para grupos grandes o eventos especiales.",
             "Charla minera con artesanos locales al llegar",
             "Taller y charla esmeraldera (~1 hora)",
             "Transporte local 4x4 desde Chivor pueblo hasta la mina (~45 min, si el cliente no tiene 4x4)",
-            "Acompanamiento local (Chivor → Hacienda)"
+            "Acompanamiento local (Chivor → Hacienda)",
+            "PRIME incluye: cabalgata guiada (~2h) por la zona rural, acceso a 2 minas diferentes"
           ],
           "notIncludedUnlessConfirmed": [
             "Transporte desde la ciudad de origen. Privado 4x4 desde Bogota tiene costo adicional. Bus publico lo compra el cliente por su cuenta y no se suma al precio del plan.",
@@ -418,7 +1005,8 @@
             "Comidas adicionales",
             "Seguro de viaje integral (distinto del seguro de asistencia medica incluido durante la experiencia)",
             "Gastos personales",
-            "Guía de ruta / acompañamiento en carretera"
+            "Guía de ruta / acompañamiento en carretera",
+            "Apicultura (disponible como addon opcional)"
           ],
           "whatToBring": [
             "Zapatos que se puedan mojar y ensuciar (el lodo es real)",
@@ -442,68 +1030,81 @@
             ],
             "notes": "Finca ganadera y apicola con alojamiento rural comodo."
           },
+          "mineDetails": {
+            "type": "Minas reales de esmeralda; no son minas de carbon ni tienen relacion con la mineria de carbon.",
+            "multipleMines": true,
+            "notes": "La mina especifica depende de disponibilidad y condiciones del dia. El tiempo subterraneo varia; hay agua, lodo y terreno irregular. Se ingresa con equipo y guia local."
+          },
           "safetyInfo": {
             "equipment": "Casco, botas de seguridad y guia acompanante durante toda la actividad minera.",
-            "medicalSupport": "Seguro de asistencia medica incluido; no hay personal sanitario presencial. La asistencia se activa mediante el seguro si se requiere.",
+            "medicalSupport": "Se incluye una poliza de asistencia medica, normalmente gestionada con Magenta Seguros de Medellin. Durante eventos normales contamos con personal operativo y apoyo ante cualquier eventualidad, pero no con personal sanitario presencial. En grupos grandes y eventos especiales podemos contar con personal de enfermeria solo cuando se haya coordinado y confirmado.",
             "regionSecurity": "El Valle de Tenza es una region tranquila; el equipo valida las condiciones operativas antes de cada salida.",
             "notes": [
               "La mina tiene ingreso controlado y siempre se entra con guia.",
-              "Se deben informar condiciones medicas preexistentes antes de la actividad.",
-              "No recomendada para personas con movilidad severamente reducida."
+              "Edad minima: 5 anios. Grupo de niños menores requiere validacion previa.",
+              "Personas con condiciones cardiovasculares o fobias graves deben consultar antes. La actividad requiere esfuerzo fisico moderado (CORE) a alto (PRIME).",
+              "No es recomendable para embarazadas avanzadas.",
+              "Las mascotas deben estar vacunadas y controladas; la Hacienda es pet-friendly."
             ]
-          },
-          "mineDetails": {
-            "type": "Minas reales de esmeralda de la zona esmeraldifera: algunas de operacion artesanal y otras de mayor movimiento o escala. No son minas de carbon ni tienen relacion con la mineria de carbon.",
-            "multipleMines": true,
-            "notes": "Se visita una mina aliada segun condiciones del dia. La jornada total ronda 6 horas; el tiempo subterraneo varia. Puede haber agua, lodo y terreno irregular. Se ingresa con equipo y guia local."
           },
           "climateInfo": {
             "altitude": "~2,000 msnm",
             "temperature": "Frio. Llevar chaqueta ligera para la noche.",
-            "rainySeason": "Mayo a agosto (epoca de lluvias)",
-            "drySeason": "Final e inicio de anio (diciembre a febrero, epoca mas seca)",
-            "notes": "Clima frio por altura. Dentro de la mina hay zonas humedas. En epoca de lluvias (mayo-agosto) se recomienda ropa impermeable adicional."
+            "rainySeason": "Mayo a agosto",
+            "drySeason": "Diciembre a febrero",
+            "notes": "Dentro de la mina hay zonas humedas. Se recomienda ropa impermeable en epoca de lluvias."
           },
           "difficulty": {
-            "level": "Moderate",
+            "level": "Moderate to high",
             "notes": [
-              "Caminatas en terreno rural irregular, lodo, humedad dentro de la mina y esfuerzo fisico moderado.",
-              "No es un plan de descanso ni un paseo de pocas horas. Es aventura real con comunidad local.",
-              "No recomendado para personas con movilidad severamente reducida o que busquen una experiencia de descanso."
+              "Caminatas en terreno rural irregular, lodo y humedad.",
+              "No recomendado para movilidad severamente reducida."
             ]
           },
           "experienceReality": {
-            "whatItIs": "Una aventura autentica de 2 dias al lado de mineros y comunidad local en la region esmeraldera de Colombia. Experiencia inmersiva: caminas, te metes a la mina de verdad, te mojas, compartes con la gente local. No es un tour montado para turistas — es la vida real de la region.",
-            "whatItIsNot": "No es un plan de piscina, ni un paseo de pocas horas, ni un tour masivo. No es para quien busca comodidad tipo hotel todo el tiempo. Es rustico, real y genuino.",
-            "physicalDemands": "Jornada total de unas 6 horas con traslados, caminatas e ingreso variable a la mina. Terreno irregular, humedad, lodo y esfuerzo moderado.",
-            "roadConditions": "Los ultimos tramos son carretera terciaria (destapada). Para carro normal o carro no 4x4, la opcion correcta es llegar por Chivor pueblo y dejar el vehiculo seguro; el acceso local a la mina se hace en nuestro 4x4. La ruta por Ubala solo aplica para moto o carro 4x4; desde Ubala hasta la Hacienda son aprox 35 km por via rural.",
-            "idealFor": "Personas con ganas de aventura real, que disfrutan la naturaleza, la cultura local y no le tienen miedo al lodo ni al esfuerzo fisico. Viajeros que buscan experiencias autenticas, no turismo de vitrina.",
-            "notIdealFor": "Personas que buscan descanso, piscina, planes urbanos, o que no estan dispuestas a caminar o mojarse. No recomendado para movilidad severamente reducida."
+            "whatItIs": "Una aventura autentica al lado de mineros y comunidad local en la region esmeraldera de Colombia.",
+            "whatItIsNot": "No es un plan de piscina ni un tour masivo. Es rustico, real y genuino.",
+            "physicalDemands": "BASIC: mina de unas 2 horas y caminata de unas 1 hora, en un solo dia. CORE: jornada minera de unas 2.5 horas y caminata de unas 2 horas. PRIME: jornada minera de unas 5 horas y cabalgata de unas 2 horas. El ingreso variable a la mina es solo parte de la jornada. Terreno irregular, humedad, lodo y esfuerzo fisico.",
+            "roadConditions": "Para carro no 4x4, llegar por Chivor pueblo y usar transporte local 4x4. La ruta por Ubala solo aplica para moto o 4x4; son aprox 35 km por via rural hasta la Hacienda.",
+            "idealFor": "Personas que disfrutan naturaleza, cultura local y aventura real.",
+            "notIdealFor": "No recomendado para movilidad severamente reducida ni para quienes buscan descanso y piscina."
           },
           "safetyFaqs": [
             {
               "lang": "es",
               "intent": "activities",
               "question": "¿Qué actividades incluye?",
-              "answer": "Incluye jornada minera total de unas 6 horas, con tiempo subterraneo variable; taller esmeraldero (~1h), charla, alojamiento y 3 comidas."
+              "answer": "BASIC es pasadia de un dia: una mina y caminata, sin alojamiento. CORE incluye una mina y caminata; PRIME incluye dos minas y cabalgata. CORE y PRIME incluyen taller esmeraldero, charla, alojamiento y 4 comidas. El tiempo subterraneo varia."
             },
             {
               "lang": "en",
               "intent": "activities",
               "question": "What activities are included?",
-              "answer": "Includes an approximately 6-hour mining day with variable underground time, an emerald workshop (~1h), a local talk, 1 night lodging, and 3 meals."
+              "answer": "BASIC is a one-day trip: one mine and a walk, no lodging. CORE includes one mine and a walk; PRIME includes two mines and horseback riding. CORE and PRIME include an emerald workshop, local talk, lodging and 4 meals. Underground time varies."
             },
             {
               "lang": "es",
               "intent": "arrival",
               "question": "¿A qué hora debo llegar?",
-              "answer": "El tour empieza y termina en Chivor. En el plan 2D/1N hay dos formas de organizarlo: si llegas temprano en la manana, puedes hacer la experiencia minera ese mismo dia; si prefieres llegar con calma, haces la charla minera al llegar y al segundo dia en la manana haces la mina, regresando a Chivor al final del dia. Sobre la hora de salida desde Bogota: la mayoria sale muy temprano, alrededor de 4:30 am, para llegar a Chivor antes de 10:30 am y hacer la mina ese mismo dia. Si prefieres salir mas tarde, las 2:00 pm son la hora limite (no la recomendada) para no terminar manejando de noche en zona rural. Recorda validar el estado de las vias antes de viajar."
+              "answer": "El tour empieza y termina en Chivor. Para mina el dia de llegada, BASIC y CORE inician a las 9am y PRIME a las 8am. La hora de salida desde Bogota se ajusta al trayecto de unas 5-6h; para PRIME, 3am es una referencia que puede requerir salir antes. Tambien puedes llegar en la tarde y hacer la mina al dia siguiente, coordinandolo con el equipo. Para esa opcion, recomendamos estar fuera de Bogota al mediodia o antes."
             },
             {
               "lang": "en",
               "intent": "arrival",
               "question": "What time should I arrive?",
-              "answer": "The tour starts and ends in Chivor. About departure time from Bogota: most travelers leave very early, around 4:30 am, to reach Chivor before 10:30 am and do the mine the same day. If you prefer a later start, 2:00 pm is the latest possible departure, not the recommended one, to avoid driving at night on rural roads. If you're arriving the day before the tour, the same timing applies. If you have your own vehicle, you can drive directly to Hacienda El Recuerdo. Remember to check road conditions before traveling."
+              "answer": "The tour starts and ends in Chivor. For a mine visit on arrival day, BASIC and CORE start at 9am and PRIME starts at 8am. Allow roughly 5-6 hours from Bogota and confirm your departure time with the team. Around 3am is a reference for PRIME, but an earlier departure may be needed. Alternatively, arrange an afternoon arrival and a mine visit the next day; we recommend being outside Bogota by noon or earlier for that option."
+            },
+            {
+              "lang": "es",
+              "intent": "physical_recovery",
+              "question": "¿Puedo ir mientras me recupero de una fractura?",
+              "answer": "Si estas en recuperacion de una fractura o tienes movilidad limitada, te recomendamos validarlo primero con tu medico. La experiencia tiene caminatas, terreno rural, lodo y zonas humedas; no vale la pena arriesgar tu recuperacion."
+            },
+            {
+              "lang": "en",
+              "intent": "physical_recovery",
+              "question": "Can I go while recovering from a fracture?",
+              "answer": "If you are recovering from a fracture or have limited mobility, we recommend checking with your doctor first. The experience includes walks, rural terrain, mud, and wet areas; it is not worth risking your recovery."
             },
             {
               "lang": "es",
@@ -516,119 +1117,606 @@
               "intent": "reservation_lead_time",
               "question": "How far in advance should I book?",
               "answer": "We do not use a fixed lead time: it depends on the date and group logistics. If you contact us in advance, the team can validate real availability before confirming any spot."
-            },
-            {
-              "lang": "es",
-              "intent": "physical_recovery",
-              "question": "¿Puedo hacer la experiencia si me estoy recuperando de una fractura?",
-              "answer": "Si estas en recuperacion de una fractura o tienes movilidad limitada, te recomendamos validarlo primero con tu medico. La experiencia tiene caminatas, terreno rural, lodo y zonas humedas; no vale la pena arriesgar tu recuperacion."
-            },
-            {
-              "lang": "en",
-              "intent": "physical_recovery",
-              "question": "Can I do the experience while recovering from a fracture?",
-              "answer": "If you are recovering from a fracture or have limited mobility, we recommend checking with your doctor first. The experience includes walks, rural terrain, mud, and wet areas; it is not worth risking your recovery."
             }
+          ]
+        },
+        "coscuez": {
+          "clarifications": [
+            "El alojamiento es un hotel rural en Borbur, con habitacion privada y bano privado. No es una hacienda ni tiene relacion con Hacienda El Recuerdo. No se publica el nombre del hotel; el equipo confirma el establecimiento.",
+            "CORE y PRIME incluyen la misma experiencia de una mina (~2.5h), charla esmeraldera y visita a la plaza Chacaro (~1h), y caminata al mirador a cielo abierto (~2h). PRIME no incluye una segunda mina ni cabalgata.",
+            "En PRIME, el dia 2 despues del desayuno se realiza el traslado 4x4 a Fura y Tena y una caminata corta en Chanares. Al regresar de la visita se come el fiambre tipico en Chanares antes de volver a Borbur.",
+            "El recorrido local Borbur - Coscuez - Borbur no se realiza en 4x4. El 4x4 local solo corresponde a la excursion PRIME a Fura y Tena, a unos 45 minutos desde Borbur por trayecto segun el operador.",
+            "Las duraciones del folleto son aproximadas. No representan tiempo continuo bajo tierra ni permiten garantizar una suma total de horas; pueden incluir traslados y preparacion. No prometer ascenso a la cima de Fura o Tena.",
+            "No hay extras de actividades publicados para Coscuez. No ofrecer apicultura, ganaderia, cabalgata ni actividades de Chivor.",
+            "No hay datos publicados sobre nombre de mina, altitud, clima, WiFi, nombre del mirador o detalle de cobertura/aseguradora en Coscuez. El equipo confirma esas cuestiones; no copiar los datos de Chivor."
           ],
+          "addons": {
+            "private_transport": {
+              "label": "Transporte privado ida y regreso desde Bogota al destino de San Pablo de Borbur",
+              "price": 1700000,
+              "max": 4,
+              "category": "optional",
+              "quoteMode": "included_in_total",
+              "role": "transport"
+            }
+          },
+          "rules": [
+            "Usa solo el plan de Coscuez elegido. No mezcles inclusiones, rutas, alojamiento, fotos o extras de Chivor.",
+            "Usa la misma regla de calculo del motor que Chivor: couple_half_from_five. No reinterpretar el nombre ni crear una formula nueva; sin el calculador o un QUOTE LOCK, el equipo confirma cotizaciones de 3 o mas personas.",
+            "Cada adulto o nino que participa cuenta como un cupo completo. No hay descuento infantil publicado. Edad minima: 5 anios.",
+            "Si RUNTIME incluye QUOTE LOCK, copia unicamente ese total exacto. Nunca reconstruyas el total desde los precios visibles.",
+            "El anticipo es 25% y el saldo 75%. No solicitar pago antes de validar disponibilidad. Confirmacion sujeta a validacion del equipo.",
+            "Transporte desde Bogota no esta incluido en la tarifa base. Agrega $1.700.000 COP para hasta 4 personas solo si lo solicitan. Para mas personas, valida el costo con el equipo.",
+            "Llegada recomendada: sabado 9:00 am al parque central de San Pablo de Borbur. Regreso al pueblo el domingo despues del mediodia, con horario exacto sujeto al itinerario y validacion del equipo.",
+            "Las fechas planeadas son las mismas que Chivor, por instruccion del operador. Cupos y disponibilidad final requieren validacion. No garantizar salidas entre semana sin consultar al equipo.",
+            "Pet-friendly sujeto a coordinacion; no prometer que las mascotas ingresan a la mina o a todos los lugares.",
+            "La ruta CORE es Borbur - Coscuez - Borbur, en transporte local convencional. PRIME agrega el recorrido en 4x4 a Fura y Tena el segundo dia. No llamar 4x4 a todos los traslados."
+          ],
+          "media": {
+            "gallery": [
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/gallery/mine/coscuez_mine_01.jpg",
+                "caption": "Mina de esmeraldas en Coscuez",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/gallery/mine/coscuez_mine_02.jpg",
+                "caption": "Mina de esmeraldas en Coscuez",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/gallery/mine/coscuez_mine_03.jpg",
+                "caption": "Mina de esmeraldas en Coscuez",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/gallery/mine/coscuez_mine_04.jpg",
+                "caption": "Mina de esmeraldas en Coscuez",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/gallery/mine/coscuez_mine_05.jpg",
+                "caption": "Mina de esmeraldas en Coscuez",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/gallery/mine/coscuez_mine_06.jpg",
+                "caption": "Mina de esmeraldas en Coscuez",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/gallery/mine/coscuez_mine_07.jpg",
+                "caption": "Mina de esmeraldas en Coscuez",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/gallery/mine/coscuez_mine_08.jpg",
+                "caption": "Mina de esmeraldas en Coscuez",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/gallery/mine/coscuez_mine_09.jpg",
+                "caption": "Mina de esmeraldas en Coscuez",
+                "type": "mine"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/gallery/hotel/borbur_hotel_01.jpg",
+                "caption": "Hotel rural en San Pablo de Borbur, Coscuez",
+                "type": "hotel"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/gallery/hotel/borbur_hotel_02.jpg",
+                "caption": "Hotel rural en San Pablo de Borbur, Coscuez",
+                "type": "hotel"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/gallery/hotel/borbur_hotel_03.jpg",
+                "caption": "Hotel rural en San Pablo de Borbur, Coscuez",
+                "type": "hotel"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/gallery/hotel/borbur_hotel_04.jpg",
+                "caption": "Hotel rural en San Pablo de Borbur, Coscuez",
+                "type": "hotel"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/gallery/hotel/borbur_hotel_05.jpg",
+                "caption": "Hotel rural en San Pablo de Borbur, Coscuez",
+                "type": "hotel"
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/gallery/furaytena/borbur_fura_01.jpg",
+                "caption": "Excursión a Fura y Tena, plan PRIME en Coscuez",
+                "type": "furaytena",
+                "planIds": [
+                  "prime_2d1n_coscuez"
+                ]
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/gallery/furaytena/borbur_fura_02.jpg",
+                "caption": "Excursión a Fura y Tena, plan PRIME en Coscuez",
+                "type": "furaytena",
+                "planIds": [
+                  "prime_2d1n_coscuez"
+                ]
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/gallery/furaytena/borbur_fura_03.jpg",
+                "caption": "Excursión a Fura y Tena, plan PRIME en Coscuez",
+                "type": "furaytena",
+                "planIds": [
+                  "prime_2d1n_coscuez"
+                ]
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/gallery/furaytena/borbur_fura_04.jpg",
+                "caption": "Excursión a Fura y Tena, plan PRIME en Coscuez",
+                "type": "furaytena",
+                "planIds": [
+                  "prime_2d1n_coscuez"
+                ]
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/gallery/furaytena/borbur_fura_05.jpg",
+                "caption": "Excursión a Fura y Tena, plan PRIME en Coscuez",
+                "type": "furaytena",
+                "planIds": [
+                  "prime_2d1n_coscuez"
+                ]
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/gallery/furaytena/borbur_fura_06.jpg",
+                "caption": "Excursión a Fura y Tena, plan PRIME en Coscuez",
+                "type": "furaytena",
+                "planIds": [
+                  "prime_2d1n_coscuez"
+                ]
+              },
+              {
+                "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/gallery/furaytena/borbur_fura_07.jpg",
+                "caption": "Excursión a Fura y Tena, plan PRIME en Coscuez",
+                "type": "furaytena",
+                "planIds": [
+                  "prime_2d1n_coscuez"
+                ]
+              }
+            ],
+            "types": [
+              "mine",
+              "hotel",
+              "furaytena"
+            ],
+            "typeKeywords": {
+              "mine": [
+                "mina",
+                "minas",
+                "minera",
+                "mineria",
+                "minero",
+                "mineros",
+                "socavon",
+                "esmeralda",
+                "esmeraldas",
+                "mining",
+                "mine",
+                "emerald"
+              ],
+              "hotel": [
+                "hotel",
+                "hospedaje",
+                "alojamiento",
+                "habitacion",
+                "habitaciones",
+                "hacienda",
+                "room",
+                "rooms",
+                "lodging"
+              ],
+              "furaytena": [
+                "fura y tena",
+                "fura",
+                "tena",
+                "furaytena",
+                "chanares",
+                "chañares"
+              ]
+            }
+          },
+          "availability": {
+            "tz": "America/Bogota",
+            "dates": [
+              {
+                "d": "2026-10-24",
+                "s": "limited",
+                "sl": 7
+              },
+              {
+                "d": "2026-10-31",
+                "s": "limited",
+                "sl": 7
+              },
+              {
+                "d": "2026-11-14",
+                "s": "limited",
+                "sl": 7
+              },
+              {
+                "d": "2026-11-28",
+                "s": "limited",
+                "sl": 5
+              },
+              {
+                "d": "2026-12-12",
+                "s": "limited",
+                "sl": 5
+              },
+              {
+                "d": "2027-01-09",
+                "s": "limited",
+                "sl": 5
+              },
+              {
+                "d": "2027-01-23",
+                "s": "limited",
+                "sl": 5
+              }
+            ],
+            "rule": "Nunca digas que todo está vendido. El equipo valida disponibilidad para cualquier fecha. Si preguntan cuáles están libres, lista las fechas planeadas y di que el equipo las valida. Siempre deriva la confirmación al equipo. Nunca ofrezcas fechas pasadas ni presentes los cupos publicados como disponibilidad confirmada."
+          },
+          "plans": {
+            "core_2d1n_coscuez": {
+              "pricing": {
+                "individual": 650000,
+                "couple": 1200000,
+                "calculation": "couple_half_from_five"
+              },
+              "clarifications": [
+                "El anticipo vigente es 25%; no usar las imagenes anteriores que indican 50%.",
+                "Precio pareja corresponde al total de 2 personas. Para grupos mayores, aplicar la regla del motor compartida con Chivor."
+              ],
+              "addons": [],
+              "media": {
+                "planImages": [
+                  {
+                    "id": "core_2d1n_coscuez",
+                    "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/plans/core/card.png",
+                    "caption": ""
+                  }
+                ]
+              },
+              "tier": "core",
+              "name": "CORE — Coscuez — 2 Dias / 1 Noche",
+              "duration": "2D/1N",
+              "shortDescription": "Una mina y caminata al mirador, con charla esmeraldera, plaza Chacaro, hotel rural privado y 4 comidas.",
+              "benefits": "Experiencia minera y cultural en Coscuez, con alojamiento en Borbur y traslados locales.",
+              "keywords": [
+                "core",
+                "coscuez",
+                "coscues",
+                "borbur",
+                "san pablo de borbur",
+                "chacaro",
+                "mina",
+                "esmeraldas",
+                "2 dias",
+                "1 noche",
+                "mirador",
+                "caminata"
+              ],
+              "included": [
+                "Charla esmeraldera y visita a plaza Chacaro (~1h)",
+                "Una entrada guiada a mina con equipo de seguridad y seguro de asistencia medica (~2.5h)",
+                "Caminata al mirador a cielo abierto (~2h)",
+                "Una noche en hotel rural de Borbur: habitacion privada con cama doble y bano privado",
+                "Guias especializados de la region; tour en espanol",
+                "4 comidas: 2 desayunos, 1 cena y 1 almuerzo tipico (~4h de comidas segun folleto)",
+                "Transporte local convencional Borbur - Coscuez - Borbur (~2h)"
+              ],
+              "itinerary": [
+                {
+                  "day": 1,
+                  "title": "Día 1",
+                  "activities": [
+                    "Encuentro en parque central de San Pablo de Borbur, 9:00 am",
+                    "Charla esmeraldera y plaza Chacaro, visita guiada a una mina y caminata al mirador; orden exacto por confirmar",
+                    "Comidas correspondientes al dia y noche en hotel rural de Borbur"
+                  ]
+                },
+                {
+                  "day": 2,
+                  "title": "Día 2",
+                  "activities": [
+                    "Desayuno",
+                    "Regreso/cierre en San Pablo de Borbur despues del mediodia; actividades y horario exacto por confirmar"
+                  ]
+                }
+              ],
+              "imageId": "core_2d1n_coscuez",
+              "galleryTheme": "mine",
+              "status": "active",
+              "selectionAliases": [
+                "core",
+                "core coscuez",
+                "core coscues",
+                "core borbur",
+                "esencial",
+                "basica",
+                "basico",
+                "la de una mina"
+              ],
+              "includedAddonIds": []
+            },
+            "prime_2d1n_coscuez": {
+              "pricing": {
+                "individual": 1000000,
+                "couple": 1840000,
+                "calculation": "couple_half_from_five"
+              },
+              "clarifications": [
+                "El anticipo vigente es 25%; no usar las imagenes anteriores que indican 50%.",
+                "Precio pareja corresponde al total de 2 personas. Para grupos mayores, aplicar la regla del motor compartida con Chivor."
+              ],
+              "addons": [],
+              "media": {
+                "planImages": [
+                  {
+                    "id": "prime_2d1n_coscuez",
+                    "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/plans/prime/card.png",
+                    "caption": ""
+                  }
+                ]
+              },
+              "tier": "prime",
+              "name": "PRIME — Coscuez — 2 Dias / 1 Noche",
+              "duration": "2D/1N",
+              "shortDescription": "Una mina, caminata al mirador y excursion a Fura y Tena el segundo dia en 4x4, con caminata corta y fiambre en Chanares. Hotel rural privado y 5 comidas.",
+              "benefits": "Agrega naturaleza y cultura de Fura y Tena a la experiencia minera compartida con CORE.",
+              "keywords": [
+                "prime",
+                "coscuez",
+                "coscues",
+                "borbur",
+                "san pablo de borbur",
+                "chacaro",
+                "mina",
+                "esmeraldas",
+                "2 dias",
+                "1 noche",
+                "fura",
+                "tena",
+                "chanares"
+              ],
+              "included": [
+                "Charla esmeraldera y visita a plaza Chacaro (~1h)",
+                "Una entrada guiada a mina con equipo de seguridad y seguro de asistencia medica (~2.5h)",
+                "Caminata al mirador a cielo abierto (~2h)",
+                "Una noche en hotel rural de Borbur: habitacion privada con cama doble y bano privado",
+                "Guias especializados de la region; tour en espanol",
+                "5 comidas: 2 desayunos, 1 cena, 1 almuerzo tipico y 1 almuerzo fiambre en Chanares (~5h de comidas segun folleto)",
+                "Visita guiada a Fura y Tena con caminata corta en Chanares (~3.5h)",
+                "Transporte local Borbur - Coscuez - Borbur y excursion 4x4 a Fura y Tena (~3h de traslados segun folleto)"
+              ],
+              "itinerary": [
+                {
+                  "day": 1,
+                  "title": "Día 1",
+                  "activities": [
+                    "Encuentro en parque central de San Pablo de Borbur, 9:00 am",
+                    "Charla esmeraldera y plaza Chacaro, visita guiada a una mina y caminata al mirador; orden exacto por confirmar",
+                    "Comidas correspondientes al dia y noche en hotel rural de Borbur"
+                  ]
+                },
+                {
+                  "day": 2,
+                  "title": "Día 2",
+                  "activities": [
+                    "Desayuno",
+                    "Traslado 4x4 a Fura y Tena",
+                    "Visita y caminata corta en Chanares",
+                    "Almuerzo fiambre en Chanares despues de la visita",
+                    "Regreso a San Pablo de Borbur despues del mediodia; horario exacto por confirmar"
+                  ]
+                }
+              ],
+              "imageId": "prime_2d1n_coscuez",
+              "galleryTheme": "furaytena",
+              "status": "active",
+              "selectionAliases": [
+                "prime",
+                "prime coscuez",
+                "prime coscues",
+                "prime borbur",
+                "mas completa",
+                "mas completo",
+                "la mas completa"
+              ],
+              "includedAddonIds": []
+            }
+          },
           "entrySegments": {
             "C01": {
               "label": "Familiar Adventure / General",
-              "description": "Usuario que busca aventura familiar o grupal sin transporte específico.",
-              "valueHook": "Es una inmersión real en la zona esmeraldera: mina con guías locales, noche en hacienda y desconexión total. Adaptamos el ritmo para tu grupo.",
-              "diagnosisQuestion": "¿Qué les atrae más: la experiencia minera intensa, o prefieren un ritmo que incluya actividades rurales como apicultura y naturaleza?",
-              "planMatch": "2D/1N estándar, ajustable según grupo y transporte.",
-              "contextualMediaTypes": ["mine"]
+              "description": "Segmento de conversacion para Coscuez. Validar necesidades y logistica propias de San Pablo de Borbur.",
+              "valueHook": "Una mina real de esmeraldas, plaza Chacaro y noche en un hotel rural de Borbur. PRIME agrega Fura y Tena el segundo dia.",
+              "diagnosisQuestion": "¿Prefieren CORE con mina y mirador, o PRIME que agrega Fura y Tena el segundo dia?",
+              "planMatch": "CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
             },
             "C02": {
               "label": "4x4 / Off-Road Adventure",
-              "description": "Usuario entusiasta de 4x4 y off-road.",
-              "valueHook": "La ruta a Chivor es todo un reto 4x4: carretera destapada, ferry en Macanal y acceso a la mina por caminos que solo vehículos preparados disfrutan.",
-              "diagnosisQuestion": "¿Traen su 4x4 para vivir la ruta completa, o prefieren llegar con su vehículo y que el equipo los mueva en nuestro 4x4 local?",
-              "planMatch": "2D/1N con énfasis en ruta desafiante. Si vienen en vehículo propio, confirmamos compatibilidad.",
-              "contextualMediaTypes": ["car", "mine"]
+              "description": "Segmento de conversacion para Coscuez. Validar necesidades y logistica propias de San Pablo de Borbur.",
+              "valueHook": "Una mina real de esmeraldas, plaza Chacaro y noche en un hotel rural de Borbur. PRIME agrega Fura y Tena el segundo dia.",
+              "diagnosisQuestion": "¿Llegan por su cuenta al parque central de San Pablo de Borbur o necesitan transporte desde Bogota?",
+              "planMatch": "CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
             },
             "C03": {
               "label": "Moto / Bike Adventure",
-              "description": "Usuario interesado en rutas en motocicleta.",
-              "valueHook": "Por la Región del Guavio son unos 35 km de vía rural desde Ubalá hasta la Hacienda; esa ruta solo aplica para moto o 4x4. Conviene validar el estado de las vías antes de viajar.",
-              "diagnosisQuestion": "¿Vienen en moto para la ruta completa, o prefieren llegar por Chivor y que nos movamos en vehículo a la mina?",
-              "planMatch": "2D/1N diseñado para moto riders. Confirmamos que traen equipamiento adecuado.",
-              "contextualMediaTypes": ["bike", "mine"]
+              "description": "Segmento de conversacion para Coscuez. Validar necesidades y logistica propias de San Pablo de Borbur.",
+              "valueHook": "Una mina real de esmeraldas, plaza Chacaro y noche en un hotel rural de Borbur. PRIME agrega Fura y Tena el segundo dia.",
+              "diagnosisQuestion": "¿Llegan por su cuenta al parque central de San Pablo de Borbur o necesitan transporte desde Bogota?",
+              "planMatch": "CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
             },
             "C04": {
               "label": "Kids / Family Mining Education",
-              "description": "Familia con niños interesada en experiencia educativa y minería.",
-              "valueHook": "Los niños aman las minas (¡Minecraft es real aquí!). Tenemos guías especializados en niños, comidas adaptadas y actividades como apicultura que los encantarán.",
-              "diagnosisQuestion": "¿Qué edades tienen los niños? Así aseguramos guías, comidas y actividades pensadas para ellos.",
-              "planMatch": "2D/1N con enfoque family-friendly. Ajustamos ritmo y comidas según edades.",
-              "contextualMediaTypes": ["kids", "mine"]
+              "description": "Segmento de conversacion para Coscuez. Validar necesidades y logistica propias de San Pablo de Borbur.",
+              "valueHook": "Una mina real de esmeraldas, plaza Chacaro y noche en un hotel rural de Borbur. PRIME agrega Fura y Tena el segundo dia.",
+              "diagnosisQuestion": "¿Que edades tienen los ninos? La edad minima es 5 anios.",
+              "planMatch": "CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
             },
             "H01": {
               "label": "Hot Lead - General",
-              "description": "Lead con alto intent desde funnel, sin transporte específico.",
+              "description": "Segmento de conversacion para Coscuez. Validar necesidades y logistica propias de San Pablo de Borbur.",
               "valueHook": "",
-              "diagnosisQuestion": "¿Qué les atrae más: la intensidad de la mina, o prefieren un ritmo que incluya más naturaleza y actividades?",
-              "planMatch": "Cualquier plan. Confirmamos fechas disponibles.",
-              "contextualMediaTypes": ["mine"]
+              "diagnosisQuestion": "¿Prefieren CORE con mina y mirador, o PRIME que agrega Fura y Tena el segundo dia?",
+              "planMatch": "CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
             },
             "H02": {
               "label": "Hot Lead - 4x4",
-              "description": "Lead con alto intent desde funnel, interesado en ruta 4x4.",
+              "description": "Segmento de conversacion para Coscuez. Validar necesidades y logistica propias de San Pablo de Borbur.",
               "valueHook": "",
-              "diagnosisQuestion": "¿Traen su 4x4 para vivir la ruta, o prefieren llevar su auto normal y que el equipo los mueva en nuestro 4x4 local?",
-              "planMatch": "2D/1N con énfasis en ruta 4x4. Confirmamos transporte y fechas.",
-              "contextualMediaTypes": ["car", "mine"]
+              "diagnosisQuestion": "¿Llegan por su cuenta al parque central de San Pablo de Borbur o necesitan transporte desde Bogota?",
+              "planMatch": "CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
             },
             "H03": {
               "label": "Hot Lead - Moto",
-              "description": "Lead con alto intent desde funnel, interesado en ruta moto.",
+              "description": "Segmento de conversacion para Coscuez. Validar necesidades y logistica propias de San Pablo de Borbur.",
               "valueHook": "",
-              "diagnosisQuestion": "¿Vienen en moto para la ruta completa, o prefieren llegar por Chivor y que nos movamos en vehículo?",
-              "planMatch": "2D/1N diseñado para moto riders. Confirmamos equipamiento y fechas.",
-              "contextualMediaTypes": ["bike", "mine"]
+              "diagnosisQuestion": "¿Llegan por su cuenta al parque central de San Pablo de Borbur o necesitan transporte desde Bogota?",
+              "planMatch": "CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
             },
             "H04": {
               "label": "Hot Lead - Kids",
-              "description": "Lead con alto intent desde funnel, interesado en experiencia para niños.",
+              "description": "Segmento de conversacion para Coscuez. Validar necesidades y logistica propias de San Pablo de Borbur.",
               "valueHook": "",
-              "diagnosisQuestion": "¿Qué edades traen? Así aseguramos guías, comidas y actividades pensadas para cada uno.",
-              "planMatch": "2D/1N family-friendly. Ajustamos según edades y preferencias.",
-              "contextualMediaTypes": ["kids", "mine"]
+              "diagnosisQuestion": "¿Que edades tienen los ninos? La edad minima es 5 anios.",
+              "planMatch": "CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
             },
             "R01": {
               "label": "Returning - General",
-              "description": "Lead que tuvo conversación previa pero no reservó.",
-              "valueHook": "Venías mirando la experiencia y tenías un plan en mente. ¿Qué te frenó la última vez: fecha, precio, logística o seguridad?",
-              "diagnosisQuestion": "Cuando vimos la experiencia hace poco, ¿qué te frenó: disponibilidad de fecha, presupuesto, logística, o seguridad?",
-              "planMatch": "El plan que ya vieron. Resolver el blocker concreto.",
-              "contextualMediaTypes": ["mine"]
+              "description": "Segmento de conversacion para Coscuez. Validar necesidades y logistica propias de San Pablo de Borbur.",
+              "valueHook": "",
+              "diagnosisQuestion": "¿Que detalle de la experiencia en Coscuez les gustaria resolver para avanzar?",
+              "planMatch": "CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
             },
             "R02": {
               "label": "Returning - 4x4",
-              "description": "Lead que tuvo conversación previa pero no reservó, interesado en ruta 4x4.",
-              "valueHook": "Venías buscando la ruta 4x4 desafiante. Resolvamos qué te frenó: ¿fue fecha, precio, logística del viaje o seguridad del vehículo?",
-              "diagnosisQuestion": "Cuando vimos la ruta 4x4 hace poco, ¿qué te frenó: disponibilidad de fecha, presupuesto, cómo transportarte, o dudas sobre el camino?",
-              "planMatch": "2D/1N 4x4. Resolver blocker. Confirmar transporte y fechas disponibles.",
-              "contextualMediaTypes": ["car", "mine"]
+              "description": "Segmento de conversacion para Coscuez. Validar necesidades y logistica propias de San Pablo de Borbur.",
+              "valueHook": "",
+              "diagnosisQuestion": "¿Que detalle de la experiencia en Coscuez les gustaria resolver para avanzar?",
+              "planMatch": "CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
             },
             "R03": {
               "label": "Returning - Moto",
-              "description": "Lead que tuvo conversación previa pero no reservó, interesado en ruta moto.",
-              "valueHook": "Te interesó la ruta en moto por Ubalá. ¿Qué nos pasó: fecha que no cuadraba, presupuesto, o detalles de la ruta?",
-              "diagnosisQuestion": "La ruta en moto te había gustado. ¿Qué cambió o qué nos frenó: fecha, precio, logística, o preocupación por la ruta?",
-              "planMatch": "2D/1N moto. Resolver blocker. Confirmar disponibilidad y detalles técnicos.",
-              "contextualMediaTypes": ["bike", "mine"]
+              "description": "Segmento de conversacion para Coscuez. Validar necesidades y logistica propias de San Pablo de Borbur.",
+              "valueHook": "",
+              "diagnosisQuestion": "¿Que detalle de la experiencia en Coscuez les gustaria resolver para avanzar?",
+              "planMatch": "CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
             },
             "R04": {
               "label": "Returning - Kids",
-              "description": "Lead que tuvo conversación previa pero no reservó, interesado en experiencia para niños.",
-              "valueHook": "Los niños te fascinaba la idea de la mina. ¿Qué nos pasó para no avanzar: fechas, presupuesto, logística con los niños?",
-              "diagnosisQuestion": "Cuando miramos la experiencia para los niños, ¿qué nos frenó: fechas que no encajaban, presupuesto, preocupación por logística?",
-              "planMatch": "2D/1N family-friendly. Resolver blocker. Confirmar edades de niños y necesidades.",
-              "contextualMediaTypes": ["kids", "mine"]
+              "description": "Segmento de conversacion para Coscuez. Validar necesidades y logistica propias de San Pablo de Borbur.",
+              "valueHook": "",
+              "diagnosisQuestion": "¿Que detalle de la experiencia en Coscuez les gustaria resolver para avanzar?",
+              "planMatch": "CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
             }
-          }
+          },
+          "selectionAliases": [
+            "coscuez",
+            "coscues",
+            "borbur",
+            "san pablo de borbur",
+            "occidente",
+            "oeste"
+          ],
+          "status": "inactive",
+          "unavailableNote": "Coscuez existe en nuestro catalogo, pero hoy no esta disponible: sus fechas dependen de unas fechas de pago que el equipo debe confirmar. Si el cliente pregunta por Coscuez, dile con claridad que lo tenemos pero que por ahora no esta disponible y que aun no hay fecha. No des precios, fechas, itinerario ni fotos de Coscuez, y no prometas avisarle. Puedes ofrecer Chivor, que si esta disponible.",
+          "name": "Coscuez — San Pablo de Borbur",
+          "location": "Coscuez, San Pablo de Borbur, Boyaca, Colombia",
+          "meetingPoint": "Parque central de San Pablo de Borbur, Boyaca",
+          "route": {
+            "fromBogota": "Ruta orientativa por el corredor norte: Bogota - Zipaquira - Ubate - Chiquinquira - Pauna - San Pablo de Borbur. Destino final: parque central del casco urbano, no la mina ni Coscuez. Confirmar navegacion y estado del corredor antes de salir; no usar atajos rurales sin validar.",
+            "localAccess": "Punto de encuentro: parque central de San Pablo de Borbur. Ruta local: Borbur - Coscuez - Borbur; este traslado no es 4x4.",
+            "arrivalTips": "Encuentro sabado 9:00 am en el parque central de San Pablo de Borbur. El tiempo depende del punto de salida, trafico, lluvia y estado del corredor. Para evitar depender de un viaje nocturno o una conexion incierta, considerar llegar el dia anterior y coordinar alojamiento adicional; esa noche no esta incluida en el plan 2D/1N.",
+            "botRules": [
+              "No usar las rutas de Chivor, Ubala, Macanal ni el ferry para orientar este destino.",
+              "Para carro propio o bus publico, el equipo confirma la logistica; no inventar requisitos de vehiculo, horarios, operadores, tarifas ni parqueadero.",
+              "No confundir el traslado Chivor-Borbur (~10h informado por el operador) con la duracion desde Bogota.",
+              "Distinguir horarios de origen de horarios de paso por Borbur: una salida Otanche-Bogota no indica a que hora pasa por Borbur.",
+              "No garantizar parada en el parque, bus directo a Borbur, llegada a las 9am ni una conexion de regreso sin validacion con el operador.",
+              "Sugerir viaje de dia como recomendacion practica. Si llegar a las 9am exige desplazamiento nocturno, ofrecer llegada previa coordinada o consultar otra logistica; no cambiar automaticamente el itinerario.",
+              "Orientar con tono positivo: ruta habitual, opciones de transporte y acompanamiento local. No introducir noticias antiguas o incidentes temporales en la respuesta general.",
+              "Para condiciones actuales, validar con el equipo; si existe una afectacion vigente confirmada que modifica el viaje, explicar su impacto y una alternativa validada.",
+              "Tiempo Bogota-Borbur: prever provisionalmente 5-6 horas. Es un margen de planificacion basado en una referencia de aproximadamente 194km y 4h07m, no una medicion del operador ni tiempo garantizado. Confirmar segun salida y via; no derivar una hora garantizada de partida.",
+              "Transportes Reina publica Bogota-Otanche a las 05:10, 09:30 y 11:30; Chiquinquira-Otanche a las 05:10, 07:50, 12:00 y 16:20. La parada en Borbur, terminal, tarifa y hora de llegada no estan confirmadas. La salida Bogota-Otanche de 05:10 no garantiza llegar al encuentro de 09:00.",
+              "Transportes Reina publica Bogota-Chiquinquira entre 03:00 y 21:00, cada 15 minutos. Es referencia de la empresa, requiere confirmacion para la fecha y terminal. Para conexion hacia Otanche, coordinar ambas etapas y descenso en Borbur.",
+              "Regreso publicado de Transportes Reina: Otanche-Bogota a las 03:00, 07:40 y 14:00; Otanche-Chiquinquira a las 05:20, 07:40, 09:50 y 11:30. Son salidas de Otanche, no horarios de paso o recogida en Borbur. Coordinar regreso y compatibilidad con cierre del tour antes de comprar.",
+              "Horarios publicados son referencias, no cupos ni garantia de salida. El cliente compra el bus por su cuenta; no sumar tarifas no confirmadas al tour. El equipo confirma contacto de Transportes Reina, terminal, tarifa, duracion, parada exacta y llegada. Nueva Flota Boyaca es solo una alternativa no verificada para Borbur: no publicar horarios, tarifas ni parada sin confirmacion directa.",
+              "Transporte privado Bogota-Borbur ida y regreso: opcional, $1.700.000 COP hasta 4 personas. El equipo confirma vehiculo, recogida y horario; para mas personas confirma vehiculos y precio. No aplicar rutas de Chivor ni prometer 4x4 o tiempo garantizado.",
+              "Coordinar pin exacto y parqueadero; el destino es el parque central de Borbur, no la mina ni una hacienda. Confirmar via, seguridad actual, compatibilidad de carro o moto y logistica el dia anterior y antes de salir. No afirmar verificacion de hoy ni copiar presencia militar de Chivor. Para llegada previa, validar alojamiento adicional y costo: no esta incluido."
+            ]
+          },
+          "shortDescription": "Aventura minera 2 dias/1 noche en Coscuez, con encuentro y hotel rural en San Pablo de Borbur. CORE incluye una mina y caminata al mirador; PRIME agrega Fura y Tena el segundo dia. Tour en espanol.",
+          "fullDescription": "Experiencia de 2 dias y 1 noche en el occidente de Boyaca. Ambos planes incluyen charla esmeraldera y plaza Chacaro, una entrada guiada a mina con equipo de seguridad y seguro de asistencia medica, caminata al mirador a cielo abierto, alojamiento en hotel rural de Borbur con habitacion y bano privados, comidas y traslados locales. PRIME agrega una excursion el segundo dia a Fura y Tena en 4x4, caminata corta en Chanares y almuerzo fiambre antes del regreso a Borbur. CORE incluye 4 comidas y PRIME 5. El transporte desde Bogota es opcional y se cobra aparte. Llegada recomendada sabado 9:00 am; regreso domingo despues del mediodia.",
+          "included": [
+            "Charla esmeraldera y visita a plaza Chacaro (~1h)",
+            "Una entrada guiada a mina (~2.5h), con equipo de seguridad",
+            "Seguro de asistencia medica durante la experiencia",
+            "Caminata al mirador a cielo abierto (~2h)",
+            "Una noche en hotel rural de Borbur, habitacion privada con cama doble y bano privado",
+            "Guias especializados de la region, tour en espanol",
+            "Traslados locales Borbur - Coscuez - Borbur",
+            "Comidas segun plan: CORE 4; PRIME 5"
+          ],
+          "notIncludedUnlessConfirmed": [
+            "Transporte desde Bogota u otra ciudad: servicio privado desde Bogota opcional con costo adicional",
+            "Gastos personales",
+            "Actividades extra no publicadas",
+            "Tour en espanol. No hay guia en otro idioma ni traductor incluido o extra publicado para este destino"
+          ],
+          "mineDetails": {
+            "type": "Mina de esmeraldas",
+            "multipleMines": false,
+            "notes": "CORE y PRIME incluyen la misma experiencia de una mina. No se publica nombre, profundidad ni tiempo continuo bajo tierra."
+          },
+          "safetyInfo": {
+            "equipment": "Equipo de seguridad incluido para el ingreso guiado. No hay inventario detallado publicado para Coscuez.",
+            "medicalSupport": "Seguro de asistencia medica incluido. Aseguradora, cobertura y disponibilidad de personal sanitario requieren confirmacion del equipo.",
+            "regionSecurity": "Te recibimos en el parque central de San Pablo de Borbur y la experiencia cuenta con guias de la region. Nuestro equipo te ayuda a organizar la llegada y coordinar los recorridos locales. Recomendamos viajar de dia y confirmar los detalles antes de salir.",
+            "notes": [
+              "Edad minima: 5 anios, siguiendo la politica de Chivor.",
+              "La visita incluye caminatas e ingreso a mina. Para restricciones de movilidad o condiciones particulares, consultar al equipo antes de confirmar.",
+              "Mascotas sujetas a coordinacion; no garantizar acceso a todas las actividades."
+            ]
+          },
+          "safetyFaqs": [
+            {
+              "lang": "es",
+              "intent": "arrival",
+              "question": "¿Donde nos encontramos y como llego?",
+              "answer": "En el parque central del casco urbano de San Pablo de Borbur, el sabado a las 9am. Desde Bogota, la ruta orientativa va por Zipaquira, Ubate, Chiquinquira y Pauna. Confirma con el equipo el estado de la via y la hora de salida segun tu ubicacion."
+            },
+            {
+              "lang": "es",
+              "intent": "public_transport",
+              "question": "¿Puedo ir en bus?",
+              "answer": "Transportes Reina publica servicios hacia Otanche desde Bogota y Chiquinquira. Debes confirmar directamente que puedes bajar en Borbur, la terminal, el precio y la hora de llegada. La salida de madrugada no garantiza llegar a nuestro encuentro de 9am. Tambien podemos coordinar una llegada el dia anterior, con alojamiento extra por confirmar."
+            },
+            {
+              "lang": "es",
+              "intent": "road_conditions",
+              "question": "¿Puedo llegar en un carro normal?",
+              "answer": "El traslado local incluido entre Borbur y Coscuez se hace en transporte convencional. Si vienes en tu carro, cuentanos que vehiculo tienes y desde donde sales para ayudarte a organizar la llegada. El 4x4 de PRIME se utiliza para Fura y Tena."
+            },
+            {
+              "lang": "es",
+              "intent": "regional_security",
+              "question": "¿Es seguro viajar hoy?",
+              "answer": "Te recibimos en el parque central de San Pablo de Borbur y durante la experiencia te acompanaran guias de la region. Para confirmar las condiciones de hoy, lo revisamos con el equipo local antes de tu salida."
+            }
+          ]
         }
+      },
+      "siteSelection": {
+        "context": "En Colombia hay dos regiones esmeralderas: oriente (Chivor) y occidente (Coscuez). Hoy Chivor es el destino disponible; Coscuez esta temporalmente no disponible (ver DESTINO NO DISPONIBLE TEMPORALMENTE)."
       },
       "name": "Emerald Mining Tour",
       "agePolicy": {
@@ -637,17 +1725,17 @@
       },
       "petPolicy": {
         "allowed": true,
-        "notes": "Somos pet-friendly. Las mascotas son bienvenidas. Consultar con el equipo para coordinar detalles."
-      },
-      "emeraldPolicy": {
-        "guaranteed": false,
-        "notes": "No podemos asegurar que encuentren una esmeralda. Cuando ocasionalmente pasa, tratamos de compartir los hallazgos con los integrantes del grupo de manera divertida. Sugerimos que ojala pase, pero no es seguro. Es parte de la emocion de la experiencia."
+        "notes": "Somos pet-friendly. Consultar con el equipo para coordinar detalles."
       },
       "cancellationPolicy": {
         "maxReschedules": 2,
         "deadlineDaysBefore": 7,
         "refundAfterDeadline": false,
-        "notes": "Se puede cancelar o reagendar maximo 2 veces, hasta 7 dias antes del tour (periodo gratuito). Despues de ese plazo la reprogramacion queda sujeta a gastos ya causados. No hay reembolso del anticipo despues del plazo."
+        "notes": "Se puede cancelar o reagendar maximo 2 veces, hasta 7 dias antes del tour. No hay reembolso del anticipo despues del plazo."
+      },
+      "emeraldPolicy": {
+        "guaranteed": false,
+        "notes": "No podemos asegurar que encuentren una esmeralda. Es parte de la emocion de la experiencia."
       }
     }
   }

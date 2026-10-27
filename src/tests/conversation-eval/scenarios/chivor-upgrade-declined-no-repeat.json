@@ -1,0 +1,19 @@
+{
+  "id": "chivor-upgrade-declined-no-repeat",
+  "source": "review 2026-10-26: an upgrade suggested for a pain is offered once; after the customer keeps BASIC it must not be pitched again",
+  "tags": ["plan", "objection", "live"],
+  "lang": "es",
+  "liveRuns": 1,
+  "minLiveScore": 85,
+  "criteria": [
+    { "id": "no-repeat-upgrade", "rule": "reply_must_not_match", "patterns": ["\\bCORE\\b|\\bPRIME\\b"], "turn": 5, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 5, "critical": true }
+  ],
+  "turns": [
+    { "user": "hola", "mockReply": "Hola, soy Heinner de Andean Scapes. ¿Vienen en pareja, solos o en grupo?", "expect": { "shouldSendReply": true } },
+    { "user": "pareja", "mockReply": "Tenemos BASIC pasadía sin noche, CORE con una mina y alojamiento, y PRIME con dos minas y cabalgata. ¿Cuál les encaja más?", "expect": { "shouldSendReply": true } },
+    { "user": "la basica", "mockReply": "BASIC es el pasadía con mina guiada, caminata, desayuno y almuerzo. Para 2 personas queda en $740.000 COP, equivalente a $370.000 COP por persona. ¿Qué fecha tienen en mente?", "expect": { "shouldSendReply": true, "priceJustGiven": true } },
+    { "user": "y termina muy tarde la experiencia? no quisiera regresar tan tarde", "mockReply": "El BASIC regresa el mismo día en la tarde. Si no quieren manejar de noche, el CORE incluye alojamiento y regresan el domingo con luz. ¿Quieren que les compare los dos?", "expect": { "shouldSendReply": true } },
+    { "user": "no, preferimos el basic, gracias", "mockReply": "Perfecto, seguimos con el BASIC. ¿Qué fecha tienen en mente?", "expect": { "shouldSendReply": true } }
+  ]
+}

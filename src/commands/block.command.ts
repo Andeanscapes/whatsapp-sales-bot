@@ -1,3 +1,4 @@
+import { env } from '../config/env.js';
 import { bridgeMessages } from '../services/bridge-messages.js';
 import { hasRoutingConfig } from '../services/lead-routing.js';
 import { normalizeCommandPhone } from './phone.js';
@@ -25,6 +26,18 @@ export async function blockHandler(ctx: CommandContext): Promise<string> {
     ctx.repos.followupSubscription.ensureExists(phone);
     ctx.repos.followupSubscription.revoke(phone, 'operator');
     ctx.repos.followupConsent.revokeConsent(phone);
+    // `/block` mutates permission, so it appends like every other permission change
+    // (AGENTS.md invariant 10). Omitting it left an operator block with no entry in
+    // the audit trail, so "who ended this permission, and when?" was unanswerable
+    // for exactly the action that is meant to be permanent.
+    ctx.repos.followupConsentGrant.record({
+      customer_phone: phone,
+      decision: 'revoke',
+      decided_at: new Date().toISOString(),
+      source: 'operator_revoke',
+      actor_id: `telegram:${ctx.chatId}`,
+      app_version: env.APP_VERSION,
+    });
   });
   if (conv && conv.opt_out_at) return `🔄 ${phone} ya estaba bloqueado; bloqueo de operador confirmado.`;
 

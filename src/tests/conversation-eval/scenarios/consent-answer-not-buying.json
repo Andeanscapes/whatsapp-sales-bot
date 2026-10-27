@@ -1,0 +1,26 @@
+{
+  "id": "consent-answer-not-buying",
+  "source": "2026-10-09 production audit",
+  "tags": ["consent", "compliance"],
+  "seedConversation": { "followupStatus": "pending", "qualification": { "leadScore": 40 } },
+  "turns": [
+    {
+      "user": "Ok",
+      "mockReply": "Listo, te aviso cuando haya novedades.",
+      "mockAnalysis": { "intent": "ready_to_book", "scoreDelta": 35, "confidence": 1, "afterPriceInterest": true, "reservationReadiness": "strong" },
+      "expect": { "usedAi": true, "shouldAlertOwner": false }
+    },
+    {
+      "user": "Si quiero reservar para el 14",
+      "seedLeadScore": 80,
+      "mockReply": "¿Para cuántas personas revisamos disponibilidad?",
+      "mockAnalysis": { "intent": "ready_to_book", "scoreDelta": 35, "confidence": 1, "afterPriceInterest": true, "reservationReadiness": "strong" },
+      "expect": { "usedAi": true }
+    }
+  ],
+  "criteria": [
+    { "id": "permission-answer-freezes-score", "rule": "output_flag_equals", "flag": "leadScore", "expected": 40, "turn": 1, "critical": true },
+    { "id": "permission-answer-no-alert", "rule": "output_flag_equals", "flag": "shouldAlertOwner", "expected": false, "turn": 1, "critical": true },
+    { "id": "booking-answer-scores", "rule": "output_flag_equals", "flag": "leadScore", "expected": 100, "turn": 2, "critical": true }
+  ]
+}

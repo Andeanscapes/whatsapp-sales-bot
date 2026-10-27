@@ -13,9 +13,9 @@ import { DeepSeekLlmClient } from './llm/deepseek-llm-client.js';
 import { runLeadAnalysis } from './lead-analysis-runner.js';
 import type { LlmTurn } from './llm/llm-client.js';
 import type { MergedQualification, OutboundDateAction, ProcessMessageInput, ProcessMessageOutput } from './types.js';
-import { getActiveExperience, getCommonQuestions, getFutureAvailableDatesForPlan, getGalleryImages, getPlans, hasPublicPaymentFacts, isPricingAvailable, getPublicPaymentFacts, hasMultipleExperiences, getExperiences, scopeSkillsToExperience } from './product-registry.js';
+import { getActiveExperience, getSiteCommonQuestions, getFutureAvailableDatesForPlan, getGalleryImages, getPlans, hasPublicPaymentFacts, isPlanPaused, isPricingAvailable, getPublicPaymentFactsForPlan, hasMultipleExperiences, getExperiences, scopeSkillsToExperience, getDynamicPlanImages, getSiteFallbackGalleryTheme, scopeGalleryToPlan } from './product-registry.js';
 import type { ActiveExperience, PublicPaymentFacts } from './product-registry.js';
-import { calculatePriceQuote, formatCop, type TransportNeed } from './pricing-calculator.js';
+import { calculatePerPersonEquivalent, calculatePriceQuote, findQuotedAlternative, getQuoteFingerprint, isQuoteFingerprintStale, quoteFingerprintPlanId, listCheaperPlanQuotes, formatCop, type TransportNeed } from './pricing-calculator.js';
 import {
   extractBookingFields,
   contextAwareExtract,
@@ -24,13 +24,25 @@ import {
   getCollectedFields,
   resolveLanguage,
   isConfirmedDate,
+  isConcreteDayDate,
   isQualificationComplete,
   detectPlan,
+  isPlanQuestion,
+  detectSite,
+  resolveSiteContext,
+  siteChoiceThisTurn,
   isDateAskQuestion,
+  resolveBrochurePlanId,
+  detectQuotedPlan,
+  siteNamedRecently,
+  extractCopAmounts,
 } from './qualification-engine.js';
-import { galleryImageLimit, hasShownLlmGallery, remainingGalleryImageBudget, selectBalancedByCategory } from './media-service.js';
+import { findPlanBrochureImage, galleryImageLimit, hasShownLlmGallery, PLAN_BROCHURE_THEME, planCardSentRecently, remainingGalleryImageBudget, selectBalancedByCategory } from './media-service.js';
 import {
   isSoftCloseMessage,
+  isPriceObjectionMessage,
+  isTransportObjectionMessage,
+  isExplicitSalesDecline,
   isAdcodeNoise,
   containsInternalEntryMarker,
   isReEngagementMessage,
@@ -65,12 +77,15 @@ import {
   diagnosticMediaReply,
   stripEmojisOnPaymentClose,
   stripPaymentMoveWithoutDate,
+  isPlanBrochureRequest,
+  isPhotoSiteCorrection,
 } from './reply-guard.js';
 import { findEntryMarker, parseEntryMarker } from './entry-marker.js';
-import { classifyConsentReply, isDuplicateConsentEcho } from './followup-consent.js';
+import { classifyPendingConsentReply, isDuplicateConsentEcho } from './followup-consent.js';
 import { detectRequestedGalleryThemes, selectContextualImage } from './contextual-media.js';
 import { assignLine, isReferralLine } from './lead-routing.js';
 import { MONTH_NAMES } from './constants.js';
+import { normalizeText } from './language-service.js';
 import { estimateDeepSeekCost } from './deepseek-cost.js';
 import type { ConversationRow, RecentMessage, LeadPain } from '../db/repositories/types.js';
 
@@ -150,12 +165,12 @@ function isPhysicalRecoveryQuestion(message: string): boolean {
   return /\b(?:fractura|fracture|movilidad limitada|limitaci[oó]n(?: temporal)? de movilidad|limited mobility|riesgo de ca[ií]da|evitar ca[ií]das|fall risk|recuper[aá]ndo(?:me)? de (?:una? )?(?:fractura|lesi[oó]n|cirug[ií]a)|recovering from (?:a )?(?:fracture|injury|surgery)|recuperaci[oó]n de (?:una? )?(?:fractura|lesi[oó]n|cirug[ií]a))\b/i.test(message);
 }
 
-function safetyPolicyReply(skills: Skills, lang: 'es' | 'en', message: string): string | null {
+function safetyPolicyReply(skills: Skills, lang: 'es' | 'en', message: string, siteId?: string): string | null {
   const reservationLeadTimeQuestion = /(?:con cu[aá]nt[oa].{0,50}(?:anticip|tiempo).{0,50}reserv|reserv.{0,50}(?:anticip|tiempo)|how far.{0,30}(?:ahead|advance).{0,30}book)/i.test(message);
   const physicalRecoveryQuestion = isPhysicalRecoveryQuestion(message);
   if (!reservationLeadTimeQuestion && !physicalRecoveryQuestion) return null;
   const intent = physicalRecoveryQuestion ? 'physical_recovery' : 'reservation_lead_time';
-  const questions = getCommonQuestions(getActiveExperience(skills));
+  const questions = getSiteCommonQuestions(skills, getActiveExperience(skills), siteId);
   return questions.find(question => question.lang === lang && question.intent === intent)?.answer ?? null;
 }
 
@@ -435,7 +450,6 @@ const SKILL_PLACEHOLDER_LEAK = /\[[A-Z][A-Z_]*\]/;
  * payment method, or declaring the booking settled.
  */
 const MOVES_TO_PAYMENT = /\banticipo\b|\bdep[oó]sito\b|\babono\b|\bnequi\b|\bmercado\s*pago\b|\bpara\s+confirmar\b|\bqued[oó]\s+confirmad|\bya\s+qued[oó]\b|\bdeposit\b|\bdown\s+payment\b/i;
-const COP_AMOUNT = /(?:\$\s*|COP\s*)?(\d{1,3}(?:[.,]\d{3})+|\d{6,})(?:\s*(?:COP|pesos))?/gi;
 
 export type HardSafetyReason =
   | 'prompt_leak'
@@ -479,12 +493,6 @@ export function hardSafetyFail(
   return null;
 }
 
-function extractCopAmounts(reply: string): number[] {
-  return [...reply.matchAll(COP_AMOUNT)]
-    .map(match => Number.parseInt(match[1].replace(/[.,]/g, ''), 10))
-    .filter(amount => Number.isFinite(amount) && amount >= 100_000);
-}
-
 /**
  * Diagnostic only (log-only rollout): never edits, gates, or suppresses the reply.
  * Returns the unaccounted-for COP figures so the behaviour is unit-testable.
@@ -511,6 +519,7 @@ export function logQuoteMismatch(
   const totals = [quote.planTotal, ...(quote.total == null ? [] : [quote.total])];
   const allowed = new Set<number>([
     ...totals,
+    ...totals.map(total => calculatePerPersonEquivalent(total, quote.people)?.amount),
     ...totals.map(total => Math.round(total * depositPercent / 100)),
     quote.addonsTotal,
     ...(quote.transportTotal == null ? [] : [quote.transportTotal]),
@@ -726,6 +735,19 @@ function inferCloseStage(recentMessages: RecentMessage[]): CloseStage {
   return 'none';
 }
 
+/**
+ * The pending consent ask stopped being the bot's latest question once anything was
+ * sent after it. Unknown ask id (pre-send or not stored) keeps the original behaviour.
+ */
+export function isConsentAskSuperseded(
+  repos: ProcessMessageInput['repos'],
+  phone: string,
+  subscription: { status: string; ask_outbound_message_id: string | null } | undefined | null,
+): boolean {
+  if (subscription?.status !== 'pending' || !subscription.ask_outbound_message_id) return false;
+  return repos.message.hasOutboundAfterMessage(phone, subscription.ask_outbound_message_id);
+}
+
 function persistCollectedFromLlmTurn(repos: ProcessMessageInput['repos'], phone: string, turn: LlmTurn): void {
   const f = turn.collected_fields;
   const dbFields: Record<string, unknown> = {};
@@ -843,9 +865,12 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   }
 
   // Single read reused by the opt-out, reopen and consent-answer branches below.
-  // Taken before any mutation: `closeCycleOnCustomerInbound()` only touches
-  // `active`, so a `pending` status observed here is still accurate afterwards.
+  // Consent is durable, so no ordinary-inbound path mutates status between this read
+  // and its uses; only the opt-out branch below writes, and it re-reads nothing.
   const followupSubscription = repos.followupSubscription.getByPhone(customerPhone);
+  const pendingConsentDecision = followupSubscription?.status === 'pending'
+    ? classifyPendingConsentReply(message, isConsentAskSuperseded(repos, customerPhone, followupSubscription))
+    : 'ambiguous';
   const operatorBlocked = followupSubscription?.status === 'revoked'
     && followupSubscription.revoke_source === 'operator';
 
@@ -860,12 +885,31 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     // they refused. It also covers a retraction that still contains the keyword
     // ("no era stop, era para parar y pensar"), which used to re-confirm the opt-out.
     // The writes below stay idempotent, so a repeat still repairs partial state.
+    // The message that triggered a permanent compliance action IS the evidence for
+    // it, so it is persisted before any state write and regardless of whether the
+    // confirmation is suppressed below. Without this the row was dropped entirely:
+    // live 2026-09-04 a customer stop phrase set `opt_out_at` and sent the
+    // confirmation while leaving NO inbound row, so the transcript showed the bot
+    // opting the lead out unprompted and nothing recorded what they had asked for.
+    persistInbound();
     const alreadyOptedOut = repos.optOut.isOptedOut(customerPhone);
     repos.runInTransaction(() => {
       if (!alreadyOptedOut) repos.optOut.setOptOut(customerPhone);
       repos.followupSubscription.ensureExists(customerPhone);
       repos.followupSubscription.revoke(customerPhone, 'customer_opt_out');
       repos.followupConsent.revokeConsent(customerPhone);
+      // Only the FIRST stop request appends: a repeat is the same refusal restated,
+      // and the ledger must count refusals, not inbound messages.
+      if (!alreadyOptedOut) {
+        repos.followupConsentGrant.record({
+          customer_phone: customerPhone,
+          decision: 'revoke',
+          decided_at: new Date().toISOString(),
+          inbound_message_id: messageId ?? null,
+          source: 'customer_opt_out',
+          app_version: env.APP_VERSION,
+        });
+      }
     });
     // An operator block stays silent even here: confirming would be a reply to a
     // customer the operator muted. The state above is still recorded for compliance.
@@ -883,6 +927,10 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     const reopenable = followupSubscription?.status === 'revoked'
       && followupSubscription.revoke_source === 'customer_opt_out';
     if (!reopenable) {
+      // Silent, but still recorded: an operator reading the thread must be able to
+      // see that this customer wrote while muted. Dropping it left the same
+      // transcript hole as the opt-out branch above.
+      persistInbound();
       return { reply: '', shouldSendReply: false, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
     }
     // Reopening clears only the ACTIVE suppression flag; `last_opt_out_at` keeps the
@@ -896,24 +944,16 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     logger.info({ phone: customerPhone }, '[FOLLOWUP] new customer inbound reopened consent opportunity');
   }
 
-  // Consent is session-scoped. A customer-initiated inbound closes the authorised
-  // cycle: recurring templates stop until a fresh "sí", and a new permission ask
-  // becomes eligible once THIS session goes silent (c2, c3…). Skipped on the turn
-  // that grants consent, which would otherwise erase the yes we just recorded.
   // A repeated bare "sí" seconds after consent activated is the same answer sent
-  // twice, not re-engagement: closing the cycle there would revoke the permission
-  // the previous turn just granted, while this turn still acknowledges it.
+  // twice, not re-engagement. We just log it and move on; the consent is durable
+  // and will not be revoked by ordinary conversation turns.
   const duplicateConsentEcho = isDuplicateConsentEcho(
     repos.followupSubscription.getByPhone(customerPhone),
     message,
     env.FOLLOWUP_CONSENT_DUPLICATE_GRACE_SECONDS,
   );
   if (duplicateConsentEcho) {
-    logger.info({ phone: customerPhone }, '[FOLLOWUP] duplicate consent echo — cycle kept open');
-  }
-  if (!consentAcceptedThisTurn && !duplicateConsentEcho
-    && repos.followupSubscription.closeCycleOnCustomerInbound(customerPhone)) {
-    logger.info({ phone: customerPhone }, '[FOLLOWUP] customer inbound closed the consent cycle');
+    logger.info({ phone: customerPhone }, '[FOLLOWUP] duplicate consent echo — consent remains active');
   }
 
   const handedOffRow = repos.conversation.getHandedOffAt(customerPhone);
@@ -945,7 +985,7 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     && followupSubscription?.status === 'pending'
     && !consentAcceptedThisTurn
     && !consentDeclinedThisTurn
-    && classifyConsentReply(message) === 'ambiguous'
+    && pendingConsentDecision === 'ambiguous'
     && isConsentAskContinuation(message)
     && repos.followupSubscription.deferPendingAskAfterCustomerInbound(customerPhone)
   ) {
@@ -1062,7 +1102,8 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   }
 
   const storedPlan = repos.conversation.getCollectedPlan(customerPhone);
-  if (storedPlan && !getPlans(activeExperience).some(plan => plan.id === storedPlan)) {
+  if (isPlanPaused(activeExperience, storedPlan)) repos.conversation.clearPriceQuote(customerPhone);
+  if (storedPlan && !isPlanPaused(activeExperience, storedPlan) && !getPlans(activeExperience).some(plan => plan.id === storedPlan)) {
     repos.conversation.resetExperienceSalesState(customerPhone);
     activateHumanFallback(repos, customerPhone);
     return {
@@ -1080,7 +1121,14 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   }
 
   const futureWindow = extractFutureMonthConstraint(message);
-  const deferredSafetyReply = safetyPolicyReply(skills, lang, message);
+  const recentInboundBodies = [
+    message, ...repos.message.getLastInboundBodies(customerPhone, 20).map(row => row.body ?? ''),
+  ];
+  // Same predicate as contextAwareExtract: a mention is not a choice, so "¿y Coscuez
+  // queda cerca?" keeps the stored plan's site.
+  const chosenSiteThisTurn = siteChoiceThisTurn(message, getLastAssistantQuestion(repos, customerPhone), activeExperience);
+  const conversationSiteId = chosenSiteThisTurn ?? resolveSiteContext(activeExperience, storedPlan, recentInboundBodies);
+  const deferredSafetyReply = safetyPolicyReply(skills, lang, message, conversationSiteId);
   const safetyOverrideReply = deferredSafetyReply
     ?? (futureWindow ? skills.fallbackReplies[lang].futureDateValidation.replace('{{window}}', futureWindow) : null);
   const hasSafetyOverride = safetyOverrideReply !== null;
@@ -1166,6 +1214,10 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     language: lang,
     ...nonDateContext,
   });
+  if (contextFields.collected_plan === null) {
+    repos.conversation.clearCollectedPlan(customerPhone);
+    repos.conversation.clearPriceQuote(customerPhone);
+  }
   if (futureWindow) {
     repos.conversation.setCollectedDateWindow(customerPhone, futureWindow);
   } else if (typeof extractedDate === 'string' && extractedDate.trim() && extractedDate !== 'tentative_unknown' && !extractedDate.startsWith('_')) {
@@ -1205,7 +1257,32 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
       extractedDate,
       typeof collectedFields.plan === 'string' ? collectedFields.plan : storedPlan,
     ) !== null;
+  // From THIS message only: a plan reconstructed from history (e.g. a retarget
+  // return) is not a first selection and must not trigger the gallery cue.
+  const planSelectedThisTurn = !storedPlan && typeof contextFields.collected_plan === 'string';
+  // contextAwareExtract already drops a plan named only inside a question, so any
+  // different plan left here is a choice (reference or stated outright).
+  const planChosenThisTurn = !!storedPlan
+    && typeof contextFields.collected_plan === 'string'
+    && contextFields.collected_plan !== storedPlan;
   const dbQualification = buildDbQualification(collectedFields);
+  const fingerprintFor = (qualification: { plan?: unknown }): string | null => {
+    const planId = typeof qualification.plan === 'string' ? qualification.plan : null;
+    return getQuoteFingerprint(activeExperience, planId, getPublicPaymentFactsForPlan(skills, activeExperience, planId).depositPercent);
+  };
+  const storedQuoteFingerprint = repos.conversation.getByPhone(customerPhone)?.quote_fingerprint;
+  // The quoted plan's deposit applies, not the stored plan's: a plan switch must not flip staleness.
+  const storedQuotePlanId = storedQuoteFingerprint ? quoteFingerprintPlanId(storedQuoteFingerprint) : null;
+  const planSwitchedAfterQuote = planChosenThisTurn
+    && repos.conversation.getPriceGivenAt(customerPhone) != null;
+  if (storedQuoteFingerprint && isQuoteFingerprintStale(
+    activeExperience, storedQuoteFingerprint, getPublicPaymentFactsForPlan(skills, activeExperience, storedQuotePlanId).depositPercent,
+  )) {
+    repos.conversation.clearPriceQuote(customerPhone);
+  } else if (planSwitchedAfterQuote) {
+    // The quote on record belongs to the previous plan; the new plan has not been priced.
+    repos.conversation.clearPriceQuote(customerPhone);
+  }
   const recentMessages = repos.message.getRecentMessages(customerPhone, 21).filter((_, i, arr) => i < arr.length - 1);
   // Find the last user turn with content (skip photo-only turns).
   const previousCustomerIndex = recentMessages.findLastIndex(item => item.role === 'user' && item.content.trim().length > 0);
@@ -1258,17 +1335,29 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     return fallbackOutput(skills.fallbackReplies[lang].childSuitabilityBoundary.replace('{{age}}', String(customerContext.childAges[0])));
   }
 
+  // Only after a quote: the cue lists alternatives against the quoted total, and the
+  // flag changes which plan card may ship.
+  const priceObjectionThisTurn = !hasSafetyOverride
+    && !softClosedAt
+    && repos.conversation.getPriceGivenAt(customerPhone) != null
+    && isPriceObjectionMessage(message)
+    && !isExplicitSalesDecline(message);
+  const transportObjectionThisTurn = priceObjectionThisTurn && isTransportObjectionMessage(message);
   if (!hasSafetyOverride && isSoftCloseMessage(message)) {
     // Price objections with qualification data are recoverable: let the LLM
     // handle them instead of hard-closing with the IG soft-close.
     const hasQualData = dbQualification.personas != null || dbQualification.fecha != null || dbQualification.nombre != null;
     const isPriceObj = /por ese precio no|por ese valor no|muy caro|tan caro|por qu[eé]\s+(?:tan\s+)?caro|porque\s+(?:tan\s+)?caro|esta caro|algo caro|me parece caro|carisimo|se sale del presupuesto|fuera de presupuesto|no me alcanza|consultarlo|lo consulto|lo hablo|lo pienso|consultar/i.test(normalized);
-    if (hasQualData && isPriceObj && !softClosedAt) {
-      // Don't soft-close — let the objection fall through to the LLM for handling.
-    } else {
+    const explicitDecline = isExplicitSalesDecline(message);
+    const legacyRecoverableObjection = hasQualData && isPriceObj && !softClosedAt && !explicitDecline;
+    if (!priceObjectionThisTurn && !legacyRecoverableObjection) {
       if (!softClosedAt) repos.conversation.upsert(customerPhone, { soft_closed_at: new Date().toISOString() });
-      const declineScoreAlert = currentScore >= skills.salesStrategy.hotLeadThreshold;
-      return { reply: skills.fallbackReplies[lang].softCloseReply.replace('{{instagramUrl}}', instagramUrl(skills)), shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: declineScoreAlert, ownerAlertType: declineScoreAlert ? 'decline_review' : undefined, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
+      const declineScore = explicitDecline
+        ? computeAnalyzerFallbackScore(currentScore, Math.min(0, regexScore.score), false, skills.salesStrategy.hotLeadThreshold)
+        : currentScore;
+      if (explicitDecline) repos.conversation.upsert(customerPhone, { lead_score: declineScore });
+      const declineScoreAlert = declineScore >= skills.salesStrategy.hotLeadThreshold;
+      return { reply: skills.fallbackReplies[lang].softCloseReply.replace('{{instagramUrl}}', instagramUrl(skills)), shouldSendReply: true, leadScore: declineScore, usedAi: false, shouldAlertOwner: declineScoreAlert, ownerAlertType: declineScoreAlert ? 'decline_review' : undefined, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
     }
   }
 
@@ -1280,18 +1369,24 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   // `ambiguous` and keeps the normal sales path.
   const consentAnswerTurn = consentAcceptedThisTurn
     || consentDeclinedThisTurn
-    || (followupSubscription?.status === 'pending'
-      && classifyConsentReply(message) !== 'ambiguous');
+    || pendingConsentDecision !== 'ambiguous';
 
   // The permission ask is not a sales question: on a permission-answer turn it must
   // not seed reservation/gallery/date inference from the previous assistant turn.
   const lastAssistantQuestion = consentAnswerTurn ? null : getLastAssistantQuestion(repos, customerPhone);
   const conversationMode = repos.conversation.getMode(customerPhone);
 
+  const galleryShown = hasShownLlmGallery(repos, customerPhone);
+  const photoSiteCorrection = isPhotoSiteCorrection(message, activeExperience,
+    typeof collectedFields.plan === 'string'
+      ? getPlans(activeExperience).find(plan => plan.id === collectedFields.plan)?.siteId
+      : conversationSiteId,
+    galleryShown || isGalleryRequest(previousCustomerMessage ?? ''));
   // Soft-close reopen: explicit gallery requests bypass the soft-close timeout.
   const galleryRequestedForReopen = isGalleryRequest(message)
     || galleryContinuationRequest
-    || isGalleryConfirmation(message, lastAssistantQuestion);
+    || isGalleryConfirmation(message, lastAssistantQuestion)
+    || photoSiteCorrection;
 
   const largeGroupPeople = typeof dbQualification.personas === 'number' ? dbQualification.personas : null;
   const largeGroupNeedsEscalate = largeGroupPeople != null
@@ -1316,8 +1411,8 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     };
   }
 
-  if (!hasSafetyOverride && conversationMode === 'human_pending' && isPaymentMethodsQuestion(message)) {
-    const facts = getPublicPaymentFacts(skills);
+  if (!hasSafetyOverride && !isPlanPaused(activeExperience, typeof dbQualification.plan === 'string' ? dbQualification.plan : null) && conversationMode === 'human_pending' && isPaymentMethodsQuestion(message)) {
+    const facts = getPublicPaymentFactsForPlan(skills, activeExperience, typeof dbQualification.plan === 'string' ? dbQualification.plan : null);
     const reply = skills.fallbackReplies[lang].humanPendingPaymentAck
       .replaceAll('{{methods}}', formatMethods(facts.methodNames, lang))
       .replaceAll('{{deposit}}', String(facts.depositPercent))
@@ -1373,7 +1468,7 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
           closing = buildCloseAck(skills, lang, dbQualification);
         } else {
           const kind: CloseKind = preLimitCloseStage === 'closing_offered' ? 'pending_owner' : 'closing';
-          closing = buildCloseReply(skills, lang, dbQualification, kind, getPublicPaymentFacts(skills));
+          closing = buildCloseReply(skills, lang, dbQualification, kind, getPublicPaymentFactsForPlan(skills, activeExperience, typeof dbQualification.plan === 'string' ? dbQualification.plan : null));
         }
       } else {
         closing = skills.fallbackReplies[lang].aiFailureQualified;
@@ -1454,6 +1549,17 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   const closeCtaAcceptedThisTurn = repos.conversation.getPriceGivenAt(customerPhone) != null
     && isConfirmedDate(collectedFields.fecha)
     && explicitCloseCtaConfirmation;
+  // "¿cómo se reserva?" after price + date already answers the start-booking question;
+  // asking it again costs a turn at peak intent. Prompt cue only — no copy, no gate.
+  // Same day-level test as the prompt's T3b cue, so the retry exemption below can
+  // never apply on a turn that did not receive the cue. A balance question ("cómo se
+  // paga el resto") follows a booking; it is not a request to start one.
+  const reservationRequestedThisTurn = !closeCtaAcceptedThisTurn
+    && repos.conversation.getPriceGivenAt(customerPhone) != null
+    && isConfirmedDate(collectedFields.fecha)
+    && isConcreteDayDate(collectedFields.fecha)
+    && detectsReservationIntent(message)
+    && !/\b(?:resto|saldo|restante|lo que falta|segundo pago)\b/.test(normalizeText(message));
   // Only our own replies: an emoji the CUSTOMER used is not a glyph we spent, and
   // banning it would shrink the palette for no reason. Reuses `recentMessages`, so
   // no extra query.
@@ -1465,20 +1571,51 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   const resolvedExperienceId = selectedExperienceId ?? activeExperience.id;
   const galleryPreferredSiteId = typeof safeCollected.plan === 'string'
     ? getPlans(activeExperience).find(plan => plan.id === safeCollected.plan)?.siteId
-    : undefined;
-  const directGalleryRequestThemes = isGalleryRequest(message)
-    ? detectRequestedGalleryThemes(skills, message, resolvedExperienceId, galleryPreferredSiteId)
+    : conversationSiteId;
+  const activePlanId = typeof safeCollected.plan === 'string' ? safeCollected.plan : null;
+  const pausedPlanThisTurn = isPlanPaused(activeExperience, activePlanId);
+  // Photos of a site the customer has not chosen: no themes this turn, so no retry and
+  // no marker resolution; the RUNTIME cue has the model offer that site's plan first.
+  // Choosing it ("sí") switches the plan via siteChoiceThisTurn, and the next photo
+  // request resolves against the new site.
+  // A brochure request is not blocked: its card is resolved site-scoped by
+  // resolveBrochurePlanId, so "brochure de Chivor" ships Chivor's card.
+  // "esas fotos son de Coscuez" is a correction about what already shipped, not a
+  // request for Coscuez: it must not cue the model to offer that site, and the named
+  // site must not be read as a destination the customer wants to switch to.
+  const requestedPhotoSiteId = isGalleryRequest(message) && !isPlanBrochureRequest(message) && !photoSiteCorrection && galleryPreferredSiteId
+    ? detectSite(message, activeExperience)
+    : null;
+  const otherSitePhotoRequest = requestedPhotoSiteId && requestedPhotoSiteId !== galleryPreferredSiteId
+    ? requestedPhotoSiteId
+    : null;
+  const photoRequestForOtherSite = otherSitePhotoRequest !== null;
+  // "brochure de la mas completa" asks for that plan's card without selecting it.
+  const brochurePlanId = isPlanBrochureRequest(message)
+    ? resolveBrochurePlanId(
+      message,
+      activePlanId,
+      lastAssistantQuestion,
+      activeExperience,
+      conversationSiteId,
+      typeof safeCollected.personas === 'number' ? safeCollected.personas : undefined,
+    )
+    : activePlanId;
+  // Plan-restricted photos (e.g. a PRIME-only excursion) exist only for that plan.
+  const planGallerySkills = scopeGalleryToPlan(skills, activePlanId);
+  const directGalleryRequestThemes = (isGalleryRequest(message) || photoSiteCorrection) && !photoRequestForOtherSite && !pausedPlanThisTurn
+    ? detectRequestedGalleryThemes(planGallerySkills, message, resolvedExperienceId, galleryPreferredSiteId, brochurePlanId, photoSiteCorrection)
     : [];
   const galleryRequestThemes = directGalleryRequestThemes.length > 0
     ? directGalleryRequestThemes
-    : galleryContinuationRequest && previousCustomerMessage
-      ? detectRequestedGalleryThemes(skills, previousCustomerMessage, resolvedExperienceId, galleryPreferredSiteId)
+    : galleryContinuationRequest && previousCustomerMessage && !photoRequestForOtherSite && !pausedPlanThisTurn
+      ? detectRequestedGalleryThemes(planGallerySkills, previousCustomerMessage, resolvedExperienceId, galleryPreferredSiteId, activePlanId)
       : [];
   const galleryImagesRemaining = remainingGalleryImageBudget(repos, customerPhone);
   const promptInput = {
-    skills,
+    skills: planGallerySkills,
     lang,
-    collectedFields: safeCollected,
+    collectedFields: { ...safeCollected, ...(conversationSiteId ? { site: conversationSiteId } : {}) },
     salesPhase: salesPhase ?? undefined,
     customerContext: extractCustomerContext(message),
     selectedExperienceId: resolvedExperienceId,
@@ -1488,13 +1625,20 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     priceGiven: repos.conversation.getPriceGivenAt(customerPhone) != null,
     latestCustomerMessage: message,
     dateSelectedThisTurn,
+    planSelectedThisTurn,
     closeCtaAcceptedThisTurn,
+    reservationRequestedThisTurn,
     consentAcceptedThisTurn,
     followupReopenedThisTurn,
     usedEmojis,
-    galleryShown: hasShownLlmGallery(repos, customerPhone),
+    galleryShown,
     galleryRequestThemes,
     galleryImagesRemaining,
+    brochurePlanId,
+    otherSitePhotoRequest,
+    photoSiteCorrection,
+    priceObjectionThisTurn,
+    transportObjectionThisTurn,
   };
   const systemPrompt = buildSystemPrompt(promptInput);
   const llmHistory = recentMessages.map(m => ({ role: m.role, content: m.content }));
@@ -1544,8 +1688,13 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   let llmTurn = llmResult.turn;
   const initialParsedMedia = parseMediaMarker(llmTurn.reply);
   const initialVisibleReply = initialParsedMedia?.text ?? llmTurn.reply.trim();
+  // A booking request with no operational field missing ends without a question (§T3b).
+  const reservationRequestNeedsNoQuestion = reservationRequestedThisTurn
+    && collectedFields.nombre != null
+    && collectedFields.transporte != null;
   const advanceQuestionRequired = !consentAnswerTurn
     && !closeCtaAcceptedThisTurn
+    && !reservationRequestNeedsNoQuestion
     && !isReviewPause(message)
     && !isSoftCloseMessage(message)
     && !isExplicitCustomerFarewell(message)
@@ -1553,7 +1702,7 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   const advanceQuestionCorrectionNeeded = advanceQuestionRequired
     && !initialVisibleReply.trimEnd().endsWith('?');
   const galleryCorrectionNeeded = env.MEDIA_MARKER_RETRY_ENABLED
-    && (isGalleryRequest(message) || galleryContinuationRequest)
+    && galleryRequestedForReopen
     && !isFirstContact
     && galleryRequestThemes.length > 0
     && galleryImagesRemaining > 0
@@ -1589,8 +1738,19 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     repos.aiUsage.recordUsage({ phone: customerPhone, model: env.DEEPSEEK_MODEL, promptTokens: llmResult.tokens.prompt, completionTokens: llmResult.tokens.completion, cachedTokens: 0, estimatedCost, purpose: 'reply', success: true });
   }
   if (activeDateWindow) llmTurn.collected_fields.date = null;
+  const modelPlan = llmTurn.collected_fields.plan;
+  if (contextFields.collected_plan === null) llmTurn.collected_fields.plan = null;
+  if (modelPlan && !getPlans(activeExperience).some(plan => plan.id === modelPlan)) {
+    llmTurn.collected_fields.plan = null;
+    logger.warn({ phone: customerPhone }, '[BOT] unknown model plan discarded');
+  }
   persistCollectedFromLlmTurn(repos, customerPhone, llmTurn);
   const authoritativeBookingFields = { ...bookingFields };
+  // `bookingFields` is the raw per-message extraction and still carries a plan named
+  // inside a question; `contextFields` is where that plan was dropped. Keying on
+  // `contextFields` keeps this second write from restoring it after the reply.
+  if (typeof contextFields.collected_plan === 'string') authoritativeBookingFields.collected_plan = contextFields.collected_plan;
+  else delete authoritativeBookingFields.collected_plan;
   if (authoritativeBookingFields._relative_date_token) {
     delete authoritativeBookingFields.collected_date;
     delete authoritativeBookingFields._relative_date_token;
@@ -1710,7 +1870,7 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
 
   // ── Plan inference from customer message ────────────────────────────────
   if (merged.plan == null) {
-    const userPlan = detectPlan(message, activeExperience);
+    const userPlan = detectPlan(message, activeExperience, conversationSiteId);
     if (userPlan) {
       repos.conversation.upsert(customerPhone, { collected_plan: userPlan });
       merged = { ...merged, plan: userPlan };
@@ -1741,15 +1901,16 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   // was written on the promise of images that will not arrive.
   const mediaMarkerParsed = parseMediaMarker(replyText);
   const strippedReplyText = mediaMarkerParsed?.text ?? replyText;
-  const mediaSendsAllowed = conversationMode !== 'bridge_active'
-    && env.SEND_IMAGES_ENABLED
-    && galleryImagesRemaining > 0;
   const mediaMarkerBlockedByOps = conversationMode === 'bridge_active'
     || !env.SEND_IMAGES_ENABLED
-    || galleryImagesRemaining <= 0;
+    || galleryImagesRemaining <= 0
+    || photoRequestForOtherSite
+    || pausedPlanThisTurn;
+  const mediaSendsAllowed = !mediaMarkerBlockedByOps;
   const selectedPlanSiteId = typeof merged.plan === 'string'
     ? activeExperience.plans.find(plan => plan.id === merged.plan)?.siteId
-    : undefined;
+    : conversationSiteId;
+  const replyGallerySkills = scopeGalleryToPlan(skills, typeof merged.plan === 'string' ? merged.plan : null);
   let requestedGalleryImageUrls: string[] = [];
   let mediaMarkerUnresolved = false;
 
@@ -1766,26 +1927,49 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
         '[MEDIA] marker stripped — photo sends unavailable this turn, text sent unchanged',
       );
     } else {
-      const resolvedThemes = resolveMediaThemes(
-        skills,
-        mediaMarkerParsed.requestedThemes,
-        activeExperience.id,
-        selectedPlanSiteId,
-      );
-      const selectedImages = resolvedThemes.length > 0
+      const brochureRequested = mediaMarkerParsed.requestedThemes.includes(PLAN_BROCHURE_THEME);
+      const galleryMarkerThemes = mediaMarkerParsed.requestedThemes
+        .filter(theme => theme !== PLAN_BROCHURE_THEME);
+      const resolvedThemes = galleryMarkerThemes.length > 0
+        ? resolveMediaThemes(
+          replyGallerySkills,
+          galleryMarkerThemes,
+          activeExperience.id,
+          selectedPlanSiteId,
+          getSiteFallbackGalleryTheme(
+            replyGallerySkills,
+            activeExperience.id,
+            selectedPlanSiteId,
+            typeof merged.plan === 'string' ? merged.plan : null,
+          ),
+        )
+        : [];
+      const brochureImage = brochureRequested
+        ? findPlanBrochureImage(
+          getDynamicPlanImages(skills),
+          activeExperience.id,
+          isPlanBrochureRequest(message) ? brochurePlanId : (typeof merged.plan === 'string' ? merged.plan : null),
+        )
+        : undefined;
+      // An explicit request may repeat the card; a model-initiated one may not within
+      // 72h, whether it last shipped as a requested photo or as the price/switch card.
+      const brochureUrls = brochureImage && galleryImageLimit() > 0 && (
+        isPlanBrochureRequest(message) || !planCardSentRecently(repos, customerPhone, brochureImage)
+      ) ? [brochureImage.url] : [];
+      const galleryUrls = resolvedThemes.length > 0
         ? selectBalancedByCategory(
           repos,
           customerPhone,
-          getGalleryImages(skills, activeExperience.id),
+          getGalleryImages(replyGallerySkills, activeExperience.id),
           resolvedThemes,
-          Math.min(galleryImageLimit(), galleryImagesRemaining),
-        )
+          Math.min(galleryImageLimit(), galleryImagesRemaining) - brochureUrls.length,
+        ).map(image => image.url)
         : [];
-      requestedGalleryImageUrls = selectedImages.map((image) => image.url);
+      requestedGalleryImageUrls = [...brochureUrls, ...galleryUrls];
       mediaMarkerUnresolved = requestedGalleryImageUrls.length === 0;
       if (requestedGalleryImageUrls.length > 0) {
         logger.info(
-          { phone: customerPhone, themes: resolvedThemes.map(theme => theme.type), count: requestedGalleryImageUrls.length },
+          { phone: customerPhone, themes: resolvedThemes.map(theme => theme.type), brochure: brochureUrls.length > 0, count: requestedGalleryImageUrls.length },
           '[MEDIA] LLM requested photos — delivering from gallery',
         );
       }
@@ -1798,7 +1982,7 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   //   * prompt_leak / payment_detail_leak → suppress (empty); substitute risks echo
   //   * false_reservation / template / sentinel → non-echoing aiFailureQualified
   const exp = getActiveExperience(skills);
-  logQuoteMismatch(strippedReplyText, exp, quoteQualification, customerPhone, getPublicPaymentFacts(skills).depositPercent);
+  logQuoteMismatch(strippedReplyText, exp, quoteQualification, customerPhone, getPublicPaymentFactsForPlan(skills, exp, typeof quoteQualification.plan === 'string' ? quoteQualification.plan : null).depositPercent);
   logEmojiStyle(rawReplyText, {
     phone: customerPhone,
     salesPhase: salesPhase ?? undefined,
@@ -1837,11 +2021,13 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   if (safetyFailReason) {
     const echoRisk = isEchoRiskSafetyFail(safetyFailReason);
     logger.warn({ phone: customerPhone, reason: safetyFailReason, echoRisk }, '[BOT] hard safety block');
-    const ownerAlertType = safetyFailReason === 'payment_detail_leak'
-      || safetyFailReason === 'false_reservation_claim'
-      || safetyFailReason === 'payment_without_date'
-      ? 'unsafe_reservation_blocked'
-      : 'policy_violation_blocked';
+    const ownerAlertType = safetyFailReason === 'media_marker_unhonoured'
+      ? 'media_marker_unhonoured'
+      : safetyFailReason === 'payment_detail_leak'
+        || safetyFailReason === 'false_reservation_claim'
+        || safetyFailReason === 'payment_without_date'
+        ? 'unsafe_reservation_blocked'
+        : 'policy_violation_blocked';
     if (echoRisk) {
       return {
         reply: '', shouldSendReply: false,
@@ -1880,7 +2066,10 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
 
   if (initialPriceMentioned && !prePriceRow) {
     if (legalPrice) {
-      repos.conversation.upsert(customerPhone, { price_given_at: new Date().toISOString() });
+      repos.conversation.upsert(customerPhone, {
+        price_given_at: new Date().toISOString(),
+        quote_fingerprint: fingerprintFor(merged),
+      });
     } else {
       logger.info({ phone: customerPhone, fieldCount: priceContextSignals }, '[BOT] price mentioned — price_given deferred (insufficient qualification)');
     }
@@ -1977,6 +2166,40 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   if (finalPriceJustGiven && !prePriceRow) repos.conversation.upsert(customerPhone, { price_given_at: new Date().toISOString() });
   const outputPriceJustGiven = !needsHumanEffective && finalPriceJustGiven;
 
+  // Ship the quoted plan's card when a price turn quotes exactly one plan and the
+  // customer asked the price, or named (in a recent inbound) a site other than the
+  // stored plan's. A same-site bot upsell ships no card.
+  const storedPlanSiteId = getPlans(activeExperience).find(plan => plan.id === storedPlan)?.siteId;
+  const namedSite = outputPriceJustGiven
+    ? siteNamedRecently(strippedReplyText, recentInboundBodies.slice(0, 5), activeExperience)
+    : null;
+  const customerNamedSite = namedSite && namedSite !== storedPlanSiteId ? namedSite : null;
+  const quoteSiteId = customerNamedSite ?? (isPriceQuestion(message) ? detectSite(message, activeExperience) : null) ?? selectedPlanSiteId;
+  const peopleForQuote = typeof merged.personas === 'number' ? merged.personas : null;
+  // A plan the customer names in a plan question ("Y como es el prime?") ships its own
+  // card when the reply quotes exactly that plan. The stored plan is not changed.
+  const askedPlanId = outputPriceJustGiven && isPlanQuestion(message) ? detectPlan(message, activeExperience, selectedPlanSiteId) : null;
+  const askedPlanSiteId = askedPlanId ? getPlans(activeExperience).find(plan => plan.id === askedPlanId)?.siteId ?? null : null;
+  const askedPlanQuoted = askedPlanId && detectQuotedPlan(strippedReplyText, activeExperience, peopleForQuote, askedPlanSiteId) === askedPlanId
+    ? askedPlanId
+    : null;
+  // On a price objection the card may only show an alternative the cue authorised
+  // (same list, same total basis); equal cross-site totals never qualify.
+  const objectionQuotedPlan = priceObjectionThisTurn && outputPriceJustGiven && peopleForQuote
+    ? findQuotedAlternative(
+      listCheaperPlanQuotes(activeExperience, storedPlan, peopleForQuote,
+        transportObjectionThisTurn ? 'own'
+          : typeof merged.transporte === 'string' ? merged.transporte as TransportNeed : undefined) ?? [],
+      extractCopAmounts(strippedReplyText),
+    )
+    : null;
+  const detectedQuotedPlan = askedPlanQuoted ?? (priceObjectionThisTurn
+    ? objectionQuotedPlan
+    : outputPriceJustGiven && (isPriceQuestion(message) || !!customerNamedSite)
+      ? detectQuotedPlan(strippedReplyText, activeExperience, peopleForQuote, quoteSiteId)
+      : null);
+  const quotedPlanId = detectedQuotedPlan && detectedQuotedPlan !== storedPlan ? detectedQuotedPlan : null;
+
   // Plan image flag only — deepseek-llm-client plain-text mode hardcodes img=false,
   // so this stays false until structured img returns. Not a live media path today.
   const shouldSendImage = !softUnsafePhrasing && llmTurn.img;
@@ -2006,13 +2229,16 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   // Automatic contextual media remains a single reply-carrying image. Explicit
   // gallery requests take priority to avoid a media flood.
   const contextualImagesAllowed = !isNewConversation
+    && !pausedPlanThisTurn
+    && !photoRequestForOtherSite
     && !softUnsafePhrasing
     && !outputPriceJustGiven
+    && !planSwitchedAfterQuote
     && !needsHumanEffective
     && requestedGalleryImageUrls.length === 0;
   const contextualImage = contextualImagesAllowed
     ? selectContextualImage(
-      skills,
+      replyGallerySkills,
       repos,
       customerPhone,
       strippedReplyText,
@@ -2026,6 +2252,7 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     logger.warn({ phone: customerPhone, replyLen: strippedReplyText.length }, '[LLM] reply may be truncated');
   }
   diagnosticMediaReply(strippedReplyText, requestedGalleryImageUrls.length, customerPhone);
+  const galleryRequestedByCustomer = galleryRequestedForReopen;
 
   return {
     reply: strippedReplyText, shouldSendReply: true,
@@ -2036,6 +2263,10 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     requestedGalleryImages: requestedGalleryImageUrls.length > 0 ? requestedGalleryImageUrls : undefined,
     contextualImage: contextualImage ? { url: contextualImage.url } : undefined,
     priceJustGiven: outputPriceJustGiven,
+    planSwitchedAfterQuote,
+    quotedPlanId,
+    priceObjectionThisTurn,
+    galleryRequestedByCustomer,
     reservationReady: closeIntent && hasCoreBooking && pricePresented,
     mediaPlanId: typeof merged.plan === 'string' ? merged.plan : null,
     outboundDateAction: detectOutboundDateAction(strippedReplyText, merged),

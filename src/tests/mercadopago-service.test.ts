@@ -10,7 +10,7 @@ let repos: Repositories;
 let previousAccessToken: string;
 
 const bookingSnapshot = {
-  planId: '2d1n_mining',
+  planId: 'core_2d1n_chivor',
   date: '2026-11-14',
   people: 2,
   transportNeed: 'own',
@@ -58,7 +58,7 @@ describe('createMercadoPagoPreference', () => {
       expectedAmountCop: 150000,
       preferenceId: 'pref-123',
       status: 'pending',
-      planId: '2d1n_mining',
+      planId: 'core_2d1n_chivor',
       date: '2026-11-14',
       people: 2,
       depositPercent: 15,

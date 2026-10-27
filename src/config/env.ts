@@ -76,7 +76,7 @@ export const envSchema = z.object({
 
   DAILY_AI_BUDGET_USD: z.coerce.number().positive().catch(2.00),
   MONTHLY_AI_BUDGET_USD: z.coerce.number().positive().catch(30.00),
-  MAX_AI_CALLS_PER_CUSTOMER_PER_DAY: z.coerce.number().int().positive().catch(30),
+  MAX_AI_CALLS_PER_CUSTOMER_PER_DAY: z.coerce.number().int().positive().catch(50),
   MAX_AI_CALLS_GLOBAL_PER_DAY: z.coerce.number().int().positive().catch(1500),
   AI_CACHE_TTL_SECONDS: z.coerce.number().catch(604800),
 
@@ -249,3 +249,32 @@ export const envSchema = z.object({
 });
 
 export const env = envSchema.parse(process.env);
+
+/**
+ * Both template paths can now be unlocked by the SAME customer "sí": the one-shot
+ * fires at `FOLLOWUP_HOURS_AFTER_INBOUND`, the recurring cadence at
+ * `FOLLOWUP_RECURRING_INTERVAL_MONTHS`. When the two template names are identical the
+ * customer receives the exact same message twice, weeks apart, which reads as a bug to
+ * them and costs Meta quality rating.
+ *
+ * A warning rather than a startup failure: the duplicate is a content problem, not a
+ * compliance one, and refusing to boot would take the whole bot down over it.
+ */
+export function warnOnDuplicateFollowupTemplates(warn: (message: string) => void): void {
+  if (!env.ALLOW_FOLLOWUP_TEMPLATE || !env.FOLLOWUP_RECURRING_ENABLED) return;
+
+  const templatePairs = [
+    ['FOLLOWUP_TEMPLATE_NAME', env.FOLLOWUP_TEMPLATE_NAME, 'FOLLOWUP_RECURRING_TEMPLATE_NAME', env.FOLLOWUP_RECURRING_TEMPLATE_NAME],
+    ['FOLLOWUP_TEMPLATE_NAME_EN', env.FOLLOWUP_TEMPLATE_NAME_EN, 'FOLLOWUP_RECURRING_TEMPLATE_NAME_EN', env.FOLLOWUP_RECURRING_TEMPLATE_NAME_EN],
+  ] as const;
+
+  for (const [oneShotKey, oneShotValue, recurringKey, recurringValue] of templatePairs) {
+    const oneShot = oneShotValue.trim();
+    const recurring = recurringValue.trim();
+    if (!oneShot || !recurring || oneShot !== recurring) continue;
+    warn(
+      `[FOLLOWUP] ${oneShotKey} and ${recurringKey} are both "${oneShot}": `
+      + 'a consented customer will receive the same template twice. Submit a distinct recurring template.',
+    );
+  }
+}

@@ -102,7 +102,7 @@ describe('reservation closing regression', () => {
     const repos = createRepositories(db);
     const phone = '573001234560';
     repos.conversation.upsert(phone, {
-      collected_name: 'Juan', collected_plan: '2d1n_mining', collected_people: 2,
+      collected_name: 'Juan', collected_plan: 'core_2d1n_chivor', collected_people: 2,
       collected_date: 'sábado 14 de noviembre', collected_transport_need: 'own',
       price_given_at: new Date().toISOString(), lead_score: 40,
     });
@@ -124,7 +124,7 @@ describe('reservation closing regression', () => {
     const repos = createRepositories(db);
     const phone = '573001234564';
     repos.conversation.upsert(phone, {
-      collected_name: 'Juan', collected_plan: '2d1n_mining', collected_people: 2,
+      collected_name: 'Juan', collected_plan: 'core_2d1n_chivor', collected_people: 2,
       collected_date: 'sábado 14 de noviembre', collected_transport_need: 'own',
       price_given_at: new Date().toISOString(), lead_score: 40,
     });
@@ -150,7 +150,7 @@ describe('reservation closing regression', () => {
     const repos = createRepositories(db);
     const phone = '573001234565';
     repos.conversation.upsert(phone, {
-      collected_name: 'Juan', collected_plan: '2d1n_mining', collected_people: 2,
+      collected_name: 'Juan', collected_plan: 'core_2d1n_chivor', collected_people: 2,
       collected_date: 'sábado 14 de noviembre', collected_transport_need: 'own',
       price_given_at: new Date().toISOString(), lead_score: 40,
     });
@@ -171,7 +171,7 @@ describe('reservation closing regression', () => {
     const repos = createRepositories(db);
     const phone = '573001234566';
     repos.conversation.upsert(phone, {
-      collected_name: 'Juan', collected_plan: '2d1n_mining', collected_people: 2,
+      collected_name: 'Juan', collected_plan: 'core_2d1n_chivor', collected_people: 2,
       collected_date: 'sábado 14 de noviembre', collected_transport_need: 'own',
       price_given_at: new Date().toISOString(), lead_score: 40,
     });
@@ -192,7 +192,7 @@ describe('reservation closing regression', () => {
     const repos = createRepositories(db);
     const phone = '573001234567';
     repos.conversation.upsert(phone, {
-      collected_name: 'Juan', collected_plan: '2d1n_mining', collected_people: 2,
+      collected_name: 'Juan', collected_plan: 'core_2d1n_chivor', collected_people: 2,
       collected_date: 'sábado 14 de noviembre', collected_transport_need: 'own',
       price_given_at: new Date().toISOString(), lead_score: 40,
     });
@@ -217,7 +217,7 @@ describe('reservation closing regression', () => {
     const repos = createRepositories(db);
     const phone = '573001234561';
     repos.conversation.upsert(phone, {
-      collected_name: 'Juan', collected_plan: '2d1n_mining', collected_people: 2,
+      collected_name: 'Juan', collected_plan: 'core_2d1n_chivor', collected_people: 2,
       collected_date: 'sábado 14 de noviembre', collected_transport_need: 'own',
       price_given_at: new Date().toISOString(), lead_score: 40,
     });
@@ -244,7 +244,7 @@ describe('reservation closing regression', () => {
     const repos = createRepositories(db);
     const phone = '573001234562';
     repos.conversation.upsert(phone, {
-      collected_name: 'Juan', collected_plan: '2d1n_mining', collected_people: 2,
+      collected_name: 'Juan', collected_plan: 'core_2d1n_chivor', collected_people: 2,
       collected_date: 'sábado 14 de noviembre', collected_transport_need: 'own',
       price_given_at: new Date().toISOString(), lead_score: 40,
     });
@@ -267,7 +267,7 @@ describe('reservation closing regression', () => {
     const repos = createRepositories(db);
     const phone = '573001234563';
     repos.conversation.upsert(phone, {
-      collected_name: 'Juan', collected_plan: '2d1n_mining', collected_people: 2,
+      collected_name: 'Juan', collected_plan: 'core_2d1n_chivor', collected_people: 2,
       collected_date: 'sábado 14 de noviembre', collected_transport_need: 'own',
       price_given_at: new Date().toISOString(), lead_score: 95, lead_intent: 'ready_to_book',
     });
@@ -295,7 +295,7 @@ describe('reservation closing regression', () => {
     ]);
     repos.conversation.upsert(phone, {
       collected_name: 'Juan',
-      collected_plan: '2d1n_mining',
+      collected_plan: 'core_2d1n_chivor',
       collected_people: 2,
       collected_transport_need: 'own',
       price_given_at: new Date().toISOString(),
@@ -326,7 +326,7 @@ describe('reservation closing regression', () => {
     const phone = '573001234570';
     repos.conversation.upsert(phone, {
       collected_name: 'Juan',
-      collected_plan: '2d1n_mining',
+      collected_plan: 'core_2d1n_chivor',
       collected_people: 2,
       collected_date: 'noviembre',
       collected_transport_need: 'own',
@@ -352,7 +352,7 @@ describe('reservation closing regression', () => {
     const phone = '573001234575';
     repos.conversation.upsert(phone, {
       collected_name: 'Juan',
-      collected_plan: '2d1n_mining',
+      collected_plan: 'core_2d1n_chivor',
       collected_people: 2,
       collected_date: 'sábado 14 de noviembre',
       collected_transport_need: 'own',
@@ -376,7 +376,7 @@ describe('reservation closing regression', () => {
     const phone = '573001234577';
     repos.conversation.upsert(phone, {
       collected_name: 'Juan',
-      collected_plan: '2d1n_mining',
+      collected_plan: 'core_2d1n_chivor',
       collected_people: 2,
       collected_date: 'sábado 14 de noviembre',
       collected_transport_need: 'own',
@@ -401,7 +401,7 @@ describe('reservation closing regression', () => {
     const restore = withLimitedAvailability([{ date: '2026-11-14', status: 'limited' }]);
     repos.conversation.upsert(phone, {
       collected_name: 'Juan',
-      collected_plan: '2d1n_mining',
+      collected_plan: 'core_2d1n_chivor',
       collected_people: 2,
       collected_date: '14 de noviembre de 2027',
       collected_transport_need: 'own',
@@ -430,8 +430,8 @@ describe('reservation closing regression', () => {
       currency: 'COP',
       lastUpdated: '2026-01-01',
       items: [
-        { id: '2d1n_mining_individual', planId: '2d1n_mining', label: 'Individual', pricePerPerson: 550000, publiclyShow: true },
-        { id: '2d1n_mining_couple', planId: '2d1n_mining', label: 'Pareja', couplePrice: 1000000, peopleIncluded: 2, publiclyShow: true },
+        { id: 'core_2d1n_chivor_individual', planId: 'core_2d1n_chivor', label: 'Individual', pricePerPerson: 550000, publiclyShow: true },
+        { id: 'core_2d1n_chivor_couple', planId: 'core_2d1n_chivor', label: 'Pareja', couplePrice: 1000000, peopleIncluded: 2, publiclyShow: true },
       ],
       botRules: ['pricing'],
       businessRules: [],
@@ -477,14 +477,14 @@ describe('reservation closing regression', () => {
       currency: 'COP',
       lastUpdated: '2026-01-01',
       items: [
-        { id: '2d1n_mining_individual', planId: '2d1n_mining', label: 'Individual', pricePerPerson: 550000, publiclyShow: true },
-        { id: '2d1n_mining_couple', planId: '2d1n_mining', label: 'Pareja', couplePrice: 1000000, publiclyShow: true },
+        { id: 'core_2d1n_chivor_individual', planId: 'core_2d1n_chivor', label: 'Individual', pricePerPerson: 550000, publiclyShow: true },
+        { id: 'core_2d1n_chivor_couple', planId: 'core_2d1n_chivor', label: 'Pareja', couplePrice: 1000000, publiclyShow: true },
       ],
       botRules: ['pricing'],
       businessRules: [],
     };
     repos.conversation.upsert(phone, {
-      collected_plan: '2d1n_mining',
+      collected_plan: 'core_2d1n_chivor',
       collected_people: 2,
       collected_date: 'sábado 14 de noviembre',
       collected_transport_need: 'yes',
@@ -515,7 +515,7 @@ describe('reservation closing regression', () => {
     env.MERCADOPAGO_WEBHOOK_SECRET = 'test-secret';
     skills.andeanScapes.experiences = [];
     repos.conversation.upsert(phone, {
-      collected_plan: '2d1n_mining',
+      collected_plan: 'core_2d1n_chivor',
       collected_people: 2,
       collected_date: 'sábado 14 de noviembre',
       collected_transport_need: 'own',
@@ -544,8 +544,8 @@ describe('reservation closing regression', () => {
       currency: 'COP',
       lastUpdated: '2026-01-01',
       items: [
-        { id: '2d1n_mining_individual', planId: '2d1n_mining', label: 'Individual', pricePerPerson: 550000, publiclyShow: true },
-        { id: '2d1n_mining_couple', planId: '2d1n_mining', label: 'Pareja', couplePrice: 1000000, peopleIncluded: 2, publiclyShow: true },
+        { id: 'core_2d1n_chivor_individual', planId: 'core_2d1n_chivor', label: 'Individual', pricePerPerson: 550000, publiclyShow: true },
+        { id: 'core_2d1n_chivor_couple', planId: 'core_2d1n_chivor', label: 'Pareja', couplePrice: 1000000, peopleIncluded: 2, publiclyShow: true },
       ],
       botRules: ['pricing'],
       businessRules: [],
@@ -557,7 +557,7 @@ describe('reservation closing regression', () => {
     repos.conversation.upsert(phone, {
       language: 'en',
       collected_name: 'John',
-      collected_plan: '2d1n_mining',
+      collected_plan: 'core_2d1n_chivor',
       collected_people: 2,
       collected_date: 'November 14',
       collected_transport_need: 'own',
@@ -591,7 +591,7 @@ describe('reservation closing regression', () => {
     const repos = createRepositories(db);
     const phone = '573001234576';
     repos.conversation.upsert(phone, {
-      collected_plan: '2d1n_mining',
+      collected_plan: 'core_2d1n_chivor',
       collected_people: 2,
       collected_date: 'sábado 14 de noviembre',
       collected_transport_need: 'own',
@@ -620,11 +620,11 @@ describe('reservation closing regression', () => {
       externalReference: 'as_existing',
       customerPhone: phone,
       expectedAmountCop: 150000,
-      planId: '2d1n_mining',
+      planId: 'core_2d1n_chivor',
       date: 'sábado 14 de noviembre',
       people: 2,
       transportNeed: 'own',
-      depositPercent: 15,
+      depositPercent: 25,
       availabilityConfirmedAt: new Date().toISOString(),
     });
     repos.paymentReservation.attachPreference(
@@ -638,6 +638,74 @@ describe('reservation closing regression', () => {
       expect(msg).toMatch(/reenviado/i);
       expect(mockCreatePreference).not.toHaveBeenCalled();
       expect(String(mockSendBridgeReply.mock.calls[0]?.[2])).toContain('pref-existing');
+    } finally {
+      env.MERCADOPAGO_ACCESS_TOKEN = previousToken;
+      env.MERCADOPAGO_WEBHOOK_SECRET = previousSecret;
+      db.close();
+    }
+  });
+
+  // BASIC (pasadia) carries its own anticipo; CORE/PRIME keep the global one.
+  it('does not resend a pending payment link for a paused destination', async () => {
+    loadSkills();
+    const db = new Database(':memory:');
+    migrate(db);
+    const repos = createRepositories(db);
+    const phone = '573001234582';
+    const previousToken = env.MERCADOPAGO_ACCESS_TOKEN;
+    const previousSecret = env.MERCADOPAGO_WEBHOOK_SECRET;
+    env.MERCADOPAGO_ACCESS_TOKEN = 'test-token';
+    env.MERCADOPAGO_WEBHOOK_SECRET = 'test-secret';
+    // The current selection is active; the pending reservation still belongs to Coscuez.
+    repos.conversation.upsert(phone, { language: 'es', collected_plan: 'core_2d1n_chivor' });
+    repos.paymentReservation.createPending({
+      externalReference: 'as_paused_pending', customerPhone: phone,
+      expectedAmountCop: 300000, planId: 'core_2d1n_coscuez',
+      date: 'sábado 14 de noviembre', people: 2, transportNeed: 'own',
+      depositPercent: 25, availabilityConfirmedAt: new Date().toISOString(),
+    });
+    repos.paymentReservation.attachPreference(
+      'as_paused_pending', 'pref-paused',
+      'https://www.mercadopago.com.co/checkout/v1/redirect?pref_id=pref-paused',
+    );
+    try {
+      const message = await paymentHandler({ repos, args: [phone, 'confirm'], chatId: 1 });
+      expect(message).toContain('no esta disponible');
+      expect(mockSendBridgeReply).not.toHaveBeenCalled();
+      expect(mockCreatePreference).not.toHaveBeenCalled();
+      expect(repos.paymentReservation.getPendingByCustomerPhone(phone)?.externalReference).toBe('as_paused_pending');
+    } finally {
+      env.MERCADOPAGO_ACCESS_TOKEN = previousToken;
+      env.MERCADOPAGO_WEBHOOK_SECRET = previousSecret;
+      db.close();
+    }
+  });
+
+  it('charges the BASIC plan its own 30% anticipo', async () => {
+    const db = new Database(':memory:');
+    migrate(db);
+    const repos = createRepositories(db);
+    const phone = '573001234581';
+    const previousToken = env.MERCADOPAGO_ACCESS_TOKEN;
+    const previousSecret = env.MERCADOPAGO_WEBHOOK_SECRET;
+    env.MERCADOPAGO_ACCESS_TOKEN = 'test-token';
+    env.MERCADOPAGO_WEBHOOK_SECRET = 'test-secret';
+    repos.conversation.upsert(phone, {
+      language: 'es',
+      collected_plan: 'basic_1d_chivor',
+      collected_people: 2,
+      collected_date: 'sábado 14 de noviembre',
+      collected_transport_need: 'own',
+      price_given_at: new Date().toISOString(),
+    });
+
+    try {
+      const msg = await paymentHandler({ repos, args: [phone, 'confirm'], chatId: 1 });
+      expect(msg).toMatch(/enviado/i);
+      expect(mockCreatePreference).toHaveBeenLastCalledWith(
+        expect.objectContaining({ planId: 'basic_1d_chivor', depositPercent: 30, amountCop: 222000 }),
+        repos,
+      );
     } finally {
       env.MERCADOPAGO_ACCESS_TOKEN = previousToken;
       env.MERCADOPAGO_WEBHOOK_SECRET = previousSecret;
@@ -671,7 +739,7 @@ describe('reservation closing regression', () => {
 
       try {
         mockComplete.mockResolvedValueOnce(llmResult('¡Hola! 😊 ¿Vienen en pareja, solos o en grupo? Así te recomiendo mejor.'));
-        const t1 = await processMessage({ repos, customerPhone: phone, message: 'Hola' });
+        const t1 = await processMessage({ repos, customerPhone: phone, message: 'Hola, me interesa Chivor' });
         persistOutbound(repos, phone, t1.reply);
         expect(t1.shouldAlertOwner).toBe(false);
 
@@ -685,9 +753,9 @@ describe('reservation closing regression', () => {
         mockComplete.mockResolvedValueOnce(llmResult(
           'Entiendo, la aventura intensa de la mina es la mejor opción. Es un plan corto y directo. ¿Alguna fecha en mente?',
         ));
-        const t3 = await processMessage({ repos, customerPhone: phone, message: 'El intenso de la mina' });
+        const t3 = await processMessage({ repos, customerPhone: phone, message: 'El core de la mina' });
         persistOutbound(repos, phone, t3.reply);
-        expect(repos.conversation.getByPhone(phone)?.collected_plan).toBe('2d1n_mining');
+        expect(repos.conversation.getByPhone(phone)?.collected_plan).toBe('core_2d1n_chivor');
 
         mockComplete.mockResolvedValueOnce(llmResult(
           'Para pareja, el plan completo de 2 días/1 noche en la mina queda en $1.000.000 COP. Eso incluye alojamiento, las 3 comidas, la experiencia minera con equipo y la charla esmeraldera.\n\n¿Les gustaría que revise alguna fecha en particular?',
@@ -703,7 +771,7 @@ describe('reservation closing regression', () => {
         persistOutbound(repos, phone, t5.reply);
 
         mockComplete.mockResolvedValueOnce(llmResult(
-          '¡Perfecto! Entonces sería el plan de 2 días/1 noche para el *sábado 14 de noviembre*, para 2 personas.\n\nPara confirmar, el anticipo es del *15%* por Nequi o Mercado Pago. Primero valido disponibilidad con el equipo y en cuanto confirmen te comparto el detalle del pago.\n\n¿La iniciamos?',
+          '¡Perfecto! Entonces sería el plan de 2 días/1 noche para el *sábado 14 de noviembre*, para 2 personas.\n\nPara confirmar, el anticipo es del *25%* por Nequi o Mercado Pago. Primero valido disponibilidad con el equipo y en cuanto confirmen te comparto el detalle del pago.\n\n¿La iniciamos?',
         ));
         const t6 = await processMessage({ repos, customerPhone: phone, message: 'Si esa suena bien para mi' });
         persistOutbound(repos, phone, t6.reply);
@@ -740,7 +808,7 @@ describe('reservation closing regression', () => {
       const repos = createRepositories(db);
       const phone = '573001234581';
       repos.conversation.upsert(phone, {
-        collected_plan: '2d1n_mining', collected_people: 2,
+        collected_plan: 'core_2d1n_chivor', collected_people: 2,
         collected_date: 'sábado 14 de noviembre',
         price_given_at: new Date().toISOString(), lead_score: 40,
         // No name, no transport — collected later by the human agent, not a
@@ -748,7 +816,7 @@ describe('reservation closing regression', () => {
       });
       persistOutbound(
         repos, phone,
-        'El anticipo es del 15% por Nequi o Mercado Pago. Primero valido disponibilidad con el equipo. ¿La iniciamos?',
+        'El anticipo es del 25% por Nequi o Mercado Pago. Primero valido disponibilidad con el equipo. ¿La iniciamos?',
       );
       // A bare "Si" is genuinely ambiguous out of context, so the analyzer stays
       // conservative here — the deterministic explicit-consent gate must still fire.
@@ -788,7 +856,7 @@ describe('reservation closing regression', () => {
       });
       persistOutbound(
         repos, phone,
-        'El plan de 2 días / 1 noche para ustedes queda en $1.000.000. Anticipo 15% por Nequi o Mercado Pago. Primero valido disponibilidad con el equipo. ¿La iniciamos?',
+        'El plan de 2 días / 1 noche para ustedes queda en $1.000.000. Anticipo 25% por Nequi o Mercado Pago. Primero valido disponibilidad con el equipo. ¿La iniciamos?',
       );
       mockAnalyzeLead.mockResolvedValueOnce({
         intent: 'curious', scoreDelta: 0, confidence: 0.3,
@@ -886,7 +954,7 @@ describe('reservation closing regression', () => {
       });
       persistOutbound(
         repos, phone,
-        'Perfecto, el 14 de noviembre entonces. Para confirmar, el anticipo es del 15% y los métodos de pago son Nequi o Mercado Pago. Primero valido disponibilidad con el equipo. ¿La iniciamos?',
+        'Perfecto, el 14 de noviembre entonces. Para confirmar, el anticipo es del 25% y los métodos de pago son Nequi o Mercado Pago. Primero valido disponibilidad con el equipo. ¿La iniciamos?',
       );
       expect(repos.conversation.getPriceGivenAt(phone)).toBeNull();
       mockAnalyzeLead.mockResolvedValueOnce({
@@ -968,13 +1036,13 @@ describe('reservation closing regression', () => {
       const repos = createRepositories(db);
       const phone = '573001234582';
       repos.conversation.upsert(phone, {
-        collected_plan: '2d1n_mining', collected_people: 2,
+        collected_plan: 'core_2d1n_chivor', collected_people: 2,
         collected_date: 'sábado 14 de noviembre',
         price_given_at: new Date().toISOString(), lead_score: 40,
       });
       persistOutbound(
         repos, phone,
-        'El anticipo es del 15% por Nequi o Mercado Pago. Primero valido disponibilidad con el equipo. ¿La iniciamos?',
+        'El anticipo es del 25% por Nequi o Mercado Pago. Primero valido disponibilidad con el equipo. ¿La iniciamos?',
       );
       mockAnalyzeLead.mockResolvedValueOnce(null); // analyzer down (timeout / budget / invalid JSON)
       mockComplete.mockResolvedValueOnce(llmResult('¡Listo! Quedo validando la disponibilidad con el equipo.'));
@@ -995,13 +1063,13 @@ describe('reservation closing regression', () => {
       const repos = createRepositories(db);
       const phone = '573001234583';
       repos.conversation.upsert(phone, {
-        collected_plan: '2d1n_mining', collected_people: 2,
+        collected_plan: 'core_2d1n_chivor', collected_people: 2,
         collected_date: 'sábado 14 de noviembre',
         price_given_at: new Date().toISOString(), lead_score: 40,
       });
       persistOutbound(
         repos, phone,
-        'El anticipo es del 15% por Nequi o Mercado Pago. Primero valido disponibilidad con el equipo. ¿La iniciamos?',
+        'El anticipo es del 25% por Nequi o Mercado Pago. Primero valido disponibilidad con el equipo. ¿La iniciamos?',
       );
       mockComplete.mockResolvedValueOnce(llmResult('Entiendo, me quedo atento entonces.'));
 
@@ -1021,7 +1089,7 @@ describe('reservation closing regression', () => {
       const repos = createRepositories(db);
       const phone = '573001234584';
       repos.conversation.upsert(phone, {
-        collected_plan: '2d1n_mining', collected_people: 2,
+        collected_plan: 'core_2d1n_chivor', collected_people: 2,
         collected_date: 'sábado 14 de noviembre',
         price_given_at: new Date().toISOString(), lead_score: 40,
       });

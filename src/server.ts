@@ -1,5 +1,5 @@
 import { buildApp } from './app.js';
-import { env } from './config/env.js';
+import { env, warnOnDuplicateFollowupTemplates } from './config/env.js';
 import { createAndMigrate } from './db/migrate.js';
 import { createRepositories } from './db/repositories/index.js';
 import { loadSkills, setDynamicService, stripSkillsPricing } from './services/skill-loader.js';
@@ -32,6 +32,7 @@ async function start() {
   }
 
   loadSkills();
+  warnOnDuplicateFollowupTemplates(message => logger.warn(message));
   getRoutingConfig();
   // Fail at boot (like loadSkills) if a referent pack or the sales profile is
   // missing/invalid, instead of throwing later inside the reply path.

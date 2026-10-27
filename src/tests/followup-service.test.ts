@@ -2,7 +2,14 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { migrate } from '../db/migrate.js';
 import { createRepositories, type Repositories } from '../db/repositories/index.js';
-import { loadSkills } from '../services/skill-loader.js';
+import { loadSkills, setDynamicService } from '../services/skill-loader.js';
+import { useAllSitesActive } from './helpers/all-sites-catalog.js';
+
+// The multi-site regression net runs with every destination active, as the CI
+// fixture had before destinations could be paused.
+beforeEach(() => {
+  useAllSitesActive();
+});
 
 const { mockSendTemplate, mockSendTextWithId, mockSendImageUrlWithId, mockSelectThemedImage } = vi.hoisted(() => ({
   mockSendTemplate: vi.fn<(...args: unknown[]) => Promise<{ whatsappMessageId: string }>>(
@@ -38,7 +45,12 @@ vi.mock('../services/contextual-media.js', () => ({
   selectThemedImage: mockSelectThemedImage,
 }));
 
-import { runConsentAskCycle, runFollowupCycle, runRecurringCycle } from '../services/followup-service.js';
+import {
+  hasFollowupPermission,
+  runConsentAskCycle,
+  runFollowupCycle,
+  runRecurringCycle,
+} from '../services/followup-service.js';
 import { WhatsAppSendError } from '../services/whatsapp-client.js';
 import { env } from '../config/env.js';
 import { llmClient } from '../services/response-engine.js';
@@ -257,6 +269,35 @@ describe('followup scheduler — consent ask race', () => {
     expect(mockSendTextWithId).not.toHaveBeenCalled();
     expect(repos.followupSubscription.getByPhone(PHONE)).toBeNull();
   });
+
+  // Owner decision 2026-10-26: no permission ask while the team holds the booking,
+  // including when the lead is escalated while the draft is being written.
+  it('does not send when the lead becomes human_pending while the LLM drafts the ask', async () => {
+    vi.spyOn(env, 'AI_ENABLED', 'get').mockReturnValue(true);
+    vi.spyOn(env, 'FOLLOWUP_CONSENT_ASK_ENABLED', 'get').mockReturnValue(true);
+    vi.spyOn(env, 'FOLLOWUP_DEV_CONSENT_SECONDS', 'get').mockReturnValue(1);
+    seedEligibleLead(PHONE, { hoursAgo: 0.05 });
+    repos.followupConsent.revokeConsent(PHONE);
+
+    const result: LlmResult = {
+      turn: {
+        reply: '¿Te parece si te escribo más adelante?\n[[FOLLOWUP_CONSENT]]',
+        sales_phase: 'discovery', action: 'answer', img: false,
+        collected_fields: { name: null, plan: null, people: null, date: null, transport_need: null, pet: null },
+        lead: { intent: 'curious', buying_signals: [], blockers: [], score_delta: 0, confidence: 1 },
+      },
+      tokens: { prompt: 10, completion: 10 },
+    };
+    const completeSpy = vi.spyOn(llmClient, 'complete').mockImplementation(async () => {
+      repos.conversation.setMode(PHONE, 'human_pending');
+      return result;
+    });
+
+    await runConsentAskCycle(repos);
+
+    expect(completeSpy).toHaveBeenCalledTimes(1);
+    expect(mockSendTextWithId).not.toHaveBeenCalled();
+  });
 });
 
 describe('followup scheduler — consent ask envelope', () => {
@@ -329,9 +370,25 @@ describe('followup scheduler — consent ask envelope', () => {
       '',
       expect.any(String),
       undefined,
+      { planId: repos.conversation.getCollectedPlan(PHONE) },
     );
     expect(mockSendTextWithId).toHaveBeenCalledWith(PHONE, ASK);
     expect(mockSendImageUrlWithId).not.toHaveBeenCalled();
+  });
+
+  // Live 2026-10-14: a Coscuez lead with no stored plan got a Chivor photo, because
+  // the selector was given no site. The conversation's chosen site must be passed.
+  it('scopes the ask photo to the site the conversation chose when no plan is stored', async () => {
+    vi.spyOn(env, 'FOLLOWUP_CONSENT_ASK_IMAGE_TYPE', 'get').mockReturnValue('mine');
+    repos.conversation.clearCollectedPlan(PHONE);
+    repos.message.addMessage({
+      customer_phone: PHONE, direction: 'inbound', message_type: 'text', body: 'Coscuez',
+      created_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+    });
+
+    await runConsentAskCycle(repos);
+
+    expect(mockSelectThemedImage.mock.calls[0]?.slice(2)).toEqual([PHONE, 'mine', expect.any(String), 'coscuez', { planId: null }]);
   });
 
   it('degrades to text when the themed url is not public https', async () => {
@@ -364,6 +421,20 @@ describe('followup scheduler — template header image', () => {
     expect(mockSendTemplate).toHaveBeenCalledTimes(1);
     // sendTemplate(phone, name, lang, bodyParams, headerImageUrl)
     expect(mockSendTemplate.mock.calls[0][4]).toBe(MINE_URL);
+  });
+
+  it('scopes the header photo to the site the conversation chose when no plan is stored', async () => {
+    vi.spyOn(env, 'FOLLOWUP_TEMPLATE_IMAGE_TYPE', 'get').mockReturnValue('mine');
+    repos.conversation.clearCollectedPlan(PHONE);
+    repos.message.addMessage({
+      customer_phone: PHONE, direction: 'inbound', message_type: 'text', body: 'Coscuez',
+      created_at: new Date(Date.now() - 49 * 60 * 60 * 1000).toISOString(),
+    });
+
+    await runFollowupCycle(repos);
+
+    // No site-fallback opt-in: the template header falls through to the plan card.
+    expect(mockSelectThemedImage.mock.calls[0]?.slice(2)).toEqual([PHONE, 'mine', expect.any(String), 'coscuez']);
   });
 
   it('skips instead of falling back to another experience when selection is stale', async () => {
@@ -453,6 +524,95 @@ describe('followup scheduler — recurring batch selection', () => {
 
     expect(mockSendTemplate).toHaveBeenCalledTimes(1);
     expect(mockSendTemplate.mock.calls[0][0]).toBe(duePhone);
+  });
+
+  it('re-checks the last message direction after claiming', async () => {
+    seedEligibleLead(PHONE, { hoursAgo: 24 * 70 });
+    repos.followupSubscription.ensureExists(PHONE);
+    repos.followupSubscription.markAsked(PHONE, 'wamid.ask');
+    repos.followupSubscription.affirm(PHONE, 'wamid.yes', 'customer_reply');
+
+    vi.spyOn(env, 'FOLLOWUP_RECURRING_ENABLED', 'get').mockReturnValue(true);
+    vi.spyOn(env, 'FOLLOWUP_DEV_RECURRING_SECONDS', 'get').mockReturnValue(0);
+    vi.spyOn(env, 'FOLLOWUP_RECURRING_INTERVAL_MONTHS', 'get').mockReturnValue(1);
+    vi.spyOn(env, 'FOLLOWUP_RECURRING_TEMPLATE_NAME', 'get').mockReturnValue('tour_followup_nodate_v1');
+    vi.spyOn(env, 'FOLLOWUP_RECURRING_TEMPLATE_HEADER', 'get').mockReturnValue('none');
+
+    vi.spyOn(repos.conversation, 'listRecurringCandidates').mockImplementation(() => {
+      // Race: this arrives after the scan snapshot but before the post-claim guard.
+      repos.message.addMessage({
+        customer_phone: PHONE,
+        direction: 'inbound',
+        message_type: 'text',
+        body: 'una duda',
+        created_at: new Date().toISOString(),
+      });
+      return [{
+        customer_phone: PHONE,
+        language: 'es',
+        collected_plan: 'plan_2d1n',
+        selected_experience_id: null,
+        sends_so_far: 0,
+        consent_cycle: 1,
+        last_send_at: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString(),
+      }];
+    });
+
+    await runRecurringCycle(repos);
+
+    expect(mockSendTemplate).not.toHaveBeenCalled();
+  });
+
+  describe('one-shot anchor post-claim check', () => {
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const candidateAt = (lastSendAt: string) => ({
+      customer_phone: PHONE, language: 'es', collected_plan: 'plan_2d1n',
+      selected_experience_id: null, sends_so_far: 0, consent_cycle: 1, last_send_at: lastSendAt,
+    });
+    const seedOneShot = (status: string, at: string) => {
+      db.prepare(`
+        INSERT INTO followup_events (customer_phone, anchor_at, claimed_at, sent_at, status)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(PHONE, at, at, status === 'sent' ? at : null, status);
+    };
+
+    beforeEach(() => {
+      seedEligibleLead(PHONE, { hoursAgo: 24 * 70 });
+      repos.followupSubscription.ensureExists(PHONE);
+      repos.followupSubscription.markAsked(PHONE, 'wamid.ask');
+      repos.followupSubscription.affirm(PHONE, 'wamid.yes', 'customer_reply');
+      vi.spyOn(env, 'FOLLOWUP_RECURRING_ENABLED', 'get').mockReturnValue(true);
+      vi.spyOn(env, 'FOLLOWUP_DEV_RECURRING_SECONDS', 'get').mockReturnValue(0);
+      vi.spyOn(env, 'FOLLOWUP_RECURRING_INTERVAL_MONTHS', 'get').mockReturnValue(1);
+      vi.spyOn(env, 'FOLLOWUP_RECURRING_TEMPLATE_NAME', 'get').mockReturnValue('tour_followup_nodate_v1');
+      vi.spyOn(env, 'FOLLOWUP_RECURRING_TEMPLATE_HEADER', 'get').mockReturnValue('none');
+    });
+
+    it('releases the claim when a one-shot newer than the scanned anchor appears', async () => {
+      vi.spyOn(repos.conversation, 'listRecurringCandidates').mockImplementation(() => {
+        // Race: the one-shot path claims after the recurring scan snapshot.
+        seedOneShot('pending', new Date().toISOString());
+        return [candidateAt(new Date(Date.now() - 40 * DAY_MS).toISOString())];
+      });
+
+      await runRecurringCycle(repos);
+
+      expect(mockSendTemplate).not.toHaveBeenCalled();
+      const event = repos.followupSubscriptionEvent.getByPhoneKindCycle(PHONE, 'recurring', 'c1-r1');
+      expect(event?.status).toBe('due');
+      expect(event?.attempts).toBe(0);
+    });
+
+    // An unconditional "one-shot exists" check would stop the cadence forever.
+    it('still sends when the one-shot is already the scanned anchor', async () => {
+      const oneShotAt = new Date(Date.now() - 40 * DAY_MS).toISOString();
+      seedOneShot('sent', oneShotAt);
+      vi.spyOn(repos.conversation, 'listRecurringCandidates').mockReturnValue([candidateAt(oneShotAt)]);
+
+      await runRecurringCycle(repos);
+
+      expect(mockSendTemplate).toHaveBeenCalledTimes(1);
+    });
   });
 });
 
@@ -594,6 +754,169 @@ describe('followup consent repository', () => {
   });
 });
 
+// The one-shot template used to INNER JOIN `followup_consent`, which only
+// `/followupgrant` writes. A customer "sí" unlocked the recurring cadence but never
+// the 7-day template, and with no operator grant in production the path was
+// unreachable for its entire life. Permission is now one predicate over two
+// provenances.
+describe('followup one-shot permission bridge', () => {
+  /** Same shape as seedEligibleLead but with NO operator grant. */
+  function seedWithoutOperatorGrant(phone = PHONE, hoursAgo = 48): void {
+    const inboundAt = new Date(Date.now() - hoursAgo * 60 * 60 * 1000).toISOString();
+    const outboundAt = new Date(Date.now() - (hoursAgo - 0.5) * 60 * 60 * 1000).toISOString();
+    repos.conversation.upsert(phone, { language: 'es', collected_plan: 'plan_2d1n', collected_people: 2 });
+    repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'hola', created_at: inboundAt });
+    repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: 'respuesta', created_at: outboundAt });
+  }
+
+  it('sends the one-shot on a customer affirmation alone, with no operator grant', async () => {
+    seedWithoutOperatorGrant();
+    repos.followupSubscription.ensureExists(PHONE);
+    repos.followupSubscription.markAsked(PHONE, 'wamid.ask');
+    repos.followupSubscription.affirm(PHONE, 'wamid.yes', 'customer_reply');
+    expect(repos.followupConsent.hasConsent(PHONE)).toBe(false);
+
+    await runFollowupCycle(repos);
+
+    expect(mockSendTemplate).toHaveBeenCalledTimes(1);
+  });
+
+  it('still sends on an operator grant with no customer subscription', async () => {
+    seedWithoutOperatorGrant();
+    repos.followupConsent.grantConsent(PHONE, 'telegram:1');
+
+    await runFollowupCycle(repos);
+
+    expect(mockSendTemplate).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends nothing when neither provenance granted permission', async () => {
+    seedWithoutOperatorGrant();
+    repos.followupSubscription.ensureExists(PHONE);
+    repos.followupSubscription.markAsked(PHONE, 'wamid.ask');
+
+    await runFollowupCycle(repos);
+
+    expect(mockSendTemplate).not.toHaveBeenCalled();
+  });
+
+  it.each(['declined', 'revoked'] as const)('sends nothing for a %s subscription', async status => {
+    seedWithoutOperatorGrant();
+    repos.followupSubscription.ensureExists(PHONE);
+    repos.followupSubscription.markAsked(PHONE, 'wamid.ask');
+    if (status === 'declined') repos.followupSubscription.decline(PHONE, 'wamid.no');
+    else repos.followupSubscription.revoke(PHONE, 'operator');
+
+    await runFollowupCycle(repos);
+
+    expect(mockSendTemplate).not.toHaveBeenCalled();
+  });
+
+  // A customer "no" outranks an operator grant. The case above seeds NO operator
+  // grant, so it passed while the OR predicate happily re-enabled any declined lead
+  // that still carried one — `decline()` writes the subscription and never revokes
+  // `followup_consent`. That shipped a marketing template AFTER a recorded refusal.
+  it('sends nothing when the customer declined despite a standing operator grant', async () => {
+    seedWithoutOperatorGrant();
+    repos.followupConsent.grantConsent(PHONE, 'telegram:1');
+    repos.followupSubscription.ensureExists(PHONE);
+    repos.followupSubscription.markAsked(PHONE, 'wamid.ask');
+    repos.followupSubscription.decline(PHONE, 'wamid.no');
+    // The operator row is deliberately still live — provenance is not destroyed.
+    expect(repos.followupConsent.hasConsent(PHONE)).toBe(true);
+
+    await runFollowupCycle(repos);
+
+    expect(mockSendTemplate).not.toHaveBeenCalled();
+  });
+
+  // The scan and the post-claim re-check must agree. If only one learned the rule,
+  // the lead is selected and then silently dropped as `consent_revoked`.
+  it('excludes a declined-with-grant lead from the candidate scan itself', () => {
+    seedWithoutOperatorGrant();
+    repos.followupConsent.grantConsent(PHONE, 'telegram:1');
+    repos.followupSubscription.ensureExists(PHONE);
+    repos.followupSubscription.markAsked(PHONE, 'wamid.ask');
+    repos.followupSubscription.decline(PHONE, 'wamid.no');
+
+    const candidates = repos.conversation.listFollowupCandidates({
+      silentSinceIso: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+      limit: 25,
+    });
+
+    expect(candidates.map(candidate => candidate.customer_phone)).not.toContain(PHONE);
+    expect(hasFollowupPermission(repos, PHONE)).toBe(false);
+  });
+
+  // An operator revocation must beat a stale active subscription, and vice versa:
+  // both provenances are checked, so neither may resurrect a revoked lead.
+  it('sends nothing once an opted-out customer has both provenances revoked', async () => {
+    seedWithoutOperatorGrant();
+    repos.followupConsent.grantConsent(PHONE, 'telegram:1');
+    repos.followupSubscription.ensureExists(PHONE);
+    repos.followupSubscription.markAsked(PHONE, 'wamid.ask');
+    repos.followupSubscription.affirm(PHONE, 'wamid.yes', 'customer_reply');
+
+    repos.followupConsent.revokeConsent(PHONE);
+    repos.followupSubscription.revoke(PHONE, 'customer_opt_out');
+
+    await runFollowupCycle(repos);
+
+    expect(mockSendTemplate).not.toHaveBeenCalled();
+  });
+});
+
+// The live subscription row is mutable, so it cannot answer "when was permission
+// granted, and by whom?". This ledger is append-only and must survive every mutation.
+describe('followup consent grant ledger', () => {
+  it('records an affirmation and survives later subscription mutations', () => {
+    repos.followupSubscription.ensureExists(PHONE);
+    repos.followupSubscription.markAsked(PHONE, 'wamid.ask');
+    repos.followupSubscription.affirm(PHONE, 'wamid.yes', 'customer_reply');
+    repos.followupConsentGrant.record({
+      customer_phone: PHONE,
+      decision: 'affirm',
+      decided_at: new Date().toISOString(),
+      inbound_message_id: 'wamid.yes',
+      source: 'customer_reply',
+    });
+
+    // Whatever happens to the live row, the history stands.
+    repos.followupSubscription.revoke(PHONE, 'operator');
+
+    const history = repos.followupConsentGrant.listByPhone(PHONE);
+    expect(history).toHaveLength(1);
+    expect(history[0].decision).toBe('affirm');
+    expect(history[0].source).toBe('customer_reply');
+    expect(history[0].inbound_message_id).toBe('wamid.yes');
+    expect(repos.followupSubscription.getByPhone(PHONE)?.status).toBe('revoked');
+  });
+
+  it('keeps every decision in order, newest first', () => {
+    repos.followupConsentGrant.record({ customer_phone: PHONE, decision: 'affirm', decided_at: '2026-09-01T10:00:00.000Z', source: 'customer_reply' });
+    repos.followupConsentGrant.record({ customer_phone: PHONE, decision: 'revoke', decided_at: '2026-09-02T10:00:00.000Z', source: 'operator_revoke' });
+    repos.followupConsentGrant.record({ customer_phone: PHONE, decision: 'grant', decided_at: '2026-09-03T10:00:00.000Z', source: 'operator_grant' });
+
+    const history = repos.followupConsentGrant.listByPhone(PHONE);
+    expect(history.map(row => row.decision)).toEqual(['grant', 'revoke', 'affirm']);
+    expect(repos.followupConsentGrant.latestDecision(PHONE)?.source).toBe('operator_grant');
+  });
+
+  it('scopes reads by phone and counts a date range', () => {
+    repos.followupConsentGrant.record({ customer_phone: PHONE, decision: 'affirm', decided_at: '2026-09-01T10:00:00.000Z', source: 'customer_reply' });
+    repos.followupConsentGrant.record({ customer_phone: '573009990999', decision: 'decline', decided_at: '2026-09-01T11:00:00.000Z', source: 'customer_reply' });
+
+    expect(repos.followupConsentGrant.listByPhone(PHONE)).toHaveLength(1);
+    expect(repos.followupConsentGrant.countBetween('2026-09-01T00:00:00.000Z', '2026-09-02T00:00:00.000Z')).toBe(2);
+    expect(repos.followupConsentGrant.countBetween('2026-09-02T00:00:00.000Z', '2026-09-03T00:00:00.000Z')).toBe(0);
+  });
+
+  it('has no history for a lead who decided before the ledger existed', () => {
+    expect(repos.followupConsentGrant.listByPhone(PHONE)).toEqual([]);
+    expect(repos.followupConsentGrant.latestDecision(PHONE)).toBeNull();
+  });
+});
+
 describe('followup event claim', () => {
   it('refuses a second claim for the same anchor while pending and fresh', () => {
     const first = repos.followupEvent.claim(PHONE, '2026-08-12T10:00:00Z', 3, 10);
@@ -623,5 +946,153 @@ describe('followup event claim', () => {
     const claimId = repos.followupEvent.claim(PHONE, '2026-08-12T10:00:00Z', 3, 10);
     repos.followupEvent.markUncertain(claimId!, 'transport timeout');
     expect(repos.followupEvent.claim(PHONE, '2026-08-13T10:00:00Z', 3, 10)).toBeNull();
+  });
+});
+
+// Coscuez is paused in the real catalog. A lead whose stored plan belongs to it gets
+// no automated outbound on any path, and becomes eligible again on reactivation.
+describe('followup scheduler — paused destination', () => {
+  const PAUSED_PLAN = 'core_2d1n_coscuez';
+
+  beforeEach(() => {
+    setDynamicService(null);
+    loadSkills();
+  });
+
+  it('rechecks the stored plan after the one-shot claim', async () => {
+    seedEligibleLead();
+    repos.conversation.upsert(PHONE, { collected_plan: 'core_2d1n_chivor' });
+    const claim = repos.followupEvent.claim.bind(repos.followupEvent);
+    vi.spyOn(repos.followupEvent, 'claim').mockImplementation((...args) => {
+      const id = claim(...args);
+      repos.conversation.upsert(PHONE, { collected_plan: PAUSED_PLAN });
+      return id;
+    });
+    const release = vi.spyOn(repos.followupEvent, 'releaseClaim');
+
+    await runFollowupCycle(repos);
+
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(mockSendTemplate).not.toHaveBeenCalled();
+  });
+
+  it('rechecks the stored plan after the recurring claim', async () => {
+    seedEligibleLead(PHONE, { hoursAgo: 24 * 70 });
+    repos.conversation.upsert(PHONE, { collected_plan: 'core_2d1n_chivor' });
+    repos.followupSubscription.ensureExists(PHONE);
+    repos.followupSubscription.markAsked(PHONE, 'wamid.ask');
+    repos.followupSubscription.affirm(PHONE, 'wamid.yes', 'customer_reply');
+    vi.spyOn(env, 'FOLLOWUP_RECURRING_ENABLED', 'get').mockReturnValue(true);
+    vi.spyOn(env, 'FOLLOWUP_RECURRING_TEMPLATE_NAME', 'get').mockReturnValue('tour_followup_nodate_v1');
+    vi.spyOn(env, 'FOLLOWUP_RECURRING_TEMPLATE_HEADER', 'get').mockReturnValue('none');
+    vi.spyOn(env, 'FOLLOWUP_DEV_RECURRING_SECONDS', 'get').mockReturnValue(0);
+    vi.spyOn(env, 'FOLLOWUP_RECURRING_INTERVAL_MONTHS', 'get').mockReturnValue(1);
+    vi.spyOn(repos.conversation, 'listRecurringCandidates').mockReturnValue([{
+      customer_phone: PHONE, language: 'es', collected_plan: 'core_2d1n_chivor',
+      selected_experience_id: null, sends_so_far: 0, consent_cycle: 1,
+      last_send_at: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString(),
+    }]);
+    const claim = repos.followupSubscriptionEvent.claim.bind(repos.followupSubscriptionEvent);
+    vi.spyOn(repos.followupSubscriptionEvent, 'claim').mockImplementation((...args) => {
+      const id = claim(...args);
+      repos.conversation.upsert(PHONE, { collected_plan: PAUSED_PLAN });
+      return id;
+    });
+    const release = vi.spyOn(repos.followupSubscriptionEvent, 'releaseClaim');
+
+    await runRecurringCycle(repos);
+
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(mockSendTemplate).not.toHaveBeenCalled();
+  });
+
+  it('rechecks the catalog after awaiting the consent draft', async () => {
+    useAllSitesActive();
+    vi.spyOn(env, 'AI_ENABLED', 'get').mockReturnValue(true);
+    vi.spyOn(env, 'FOLLOWUP_CONSENT_ASK_ENABLED', 'get').mockReturnValue(true);
+    vi.spyOn(env, 'FOLLOWUP_DEV_CONSENT_SECONDS', 'get').mockReturnValue(1);
+    seedEligibleLead(PHONE, { hoursAgo: 0.05 });
+    repos.followupConsent.revokeConsent(PHONE);
+    repos.conversation.upsert(PHONE, { collected_plan: PAUSED_PLAN });
+    vi.spyOn(llmClient, 'complete').mockImplementation(async () => {
+      // The destination pauses while the provider is working on the draft.
+      setDynamicService(null);
+      loadSkills();
+      return {
+        turn: {
+          reply: '¿Te parece si te escribo más adelante?\n[[FOLLOWUP_CONSENT]]',
+          sales_phase: 'discovery', action: 'answer', img: false,
+          collected_fields: { name: null, plan: null, people: null, date: null, transport_need: null, pet: null },
+          lead: { intent: 'curious', buying_signals: [], blockers: [], score_delta: 0, confidence: 1 },
+        },
+        tokens: { prompt: 10, completion: 10 },
+      };
+    });
+    const release = vi.spyOn(repos.followupSubscriptionEvent, 'releaseClaim');
+
+    await runConsentAskCycle(repos);
+
+    expect(llmClient.complete).toHaveBeenCalledTimes(1);
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(mockSendTextWithId).not.toHaveBeenCalled();
+    expect(mockSendImageUrlWithId).not.toHaveBeenCalled();
+    expect(repos.followupSubscription.getByPhone(PHONE)?.status).not.toBe('pending');
+  });
+
+  it('skips the one-shot template without claiming', async () => {
+    seedEligibleLead();
+    repos.conversation.upsert(PHONE, { collected_plan: PAUSED_PLAN });
+
+    await runFollowupCycle(repos);
+
+    expect(mockSendTemplate).not.toHaveBeenCalled();
+    expect(repos.followupEvent.getLatest(PHONE)).toBeNull();
+  });
+
+  it('still sends the one-shot template for a sellable plan', async () => {
+    seedEligibleLead();
+    repos.conversation.upsert(PHONE, { collected_plan: 'core_2d1n_chivor' });
+
+    await runFollowupCycle(repos);
+
+    expect(mockSendTemplate).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips the recurring template', async () => {
+    seedEligibleLead(PHONE, { hoursAgo: 24 * 70 });
+    repos.followupSubscription.ensureExists(PHONE);
+    repos.followupSubscription.markAsked(PHONE, 'wamid.ask');
+    repos.followupSubscription.affirm(PHONE, 'wamid.yes', 'customer_reply');
+    vi.spyOn(env, 'FOLLOWUP_RECURRING_ENABLED', 'get').mockReturnValue(true);
+    vi.spyOn(env, 'FOLLOWUP_DEV_RECURRING_SECONDS', 'get').mockReturnValue(0);
+    vi.spyOn(env, 'FOLLOWUP_RECURRING_INTERVAL_MONTHS', 'get').mockReturnValue(1);
+    vi.spyOn(env, 'FOLLOWUP_RECURRING_TEMPLATE_NAME', 'get').mockReturnValue('tour_followup_nodate_v1');
+    vi.spyOn(env, 'FOLLOWUP_RECURRING_TEMPLATE_HEADER', 'get').mockReturnValue('none');
+    vi.spyOn(repos.conversation, 'listRecurringCandidates').mockReturnValue([{
+      customer_phone: PHONE, language: 'es', collected_plan: PAUSED_PLAN,
+      selected_experience_id: null, sends_so_far: 0, consent_cycle: 1,
+      last_send_at: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString(),
+    }]);
+
+    await runRecurringCycle(repos);
+
+    expect(mockSendTemplate).not.toHaveBeenCalled();
+  });
+
+  it('skips the consent ask before writing it', async () => {
+    vi.spyOn(env, 'AI_ENABLED', 'get').mockReturnValue(true);
+    vi.spyOn(env, 'FOLLOWUP_CONSENT_ASK_ENABLED', 'get').mockReturnValue(true);
+    vi.spyOn(env, 'FOLLOWUP_DEV_CONSENT_SECONDS', 'get').mockReturnValue(1);
+    seedEligibleLead(PHONE, { hoursAgo: 0.05 });
+    repos.followupConsent.revokeConsent(PHONE);
+    repos.conversation.upsert(PHONE, { collected_plan: PAUSED_PLAN });
+    const complete = vi.spyOn(llmClient, 'complete');
+
+    await runConsentAskCycle(repos);
+
+    expect(complete).not.toHaveBeenCalled();
+    expect(mockSendTextWithId).not.toHaveBeenCalled();
+    expect(mockSendImageUrlWithId).not.toHaveBeenCalled();
+    expect(repos.followupSubscription.getByPhone(PHONE)?.status).not.toBe('pending');
   });
 });

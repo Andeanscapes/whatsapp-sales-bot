@@ -17,6 +17,7 @@ import {
   SqliteTranscriptRepo,
   SqlitePaymentReservationRepo,
   SqliteFollowupConsentRepo,
+  SqliteFollowupConsentGrantRepo,
   SqliteFollowupSubscriptionRepo,
   SqliteFollowupEventRepo,
   SqliteFollowupSubscriptionEventRepo,
@@ -31,6 +32,7 @@ export function createRepositories(db: Database.Database): Repositories {
 
   return {
     followupConsent: new SqliteFollowupConsentRepo(db),
+    followupConsentGrant: new SqliteFollowupConsentGrantRepo(db),
     followupSubscription: new SqliteFollowupSubscriptionRepo(db),
     followupEvent: new SqliteFollowupEventRepo(db), // LIVE: one-shot post-24h template
     followupSubscriptionEvent: new SqliteFollowupSubscriptionEventRepo(db),

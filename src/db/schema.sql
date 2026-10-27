@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS conversations (
   collected_date_canon_month INTEGER,
   collected_date_canon_day INTEGER,
   price_given_at TEXT,
+  quote_fingerprint TEXT,
   handed_off_at TEXT,
   soft_closed_at TEXT,
   gallery_nudged_at TEXT,
@@ -154,6 +155,31 @@ CREATE TABLE IF NOT EXISTS followup_consent (
   granted_by TEXT NOT NULL,
   revoked_at TEXT
 );
+
+-- Append-only permission audit trail. Every customer answer to a consent ask, every
+-- operator grant/revocation, and every compliance revocation appends exactly one row.
+-- Rows are never updated or deleted during ordinary operation, so consent history
+-- survives live-row mutations. Explicit customer-data deletion removes them as PII.
+-- decision: 'affirm' | 'decline' | 'grant' | 'revoke'
+-- source:   'customer_reply' | 'operator_grant' | 'operator_revoke'
+--         | 'customer_opt_out' | 'backfill_2026_09'
+-- actor_id: concrete operator identity when the source is an operator action
+-- Rows written before this table existed are simply absent; readers must not infer
+-- "no permission" from an empty history.
+CREATE TABLE IF NOT EXISTS followup_consent_grants (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_phone TEXT NOT NULL,
+  decision TEXT NOT NULL CHECK (decision IN ('affirm', 'decline', 'grant', 'revoke')),
+  decided_at TEXT NOT NULL,
+  inbound_message_id TEXT,
+  source TEXT NOT NULL CHECK (source IN ('customer_reply', 'operator_grant', 'operator_revoke', 'customer_opt_out', 'backfill_2026_09')),
+  actor_id TEXT,
+  ask_cycle_key TEXT,
+  app_version TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_followup_consent_grants_phone_decided
+  ON followup_consent_grants(customer_phone, decided_at);
 
 -- LIVE: one row per (phone, anchor) for the one-shot post-24h template. The UNIQUE key
 -- is the idempotency guarantee: two overlapping scheduler ticks cannot both insert the

@@ -1,0 +1,67 @@
+{
+  "id": "destination-first-plan-without-site",
+  "source": "second site: a plan chosen without naming a destination must ask which destination before quoting",
+  "tags": [
+    "qualification",
+    "live"
+  ],
+  "lang": "es",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "asks-destination",
+      "rule": "reply_must_match",
+      "patterns": [
+        "chivor"
+      ],
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "offers-other-destination",
+      "rule": "reply_must_match",
+      "patterns": [
+        "coscuez|borbur"
+      ],
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "no-price-before-destination",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "\\$\\s*[\\d.,]+|[\\d.,]+\\s*COP"
+      ],
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 2,
+      "weight": 1
+    }
+  ],
+  "turns": [
+    {
+      "user": "Somos 2",
+      "mockReply": "¡Buenísimo! ¿Les atrae más la experiencia esencial o la más completa?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "El PRIME",
+      "mockReply": "Buena elección. Tenemos dos regiones: Chivor, en el oriente, y Coscuez, en San Pablo de Borbur. ¿Cuál les llama más?",
+      "expect": {
+        "shouldSendReply": true,
+        "priceJustGiven": false
+      }
+    }
+  ]
+}
