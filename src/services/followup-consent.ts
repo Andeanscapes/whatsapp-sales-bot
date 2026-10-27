@@ -347,6 +347,26 @@ export function classifyConsentReply(text: string): ConsentDecision {
   return 'ambiguous';
 }
 
+/** Names the contact being allowed or refused, never a commercial object. */
+const EXPLICIT_CONTACT = /escrib|avis|mensaje|contact|mand|envi|permiso|me permit|\b(?:send|message|messages|write|text me)\b/;
+
+/**
+ * Classifies a reply while a consent ask is `pending`.
+ *
+ * When the ask is still the bot's latest outbound, this is `classifyConsentReply`.
+ * Once the bot has sent anything after it (`askSuperseded`), a bare "si"/"ok"/"no"
+ * answers THAT newer question — live, a "si" to "¿Quieren que iniciemos la reserva?"
+ * was recorded as marketing consent, which froze the score and suppressed the owner
+ * handoff on the highest-intent turn. Only a reply that names the contact being
+ * allowed or refused ("si, escribeme", "no me escribas") still counts.
+ */
+export function classifyPendingConsentReply(text: string, askSuperseded: boolean): ConsentDecision {
+  const decision = classifyConsentReply(text);
+  if (!askSuperseded || decision === 'ambiguous') return decision;
+  const norm = normalizeAffirmatives(normalize(text));
+  return EXPLICIT_CONTACT.test(norm) && !COMMERCIAL_OBJECT_VETO.test(norm) ? decision : 'ambiguous';
+}
+
 /**
  * Exact-match affirmation only — no leading-token fallback.
  *

@@ -56,6 +56,9 @@ export type InternalPricingItem = {
   couplePrice?: number | null;
   peopleIncluded?: number | null;
   publiclyShow: boolean;
+  category?: 'optional' | 'included' | 'team_confirmation';
+  quoteMode?: 'separate' | 'included_in_total' | 'team_confirmation';
+  role?: 'activity' | 'transport';
 };
 
 /**
@@ -89,6 +92,7 @@ export interface InternalSiteData {
   entrySegments?: Record<string, InternalEntrySegment>;
   name?: string;
   location?: string;
+  selectionAliases?: string[];
   meetingPoint?: string;
   route?: {
     fromBogota?: string;
@@ -148,6 +152,8 @@ export interface InternalSiteData {
 /** Plan narrative owned by dynamic catalog (SSoT). Pricing stays on items. */
 export interface InternalPlanNarrative {
   id: string;
+  tier?: string;
+  depositPercentage?: number;
   siteId: string;
   status?: 'active' | 'inactive';
   name?: string;
@@ -166,6 +172,10 @@ export interface InternalPlanNarrative {
     notes?: string;
   }>;
   imageId?: string;
+  galleryTheme?: string;
+  selectionAliases?: string[];
+  includedAddonIds?: string[];
+  calculation?: 'pairs_plus_single' | 'couple_half_from_five' | 'per_person';
 }
 
 export interface InternalSafetyFaq {
@@ -175,7 +185,19 @@ export interface InternalSafetyFaq {
   answer: string;
 }
 
+/** A paused destination: acknowledged by name only, never sold. */
+export interface InternalUnavailableSite {
+  siteId: string;
+  siteName: string;
+  planIds: string[];
+  planNames: string[];
+  planTiers: Record<string, string>;
+  note: string;
+}
+
 export interface InternalExperienceData {
+  siteSelection?: DynamicData['experiences'][string]['siteSelection'];
+  unavailableSites?: InternalUnavailableSite[];
   status?: 'active' | 'inactive';
   /** Catalog SSoT narrative from dynamic payload (optional on legacy v10). */
   name?: string;
@@ -280,6 +302,8 @@ export interface InternalGalleryImage {
   url: string;
   caption: string;
   type?: string;
+  /** Only customers whose stored plan is listed may receive it. Absent = all plans. */
+  planIds?: string[];
 }
 
 export interface InternalDynamicMedia {
@@ -449,14 +473,28 @@ export function transformDynamicData(data: DynamicData): InternalDynamicData {
     // malformed feed), never because a site legitimately has an empty rules array.
     let allSitesSentineled = true;
     let flattenedAvailability: InternalExperienceData['availability'] | null = null;
+    const unavailableSites: InternalUnavailableSite[] = [];
 
     for (const [siteId, site] of Object.entries(dynExp.sites)) {
+      if (site.status === 'inactive') {
+        unavailableSites.push({
+          siteId,
+          siteName: site.name ?? siteId,
+          planIds: Object.keys(site.plans),
+          planNames: Object.entries(site.plans).map(([planId, plan]) => plan.name ?? planId),
+          planTiers: Object.fromEntries(Object.entries(site.plans).flatMap(([planId, plan]) => plan.tier ? [[planId, plan.tier]] : [])),
+          note: site.unavailableNote ?? '',
+        });
+        continue;
+      }
       for (const [planId, plan] of Object.entries(site.plans)) {
         if (plan.status === 'inactive') continue;
 
         planClarifications[planId] = plan.clarifications;
         planNarratives.push({
           id: planId,
+          tier: plan.tier,
+          depositPercentage: plan.depositPercentage,
           siteId,
           status: plan.status,
           name: plan.name,
@@ -469,6 +507,10 @@ export function transformDynamicData(data: DynamicData): InternalDynamicData {
           notIncludedUnlessConfirmed: plan.notIncludedUnlessConfirmed,
           itinerary: plan.itinerary,
           imageId: plan.imageId,
+          galleryTheme: plan.galleryTheme,
+          selectionAliases: plan.selectionAliases,
+          includedAddonIds: plan.includedAddonIds,
+          calculation: plan.pricing?.calculation,
         });
 
         if (plan.pricing?.individual != null) {
@@ -502,6 +544,10 @@ export function transformDynamicData(data: DynamicData): InternalDynamicData {
         const planIdsForAddon = Object.entries(site.plans)
           .filter(([, plan]) => plan.status !== 'inactive' && plan.addons.includes(addonId))
           .map(([planId]) => planId);
+        // An addon only referenced as included is never priced site-wide.
+        const includedOnly = planIdsForAddon.length === 0
+          && Object.values(site.plans).some(plan => plan.includedAddonIds?.includes(addonId));
+        if (includedOnly) continue;
         const planIds: (string | undefined)[] = planIdsForAddon.length > 0 ? planIdsForAddon : [undefined];
 
         for (const planId of planIds) {
@@ -515,6 +561,9 @@ export function transformDynamicData(data: DynamicData): InternalDynamicData {
             couplePrice: addon.price ?? null,
             peopleIncluded: addon.max ?? null,
             publiclyShow: true,
+            category: addon.category,
+            quoteMode: addon.quoteMode,
+            role: addon.role,
           });
         }
       }
@@ -545,6 +594,7 @@ export function transformDynamicData(data: DynamicData): InternalDynamicData {
         rules,
         entrySegments: site.entrySegments,
         name: site.name,
+        selectionAliases: site.selectionAliases,
         location: site.location,
         meetingPoint: site.meetingPoint,
         route: site.route,
@@ -585,6 +635,8 @@ export function transformDynamicData(data: DynamicData): InternalDynamicData {
     const primarySite = siteList.length === 1 ? siteList[0] : undefined;
 
     experiences[expId] = {
+      siteSelection: dynExp.siteSelection,
+      ...(unavailableSites.length > 0 ? { unavailableSites } : {}),
       status: dynExp.status,
       name: dynExp.name,
       shortDescription: primarySite?.shortDescription ?? dynExp.shortDescription,
@@ -646,11 +698,12 @@ function transformMedia(data: DynamicData): InternalDynamicMedia {
 
   for (const [expId, exp] of Object.entries(data.experiences)) {
     for (const [siteId, site] of Object.entries(exp.sites)) {
+      if (site.status === 'inactive') continue;
       const scopedSiteKey = mediaSiteKey(expId, siteId);
       siteTypes[scopedSiteKey] = site.media.types ?? [];
       typeKeywords[scopedSiteKey] = site.media.typeKeywords ?? {};
       for (const gi of site.media.gallery) {
-        galleryImages.push({ experienceId: expId, siteId, url: gi.url, caption: gi.caption, type: gi.type });
+        galleryImages.push({ experienceId: expId, siteId, url: gi.url, caption: gi.caption, type: gi.type, ...(gi.planIds ? { planIds: gi.planIds } : {}) });
       }
       for (const [planId, plan] of Object.entries(site.plans)) {
         if (plan.status === 'inactive') continue;

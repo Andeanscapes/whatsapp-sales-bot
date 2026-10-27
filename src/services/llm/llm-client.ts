@@ -14,7 +14,7 @@ const leadIntentSchema = z.enum([
 
 const collectedFieldsSchema = z.object({
   name: z.string().nullable().catch(null),
-  plan: z.enum(['2d1n_mining', '3d2n_rural']).nullable().catch(null),
+  plan: z.string().nullable().catch(null),
   people: z.number().int().nullable().catch(null),
   date: z.string().nullable().catch(null),
   transport_need: z.enum(['own', 'from_bogota', 'public_bus']).nullable().catch(null),

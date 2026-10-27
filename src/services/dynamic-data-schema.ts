@@ -43,16 +43,22 @@ function isRealCalendarDate(value: string): boolean {
   return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
 }
 
+export const planCalculationSchema = z.enum(['pairs_plus_single', 'couple_half_from_five', 'per_person']);
+
 export const dynamicPlanPricingSchema = z.object({
-  individual: z.number().int().optional(),
-  couple: z.number().int().optional(),
+  individual: z.number().int().nonnegative().optional(),
+  couple: z.number().int().nonnegative().optional(),
+  calculation: planCalculationSchema.optional(),
 }).strict();
 
 export const dynamicAddonSchema = z.object({
   label: z.string(),
-  pp: z.number().int().optional(),
-  price: z.number().int().optional(),
-  max: z.number().int().optional(),
+  pp: z.number().int().nonnegative().optional(),
+  price: z.number().int().nonnegative().optional(),
+  max: z.number().int().positive().optional(),
+  category: z.enum(['optional', 'included', 'team_confirmation']).optional(),
+  quoteMode: z.enum(['separate', 'included_in_total', 'team_confirmation']).optional(),
+  role: z.enum(['activity', 'transport']).optional(),
 }).strict();
 
 /**
@@ -158,6 +164,9 @@ const planItineraryDaySchema = z.object({
 
 /** Shared optional plan narrative fields (sites-native plans only). */
 const v11PlanNarrativeSchema = z.object({
+  tier: z.string().min(1).optional(),
+  /** Plan-specific anticipo; omitted = the experience-wide deposit (`payments.deposit`). */
+  depositPercentage: z.number().min(0).max(100).optional(),
   name: z.string().min(1).optional(),
   duration: z.string().min(1).optional(),
   shortDescription: z.string().min(1).optional(),
@@ -167,7 +176,10 @@ const v11PlanNarrativeSchema = z.object({
   notIncludedUnlessConfirmed: z.array(z.string().min(1)).optional(),
   itinerary: z.array(planItineraryDaySchema).optional(),
   imageId: z.string().min(1).optional(),
+  galleryTheme: z.string().min(1).optional(),
   status: z.enum(['active', 'inactive']).optional(),
+  selectionAliases: z.array(z.string().min(1)).optional(),
+  includedAddonIds: z.array(z.string().min(1)).optional(),
 }).strict();
 
 /** Shared optional experience narrative fields (sites-native experiences only). */
@@ -198,6 +210,15 @@ const v11ExperienceNarrativeSchema = z.object({
   difficulty: difficultySchema.optional(),
   experienceReality: experienceRealitySchema.optional(),
   safetyFaqs: z.array(safetyFaqSchema).optional(),
+}).strict();
+
+/** Site selection context and coming-soon destinations. */
+export const siteSelectionSchema = z.object({
+  context: z.string().min(1),
+  comingSoon: z.array(z.object({
+    name: z.string().min(1),
+    shortDescription: z.string().min(1).optional(),
+  }).strict()).optional(),
 }).strict();
 
 /**
@@ -270,6 +291,12 @@ const dynamicSiteMediaSchema = z.object({
     url: cdnMediaUrlSchema,
     caption: z.string().default(''),
     type: z.string().min(1).optional(),
+    /**
+     * Restricts the photo to customers whose stored plan is listed (e.g. Fura y
+     * Tena excursion photos only for PRIME). Omitted = every plan of the site.
+     * Ids must be plans of the same site.
+     */
+    planIds: z.array(z.string().min(1)).min(1).optional(),
   }).strict()).default([]),
   types: z.array(z.string().min(1)).default([]),
   /**
@@ -379,6 +406,15 @@ const dynamicSiteSchema = z.object({
   // carried campaign segments — those default to `{}` and fall back to the
   // generic first-contact path in the sales skill.
   entrySegments: dynamicEntrySegmentsSchema.default({}),
+  // Keywords and aliases for site detection. When a customer names one, the engine
+  // can resolve to this site. Site scope prevents "coscuez" at one location from
+  // pulling photos or plans from another.
+  selectionAliases: z.array(z.string().min(1)).optional(),
+  // A paused destination keeps its full data for reactivation, but nothing of it is
+  // sold: no plans, prices, dates, photos or segments reach the bot. The bot only
+  // acknowledges it using `unavailableNote` (catalog copy, required when inactive).
+  status: z.enum(['active', 'inactive']).optional(),
+  unavailableNote: z.string().min(1).optional(),
 }).merge(v11SiteNarrativeSchema).strict();
 
 const dynamicExperienceSitesSchema = z.object({
@@ -387,6 +423,9 @@ const dynamicExperienceSitesSchema = z.object({
   currency: z.string().default('COP'),
   paymentPolicy: dynamicPaymentPolicySchema.optional(),
   sites: z.record(dynamicSiteSchema),
+  // Multi-site context and coming-soon destinations. Present only if the
+  // experience spans 2+ locations.
+  siteSelection: siteSelectionSchema.optional(),
 }).merge(v11ExperienceNarrativeSchema).strict();
 
 // ---------------------------------------------------------------------------
@@ -644,7 +683,23 @@ const dynamicDataBaseSchema = z.object({
   for (const [experienceId, experience] of Object.entries(data.experiences)) {
     const planSites = new Map<string, string>();
     for (const [siteId, site] of Object.entries(experience.sites)) {
-      for (const planId of Object.keys(site.plans)) {
+      for (const [planId, plan] of Object.entries(site.plans)) {
+        for (const field of ['addons', 'includedAddonIds'] as const) {
+          for (const addonId of plan[field] ?? []) {
+            if (!site.addons[addonId]) ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['experiences', experienceId, 'sites', siteId, 'plans', planId, field],
+              message: `Unknown addon ${addonId} at site ${siteId}`,
+            });
+          }
+        }
+        for (const addonId of plan.includedAddonIds ?? []) {
+          if (plan.addons.includes(addonId)) ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['experiences', experienceId, 'sites', siteId, 'plans', planId, 'includedAddonIds'],
+            message: `Addon ${addonId} cannot be both priced and included in plan ${planId}`,
+          });
+        }
         const previousSite = planSites.get(planId);
         if (previousSite && previousSite !== siteId) {
           ctx.addIssue({
@@ -679,6 +734,25 @@ const dynamicDataBaseSchema = z.object({
               code: z.ZodIssueCode.custom,
               path: ['experiences', expId, 'sites', siteId, 'media', 'gallery', imgIdx, 'type'],
               message: `Unknown type "${img.type}"; valid types: ${vocabulary.join(', ')}`,
+            });
+          }
+        }
+      }
+      if (site.status === 'inactive' && !site.unavailableNote) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['experiences', expId, 'sites', siteId, 'unavailableNote'],
+          message: `inactive site "${siteId}" needs an unavailableNote`,
+        });
+      }
+      // A plan-restricted photo must name plans of this site, or it can never ship.
+      for (const [imgIdx, img] of site.media.gallery.entries()) {
+        for (const planId of img.planIds ?? []) {
+          if (!(planId in site.plans)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['experiences', expId, 'sites', siteId, 'media', 'gallery', imgIdx, 'planIds'],
+              message: `planIds entry "${planId}" is not a plan of site "${siteId}"`,
             });
           }
         }
@@ -784,6 +858,7 @@ export function assertDynamicCatalogReady(data: DynamicData): void {
     let activePlanCount = 0;
 
     for (const [siteId, site] of Object.entries(experience.sites)) {
+      if (site.status === 'inactive') continue;
       const activePlans = Object.entries(site.plans).filter(([, plan]) => plan.status !== 'inactive');
       if (activePlans.length === 0) {
         missing.push(`${experienceId}.${siteId}.activePlans`);

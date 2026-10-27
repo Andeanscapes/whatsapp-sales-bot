@@ -198,6 +198,33 @@ describe('webhook owner-alert delivery failure', () => {
     expect(sendTextMock).not.toHaveBeenCalled();
   });
 
+  it('reports a failed misspelled brochure request without labeling it as the stored plan', async () => {
+    const phone = '573001119995';
+    createRepositories(db).conversation.upsert(phone, { collected_plan: 'core_2d1n_chivor' });
+    sendAlertMock.mockResolvedValue(true);
+    processMessageMock.mockResolvedValueOnce({
+      reply: '', shouldSendReply: false, usedAi: true, leadScore: 50,
+      shouldAlertOwner: true, shouldSendImage: false, shouldSendOwnerImage: false,
+      shouldSendGalleryImages: false, priceJustGiven: false, outboundDateAction: null,
+      ownerAlertType: 'media_marker_unhonoured',
+    });
+    const body = inboundPayload(phone, 'tienes brosure de la mas completa ?', 'wamid-brochure-alert');
+    const res = await app.inject({
+      method: 'POST', url: '/webhooks/whatsapp',
+      headers: { 'content-type': 'application/json', 'x-hub-signature-256': sign(body) },
+      payload: body,
+    });
+
+    expect(res.statusCode).toBe(200);
+    await vi.waitFor(() => expect(sendAlertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customerPhone: phone, intent: 'media_marker_unhonoured',
+        reason: 'Pidió brochure — no se pudo enviar',
+      }),
+      expect.anything(),
+    ));
+  });
+
   it('alerts the owner even when the reply send fails', async () => {
     sendAlertMock.mockResolvedValue(true);
     sendTextMock.mockRejectedValueOnce(new Error('meta down'));

@@ -31,13 +31,12 @@ function requireLiveLlmConfig(): void {
 }
 
 /**
- * Safety ceiling for a live pass, not a target. Measured on 2026-08-02: a reply
- * turn costs ~17k prompt tokens plus a ~1k analyzer call, so the 8-scenario live
- * subset lands near $0.05 and the full 19-scenario message set near $0.12.
- * Default leaves room for `--all` and `--runs 2` without silently truncating a run.
+ * Safety ceiling for a live pass, not a target. Estimated, not measured, on
+ * 2026-10-26 from `npm run measure:prompt` and the env token prices: the full live
+ * subset lands near $0.60. Re-derive from those two sources when either grows.
  */
 function maxEvaluationCostUsd(): number {
-  const raw = Number(process.env.EVAL_MAX_COST_USD ?? '0.50');
+  const raw = Number(process.env.EVAL_MAX_COST_USD ?? '1.00');
   if (!Number.isFinite(raw) || raw <= 0) throw new Error('EVAL_MAX_COST_USD must be a positive number');
   return raw;
 }

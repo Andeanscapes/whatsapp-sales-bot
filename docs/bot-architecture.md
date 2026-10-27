@@ -347,7 +347,7 @@ Bridge/handoff nuance:
 - Alerts assign an owner line, but bot usually continues.
 - Human bridge starts when agent runs `/chat`.
 - `conversation_mode='bot'` means normal automated replies.
-- `conversation_mode='human_pending'` means close/reservation escalated: bot still replies (payment public facts, clarifications), assigned bridge agent is notified on further inbound, but exclusive control still requires `/chat`. Does **not** set `handed_off_at`.
+- `conversation_mode='human_pending'` means close/reservation escalated: bot still replies (payment public facts, clarifications), assigned bridge agent is notified on further inbound, but exclusive control still requires `/chat`. Does **not** set `handed_off_at`. A `human_pending` lead receives no follow-up consent ask (`listConsentAskCandidates` requires `bot` mode; owner decision 2026-10-26); the one-shot and recurring templates still apply.
 - `conversation_mode='bridge_active'` means bot stays silent and forwards inbound customer messages to Telegram agent. `forwardBridgeMessage` still runs `bridge-lead-scoring.ts` on every inbound: it re-scores the lead (deterministic + DeepSeek analyzer, gated by the same budget guard) and updates `lead_score`/`lead_intent`, but never sends a reply or an owner alert. This keeps lead data current while the agent is chatting manually.
 - `conversation_mode='referred'` means lead is sent to another line and gets handed-off style replies.
 - Stale bridge sessions expire after 12 hours and bot resumes.
@@ -374,6 +374,9 @@ re-engaging.
 | One-shot post-24h template | `ALLOW_FOLLOWUP_TEMPLATE` | `FOLLOWUP_HOURS_AFTER_INBOUND` (>= 24; prod uses 168) | approved template, no LLM | operator `/followupgrant` **OR** customer said "sí" |
 | Consent ask | `FOLLOWUP_CONSENT_ASK_ENABLED` | `FOLLOWUP_CONSENT_HOURS_AFTER_INBOUND` (max 23) | free-form, LLM-written | none needed (inside window) |
 | Recurring template | `FOLLOWUP_RECURRING_ENABLED` | gaps multiply by 3 from `FOLLOWUP_RECURRING_INTERVAL_MONTHS`, plus the independent `FOLLOWUP_RECURRING_MIN_SILENCE_HOURS` dormancy floor, capped by `FOLLOWUP_MAX_RECURRING_SENDS` | approved template, no LLM | customer said "sí" |
+
+**A one-shot anchors the next recurring send:** `listRecurringCandidates` uses the later of the newest one-shot (`pending`/`sent`/`uncertain`, after `activated_at`) and the newest recurring send as `last_send_at`, so a recurring template is due one interval after the one-shot rather than in the same tick. `processRecurring` releases its claim if a one-shot newer than that anchor appears after the scan.
+The one-shot does not count toward `sends_so_far` or the `FOLLOWUP_MAX_RECURRING_SENDS` cap.
 
 "post-24h" names the **channel**, not the delay: it is the path used once Meta's
 free-form window has closed, so an approved template is the only option. 24h is the
@@ -536,7 +539,9 @@ Dev testing: in `.env.dev` set `ALLOW_FOLLOWUP_TEMPLATE=true` with
 `FOLLOWUP_DEV_*` overrides and a non-empty allowlist FAIL startup in production.
 
 Prompt budget: `measure:prompt` gates the assembled system prompt against
-`tokenBudget.systemPromptMaxTokens` (`profile.andean-scapes-co.json`, currently 30,000)
+`tokenBudget.systemPromptMaxTokens` (`profile.andean-scapes-co.json`, currently 40,000;
+raised from 31,500 for the second site. Worst profile measured 2026-10-14 at ~38,760, so
+headroom is ~1,240 tokens — a third site or a large skill addition needs trimming first)
 **and** the projected request (prompt + history + inbound + output reserves) against
 `DEEPSEEK_CONTEXT_WINDOW_TOKENS` (65,536). The window value is empirical, not a guess:
 `deepseek-v4-flash` was probed on 2026-08-14 and accepted a 260,085-token prompt, so 65,536
@@ -597,7 +602,7 @@ automated follow-up gallery nudge exists.
 | Path | Trigger | Shape |
 |---|---|---|
 | LLM gallery | explicit photo request or first concrete plan selection | up to `MAX_GALLERY_IMAGES_PER_SEND` (hard-capped at 5) photos; the last claimed one captions the reply |
-| Plan card | `priceJustGiven` | one plan image captioning the reply |
+| Plan card | `priceJustGiven` | one matching plan image captioning the reply; price-objection turns require a uniquely quoted alternative |
 | Contextual photo | reply theme matches typed feed images | one photo captioning the reply |
 
 The owner intro image stays **disabled** pending sales strategy review. Plan image
@@ -617,9 +622,11 @@ sends them. See `docs/skills-architecture.md` for the post-LLM contract.
 
 The marker is emitted for an explicit photo request and once on the first concrete
 plan selection when a RUNTIME theme clearly represents that plan. That plan-selection
-turn also delivers the total when a QUOTE LOCK is present: the gallery accompanies the
-quote, it does not replace or postpone it. On a price turn,
-the gallery carries the reply and suppresses the single plan card to avoid a flood.
+turn also delivers the total when a QUOTE LOCK is present: media accompanies the
+quote, it does not replace or postpone it. On a price or quoted-plan-switch turn,
+an eligible plan card takes priority over a proactive gallery. Customer-requested
+photos, including continuations and accepted photo offers, keep gallery priority.
+Without an eligible card, the proactive gallery remains available.
 
 **What counts as a photo request** (`isGalleryRequest` in `reply-guard.ts`): the photo
 nouns (foto/imagen/photo/picture) **or** a visual imperative ("muéstrame", "enséñame",
@@ -637,6 +644,13 @@ de nuevo" stays unmatched, and the owner alert is still gated on a resolved them
 Successful delivery records `llm_gallery_shown` in `media_sends`; subsequent prompts
 receive only `GALERIA_YA_MOSTRADA: true`, preventing proactive repeats while explicit
 requests remain eligible.
+
+Generic requests for experience/plan photos and wrong-site complaints resolve the
+selected plan's eligible catalog `galleryTheme`, then the site's unrestricted
+fallback. Unknown specific subjects do not use this fallback. Complaints are
+unverified customer claims, not destination choices; provenance questions and
+non-site descriptions are excluded. A missing marker uses the existing single
+budget-gated corrective rewrite. No destination chosen still means no photos.
 
 - **Theme resolution is site-scoped.** A `typeKeywords` synonym only resolves
   against a site that actually holds photos of that type. Merging vocabularies
@@ -697,8 +711,9 @@ is skipped on price turns and LLM-gallery turns):
 
 | Turn | Image | Notes |
 |---|---|---|
-| LLM gallery (`[[FOTOS]]`) | last claimed gallery photo | leading photos go captionless; plan card is suppressed and the suppression is logged on a price turn |
-| `priceJustGiven` | plan card | replaces the feed's generic `Imagen de referencia del plan …` caption |
+| Customer-requested LLM gallery (`[[FOTOS]]`) | last claimed gallery photo | leading photos go captionless; includes continuations and accepted photo offers; suppresses the plan card |
+| `priceJustGiven` / `planSwitchedAfterQuote` | eligible plan card | unchanged reply captions the card; takes priority over a proactive gallery |
+| Proactive LLM gallery, no eligible card | last claimed gallery photo | preserves the first-selection demonstration |
 | any other | themed contextual photo | one photo only — a caption belongs to a single image |
 
 Fallbacks, in order: reply longer than `MAX_IMAGE_CAPTION_CHARS` (1024) ⇒ plain

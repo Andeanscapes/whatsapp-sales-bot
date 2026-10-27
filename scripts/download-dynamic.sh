@@ -1,28 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Download current bot-dynamic.json from Cloudflare R2
-# Requires: aws cli configured for R2
+# Pull a live catalog from R2. Thin wrapper over `npm run dynamic:pull`.
 #
 # Usage:
-#   ./scripts/download-dynamic.sh <R2_BUCKET_NAME> [output-file]
+#   ./scripts/download-dynamic.sh [dev|prod] [--force]
 #
-# Default output: scripts/bot-dynamic.json (gitignored runtime data)
+# Default target: dev. Writes scripts/bot-dynamic-dev.json or scripts/bot-dynamic.json.
 
-OUTPUT="${2:-scripts/bot-dynamic.json}"
-BUCKET="${1:?Usage: ./scripts/download-dynamic.sh <R2_BUCKET_NAME> [output-file]}"
+TARGET="${1:-dev}"
+ARGS=("${@:2}")
 
-echo "Downloading whatsapp_bot/bot-dynamic.json from R2 bucket $BUCKET..."
-
-aws s3api get-object \
-  --bucket "$BUCKET" \
-  --key "whatsapp_bot/bot-dynamic.json" \
-  "$OUTPUT" \
-  --endpoint-url "https://$(aws configure get r2_account_id).r2.cloudflarestorage.com" 2>/dev/null || {
-    aws s3 cp "s3://$BUCKET/whatsapp_bot/bot-dynamic.json" "$OUTPUT"
-  }
-
-echo "Downloaded to $OUTPUT"
-echo ""
-echo "Validate it:"
-echo "  npm run validate:dynamic -- $OUTPUT"
+exec npm run dynamic:pull -- --target "$TARGET" "${ARGS[@]+"${ARGS[@]}"}"

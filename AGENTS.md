@@ -6,6 +6,11 @@
 - Branch: `main` (no `origin/main` yet — first push creates it)
 - Token/prod env file: `/etc/andean-whatsapp-bot.env` (never commit)
 - SQLite runtime path: `/var/lib/andean-whatsapp-bot/bot.sqlite`
+- Catalog and media publish to R2 only through `npm run media:push` then
+  `npm run dynamic:push -- --target dev|prod` (`docs/skills-architecture.md`
+  §Media and catalog sync). Placeholder photos (one site's photo reused for another)
+  are dev-only: `sync:fixture` and the prod push refuse them. Never hand-copy the dev
+  catalog into the CI fixture or prod.
 
 ## Architecture
 
@@ -35,6 +40,13 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
    One budget-gated corrective LLM rewrite may run on an active inbound turn when
    the model omits the mandatory final question. The engine supplies no customer
    copy; it validates shape, retries at most once, then sends the model output unchanged.
+   The final question is NOT mandatory on a POST-CTA turn, nor on a `T3b RESERVA
+   PEDIDA` turn with no operational field missing: "¿cómo se reserva?" after price +
+   date already answers the start-booking question, so the cue tells the model to ask
+   only for the missing name/transport. `reservationRequestedThisTurn` is a prompt
+   cue only — it changes no alert, close or handoff gate. It excludes balance
+   questions ("cómo se paga el resto"), and uses the same `isConcreteDayDate` test as
+   the prompt's T3b cue so the retry exemption never applies to a turn without the cue.
 9. **No deterministic sales copy:** Pre-LLM intercepts that generate brochure dumps, plan lists, price teasers, quote templates, partner-consult summaries, form CTAs, or close templates are forbidden. If you need a new one, you're doing it wrong — the skill MD files should handle it.
 10. **Automated outbound is limited to three explicitly-gated paths, all in `followup-service.ts`.** Conversational replies remain natural-inbound only. Never add a fourth without a fresh design.
 
@@ -165,6 +177,15 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
       is deliberately **independent of the cadence interval**: coupling them lets a
       short (or dev-accelerated) cadence interleave templates with a live
       conversation. Consent authorises writing later, never interrupting a chat.
+    - **`human_pending` is NOT excluded from the one-shot and recurring candidate
+      queries** (owner decision 2026-10-14). The silence floors already keep a template
+      out of a live chat.
+      **Consent-ask exception (owner decision 2026-10-26):** the consent-ask candidate
+      query requires `conversation_mode = 'bot'`, so no permission ask lands while the
+      team holds the booking. The gate lives only in that SQL, which the digest reuses,
+      so sender and digest agree. Do NOT gate on "the bot's last message was a booking
+      question": that lead went silent and stays a dormant, high-value lead, and a
+      post-claim check would block it forever and re-claim it every tick.
     - The consent ask is scheduled from the **customer's last inbound**, because
       Meta measures the 24h free-form window from their message, not ours. Anchoring
       on our outbound can push the send outside the window.
@@ -192,8 +213,16 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
       double-send. An automatic reset is forbidden — a persistently malformed draft
       would loop on the provider's bill forever.
     - A yes/no is classified **only** while status is `pending`; anything ambiguous
-      flows through the normal sales path untouched. `consentAcceptedThisTurn` tells
-      the model the "sí" is permission, not a booking confirmation.
+      flows through the normal sales path untouched.
+      **A pending ask stops owning bare answers once the bot asks something newer.**
+      `classifyPendingConsentReply` + `isConsentAskSuperseded` (any outbound after
+      `ask_outbound_message_id`): a bare "si"/"ok"/"no" then answers the newer question,
+      and only a reply naming the contact ("si, escribeme", "no quiero mensajes") still
+      decides consent. Live 2026-10-14 a "si" to "¿Quieren que iniciemos la reserva?"
+      was recorded as marketing consent, froze the score and paged no one. Webhook and
+      `consentAnswerTurn` must use the same predicate. Unknown ask id keeps the old rule.
+      `consentAcceptedThisTurn` tells the model the "sí" is permission, not a booking
+      confirmation.
     - **A bare leading "no" is not a refusal.** "no tengo fecha", "no todavía",
       "no sé aún" and "no entendí tu pregunta" are sales answers whose first token
       happens to be a negation; classifying them as `decline` recorded a refusal the
@@ -239,6 +268,15 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
       escribas mas" (downgrading the source to `customer_opt_out`) and then writing
       again to trigger the reopen path.
 
+    **A one-shot sent inside the consent cycle anchors the next recurring send.**
+    `listRecurringCandidates` takes the LATER of the newest one-shot (`pending`,
+    `sent` or `uncertain`, at or after `activated_at`) and the newest recurring send
+    as `last_send_at`; `processRecurring` releases its claim when `latestSendAt()`
+    is newer than that scanned anchor. The one-shot never counts in `sends_so_far`,
+    so it consumes neither `FOLLOWUP_MAX_RECURRING_SENDS` nor the 1×/3×/9× exponent.
+    The post-claim check compares against the anchor; an unconditional "one-shot
+    exists" check would stop recurring sends forever after the first template.
+
     Free-form nudges, the old multi-track/cold-loop template stack, and any
     deterministic sales copy in these paths stay removed.
 
@@ -279,6 +317,152 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
     - The model emits one proactive gallery on the first concrete plan selection,
       using only a clearly matching RUNTIME theme. It never repeats that gallery on
       later confirmations. This remains an inbound reply path, not automated outbound.
+      The cue fires on the **first** selection only (`!storedPlan`); a later switch
+      never re-cues it, because a marker on that turn would suppress the plan card.
+    - **The plan card is not gallery media.** It is a deterministic reply-carrying image
+      the webhook sends with the unchanged LLM reply as caption, for the **stored**
+      plan, on exactly two triggers: a price turn (`priceJustGiven`) or a plan switch
+      after a quote (`planSwitchedAfterQuote`). On those turns an eligible card takes
+      priority over a **proactive** first-selection gallery (`galleryRequestedByCustomer`
+      false), so the first quote shows the detailed plan card instead of the unsolicited
+      `[[FOTOS:<galleryTheme>]]` demonstration; an explicit customer photo/brochure
+      request (including a continuation or accepted photo offer) still ships the gallery
+      and suppresses the card. On a price-objection turn, only a uniquely identified
+      alternative plan quoted by the reply may ship its own card; otherwise send text
+      only, never the stored plan's card. A switch counts only when it is a
+      choice: a plan reference ("el otro plan", "quiero esa") or a keyword the
+      customer states ("quiero el prime", "mejor el core", "quiero el prime, ¿cuánto
+      vale?" — a choice marker wins over a trailing question).
+      **A plan question never replaces the stored plan** (`isPlanQuestion`): "¿el CORE
+      incluye cabalgata?", "Y como es el prime?", "¿y el prime?" compare plans. It is
+      enforced in three places that must agree — `contextAwareExtract`, the post-reply
+      `authoritativeBookingFields` write, and the `reconstructFromHistory` scan —
+      because the raw extraction sets `collected_plan` on any keyword, and any one of
+      them left alone re-saves the plan and ships the wrong card with the next quote.
+      With no stored plan, a plan question is still the first selection. A turn where the bot merely *proposes* another plan with
+      its price ships no card — the stored plan is still the old one; the card arrives
+      when the customer accepts.
+      **A plan with no card of its own ships no card.** `selectPlanImage` once fell back
+      to the feed's first card, so a Coscuez PRIME quote shipped the Chivor CORE card.
+      The card is exact-match only (`findPlanBrochureImage`); the reply goes as text.
+      **Exception: the customer asked about another plan.** On a price turn whose reply
+      contains exactly one plan's computed total (`detectQuotedPlan`, price match only —
+      never a name match), the card shows that plan (`quotedPlanId`) when either the
+      inbound is a price question, or the reply names a site the customer named in a
+      recent inbound (`siteNamedRecently`) **and that site differs from the stored
+      plan's**. The site check is what lets a bare "sí" to a cross-site quote ship the
+      right card; the "differs" clause is what keeps a same-site bot upsell card-less.
+      Price totals are identical across sites, so the quote is always resolved within
+      that site. The stored plan is unchanged. No new trigger: still only
+      `priceJustGiven` / `planSwitchedAfterQuote`.
+      **Plan question with a named plan.** On a price turn where the inbound is a plan
+      question naming a plan ("Y como es el prime?") and the reply quotes exactly that
+      plan's total, the card shows the named plan (`askedPlanId`). The stored plan is
+      unchanged.
+      **A brochure request is a plan question** (`isPlanBrochureRequest` inside
+      `isPlanQuestion`): "brosure de la más completa" ships the named plan's card via
+      `resolveBrochurePlanId` and never replaces the stored plan. Resolution is
+      site-scoped: the single site the message names, else the conversation site. Inside
+      it: named plan > "del otro plan" / reference relative to the stored plan's
+      same-tier counterpart > the plan the bot last quoted > that counterpart > the site's
+      only plan. A different named site with no match returns null — never the stored
+      plan's card from the other site. "del otro plan" is matched only there
+      (`BROCHURE_OTHER_PLAN`); never widen `OTHER_PLAN_REFERENCE` with it, because
+      "¿qué incluye la comida del otro plan?" would then count as a reference and switch
+      the stored plan. The prompt advertises a card only for `brochurePlanId`. The brochure matcher lists explicit spellings only — "tarjeta"/"carta" are
+      payment/menu words and must never match. The same card can also ship as `[[FOTOS:plan]]`
+      (brochure); both paths consult `planCardSentRecently`, which reads the card-id
+      claim **and** the gallery-url claim, so neither re-sends what the other shipped.
+      An explicit brochure request is the only exception: a repeat request is a full
+      request.
+    - **A bare pronoun resolves only from the bot's closing question.** "quiero esa"
+      answers "¿Les suena más PRIME?", but "sí, esa" after "¿Les sirve el 28?" is a
+      date answer even when the message body names a plan. Negated references
+      ("no quiero esa") never resolve: a refusal names the plan it refuses.
+    - **A bare yes chooses a site only from the bot's closing question.** "Si" after
+      "¿Te interesa Chivor…?" switches the stored plan to that site's equivalent tier
+      (`resolveSiteAnswer`); "si" to a media offer ("¿Te mando fotos de Chivor?"), to a
+      date or reservation question, or to a question naming two sites never does.
+      `siteChoiceThisTurn` is the ONE predicate: the engine's `conversationSiteId` and
+      `contextAwareExtract` must both read it — a mention is not a choice, so "¿y
+      Coscuez queda cerca?" keeps the stored site. Once a plan is stored,
+      `resolveSiteContext` returns its site and `reconstructFromHistory` never moves it
+      to another site; only `contextAwareExtract` switches sites. Live 2026-10-14 a
+      bare "Si" left the Coscuez plan stored, so the Chivor quote shipped no card and
+      "fotos del hospedaje en Chivor" resolved to zero photos and the fallback.
+    - **Photos of a site the customer has not chosen are an offer, not a delivery.**
+      `otherSitePhotoRequest` clears the requested themes (no corrective retry, no
+      `PEDIDO DE FOTOS`), cues the model to offer that site's plan first, and counts
+      as an ops block, so a stray marker is stripped and the model's text is sent —
+      never the fallback. The delivery gate and the unhonoured-marker check share
+      this block; automatic contextual photos are also suppressed. Test both site
+      directions: an empty gallery can hide a missing delivery gate. A "sí" to the
+      plan-review offer ("¿Quieres que primero te cuente el plan de Chivor?") switches
+      the site; the next photo request resolves against it. A date or booking
+      question naming that site still owns its yes and never switches destinations.
+      A brochure request is excluded from this block: its card resolves site-scoped
+      through `resolveBrochurePlanId`, so "brochure de Chivor" still ships.
+    - **Every tier word the bot offers must be a `selectionAliases` entry on every
+      site.** Live 2026-10-14 the bot offered "la esencial / la más completa" on
+      Coscuez, whose plans had no such aliases: "Si el más completo" stored no plan,
+      so no QUOTE LOCK and no card. The aliases are catalog data (CDN feed), not code;
+      the local fixtures do not reach the live bot until `upload-dynamic.sh`.
+    - **A site missing a photo category falls back to its own plan gallery theme.**
+      When the marker names a theme the stored/chosen site has no photos of (Coscuez
+      has no kids, bike, car or beekeeping photos yet), `resolveMediaThemes` sends
+      that site's catalog `galleryTheme` photos instead of failing the turn. The
+      consent ask opts in too (`selectThemedImage(..., { planId })`); the template
+      header does NOT, because its next candidate is the plan card. The requested
+      theme must be a real category (photos at another site or declared in some
+      `media.types`): an invented marker theme still alerts `media_marker_unhonoured`
+      and a typo'd `FOLLOWUP_*_IMAGE_TYPE` still yields no photo.
+      `getSiteFallbackGalleryTheme` reads it from the plans (stored plan first, else
+      the one theme all the site's plans share) and returns null unless that theme
+      has photos at the SAME site. It never crosses sites, never runs without a
+      known site, never adds a marker, and theme *detection* is unchanged: a visual
+      imperative with no matching theme still yields zero themes and no cue.
+    - **A gallery photo can be plan-only (`gallery[].planIds`).** Fura y Tena photos
+      exist only for PRIME Coscuez: the photo ships only to a customer whose stored
+      plan is listed. Every customer-facing path runs on `scopeGalleryToPlan(skills,
+      plan)`: themes advertised in the prompt and theme cues (stored plan), marker
+      resolution and contextual photos (this turn's plan), consent-ask and template
+      header photos (collected plan). The site fallback never substitutes a
+      plan-only theme (`getSiteFallbackGalleryTheme` counts unrestricted photos only),
+      so PRIME's missing category falls back to the site's mine photos, not the
+      excursion. The schema rejects a `planIds` entry that is not a plan of that site.
+      Code that predates this rejects the field (strict schema): deploy code before
+      a catalog that uses it.
+    - **A paused destination is acknowledged, never sold.** A site with
+      `status: "inactive"` keeps its data in the feed but contributes no plans, prices,
+      dates, segments or photos. The bot sees only its name and the catalog
+      `unavailableNote`; leads whose stored plan belongs to it get no automated
+      outbound on any of the three paths (`isPlanPaused`). Tests that need the site
+      active use `src/tests/helpers/all-sites-catalog.ts` (`useAllSitesActive`), or
+      `seedSystem.reopenPausedSites` in a conversation scenario. Never delete a paused
+      site's coverage because the live catalog paused it.
+      A lead stored on a paused plan may accept an active destination through the
+      same `siteChoiceThisTurn` predicate ("me interesa Chivor", or a bare "sí" to the
+      bot's "¿Te interesa Chivor?"): the plan moves to that site's unique equivalent
+      tier via `unavailableSites[].planTiers`, else it is cleared. Before this, the
+      paused plan was absent from `getPlans`, so the accepted alternative never
+      stored and the lead stayed stuck on the paused destination.
+    - **No destination chosen on a multi-site experience → no photos.**
+      `resolveMediaThemes` and `detectRequestedGalleryThemes` return nothing (brochure
+      excepted) when no site is preferred and the experience has 2+ sites, mirroring
+      `selectThemedImage`. Before this, a theme only one site had resolved to that
+      site: a `[[FOTOS:kids]]` with no destination shipped three Chivor photos,
+      because Coscuez has none. Single-site catalogs keep resolving without a site.
+    - **Generic photo requests and wrong-site complaints use catalog themes.** A
+      bounded generic request uses the selected plan's eligible `galleryTheme`, else
+      the site's unrestricted fallback. Specific unknown subjects stay unresolved.
+      Wrong-site claims in ES/EN are not destination choices or verified image facts;
+      provenance questions and non-site descriptions never trigger that cue. Missing
+      recovery markers use the same single budget-gated rewrite, never engine-authored copy.
+    - **Follow-up photos are site-scoped like reply photos.** The consent ask and the
+      template header use the stored plan's site, else the conversation's chosen site
+      (`followupSiteId` → `resolveSiteContext`). With several sites and none known,
+      `selectThemedImage` returns null rather than the only site that has a gallery —
+      a Coscuez lead once got a Chivor photo that way.
     - If an inbound explicitly requests photos and the model omits the marker, the
       engine may use the same single budget-gated corrective LLM call with a
       RUNTIME instruction. It must never add the marker, rewrite the reply, or retry
@@ -487,9 +671,9 @@ columns from the old feature remain in place and are ignored.
   `MAX_GALLERY_IMAGES_PER_SEND=3`; the default is 5, so they were green locally and
   red in CI. **A test must pin any env value it asserts on** — run this before
   pushing.
-- `npm run eval:conversations` — deterministic conversation-eval pack (31 scenarios).
-- `npm run eval:conversations:llm-bot` — live LLM quality suite (20 `live`-tagged
-  scenarios, ~$0.37 per pass; costs tokens).
+- `npm run eval:conversations` — deterministic conversation-eval pack (49 scenarios).
+- `npm run eval:conversations:llm-bot` — live LLM quality suite (32 `live`-tagged
+  scenarios, ~$0.60 per pass, estimated; costs tokens).
 - `npm run simulate -- "text"` — offline bot test.
 - `npm run typecheck` — must pass clean.
 - `npm run lint` — must pass.

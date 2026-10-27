@@ -3,6 +3,7 @@ import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { loadSkills, type Skills } from '../services/skill-loader.js';
+import { useAllSitesActive } from './helpers/all-sites-catalog.js';
 import {
   assembleSystemPrompt,
   renderBusinessData,
@@ -17,10 +18,125 @@ import {
   getSalesComposition,
   renderReferentStrategies,
 } from '../services/sales-composition.js';
-import { getActiveExperience } from '../services/product-registry.js';
+import { getActiveExperience, getSiteCommonQuestions } from '../services/product-registry.js';
+import { isTransportObjectionMessage } from '../services/reply-guard.js';
 import { PRICING_NOT_AVAILABLE, AVAILABILITY_NOT_AVAILABLE } from '../services/dynamic-data-service.js';
 
 describe('skills-prompt-assembly', () => {
+  it('prioritizes a current price objection over closing from a stored date', () => {
+    const prompt = assembleSystemPrompt({
+      skills: loadSkills(), priceGiven: true, priceObjectionThisTurn: true, salesPhase: 'closing',
+      collectedFields: { plan: 'prime_2d1n_coscuez', personas: 2, fecha: '14 de noviembre' },
+    });
+    expect(prompt).toContain('OBJECION DE PRECIO:');
+    expect(prompt).not.toContain('PRECIO YA ENTREGADO:');
+    expect(prompt).not.toContain('ESTADO DE TURNO: T3b');
+    expect(prompt).not.toContain('INTENCION DE RESERVA:');
+  });
+
+  describe('transport objection', () => {
+    it('allows a standalone transport price before plan selection', () => {
+      const prompt = assembleSystemPrompt({
+        skills: loadSkills(), collectedFields: { personas: 1 },
+        latestCustomerMessage: 'que vale el transporte puerta a puerta?',
+      });
+      const cue = prompt.match(/PRICE GATE ACTIVO:[^\n]*/)?.[0] ?? '';
+      expect(cue).toContain('No escribas precios ni totales de planes');
+      expect(cue).toContain('Si pregunta solo por transporte, responde su precio del CATALOGO por separado');
+      expect(prompt).not.toContain('QUOTE LOCK: escribe');
+    });
+    const transportObjection = (extra: Record<string, unknown> = {}, transportObjectionThisTurn = true) => assembleSystemPrompt({
+      skills: loadSkills(), priceGiven: true, priceObjectionThisTurn: true, transportObjectionThisTurn,
+      collectedFields: { plan: 'prime_2d1n_chivor', personas: 1, ...extra },
+    });
+
+    it('keeps the plan and prices it without transport instead of downselling', () => {
+      const prompt = transportObjection({ transporte: 'from_bogota' });
+      const cue = prompt.match(/OBJECION DE TRANSPORTE:[^\n]*/)?.[0] ?? '';
+      expect(cue).toContain('prime_2d1n_chivor para 1 personas queda en $960.000 COP sin transporte');
+      expect(cue).toContain('core_2d1n_chivor: $620.000 COP');
+      expect(cue).not.toContain('2.660.000');
+      expect(prompt).not.toContain('OBJECION DE PRECIO:');
+      expect(prompt).not.toContain('PRECIO YA ENTREGADO:');
+    });
+
+    it('carries no site facts: logistics come from the catalog', () => {
+      const cue = transportObjection().match(/OBJECION DE TRANSPORTE:[^\n]*/)?.[0] ?? '';
+      expect(cue).not.toMatch(/\bbus\b|carro propio|\bpueblo\b|\bmina\b|TRANSPORTE PRIVADO de CLARIFICACIONES/i);
+      expect(cue).toContain('CATALOGO de este sitio');
+    });
+
+    it('leaves a plain price objection on the cheaper-plan cue', () => {
+      const prompt = transportObjection({}, false);
+      expect(prompt).toContain('OBJECION DE PRECIO:');
+      expect(prompt).not.toContain('OBJECION DE TRANSPORTE:');
+    });
+
+    it('never displaces a T3b close', () => {
+      const prompt = assembleSystemPrompt({
+        skills: loadSkills(), priceGiven: true, priceObjectionThisTurn: false, transportObjectionThisTurn: true,
+        collectedFields: { plan: 'prime_2d1n_chivor', personas: 1, fecha: '14 de noviembre' },
+      });
+      expect(prompt).not.toContain('OBJECION DE TRANSPORTE:');
+    });
+  });
+
+  describe('isTransportObjectionMessage', () => {
+    it.each([
+      'esta algo costoso el plan en particular el transporte',
+      'el transporte es muy caro',
+      'me pesa mucho el transporte puerta a puerta',
+      'the transfer is too expensive',
+      'el plan no es caro pero el transporte es costoso',
+      'no sé, el transporte es muy caro',
+      'no se el transporte es caro',
+    ])('matches a transport cost objection: %s', message => {
+      expect(isTransportObjectionMessage(message)).toBe(true);
+    });
+
+    it.each([
+      'es caro, ¿incluye transporte?',
+      'esta muy caro el plan',
+      'que vale el transporte puerta a puerta?',
+      'como es el transporte, me recogen en un punto?',
+      'el transporte no está caro, el plan sí',
+      'the transfer is not expensive but the plan is too much',
+      'el transporte no es caro',
+      'no es tan caro el transporte',
+      'el transporte no está tan costoso, el plan sí',
+    ])('does not match: %s', message => {
+      expect(isTransportObjectionMessage(message)).toBe(false);
+    });
+  });
+
+  it('renders the trip-reality and private-transport clarifications for Chivor', () => {
+    const prompt = assembleSystemPrompt({ skills: loadSkills(), lang: 'es' });
+    expect(prompt).toContain('REALIDAD DEL VIAJE');
+    expect(prompt).toContain('TRANSPORTE PRIVADO (por que cuesta lo que cuesta)');
+  });
+
+  it.each([
+    { plan: 'prime_2d1n_coscuez' },
+    { personas: 2 },
+  ])('does not assert no cheaper plan when comparison inputs are missing: %j', collectedFields => {
+    const prompt = assembleSystemPrompt({
+      skills: loadSkills(), priceGiven: true, priceObjectionThisTurn: true, collectedFields,
+    });
+    expect(prompt).toContain('OBJECION DE PRECIO: COMPARACION INCOMPLETA');
+    expect(prompt).not.toContain('No hay una alternativa de plan con menor precio');
+  });
+
+  it('reports incomplete pricing instead of no cheaper plans', () => {
+    const skills = structuredClone(loadSkills());
+    getActiveExperience(skills).pricing.items = [];
+    const prompt = assembleSystemPrompt({
+      skills, priceGiven: true, priceObjectionThisTurn: true,
+      collectedFields: { plan: 'prime_2d1n_coscuez', personas: 2 },
+    });
+    expect(prompt).toContain('OBJECION DE PRECIO: COMPARACION INCOMPLETA');
+    expect(prompt).not.toContain('No hay una alternativa de plan con menor precio');
+  });
+
   it('assembles sales skill + catalog + business data markers', () => {
     const skills = withLivePricing(loadSkills());
     const prompt = assembleSystemPrompt({ skills, lang: 'es' });
@@ -41,7 +157,9 @@ describe('skills-prompt-assembly', () => {
 
   it('renders gallery type ids from the registry instead of site ids', () => {
     const base = loadSkills();
-    const experienceId = getActiveExperience(base).id;
+    const experience = getActiveExperience(base);
+    const experienceId = experience.id;
+    const chivorPlan = experience.plans.find(p => p.siteId === 'chivor');
     const skills: Skills = {
       ...base,
       dynamicMedia: {
@@ -49,20 +167,25 @@ describe('skills-prompt-assembly', () => {
         planImages: [],
         galleryImages: [{
           experienceId,
-          siteId: 'site_fixture',
+          siteId: 'chivor',
           url: 'https://cdn.example.com/gallery/lodging.jpg',
           caption: '',
           type: 'lodging_fixture',
         }],
-        siteTypes: { [`${experienceId}/site_fixture`]: ['lodging_fixture'] },
-        typeKeywords: { [`${experienceId}/site_fixture`]: { lodging_fixture: ['rest_fixture'] } },
+        siteTypes: { [`${experienceId}/chivor`]: ['lodging_fixture'] },
+        typeKeywords: { [`${experienceId}/chivor`]: { lodging_fixture: ['rest_fixture'] } },
       },
     };
 
-    const runtime = runtimeSection(assembleSystemPrompt({ skills, selectedExperienceId: experienceId }));
+    expect(chivorPlan).toBeDefined();
+    const runtime = runtimeSection(assembleSystemPrompt({
+      skills,
+      selectedExperienceId: experienceId,
+      collectedFields: { plan: chivorPlan?.id },
+    }));
 
     expect(runtime).toContain('TEMAS DE GALERIA DISPONIBLES: lodging_fixture');
-    expect(runtime).not.toContain('TEMAS DE GALERIA DISPONIBLES: site_fixture');
+    expect(runtime).not.toContain('TEMAS DE GALERIA DISPONIBLES: chivor');
   });
 
   it('exposes delivered gallery state without adding sales copy in runtime', () => {
@@ -110,7 +233,7 @@ describe('skills-prompt-assembly', () => {
   });
 
   it('omits cross-site ambiguous themes until a plan selects the site', () => {
-    const base = loadSkills();
+    const base = useAllSitesActive();
     const experience = getActiveExperience(base);
     const plan = experience.plans.find(candidate => candidate.siteId === 'chivor');
     expect(plan).toBeDefined();
@@ -138,8 +261,10 @@ describe('skills-prompt-assembly', () => {
       collectedFields: { plan: plan!.id },
     }));
 
-    expect(unresolved).toContain('TEMAS DE GALERIA DISPONIBLES: mine_fixture');
-    expect(unresolved).not.toContain('lodging_fixture');
+    // When site is pending (2+ sites, no site chosen), no themes are advertised.
+    expect(unresolved).not.toContain('TEMAS DE GALERIA DISPONIBLES');
+    expect(unresolved).toContain('SITIO PENDIENTE');
+    // When a site is chosen via plan, only that site's themes are shown.
     expect(scoped).toContain('TEMAS DE GALERIA DISPONIBLES: lodging_fixture, mine_fixture');
   });
 
@@ -194,7 +319,7 @@ describe('skills-prompt-assembly', () => {
     // Regression anchor: no-question endings survive budget trims only via the
     // explicit POST-CTA exception, not via a blanket "no question needed" license.
     expect(prompt).toContain('cierre ya confirmado donde solo falta el equipo');
-    expect(prompt).toContain('te falta un dato: preguntá');
+    expect(prompt).toContain('te falta un dato: pregunta');
   });
 
   it('orders the skills so entry strategy precedes the first-turn handler', () => {
@@ -427,6 +552,34 @@ describe('skills-prompt-assembly', () => {
     expect(prompt).not.toContain('ESTADO DE TURNO: T3a');
   });
 
+  it('replaces the T3b cue with the reservation-requested variant when the customer asked to book', () => {
+    const skills = withLivePricing(loadSkills());
+    const planId = getActiveExperience(skills).plans[0].id;
+    const prompt = assembleSystemPrompt({
+      skills,
+      collectedFields: { personas: 2, plan: planId, date: 'sábado 14 de noviembre', transporte: 'own' },
+      priceGiven: true,
+      reservationRequestedThisTurn: true,
+    });
+
+    expect(prompt).toContain('ESTADO DE TURNO: T3b RESERVA PEDIDA');
+    expect(prompt).toContain('DATO OPERATIVO FALTANTE: nombre');
+    expect(prompt).not.toContain('ESTADO DE TURNO: T3b. Hay fecha concreta');
+  });
+
+  it('ignores the reservation-requested flag outside a T3b turn', () => {
+    const skills = withLivePricing(loadSkills());
+    const planId = getActiveExperience(skills).plans[0].id;
+    const prompt = assembleSystemPrompt({
+      skills,
+      collectedFields: { personas: 2, plan: planId },
+      priceGiven: true,
+      reservationRequestedThisTurn: true,
+    });
+
+    expect(prompt).not.toContain('ESTADO DE TURNO: T3b RESERVA PEDIDA');
+  });
+
   it('injects POST-CTA with the next useful missing field after close CTA acceptance', () => {
     const skills = withLivePricing(loadSkills());
     const planId = getActiveExperience(skills).plans[0].id;
@@ -474,6 +627,8 @@ describe('skills-prompt-assembly', () => {
 
   it('formats the locked total like the catalog prices so the model can copy it verbatim', () => {
     const skills = withLivePricing(loadSkills());
+    const exp = getActiveExperience(skills);
+    exp.plans = exp.plans.map(plan => ({ ...plan, calculation: 'couple_half_from_five' }));
     const planId = getActiveExperience(skills).plans[0].id;
     const prompt = assembleSystemPrompt({
       skills,
@@ -491,9 +646,9 @@ describe('skills-prompt-assembly', () => {
   it('grounds safety-critical FAQs in the catalog so the LLM never improvises them', () => {
     const skills = loadSkills();
     const prompt = assembleSystemPrompt({ skills });
-    const physicalRecovery = getActiveExperience(skills).commonQuestions
+    const physicalRecovery = getSiteCommonQuestions(skills, getActiveExperience(skills), 'chivor')
       .find(q => q.intent === 'physical_recovery' && q.lang === 'es')?.answer;
-    const leadTime = getActiveExperience(skills).commonQuestions
+    const leadTime = getSiteCommonQuestions(skills, getActiveExperience(skills), 'chivor')
       .find(q => q.intent === 'reservation_lead_time' && q.lang === 'es')?.answer;
 
     expect(physicalRecovery).toBeTruthy();
@@ -612,7 +767,7 @@ describe('skills-prompt-assembly', () => {
       skills: withLivePricing(loadSkills()),
       lang: 'es',
       entryMarker: { code: 'R01', temperature: 'retargeting' },
-      priorContext: 'historial local disponible; plan=2d1n_mining · precio ya entregado',
+      priorContext: 'historial local disponible; plan=core_2d1n_chivor · precio ya entregado',
     });
 
     expect(prompt).toContain('ENTRADA: retargeting (R01)');

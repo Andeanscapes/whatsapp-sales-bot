@@ -64,6 +64,28 @@ export interface ProcessMessageOutput {
    */
   requestedGalleryImages?: string[];
   priceJustGiven: boolean;
+  /**
+   * The customer switched to another plan after a quote. Delivery treats it like a
+   * price turn: the new plan's card carries the reply, because the previous card
+   * (and its price) no longer matches what they chose.
+   */
+  planSwitchedAfterQuote?: boolean;
+  /**
+   * On a price turn where the customer asked a price, the single plan the reply
+   * quoted when it differs from the stored plan. The price card shows this plan;
+   * the stored plan is unchanged.
+   */
+  quotedPlanId?: string | null;
+  /** Price objection turn: only a uniquely quoted alternative may show a plan card. */
+  priceObjectionThisTurn?: boolean;
+  /**
+   * The customer explicitly asked for photos this turn (photo nouns, a visual
+   * imperative, brochure request, continuation, or accepted photo offer), as opposed
+   * to a proactive first-selection gallery demonstration. The webhook prefers an
+   * eligible plan card over a proactive gallery on a price turn, but never over
+   * an explicit request.
+   */
+  galleryRequestedByCustomer?: boolean;
   conversationMode?: ConversationMode;
   salesPhase?: string | null;
   softClosed?: boolean;

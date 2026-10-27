@@ -3,8 +3,8 @@
   "source": "history: closing/handoff state",
   "tags": ["closing", "safety"],
   "lang": "es",
-  "seedConversation": { "phase": "closing", "priceGiven": true, "qualification": { "people": 2, "plan": "2d1n_mining", "date": "octubre" } },
-  "seedQualification": { "people": 2, "plan": "2d1n_mining", "date": "octubre" },
+  "seedConversation": { "phase": "closing", "priceGiven": true, "qualification": { "people": 2, "plan": "core_2d1n_chivor", "date": "octubre" } },
+  "seedQualification": { "people": 2, "plan": "core_2d1n_chivor", "date": "octubre" },
   "criteria": [
     { "id": "owner-alert", "rule": "output_flag_equals", "flag": "shouldAlertOwner", "expected": true, "turn": 2, "weight": 2, "critical": true },
     { "id": "reservation-ready", "rule": "output_flag_equals", "flag": "reservationReady", "expected": true, "turn": 2, "weight": 2, "critical": true },

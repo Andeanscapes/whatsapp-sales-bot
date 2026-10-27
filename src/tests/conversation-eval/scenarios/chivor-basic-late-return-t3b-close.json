@@ -1,0 +1,34 @@
+{
+  "id": "chivor-basic-late-return-t3b-close",
+  "source": "review 2026-10-26: a late-return question on a reservation turn must not displace the T3b close with an upgrade pitch",
+  "tags": ["closing", "objection", "live"],
+  "lang": "es",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "seedConversation": {
+    "phase": "pricing",
+    "priceGiven": false,
+    "qualification": { "people": 2, "plan": "basic_1d_chivor" }
+  },
+  "seedQualification": { "people": 2, "plan": "basic_1d_chivor" },
+  "criteria": [
+    { "id": "t3a-exact-quote", "rule": "group_quote_integrity", "people": 2, "planId": "basic_1d_chivor", "expectedTotal": 740000, "turn": 1, "critical": true },
+    { "id": "t3b-close-kept", "rule": "reply_must_match", "patterns": ["anticipo|reserva|validar disponibilidad|nombre|transporte"], "turn": 2, "critical": true },
+    { "id": "no-upgrade-on-close", "rule": "reply_must_not_match", "patterns": ["\\bCORE\\b|\\bPRIME\\b"], "turn": 2, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 2, "critical": true }
+  ],
+  "turns": [
+    {
+      "user": "el 14 de noviembre nos sirve",
+      "mockReply": "Perfecto, el 14 de noviembre. Para 2 personas, el plan queda en $740.000 COP, unos $370.000 COP por persona. ¿Qué te parece?",
+      "expect": { "shouldSendReply": true },
+      "seedQualification": { "people": 2, "plan": "basic_1d_chivor", "date": "14 de noviembre" }
+    },
+    {
+      "user": "listo, como reservamos? y termina muy tarde?",
+      "mockReply": "El regreso es el mismo día en la tarde; la hora exacta la confirma el equipo. Para reservar el 14 de noviembre para 2, el anticipo es del 30% y primero valido disponibilidad con el equipo. ¿A nombre de quién la dejamos?",
+      "expect": { "shouldSendReply": true },
+      "seedQualification": { "people": 2, "plan": "basic_1d_chivor", "date": "14 de noviembre" }
+    }
+  ]
+}

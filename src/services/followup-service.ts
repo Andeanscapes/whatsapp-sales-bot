@@ -8,7 +8,8 @@ import type {
 } from '../db/repositories/index.js';
 import { sendTemplate, sendImageUrlWithId, sendTextWithId, MAX_IMAGE_CAPTION_CHARS, WhatsAppSendError } from './whatsapp-client.js';
 import { getSkills } from './skill-loader.js';
-import { findActiveExperience, getActiveExperience, getDynamicPlanImages, getOwnerImage, getPlans } from './product-registry.js';
+import { findActiveExperience, getActiveExperience, getDynamicPlanImages, getOwnerImage, getPlans, isPlanPaused, scopeGalleryToPlan, type ActiveExperience } from './product-registry.js';
+import { resolveSiteContext } from './qualification-engine.js';
 import { selectThemedImage } from './contextual-media.js';
 import { followupGalleryMediaId, recordImageSend } from './media-service.js';
 import { recordOutboundMedia } from './conversation-media.js';
@@ -99,6 +100,30 @@ function isPublicHttpsUrl(url: string): boolean {
   }
 }
 
+/**
+ * Destination for follow-up media: the stored plan's site, else the site the
+ * conversation chose. Same predicate as the reply path, so a Coscuez lead with no
+ * plan stored never gets a Chivor photo.
+ */
+function followupSiteId(
+  repos: Repositories,
+  phone: string,
+  experience: ActiveExperience,
+  planId: string | null | undefined,
+): string | undefined {
+  const inboundBodies = repos.message.getLastInboundBodies(phone, 20).map(row => row.body ?? '');
+  return resolveSiteContext(experience, planId, inboundBodies);
+}
+
+/**
+ * A lead whose stored plan belongs to a paused destination receives no automated
+ * outbound: the plan cannot be sold, and a template would advertise it. The lead
+ * becomes eligible again on its own once the destination is reactivated.
+ */
+function isStoredPlanPaused(experienceId: string | null, planId: string | null): boolean {
+  return isPlanPaused(findActiveExperience(getSkills(), experienceId), planId);
+}
+
 interface TemplatePayload {
   bodyParams: string[];
   headerImageUrl?: string;
@@ -140,12 +165,12 @@ function buildTemplatePayload(
   if (header === 'none') return { bodyParams: [bodyParam] };
 
   const themed = selectThemedImage(
-    skills,
+    scopeGalleryToPlan(skills, candidate.collected_plan),
     repos,
     candidate.customer_phone,
     env.FOLLOWUP_TEMPLATE_IMAGE_TYPE,
     experience.id,
-    plan?.siteId,
+    followupSiteId(repos, candidate.customer_phone, experience, candidate.collected_plan),
   );
   const planImage = plan
     ? getDynamicPlanImages(skills).find(image =>
@@ -172,6 +197,11 @@ async function processCandidate(repos: Repositories, candidate: FollowupCandidat
   const templateName = resolveTemplateName(candidate.language);
   if (!templateName) {
     logger.warn({ phone, language: candidate.language }, '[FOLLOWUP] no approved template for language — skipped');
+    return false;
+  }
+
+  if (isStoredPlanPaused(candidate.selected_experience_id, candidate.collected_plan)) {
+    logger.info({ phone, plan: candidate.collected_plan }, '[FOLLOWUP] stored plan is paused — template skipped');
     return false;
   }
 
@@ -221,6 +251,11 @@ async function processCandidate(repos: Repositories, candidate: FollowupCandidat
   if (!stillDormantAtAnchor(repos, phone, candidate.anchor_at)) {
     repos.followupEvent.releaseClaim(claimId);
     logger.info({ phone }, '[FOLLOWUP] one-shot skipped — customer active again');
+    return false;
+  }
+
+  if (isStoredPlanPaused(conversation.selected_experience_id, conversation.collected_plan)) {
+    repos.followupEvent.releaseClaim(claimId);
     return false;
   }
 
@@ -448,6 +483,21 @@ async function processConsentAsk(repos: Repositories, candidate: ConsentAskCandi
     logger.info({ phone, reason: blocked }, '[FOLLOWUP] consent ask skipped — state guard');
     return false;
   }
+  // Consent-ask only (owner decision 2026-10-26): the candidate SQL already excludes
+  // human_pending, but the mode can flip between the scan and this claim. The shared
+  // isBlockedState is not changed because the template paths keep human_pending.
+  if (repos.conversation.getMode(phone) === 'human_pending') {
+    repos.followupSubscriptionEvent.releaseClaim(eventId);
+    logger.info({ phone }, '[FOLLOWUP] consent ask skipped — team holds the booking');
+    return false;
+  }
+  // Same transient treatment as the state guard: release, so a reactivated
+  // destination makes the lead eligible again without burning an attempt.
+  if (isStoredPlanPaused(repos.conversation.getSelectedExperienceId(phone), repos.conversation.getCollectedPlan(phone))) {
+    repos.followupSubscriptionEvent.releaseClaim(eventId);
+    logger.info({ phone }, '[FOLLOWUP] consent ask skipped — stored plan is paused');
+    return false;
+  }
   // Re-check the window after the claim: the row may have sat through a stale lease.
   const anchorMs = parseStoredTimestamp(candidate.anchor_at);
   const windowClosesMs = anchorMs + FREE_FORM_WINDOW_MS;
@@ -557,7 +607,9 @@ async function processConsentAsk(repos: Repositories, candidate: ConsentAskCandi
   const subscription = repos.followupSubscription.getByPhone(phone);
   if (
     !stillDormantAtAnchor(repos, phone, candidate.anchor_at)
+    || repos.conversation.getMode(phone) === 'human_pending'
     || (subscription !== null && subscription.status !== 'unasked')
+    || isStoredPlanPaused(repos.conversation.getSelectedExperienceId(phone), repos.conversation.getCollectedPlan(phone))
   ) {
     repos.followupSubscriptionEvent.releaseClaim(eventId);
     logger.info({ phone }, '[FOLLOWUP] consent ask skipped — customer active or consent state changed');
@@ -585,18 +637,19 @@ async function processConsentAsk(repos: Repositories, candidate: ConsentAskCandi
     const askExperience = askExperienceId
       ? findActiveExperience(askSkills, askExperienceId)
       : getActiveExperience(askSkills);
-    const askPlanId = repos.conversation.getCollectedPlan(phone);
-    const askPlanSiteId = askExperience && askPlanId
-      ? getPlans(askExperience).find(plan => plan.id === askPlanId)?.siteId
+    const askPlanSiteId = askExperience
+      ? followupSiteId(repos, phone, askExperience, repos.conversation.getCollectedPlan(phone))
       : undefined;
     const themedAsk = askExperience && validation.text.length <= MAX_IMAGE_CAPTION_CHARS
       ? selectThemedImage(
-        askSkills,
+        scopeGalleryToPlan(askSkills, repos.conversation.getCollectedPlan(phone)),
         repos,
         phone,
         env.FOLLOWUP_CONSENT_ASK_IMAGE_TYPE,
         askExperience.id,
         askPlanSiteId,
+        // The ask has no plan-card fallback: a site photo beats plain text.
+        { planId: repos.conversation.getCollectedPlan(phone) },
       )
       : null;
     // Same URL guard the template header applies. Feed URLs already pass
@@ -776,6 +829,11 @@ async function processRecurring(repos: Repositories, candidate: RecurringCandida
     return false;
   }
 
+  if (isStoredPlanPaused(candidate.selected_experience_id, candidate.collected_plan)) {
+    logger.info({ phone, plan: candidate.collected_plan }, '[FOLLOWUP] stored plan is paused — recurring skipped');
+    return false;
+  }
+
   // Reuses the one-shot payload builder: same approved template shape.
   const payload = buildTemplatePayload(repos, {
     customer_phone: phone,
@@ -826,6 +884,20 @@ async function processRecurring(repos: Repositories, candidate: RecurringCandida
     || (!Number.isNaN(lastInboundMs) && lastInboundMs > silenceThresholdMs)) {
     repos.followupSubscriptionEvent.releaseClaim(eventId);
     logger.info({ phone, cycleKey }, '[FOLLOWUP] recurring skipped — customer active again');
+    return false;
+  }
+  // A one-shot claimed or sent after the scan moves the anchor: this recurring send
+  // is now due one interval after it, not in this tick. A one-shot already counted
+  // in the scanned anchor is not newer, so it never blocks the cadence.
+  const oneShotAt = repos.followupEvent.latestSendAt(phone);
+  if (oneShotAt && parseStoredTimestamp(oneShotAt) > parseStoredTimestamp(candidate.last_send_at)) {
+    repos.followupSubscriptionEvent.releaseClaim(eventId);
+    logger.info({ phone, cycleKey }, '[FOLLOWUP] recurring skipped — one-shot moved the anchor');
+    return false;
+  }
+
+  if (isStoredPlanPaused(repos.conversation.getSelectedExperienceId(phone), repos.conversation.getCollectedPlan(phone))) {
+    repos.followupSubscriptionEvent.releaseClaim(eventId);
     return false;
   }
 

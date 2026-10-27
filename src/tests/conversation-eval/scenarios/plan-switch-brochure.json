@@ -1,0 +1,16 @@
+{
+  "id": "plan-switch-brochure",
+  "source": "regression: switching plan then 'brochure' must ship the new plan card. Chivor has three plans, so the switch names the plan; 'el otro plan' is a two-plan rule covered by unit tests",
+  "tags": ["gallery", "plan"],
+  "lang": "es",
+  "criteria": [
+    { "id": "card-on-brochure-request", "rule": "output_flag_equals", "flag": "shouldSendGalleryImages", "expected": true, "turn": 3, "weight": 2, "critical": true },
+    { "id": "marker-hidden", "rule": "reply_must_not_match", "patterns": ["\\[\\[\\s*FOTOS"], "turn": 3, "weight": 2, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 3, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "Somos 2 y nos interesa el plan CORE en Chivor", "mockReply": "Buena elección para ustedes dos. ¿Qué fecha tienen en mente?", "expect": { "shouldSendReply": true } },
+    { "user": "mejor la más completa", "mockReply": "La más completa suma una segunda mina y la cabalgata. ¿Qué fecha tienen en mente?", "expect": { "shouldSendReply": true, "shouldSendGalleryImages": false } },
+    { "user": "¿Tienes un brochure?", "mockReply": "Claro, aquí está la ficha. ¿Qué fecha tienen en mente?\n[[FOTOS:plan]]", "expect": { "shouldSendReply": true, "shouldSendGalleryImages": true } }
+  ]
+}

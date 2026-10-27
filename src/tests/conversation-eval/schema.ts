@@ -75,6 +75,9 @@ const seedConversationSchema = z.object({
 
 const seedSystemSchema = z.object({
   dynamicSkillAvailable: z.boolean().optional(),
+  // Runs on the CI fixture with every paused destination reopened, so a scenario
+  // about a paused site keeps its coverage. Not combinable with dynamicSkillAvailable.
+  reopenPausedSites: z.boolean().optional(),
   dynamicSkillRequired: z.boolean().optional(),
   withinCustomerServiceWindow: z.boolean().optional(),
   approvedTemplateAvailable: z.boolean().optional(),

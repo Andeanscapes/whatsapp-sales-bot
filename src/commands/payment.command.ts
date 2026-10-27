@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import { env } from '../config/env.js';
 import { getSkills, isDynamicDataFresh, type Skills } from '../services/skill-loader.js';
-import { findActiveExperience, getPlans, getPublicPaymentFacts, hasPublicPaymentFacts, isPricingAvailable } from '../services/product-registry.js';
+import { findActiveExperience, getPlans, getPublicPaymentFactsForPlan, hasPublicPaymentFacts, isPlanPaused, isPricingAvailable } from '../services/product-registry.js';
 import { calculatePriceQuote, type TransportNeed } from '../services/pricing-calculator.js';
 import { createMercadoPagoPreference } from '../services/mercadopago-service.js';
 import { sendBridgeReply } from '../services/bridge-service.js';
@@ -45,6 +45,12 @@ export async function paymentHandler(ctx: CommandContext): Promise<string> {
 
   const pending = ctx.repos.paymentReservation.getPendingByCustomerPhone(phone);
   if (pending) {
+    if (!isDynamicDataFresh()) return 'No puedo reenviar el enlace: precios o disponibilidad requieren verificacion.';
+    const experience = findActiveExperience(skills, conversation.selected_experience_id);
+    if (!experience || isPlanPaused(experience, pending.planId)
+      || !getPlans(experience).some(plan => plan.id === pending.planId)) {
+      return 'El plan de la reserva pendiente ya no esta disponible. No se reenvio el enlace.';
+    }
     if (!pending.paymentUrl || !pending.date || pending.depositPercent == null) {
       return `Ya existe un enlace de pago en proceso para ${phone}. No se creo otro cobro.`;
     }
@@ -61,7 +67,7 @@ export async function paymentHandler(ctx: CommandContext): Promise<string> {
   const experience = findActiveExperience(skills, ctx.repos.conversation.getSelectedExperienceId(phone));
   if (!experience) return 'No hay una experiencia activa para crear el enlace.';
   if (!isPricingAvailable(experience)) return 'No hay precios actualizados para crear el enlace.';
-  const paymentFacts = getPublicPaymentFacts(skills);
+  const paymentFacts = getPublicPaymentFactsForPlan(skills, experience, conversation.collected_plan);
 
   const planId = conversation.collected_plan;
   const people = conversation.collected_people;

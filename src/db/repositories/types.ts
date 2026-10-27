@@ -90,6 +90,7 @@ export interface ConversationRepository {
   clearSoftClosed(phone: string): void;
   getPriceGivenAt(phone: string): string | null;
   setPriceGiven(phone: string): void;
+  clearPriceQuote(phone: string): void;
   getLeadScore(phone: string): number;
   updateLeadScore(phone: string, score: number): void;
   getCollectedFields(phone: string): Record<string, unknown>;
@@ -103,6 +104,7 @@ export interface ConversationRepository {
   getCollectedDateWindow(phone: string): string | null;
   setCollectedDateWindow(phone: string, window: string | null): void;
   getCollectedPlan(phone: string): string | null;
+  clearCollectedPlan(phone: string): void;
   resetExperienceSalesState(phone: string): void;
   clearCollectedTransport(phone: string): void;
   getLanguage(phone: string): 'es' | 'en' | null;
@@ -418,6 +420,12 @@ export interface FollowupEventRepository {
   releaseClaim(claimId: number): void;
   getLatest(phone: string): FollowupEventRow | null;
   /**
+   * Timestamp of the newest one-shot that is in flight or may have reached Meta
+   * (`pending` → claimed_at, `sent` → sent_at, `uncertain` → failed_at). Null when
+   * none exists. The recurring path compares it with its scanned anchor.
+   */
+  latestSendAt(phone: string): string | null;
+  /**
    * One-shot rows that actually reached Meta inside a window, for the operator digest.
    *
    * The terminal instant is `COALESCE(sent_at, failed_at)`: `uncertain` leaves
@@ -432,6 +440,8 @@ export interface MessageRepository {
   addMessage(msg: StoredMessage): void;
   getLastOutboundBody(phone: string): string | null;
   getLastOutboundTextBody(phone: string): string | null;
+  /** True when we sent anything after the stored outbound with this WhatsApp id. Unknown id → false. */
+  hasOutboundAfterMessage(phone: string, whatsappMessageId: string): boolean;
   getRecentMessages(phone: string, limit?: number): RecentMessage[];
   getLastInboundBodies(phone: string, limit?: number): { body: string | null }[];
   getLastInboundBody(phone: string): string | null;
@@ -640,6 +650,7 @@ export interface ConversationRow {
   collected_child_ages_json: string | null;
   collected_travel_origin: string | null;
   price_given_at: string | null;
+  quote_fingerprint: string | null;
   handed_off_at: string | null;
   soft_closed_at: string | null;
   gallery_nudged_at: string | null;

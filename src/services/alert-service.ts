@@ -23,6 +23,8 @@ export interface AlertRequest {
   date?: string;
   people?: string;
   transport?: string;
+  /** Optional operator hint appended after the template body. */
+  reason?: string;
 }
 
 async function sendWhatsAppAlert(body: string): Promise<void> {
@@ -80,7 +82,7 @@ function fitAlert(body: string): string {
 }
 
 export async function sendAlert(request: AlertRequest, repos: Repositories): Promise<boolean> {
-  const alertType = request.intent === 'reservation_handoff' || request.intent === 'reservation_intent' || request.intent === 'payment_received' || request.intent === 'unsafe_reservation_blocked' || request.intent === 'policy_violation_blocked' || request.intent === 'system_error' || request.intent === 'dynamic_pricing_unavailable'
+  const alertType = request.intent === 'reservation_handoff' || request.intent === 'reservation_intent' || request.intent === 'payment_received' || request.intent === 'unsafe_reservation_blocked' || request.intent === 'policy_violation_blocked' || request.intent === 'media_marker_unhonoured' || request.intent === 'system_error' || request.intent === 'dynamic_pricing_unavailable'
     ? request.intent
     : request.score >= env.URGENT_LEAD_THRESHOLD ? 'urgent' : 'hot';
   const repeatableReservationAlert = alertType === 'reservation_handoff' || alertType === 'reservation_intent' || alertType === 'payment_received';
@@ -112,6 +114,7 @@ export async function sendAlert(request: AlertRequest, repos: Repositories): Pro
     .replace('{{people}}', request.people ?? 'unknown')
     .replace('{{transportNeed}}', request.transport ?? 'unknown')
     .replace('{{lastMessage}}', request.message);
+  if (request.reason) body = `${body}\n\n⚠️ ${request.reason}`;
   const storedContext = storedLeadContext(repos, request.customerPhone);
   if (storedContext) body = `${body}\n\n${storedContext}`;
 

@@ -9,7 +9,7 @@
   ],
   "turns": [
     { "user": "Pareja", "mockReply": "Perfecto, ¿qué plan les interesa?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2 } },
-    { "user": "El de 2 días", "mockReply": "Perfecto, revisemos fecha y valor.", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2, "plan": "2d1n_mining" } },
-    { "user": "En octubre", "mockReply": "Para pareja son $1.000.000 {{currency}} y la fecha es tentative_unknown.", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2, "plan": "2d1n_mining", "date": "octubre" } }
+    { "user": "El CORE", "mockReply": "Perfecto, revisemos fecha y valor.", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2, "plan": "core_2d1n_chivor" } },
+    { "user": "En octubre", "mockReply": "Para pareja son $1.000.000 {{currency}} y la fecha es tentative_unknown.", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2, "plan": "core_2d1n_chivor", "date": "octubre" } }
   ]
 }

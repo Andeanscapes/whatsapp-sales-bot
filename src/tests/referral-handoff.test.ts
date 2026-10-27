@@ -55,7 +55,7 @@ function bookingTurn(overrides?: Partial<Pick<LlmTurn, 'reply' | 'action'>> & { 
     reply: overrides?.reply ?? 'Perfecto, confirmado.',
     sales_phase: 'closing',
     action: overrides?.action ?? 'handoff',
-    collected_fields: { name: 'Marta', plan: '2d1n_mining', people: 2, date: 'agosto', transport_need: 'own', pet: null },
+    collected_fields: { name: 'Marta', plan: 'core_2d1n_chivor', people: 2, date: 'agosto', transport_need: 'own', pet: null },
     lead: { intent: overrides?.intent ?? 'ready_to_book', buying_signals: [], blockers: [], score_delta: 0, confidence: 0.9 },
     img: false,
   };
@@ -65,7 +65,7 @@ function bookingTurn(overrides?: Partial<Pick<LlmTurn, 'reply' | 'action'>> & { 
 function seedQualifiedLead(): void {
   repos.conversation.upsert(PHONE, {
     collected_name: 'Marta',
-    collected_plan: '2d1n_mining',
+    collected_plan: 'core_2d1n_chivor',
     collected_people: 2,
     collected_date: 'agosto',
     collected_transport_need: 'own',
@@ -99,7 +99,7 @@ describe('referral handoff routing', () => {
   it('alerts owner and continues with LLM reply instead of referral handoff', async () => {
     repos.conversation.upsert(PHONE, {
       collected_name: 'Marta',
-      collected_plan: '2d1n_mining',
+      collected_plan: 'core_2d1n_chivor',
       collected_people: 2,
       collected_date: 'agosto',
       collected_transport_need: 'own',
@@ -205,7 +205,7 @@ describe('referral handoff routing', () => {
   it('does NOT hand off when the LLM signals booking but price was never presented', async () => {
     repos.conversation.upsert(PHONE, {
       collected_name: 'Marta',
-      collected_plan: '2d1n_mining',
+      collected_plan: 'core_2d1n_chivor',
       collected_people: 2,
       collected_date: 'agosto',
       collected_transport_need: 'own',

@@ -1,0 +1,20 @@
+{
+  "id": "coscuez-tier-word-quote-card",
+  "source": "regression 2026-10-14: 'Si el más completo' on Coscuez stored no plan, so the price turn had no QUOTE LOCK and shipped no plan card; '28 noviembre' was stored month-only",
+  "tags": ["plan", "multisite"],
+  "lang": "es",
+  "seedSystem": { "reopenPausedSites": true },
+  "criteria": [
+    { "id": "price-turn-flagged", "rule": "output_flag_equals", "flag": "priceJustGiven", "expected": true, "turn": 6, "weight": 2, "critical": true },
+    { "id": "card-plan-is-coscuez-prime", "rule": "output_flag_equals", "flag": "mediaPlanId", "expected": "prime_2d1n_coscuez", "turn": 6, "weight": 2, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 6, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "Hola", "mockReply": "¡Hola! Tenemos dos destinos esmeralderos: Chivor y Coscuez. ¿Cuál te llama más?", "expect": { "shouldSendReply": true } },
+    { "user": "Coscuez", "mockReply": "Buenísimo, Coscuez es mina real y caminata al mirador. ¿Vienen en pareja, solos o en grupo?", "expect": { "shouldSendReply": true } },
+    { "user": "Pareja", "mockReply": "En Coscuez hay dos formas de vivirlo. ¿Buscan la experiencia esencial, con una mina y caminata al mirador, o la más completa que suma Fura y Tena el segundo día?", "expect": { "shouldSendReply": true } },
+    { "user": "Si el más completo", "mockReply": "Perfecto. El PRIME de Coscuez suma Fura y Tena el segundo día. ¿Tienen alguna fecha aproximada en mente?", "expect": { "shouldSendReply": true, "mediaPlanId": "prime_2d1n_coscuez" } },
+    { "user": "No todavia", "mockReply": "Entendido. Publicadas tenemos el 24 y 31 de octubre, 14 y 28 de noviembre, y 12 de diciembre. ¿Qué mes les viene mejor?", "expect": { "shouldSendReply": true } },
+    { "user": "28 noviembre suena bien", "mockReply": "El 28 de noviembre entonces. Para 2 personas, PRIME Coscuez queda en *$1.840.000*. ¿Qué te parece?", "expect": { "shouldSendReply": true, "priceJustGiven": true, "mediaPlanId": "prime_2d1n_coscuez" } }
+  ]
+}

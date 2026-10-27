@@ -220,3 +220,37 @@ describe('hasAskedSince', () => {
     expect(repos.followupSubscriptionEvent.hasAskedSince(PHONE, isoAgo(60))).toBe(false);
   });
 });
+
+// Owner decision 2026-10-26: no permission ask while the team holds the booking.
+// The gate lives only in the candidate SQL, so the sender and the digest agree.
+describe('consent ask skipped during a booking exchange', () => {
+  let db: Database.Database;
+  let repos: Repositories;
+
+  beforeEach(() => {
+    db = new Database(':memory:');
+    migrate(db);
+    repos = createRepositories(db);
+  });
+
+  const candidates = () => repos.conversation.listConsentAskCandidates({
+    silentSinceIso: isoAgo(2),
+    windowExpiryIso: isoAgo(24 * 60),
+    limit: 10,
+  });
+
+  it('excludes a human_pending lead from the consent-ask candidates', () => {
+    seedUnansweredLead(db, 5);
+    repos.conversation.setMode(PHONE, 'human_pending');
+    expect(candidates()).toHaveLength(0);
+  });
+
+  // A lead who went silent right after the booking question is still a dormant,
+  // high-value lead. It must stay askable while the conversation is in bot mode.
+  it('keeps a bot-mode lead eligible even when the last bot message is the booking question', () => {
+    seedUnansweredLead(db, 5);
+    db.prepare(`INSERT INTO messages (customer_phone, direction, message_type, body, created_at) VALUES (?, 'outbound', 'text', ?, ?)`)
+      .run(PHONE, 'Primero confirmo el cupo con el equipo. ¿Quieres que iniciemos la reserva?', isoAgo(1));
+    expect(candidates()).toHaveLength(1);
+  });
+});

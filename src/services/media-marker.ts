@@ -11,7 +11,7 @@
 
 import { logger } from '../config/logger.js';
 import type { Skills } from './skill-loader.js';
-import { getGalleryImages, getTypeKeywords } from './product-registry.js';
+import { findActiveExperience, getGalleryImages, getMediaTypes, getSites, getTypeKeywords } from './product-registry.js';
 
 export const MEDIA_REQUEST_MARKER_PREFIX = '[[FOTOS:';
 
@@ -85,16 +85,34 @@ function normalize(value: string): string {
  * of a site that actually holds photos of that type. Merging vocabularies across
  * sites would let one site's wording pull another site's photos.
  *
- * A preferred plan site wins. Without one, a theme present at multiple sites is
- * ambiguous and is dropped rather than selecting the first site by declaration
- * order. Never invents fallback categories.
+ * A preferred plan site wins. Without one, a multi-site experience resolves
+ * nothing (no destination chosen yet), and a theme present at multiple sites of
+ * an unscoped feed is ambiguous and dropped rather than picking the first site.
+ *
+ * `fallbackTheme` (the site plans' catalog `galleryTheme`, see
+ * `getSiteFallbackGalleryTheme`) replaces a theme the preferred site has no photos
+ * of, so a request the site cannot honour yet still ships that site's own photos
+ * instead of failing the turn. It applies only with a preferred site and only to
+ * a theme that site holds photos of: never another site's photos. The requested
+ * theme must be a real category (photos at another site, or declared in some
+ * site's `media.types`); an invented theme is still dropped and alerts.
  */
 export function resolveMediaThemes(
   skills: Skills,
   requestedThemes: string[],
   experienceId?: string | null,
   preferredSiteId?: string | null,
+  fallbackTheme?: string | null,
 ): ResolvedMediaTheme[] {
+  // With several destinations and none chosen, a theme found at one site is still
+  // that site's photo, not an answer for this lead: photos of a site the customer
+  // has not chosen are an offer, never a delivery. Mirrors selectThemedImage.
+  const experience = experienceId ? findActiveExperience(skills, experienceId) : null;
+  if (!preferredSiteId && experience && getSites(experience).length > 1) {
+    logger.warn({ themes: requestedThemes }, '[MEDIA] no destination chosen on a multi-site experience — no photos');
+    return [];
+  }
+
   const galleryPhotos = getGalleryImages(skills, experienceId);
 
   if (galleryPhotos.length === 0) {
@@ -112,6 +130,7 @@ export function resolveMediaThemes(
     typesBySite.set(siteId, types);
   }
 
+  const knownTypes = new Set(getMediaTypes(skills, experienceId));
   const resolved: ResolvedMediaTheme[] = [];
   for (const theme of requestedThemes) {
     const normalizedTheme = normalize(theme);
@@ -134,8 +153,21 @@ export function resolveMediaThemes(
     const match = preferredSiteId
       ? matches.find(candidate => candidate.siteId === preferredSiteId)
       : matches.length === 1 ? matches[0] : undefined;
+    // Only a real category another site has, or one the catalog declares: an
+    // invented theme stays unresolved so `media_marker_unhonoured` still alerts.
+    const knownCategory = matches.length > 0 || knownTypes.has(normalizedTheme);
+    const fallback = !match && knownCategory && preferredSiteId && fallbackTheme
+      && typesBySite.get(preferredSiteId)?.has(fallbackTheme)
+      ? { siteId: preferredSiteId, type: fallbackTheme }
+      : undefined;
     if (match) resolved.push(match);
-    else logger.warn(
+    else if (fallback) {
+      resolved.push(fallback);
+      logger.info(
+        { theme, preferredSiteId, fallbackTheme },
+        '[MEDIA] site has no photos for theme — sending its plan gallery theme instead',
+      );
+    } else logger.warn(
       { theme, preferredSiteId, matchingSites: matches.map(candidate => candidate.siteId) },
       matches.length > 1
         ? '[MEDIA] theme is ambiguous across sites'

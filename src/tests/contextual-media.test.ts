@@ -4,11 +4,19 @@ import Database from 'better-sqlite3';
 import { migrate } from '../db/migrate.js';
 import { createRepositories, type Repositories } from '../db/repositories/index.js';
 import { loadSkills, type Skills } from '../services/skill-loader.js';
-import { getActiveExperience, getTypeKeywords } from '../services/product-registry.js';
+import { getActiveExperience, getSiteFallbackGalleryTheme, getTypeKeywords, isGalleryImageForPlan, scopeGalleryToPlan } from '../services/product-registry.js';
+import { resolveMediaThemes } from '../services/media-marker.js';
 import { followupGalleryMediaId, galleryMediaId } from '../services/media-service.js';
 import { detectMediaType, detectRequestedGalleryThemes, selectContextualImage, selectThemedImage } from '../services/contextual-media.js';
 import { parseEntryMarker } from '../services/entry-marker.js';
 import { insertMediaSendAt } from './helpers/db-test-helpers.js';
+import { useAllSitesActive } from './helpers/all-sites-catalog.js';
+
+// The multi-site regression net runs with every destination active, as the CI
+// fixture had before destinations could be paused.
+beforeEach(() => {
+  useAllSitesActive();
+});
 
 const ORIGINAL_ENV = {
   CONTEXTUAL_IMAGES_ENABLED: env.CONTEXTUAL_IMAGES_ENABLED,
@@ -16,6 +24,39 @@ const ORIGINAL_ENV = {
   CONTEXTUAL_IMAGES_MAX_PER_72H: env.CONTEXTUAL_IMAGES_MAX_PER_72H,
   CONTEXTUAL_IMAGES_PROBABILITY: env.CONTEXTUAL_IMAGES_PROBABILITY,
 };
+
+describe('generic and recovery gallery themes', () => {
+  it.each([
+    ['chivor', 'prime_2d1n_chivor', 'mine'],
+    ['coscuez', 'core_2d1n_coscuez', 'mine'],
+    ['coscuez', 'prime_2d1n_coscuez', 'furaytena'],
+  ])('uses the eligible catalog theme for %s / %s', (siteId, planId, theme) => {
+    const skills = loadSkills();
+    const experienceId = getActiveExperience(skills).id;
+    expect(detectRequestedGalleryThemes(skills, 'tienes fotos de la experiencia?', experienceId, siteId, planId)).toEqual([theme]);
+    expect(detectRequestedGalleryThemes(skills, 'esas no son de aca', experienceId, siteId, planId, true)).toEqual([theme]);
+  });
+
+  it('keeps unknown subjects, unchosen destinations and restricted excursions unresolved', () => {
+    const skills = loadSkills();
+    const experienceId = getActiveExperience(skills).id;
+    expect(detectRequestedGalleryThemes(skills, 'tienes fotos del helicoptero?', experienceId, 'chivor', 'prime_2d1n_chivor')).toEqual([]);
+    expect(detectRequestedGalleryThemes(skills, 'tienes fotos de la experiencia?', experienceId)).toEqual([]);
+    expect(detectRequestedGalleryThemes(skills, 'esas son de otro lado', experienceId, null, null, true)).toEqual([]);
+    expect(detectRequestedGalleryThemes(skills, 'fotos de Fura y Tena', experienceId, 'coscuez', 'core_2d1n_coscuez')).toEqual([]);
+    expect(detectRequestedGalleryThemes(skills, 'fotos de la experiencia', experienceId, 'coscuez')).toEqual(['mine']);
+  });
+
+  it('does not invent a theme when the selected destination has no eligible photos', () => {
+    const skills = loadSkills();
+    const experienceId = getActiveExperience(skills).id;
+    const withoutPhotos: Skills = {
+      ...skills,
+      dynamicMedia: { ...skills.dynamicMedia!, galleryImages: skills.dynamicMedia!.galleryImages.filter(image => image.siteId !== 'coscuez') },
+    };
+    expect(detectRequestedGalleryThemes(withoutPhotos, 'fotos de la experiencia', experienceId, 'coscuez', 'core_2d1n_coscuez')).toEqual([]);
+  });
+});
 
 function buildSkills(): Skills {
   const base = loadSkills();
@@ -95,7 +136,10 @@ describe('detectMediaType', () => {
     )).toBe('mine');
   });
 
-  it('resolves an explicit route-photo request to the existing nature gallery', () => {
+  // The fixture's `nature` type was dropped with its only photo, which was never
+  // published (404). A theme with no photos must not resolve: a cue for it promises
+  // a photo the engine cannot send.
+  it('resolves no theme for a route-photo request when the site has no nature gallery', () => {
     const skills = loadSkills();
     const experience = getActiveExperience(skills);
     const siteId = experience.plans[0]?.siteId;
@@ -106,7 +150,7 @@ describe('detectMediaType', () => {
       'Super, alguna foto de la ruta porfa',
       experience.id,
       siteId,
-    )).toEqual(['nature']);
+    )).toEqual([]);
   });
 
   it('matches normalized 4x4 keyword', () => {
@@ -203,7 +247,7 @@ describe('selectContextualImage', () => {
   it('is not suppressed by a plan image send', () => {
     env.CONTEXTUAL_IMAGES_ENABLED = true;
     const { db, repos } = freshRepos();
-    repos.mediaSend.recordSend(phone, 'plan_2d1n_mining');
+    repos.mediaSend.recordSend(phone, 'plan_core_2d1n_chivor');
     const result = selectContextualImage(skills, repos, phone, 'Quiero ir en moto hasta Ubala', undefined);
     expect(result.type).toBe('bike');
     expect(result.image).not.toBeNull();
@@ -287,7 +331,7 @@ describe('selectContextualImage', () => {
   it('is unaffected by the probability gate via selectThemedImage', () => {
     env.CONTEXTUAL_IMAGES_PROBABILITY = 0;
     const { db, repos } = freshRepos();
-    expect(selectThemedImage(skills, repos, phone, 'mine', undefined)).not.toBeNull();
+    expect(selectThemedImage(skills, repos, phone, 'mine', undefined, 'chivor')).not.toBeNull();
     db.close();
   });
 
@@ -311,14 +355,28 @@ describe('selectThemedImage', () => {
 
   it('returns an image of the requested type', () => {
     const { db, repos } = freshRepos();
-    expect(selectThemedImage(skills, repos, phone, 'bike', undefined)?.type).toBe('bike');
+    expect(selectThemedImage(skills, repos, phone, 'bike', undefined, 'chivor')?.type).toBe('bike');
     db.close();
   });
 
+  // Restored original contract: without the opt-in, a theme the site has no photo
+  // of returns null rather than another theme (the template header relies on it to
+  // fall through to the plan card).
   it('returns null for an empty or unknown type instead of a wrong-theme image', () => {
     const { db, repos } = freshRepos();
-    expect(selectThemedImage(skills, repos, phone, '', undefined)).toBeNull();
-    expect(selectThemedImage(skills, repos, phone, 'hotel', undefined)).toBeNull();
+    expect(selectThemedImage(skills, repos, phone, '', undefined, 'chivor')).toBeNull();
+    expect(selectThemedImage(skills, repos, phone, 'hotel', undefined, 'chivor')).toBeNull();
+    db.close();
+  });
+
+  // Opt-in (consent ask): the site has no hotel photos, so its plans' catalog
+  // galleryTheme (mine) stands in, from the same site.
+  it('with siteFallback, uses the site plan gallery theme when the site has no photo of the type', () => {
+    const { db, repos } = freshRepos();
+    const picked = selectThemedImage(skills, repos, phone, 'hotel', undefined, 'chivor', {});
+    expect(picked?.type).toBe('mine');
+    expect(picked?.siteId).toBe('chivor');
+    expect(selectThemedImage(skills, repos, phone, 'hotle_typo', undefined, 'chivor', {})).toBeNull();
     db.close();
   });
 
@@ -328,7 +386,7 @@ describe('selectThemedImage', () => {
     const { db, repos } = freshRepos();
     const bike = skills.dynamicMedia!.galleryImages.find(image => image.type === 'bike')!;
     repos.mediaSend.recordSend(phone, galleryMediaId(bike));
-    expect(selectThemedImage(skills, repos, phone, 'bike', undefined)?.url).toBe(bike.url);
+    expect(selectThemedImage(skills, repos, phone, 'bike', undefined, 'chivor')?.url).toBe(bike.url);
     db.close();
   });
 
@@ -346,7 +404,7 @@ describe('selectThemedImage', () => {
     repos.mediaSend.recordSend(phone, galleryMediaId(mineImages[0]));
     repos.mediaSend.recordSend(phone, followupGalleryMediaId(mineImages[1]));
 
-    const picked = selectThemedImage(threeMineSkills, repos, phone, 'mine', undefined);
+    const picked = selectThemedImage(threeMineSkills, repos, phone, 'mine', undefined, 'chivor');
 
     expect(picked?.url).toBe(thirdMine.url);
     db.close();
@@ -359,7 +417,7 @@ describe('selectThemedImage', () => {
     env.CONTEXTUAL_IMAGES_MAX_PER_72H = 1;
     const { db, repos } = freshRepos();
 
-    const picked = selectThemedImage(skills, repos, phone, 'mine', undefined);
+    const picked = selectThemedImage(skills, repos, phone, 'mine', undefined, 'chivor');
     expect(picked).not.toBeNull();
     repos.mediaSend.recordSend(phone, followupGalleryMediaId(picked!));
 
@@ -369,11 +427,22 @@ describe('selectThemedImage', () => {
     db.close();
   });
 
+  // Live 2026-10-14: a Coscuez lead with no stored plan got a Chivor consent-ask
+  // photo, because Coscuez had no gallery and Chivor was the only candidate site.
+  it('returns null with several destinations and no known site, even when one site has photos', () => {
+    const skills = buildSkills();
+    const { db, repos } = freshRepos();
+    expect(selectThemedImage(skills, repos, phone, 'mine', undefined)).toBeNull();
+    expect(selectThemedImage(skills, repos, phone, 'mine', undefined, 'coscuez')).toBeNull();
+    expect(selectThemedImage(skills, repos, phone, 'mine', undefined, 'chivor')?.siteId).toBe('chivor');
+    db.close();
+  });
+
   it('returns null when image sending is disabled', () => {
     const previous = env.SEND_IMAGES_ENABLED;
     env.SEND_IMAGES_ENABLED = false;
     const { db, repos } = freshRepos();
-    expect(selectThemedImage(skills, repos, phone, 'bike', undefined)).toBeNull();
+    expect(selectThemedImage(skills, repos, phone, 'bike', undefined, 'chivor')).toBeNull();
     env.SEND_IMAGES_ENABLED = previous;
     db.close();
   });
@@ -432,7 +501,7 @@ describe('selectContextualImage with entry marker filtering', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0);
 
     const result = selectContextualImage(
-      skills, repos, phone, 'La camioneta 4x4 llega a la mina', experienceId, undefined, parseEntryMarker('C02'),
+      skills, repos, phone, 'La camioneta 4x4 llega a la mina', experienceId, 'chivor', parseEntryMarker('C02'),
     );
 
     expect(result).toEqual({ image: null, type: null });
@@ -464,6 +533,177 @@ describe('selectContextualImage with entry marker filtering', () => {
     );
 
     expect(result.image?.type).toBe('bike');
+    db.close();
+  });
+});
+
+// Coscuez has mine/hotel photos only; kids/bike/car/beekeeping are not shot yet.
+// A request the site cannot honour must still ship that site's own photos.
+describe('site gallery fallback (site missing a photo category)', () => {
+  const phone = '573004445599';
+
+  function coscuezSkills(planTheme: string | undefined): Skills {
+    const base = loadSkills();
+    const experience = getActiveExperience(base);
+    const experiences = base.andeanScapes.experiences.map(exp => exp.id !== experience.id ? exp : {
+      ...exp,
+      plans: exp.plans.map(plan => plan.siteId === 'coscuez' ? { ...plan, galleryTheme: planTheme } : plan),
+    });
+    const coscuezImage = (file: string, type: string) => ({
+      experienceId: experience.id, siteId: 'coscuez', url: `https://cdn.andeanscapes.com/${file}`, caption: '', type,
+    });
+    return {
+      ...base,
+      andeanScapes: { ...base.andeanScapes, experiences },
+      dynamicMedia: {
+        ownerImage: null,
+        planImages: [],
+        galleryImages: [
+          { experienceId: experience.id, siteId: 'chivor', url: 'https://cdn.andeanscapes.com/chivor-kids.jpg', caption: '', type: 'kids' },
+          { experienceId: experience.id, siteId: 'chivor', url: 'https://cdn.andeanscapes.com/chivor-mine.jpg', caption: '', type: 'mine' },
+          coscuezImage('coscuez-mine.jpg', 'mine'),
+          coscuezImage('coscuez-hotel.jpg', 'hotel'),
+        ],
+        siteTypes: {
+          [`${experience.id}/chivor`]: ['mine', 'kids'],
+          [`${experience.id}/coscuez`]: ['mine', 'hotel'],
+        },
+        typeKeywords: {},
+      },
+    };
+  }
+
+  const experienceId = (skills: Skills): string => getActiveExperience(skills).id;
+  const coscuezPlanId = (skills: Skills): string =>
+    getActiveExperience(skills).plans.find(plan => plan.siteId === 'coscuez')!.id;
+
+  it('derives the fallback from the site plans, only when that theme has photos there', () => {
+    const skills = coscuezSkills('mine');
+    expect(getSiteFallbackGalleryTheme(skills, experienceId(skills), 'coscuez')).toBe('mine');
+    expect(getSiteFallbackGalleryTheme(skills, experienceId(skills), 'coscuez', coscuezPlanId(skills))).toBe('mine');
+    expect(getSiteFallbackGalleryTheme(coscuezSkills('kids'), experienceId(skills), 'coscuez')).toBeNull();
+    expect(getSiteFallbackGalleryTheme(coscuezSkills(undefined), experienceId(skills), 'coscuez')).toBeNull();
+    expect(getSiteFallbackGalleryTheme(skills, experienceId(skills), null)).toBeNull();
+  });
+
+  it('a [[FOTOS:kids]] marker for Coscuez ships Coscuez mine photos, never Chivor kids', () => {
+    const skills = coscuezSkills('mine');
+    const fallback = getSiteFallbackGalleryTheme(skills, experienceId(skills), 'coscuez');
+    expect(resolveMediaThemes(skills, ['kids'], experienceId(skills), 'coscuez', fallback))
+      .toEqual([{ siteId: 'coscuez', type: 'mine' }]);
+  });
+
+  it('keeps a theme the site does have, and leaves Chivor untouched', () => {
+    const skills = coscuezSkills('mine');
+    const fallback = getSiteFallbackGalleryTheme(skills, experienceId(skills), 'coscuez');
+    expect(resolveMediaThemes(skills, ['hotel'], experienceId(skills), 'coscuez', fallback))
+      .toEqual([{ siteId: 'coscuez', type: 'hotel' }]);
+    expect(resolveMediaThemes(skills, ['kids'], experienceId(skills), 'chivor', null))
+      .toEqual([{ siteId: 'chivor', type: 'kids' }]);
+  });
+
+  it('without a plan gallery theme the old behaviour stands: nothing resolves', () => {
+    const skills = coscuezSkills(undefined);
+    const fallback = getSiteFallbackGalleryTheme(skills, experienceId(skills), 'coscuez');
+    expect(resolveMediaThemes(skills, ['kids'], experienceId(skills), 'coscuez', fallback)).toEqual([]);
+  });
+
+  it('never falls back for an invented theme, so the unhonoured-marker alert still fires', () => {
+    const skills = coscuezSkills('mine');
+    const fallback = getSiteFallbackGalleryTheme(skills, experienceId(skills), 'coscuez');
+    expect(resolveMediaThemes(skills, ['no_such_theme'], experienceId(skills), 'coscuez', fallback)).toEqual([]);
+  });
+
+  // Two destinations, none chosen: a theme only Chivor has must not ship Chivor's
+  // photos to this lead, nor be cued to the model.
+  it('resolves and cues nothing on a multi-site experience with no destination chosen', () => {
+    const skills = coscuezSkills('mine');
+    expect(resolveMediaThemes(skills, ['kids'], experienceId(skills), null, null)).toEqual([]);
+    expect(resolveMediaThemes(skills, ['mine'], experienceId(skills), null, null)).toEqual([]);
+    expect(detectRequestedGalleryThemes(skills, 'fotos de los ninos', experienceId(skills), null)).toEqual([]);
+    expect(resolveMediaThemes(skills, ['kids'], experienceId(skills), 'chivor', null))
+      .toEqual([{ siteId: 'chivor', type: 'kids' }]);
+  });
+
+  it('never falls back without a known site', () => {
+    const skills = coscuezSkills('mine');
+    expect(resolveMediaThemes(skills, ['bike'], experienceId(skills), null, 'mine')).toEqual([]);
+  });
+
+  it('the consent-ask photo for a Coscuez lead uses Coscuez mine photos when kids is configured', () => {
+    const { db, repos } = freshRepos();
+    const skills = coscuezSkills('mine');
+    const picked = selectThemedImage(skills, repos, phone, 'kids', undefined, 'coscuez', { planId: coscuezPlanId(skills) });
+    expect(picked?.url).toBe('https://cdn.andeanscapes.com/coscuez-mine.jpg');
+    // Template header path (no opt-in) keeps null so the plan card wins.
+    expect(selectThemedImage(skills, repos, phone, 'kids', undefined, 'coscuez')).toBeNull();
+    db.close();
+  });
+});
+
+// Fura y Tena is a PRIME-only Coscuez excursion: photos tagged planIds reach only
+// that plan, and the site fallback never substitutes a plan-specific theme.
+describe('plan-restricted gallery photos', () => {
+  const phone = '573004445588';
+
+  function primeExcursionSkills(): { skills: Skills; core: string; prime: string } {
+    const base = loadSkills();
+    const experience = getActiveExperience(base);
+    const coscuezPlans = experience.plans.filter(plan => plan.siteId === 'coscuez');
+    const prime = coscuezPlans.find(plan => plan.id.startsWith('prime'))!.id;
+    const core = coscuezPlans.find(plan => plan.id.startsWith('core'))!.id;
+    const experiences = base.andeanScapes.experiences.map(exp => exp.id !== experience.id ? exp : {
+      ...exp,
+      plans: exp.plans.map(plan => plan.siteId !== 'coscuez' ? plan : { ...plan, galleryTheme: plan.id === prime ? 'furaytena' : 'mine' }),
+    });
+    const image = (file: string, type: string, planIds?: string[]) => ({
+      experienceId: experience.id, siteId: 'coscuez', url: `https://cdn.andeanscapes.com/${file}`, caption: '', type,
+      ...(planIds ? { planIds } : {}),
+    });
+    const skills: Skills = {
+      ...base,
+      andeanScapes: { ...base.andeanScapes, experiences },
+      dynamicMedia: {
+        ownerImage: null,
+        planImages: [],
+        galleryImages: [image('mine.jpg', 'mine'), image('fura.jpg', 'furaytena', [prime])],
+        siteTypes: { [`${experience.id}/coscuez`]: ['mine', 'furaytena'] },
+        typeKeywords: { [`${experience.id}/coscuez`]: { mine: ['mina'], furaytena: ['fura'] } },
+      },
+    };
+    return { skills, core, prime };
+  }
+
+  it('isGalleryImageForPlan: unrestricted for everyone, restricted only for listed plans', () => {
+    const open = { url: 'u', caption: '' };
+    const prime = { url: 'u', caption: '', planIds: ['prime'] };
+    expect(isGalleryImageForPlan(open, null)).toBe(true);
+    expect(isGalleryImageForPlan(prime, 'prime')).toBe(true);
+    expect(isGalleryImageForPlan(prime, 'core')).toBe(false);
+    expect(isGalleryImageForPlan(prime, null)).toBe(false);
+  });
+
+  it('scopeGalleryToPlan drops the excursion for CORE and keeps it for PRIME', () => {
+    const { skills, core, prime } = primeExcursionSkills();
+    const types = (scoped: Skills) => scoped.dynamicMedia!.galleryImages.map(image => image.type);
+    expect(types(scopeGalleryToPlan(skills, core))).toEqual(['mine']);
+    expect(types(scopeGalleryToPlan(skills, null))).toEqual(['mine']);
+    expect(types(scopeGalleryToPlan(skills, prime))).toEqual(['mine', 'furaytena']);
+  });
+
+  it('the fallback is never the plan-only theme: PRIME falls back to mine', () => {
+    const { skills, core, prime } = primeExcursionSkills();
+    const experienceId = getActiveExperience(skills).id;
+    expect(getSiteFallbackGalleryTheme(skills, experienceId, 'coscuez', prime)).toBe('mine');
+    expect(getSiteFallbackGalleryTheme(skills, experienceId, 'coscuez', core)).toBe('mine');
+    expect(getSiteFallbackGalleryTheme(skills, experienceId, 'coscuez')).toBe('mine');
+  });
+
+  it('a CORE consent-ask photo configured as furaytena falls back to mine, never the excursion', () => {
+    const { skills, core } = primeExcursionSkills();
+    const { db, repos } = freshRepos();
+    const picked = selectThemedImage(scopeGalleryToPlan(skills, core), repos, phone, 'furaytena', undefined, 'coscuez', { planId: core });
+    expect(picked?.url).toBe('https://cdn.andeanscapes.com/mine.jpg');
     db.close();
   });
 });

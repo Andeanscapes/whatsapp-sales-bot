@@ -1,0 +1,20 @@
+{
+  "id": "chivor-basic-late-return-upgrade",
+  "source": "customer replay 2026-10-26: BASIC customer worried about returning late got a logistics question instead of the overnight plan that solves it",
+  "tags": ["plan", "objection", "live"],
+  "lang": "es",
+  "liveRuns": 1,
+  "minLiveScore": 85,
+  "criteria": [
+    { "id": "upgrade-suggested", "rule": "reply_must_match", "patterns": ["\\bCORE\\b|\\bPRIME\\b"], "turn": 4, "critical": true },
+    { "id": "overnight-benefit", "rule": "reply_must_match", "patterns": ["noche|dorm|alojamiento|hacienda|domingo"], "turn": 4, "critical": true },
+    { "id": "no-unrequested-price", "rule": "reply_must_not_match", "patterns": ["\\$|\\bCOP\\b"], "turn": 4, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 4, "critical": true }
+  ],
+  "turns": [
+    { "user": "hola", "mockReply": "Hola, soy Heinner de Andean Scapes. ¿Vienen en pareja, solos o en grupo?", "expect": { "shouldSendReply": true } },
+    { "user": "pareja", "mockReply": "Tenemos BASIC pasadía sin noche, CORE con una mina y alojamiento, y PRIME con dos minas y cabalgata. ¿Cuál les encaja más?", "expect": { "shouldSendReply": true } },
+    { "user": "la basica", "mockReply": "BASIC es el pasadía con mina guiada, caminata, desayuno y almuerzo. Para 2 personas queda en $740.000 COP, equivalente a $370.000 COP por persona. ¿Qué fecha tienen en mente?", "expect": { "shouldSendReply": true, "priceJustGiven": true } },
+    { "user": "y termina muy tarde la experiencia? no quisiera regresar tan tarde", "mockReply": "El BASIC regresa el mismo día en la tarde; la hora exacta la confirma el equipo. Si no quieren manejar de noche, el CORE incluye alojamiento en la hacienda y regresan el domingo después del mediodía, con luz. ¿Quieren que les compare los dos?", "expect": { "shouldSendReply": true } }
+  ]
+}

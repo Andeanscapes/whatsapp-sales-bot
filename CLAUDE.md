@@ -38,5 +38,5 @@ npm run eval:conversations:llm-bot
   request needs the marker again
 - Conversation = natural inbound only; automated outbound = 3 gated paths (post-24h template, consent ask, recurring template)
 - Never log WhatsApp/DeepSeek/Telegram secrets; bind Fastify to `127.0.0.1`
-- Live eval = 20 scenarios / ~$0.37. Deterministic pack = 31 scenarios. A live-only
+- Live eval = 32 scenarios / ~$0.50. Deterministic pack = 49 scenarios. A live-only
   failure is often scenario fidelity, not the prompt

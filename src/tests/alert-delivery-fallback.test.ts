@@ -78,7 +78,7 @@ describe('sendAlert — per-line delivery', () => {
   it('includes stored qualification and acquisition context', async () => {
     pinBridgeLine();
     repos.conversation.upsert(PHONE, {
-      collected_plan: '2d1n_mining',
+      collected_plan: 'core_2d1n_chivor',
       collected_adults: 2,
       collected_children: 1,
       collected_child_ages_json: '[9]',
@@ -96,7 +96,7 @@ describe('sendAlert — per-line delivery', () => {
     }, repos);
 
     const body = String(mockSendTelegram.mock.calls[0]?.[1]);
-    expect(body).toContain('Plan: 2d1n_mining');
+    expect(body).toContain('Plan: core_2d1n_chivor');
     expect(body).toContain('Adultos: 2');
     expect(body).toContain('Ninos: 1');
     expect(body).toContain('Edades ninos: 9');
@@ -169,6 +169,20 @@ describe('sendAlert — per-line delivery', () => {
 
     expect(mockSendTelegram).toHaveBeenCalledTimes(1);
     expect(repos.ownerAlert.wasAlertedToday(PHONE, 'unsafe_reservation_blocked')).toBe(true);
+  });
+
+  it('preserves and dedupes media failures independently of hot alerts', async () => {
+    pinBridgeLine();
+    mockSendTelegram.mockResolvedValue(undefined);
+    await sendAlert({ customerPhone: PHONE, score: 16, intent: 'hot_lead', message: 'me interesa' }, repos);
+    mockSendTelegram.mockClear();
+
+    const request = { customerPhone: PHONE, score: 16, intent: 'media_marker_unhonoured', message: 'fotos del hospedaje' };
+    await sendAlert(request, repos);
+    await sendAlert(request, repos);
+
+    expect(mockSendTelegram).toHaveBeenCalledTimes(1);
+    expect(repos.ownerAlert.wasAlertedToday(PHONE, 'media_marker_unhonoured')).toBe(true);
   });
 
   it('does not fall back when the failing chat IS the owner chat', async () => {
