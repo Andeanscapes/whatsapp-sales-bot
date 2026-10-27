@@ -1,0 +1,21 @@
+{
+  "id": "chivor-budget-to-pasadia",
+  "source": "customer replay: PRIME quote, budget objection, CORE comparison, then a request for a pasadia",
+  "tags": ["objection", "plan"],
+  "lang": "es",
+  "criteria": [
+    { "id": "offers-day-trip", "rule": "reply_must_match", "patterns": ["BASIC|pasad[ií]a"], "turn": 5, "critical": true },
+    { "id": "does-not-deny-day-trip", "rule": "reply_must_not_match", "patterns": ["solo.{0,35}2 d[ií]as|no (?:tenemos|manejamos|ofrecemos).{0,20}pasad[ií]a"], "turn": 5, "critical": true },
+    { "id": "day-trip-pair-price", "rule": "reply_must_match", "patterns": ["740[., ]000"], "turn": 6, "critical": true },
+    { "id": "basic-card", "rule": "output_flag_equals", "flag": "mediaPlanId", "expected": "basic_1d_chivor", "turn": 6, "critical": true },
+    { "id": "no-internal-marker", "rule": "reply_must_not_match", "patterns": ["\\[\\[\\s*FOTOS"], "turn": 6, "critical": true }
+  ],
+  "turns": [
+    { "user": "Somos 2 y queremos el PRIME en Chivor, cuanto vale?", "mockReply": "PRIME incluye dos minas, cabalgata y cuatro comidas. Para dos personas queda en $1.700.000 COP. ¿Tienen alguna fecha en mente?", "expect": { "priceJustGiven": true, "mediaPlanId": "prime_2d1n_chivor" } },
+    { "user": "no lo se se me sale del presupuesto", "mockReply": "CORE incluye una mina, caminata, alojamiento y cuatro comidas; para dos queda en $950.000 COP. ¿Quieres comparar su alcance?", "expect": { "shouldSendReply": true } },
+    { "user": "si", "mockReply": "CORE lleva una mina y caminata; PRIME agrega una segunda mina y cabalgata. ¿Cuál alcance les sirve más?", "expect": { "shouldSendReply": true } },
+    { "user": "todavia lo estamos pensando", "mockReply": "Podemos revisar una opción que les encaje mejor. ¿Buscan reducir el presupuesto o el tiempo del viaje?", "expect": { "shouldSendReply": true } },
+    { "user": "ok y tienes algun pasadia?", "mockReply": "Sí, BASIC es el pasadía: una mina, caminata, desayuno y almuerzo, sin noche de alojamiento. ¿Les sirve volver el mismo día?", "expect": { "shouldSendReply": true } },
+    { "user": "si quiero el BASIC pasadia para los dos, cuanto vale?", "mockReply": "BASIC para dos personas queda en $740.000 COP, sin alojamiento. ¿Qué fecha tienen en mente?", "expect": { "shouldSendReply": true, "priceJustGiven": true, "mediaPlanId": "basic_1d_chivor" } }
+  ]
+}

@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 import { loadSkills } from '../services/skill-loader.js';
 import { migrate } from '../db/migrate.js';
 import { createRepositories, type Repositories } from '../db/repositories/index.js';
-import { extractBookingFields, isAmbiguousPartyComparison, isCorrectionMessage, contextAwareExtract, detectPlan, isExplicitDateDeferral, isUncertainDateAnswer, isDateAskQuestion, isQualificationComplete, resolveLanguage, getLastAssistantQuestion, reconstructFromHistory } from '../services/qualification-engine.js';
+import { extractBookingFields, isAmbiguousPartyComparison, isCorrectionMessage, contextAwareExtract, detectPlan, isExplicitDateDeferral, isUncertainDateAnswer, isDateAskQuestion, isQualificationComplete, resolveLanguage, getLastAssistantQuestion, reconstructFromHistory, resolvePlanReference, isPlanQuestion } from '../services/qualification-engine.js';
 import { detectExplicitLanguageSwitch } from '../services/language-service.js';
 import { getActiveExperience } from '../services/product-registry.js';
 
@@ -543,6 +543,34 @@ describe('contextAwareExtract — people reply parsing', () => {
     expect(result.collected_date).toBe('14 de noviembre de 2027');
   });
 
+  // Live 2026-10-14: "28 noviembre suena bien" was stored as month-only "noviembre".
+  it.each([
+    ['28 noviembre suena bien', '28 de noviembre'],
+    ['el 14 Noviembre', '14 de noviembre'],
+    ['28 noviembre de 2026', '28 de noviembre de 2026'],
+    ['28 de noviembre suena bien', '28 de noviembre'],
+    ['sería el 28 noviembre', '28 de noviembre'],
+    ['ok, 28 noviembre', '28 de noviembre'],
+    ['somos 2 y el 28 noviembre', '28 de noviembre'],
+  ])('stores a day+month without "de" as the canonical day-level date: %s', (message, expected) => {
+    expect(extractBookingFields(message).collected_date).toBe(expected);
+  });
+
+  it.each(['noviembre', 'somos 2, noviembre', 'somos 2 en noviembre', 'somos 2 noviembre'])(
+    'keeps a month-only answer month-only: %s', message => {
+      expect(extractBookingFields(message).collected_date).toBe('noviembre');
+    },
+  );
+
+  // A group size next to a month is not a day: a fake concrete date fires the T3b close.
+  it.each([
+    ['Seríamos 4 diciembre', 'diciembre'],
+    ['para 6 diciembre', 'diciembre'],
+    ['vamos 3 enero o febrero', 'enero'],
+  ])('never reads a people count as the day: %s', (message, month) => {
+    expect(extractBookingFields(message).collected_date).toBe(month);
+  });
+
   it('does not treat bare no as date when last question was people', () => {
     seedLastQuestion('Perfecto! ¿Cuantas personas serian?');
     const result = contextAwareExtract('no', repos, PHONE, {});
@@ -560,6 +588,18 @@ describe('contextAwareExtract — people reply parsing', () => {
     seedLastQuestion('¿Cómo te llamas?');
     const result = contextAwareExtract('Carlos', repos, PHONE, {});
     expect(result.collected_name).toBe('Carlos');
+  });
+
+  it('captures a name after a formal question ("¿Cómo se llama, para dejar la reserva a su nombre?")', () => {
+    seedLastQuestion('¿Cómo se llama, para dejar la reserva a su nombre?');
+    const result = contextAwareExtract('Juana', repos, PHONE, {});
+    expect(result.collected_name).toBe('Juana');
+  });
+
+  it('captures a name after "¿Cuál es su nombre?"', () => {
+    seedLastQuestion('¿Cuál es su nombre?');
+    const result = contextAwareExtract('Juana', repos, PHONE, {});
+    expect(result.collected_name).toBe('Juana');
   });
 
   it('skips an image caption to find the real last question', () => {
@@ -641,32 +681,24 @@ describe('detectPlan — ordinal / duration choice', () => {
   });
 
   it.each([
-    'Si el primero',
-    'el de 2',
-    'el de dos',
-    'el corto',
-    'plan de 2 dias',
-  ])('resolves "%s" to 2d1n_mining', (text) => {
-    expect(detectPlan(text, experience)).toBe('2d1n_mining');
+    'Si el primero', 'el de 2', 'el de dos', 'el corto', 'plan de 2 dias',
+    'el segundo', 'el de 3', 'el de tres', 'el largo', 'plan de 3 dias',
+    'el de 2 noches', 'el de dos noches', '2 noches', 'dos noches',
+  ])('does not infer a plan from ambiguous or absent catalog criteria: "%s"', text => {
+    expect(detectPlan(text, experience)).toBeNull();
   });
 
-  it.each([
-    'el segundo',
-    'el de 3',
-    'el de tres',
-    'el largo',
-    'plan de 3 dias',
-  ])('resolves "%s" to 3d2n_rural', (text) => {
-    expect(detectPlan(text, experience)).toBe('3d2n_rural');
-  });
-
-  it.each([
-    'el de 2 noches',
-    'el de dos noches',
-    '2 noches',
-    'dos noches',
-  ])('nights beat ordinals: "%s" → 3d2n_rural', (text) => {
-    expect(detectPlan(text, experience)).toBe('3d2n_rural');
+  it('matches distinct durations only through the request catalog', () => {
+    const scoped = {
+      ...experience,
+      plans: [
+        { ...experience.plans[0], id: 'short_visit', keywords: ['una noche'], selectionAliases: ['visita corta'] },
+        { ...experience.plans[1], id: 'long_visit', keywords: ['dos noches'], selectionAliases: ['visita larga'] },
+      ],
+    };
+    expect(detectPlan('el de dos noches', scoped)).toBe('long_visit');
+    expect(detectPlan('una noche', scoped)).toBe('short_visit');
+    expect(detectPlan('el primero', scoped)).toBeNull();
   });
 
   it('does not treat "la del primero" as a plan (date-list phrasing)', () => {
@@ -685,6 +717,32 @@ describe('detectPlan — ordinal / duration choice', () => {
 
     expect(detectPlan('quiero laguna azul', scoped)).toBe('lagoon_day');
     expect(detectPlan('quiero la mina', scoped)).toBeNull();
+  });
+
+  it('resolves plan using selectionAliases', () => {
+    const scoped = {
+      ...experience,
+      plans: experience.plans.filter(p => p.siteId === 'chivor').map(p => ({
+        ...p,
+        selectionAliases: p.id === 'core_2d1n_chivor' ? ['mina', 'emerald'] : p.id === 'prime_2d1n_chivor' ? ['bosque', 'forest'] : [],
+      })),
+    };
+
+    expect(detectPlan('quiero la mina', scoped)).toBe('core_2d1n_chivor');
+    expect(detectPlan('bosque experience', scoped)).toBe('prime_2d1n_chivor');
+  });
+
+  it('does not match selectionAliases from another plan', () => {
+    const scoped = {
+      ...experience,
+      plans: [{
+        ...experience.plans[0],
+        id: 'core_2d1n_chivor',
+        selectionAliases: ['mina'],
+      }],
+    };
+
+    expect(detectPlan('quiero el bosque', scoped)).toBeNull();
   });
 });
 
@@ -783,5 +841,221 @@ describe('resolveLanguage — stability', () => {
   it('defaults to es for unknown new conversation', () => {
     const lang = resolveLanguage(repos, PHONE, '123');
     expect(lang).toBe('es');
+  });
+});
+
+describe('resolvePlanReference — anaphoric plan switch', () => {
+  const experience = getActiveExperience(loadSkills());
+  const twoPlans = {
+    ...experience,
+    plans: [
+      { ...experience.plans[0], id: 'plan_a', keywords: ['mina'], selectionAliases: [] },
+      { ...experience.plans[1], id: 'plan_b', keywords: ['bosque'], selectionAliases: [] },
+    ],
+  };
+
+  it.each(['¿y el otro plan?', 'y la otra opción?', 'y el otro?', 'mejor el otro paquete'])(
+    'switches to the sibling plan: %s',
+    text => {
+      expect(resolvePlanReference(text, 'plan_a', null, twoPlans)).toBe('plan_b');
+    },
+  );
+
+  it.each(['viene otro amigo', 'otro día te confirmo', 'y el otro fin de semana?', 'somos 3 y otra persona'])(
+    'does not switch on an ordinary "otro": %s',
+    text => {
+      expect(resolvePlanReference(text, 'plan_a', null, twoPlans)).toBeNull();
+    },
+  );
+
+  it('does not resolve "el otro plan" without a stored plan', () => {
+    expect(resolvePlanReference('¿y el otro plan?', null, null, twoPlans)).toBeNull();
+  });
+
+  it('resolves "ese plan" to the plan named in the last bot question', () => {
+    expect(resolvePlanReference('me interesa ese plan', 'plan_b', '¿Te cuento más del de la mina?', twoPlans)).toBe('plan_a');
+  });
+
+  it.each(['Suena bien quiero esa entonces', 'sí, esa', 'esa', 'vamos con ese', 'nos quedamos con esa por favor'])(
+    'accepts the plan proposed in the closing question: %s',
+    text => {
+      const proposal = 'En el de bosque es aparte. Si les llama, el de la mina lo incluye. ¿Les suena más el de la mina?';
+      expect(resolvePlanReference(text, 'plan_b', proposal, twoPlans)).toBe('plan_a');
+    },
+  );
+
+  it.each(['no quiero esa', 'no, esa no', 'tampoco esa', 'no me gusta ese plan', 'no, el otro plan no'])(
+    'never resolves a negated reference: %s',
+    text => {
+      expect(resolvePlanReference(text, 'plan_b', '¿Les suena más el de la mina?', twoPlans)).toBeNull();
+    },
+  );
+
+  it('resolves a bare pronoun only from the closing question, never from the body', () => {
+    const dateQuestion = 'A diferencia del de bosque, el de la mina suma la cabalgata. ¿Les sirve el 28 de noviembre?';
+    expect(resolvePlanReference('sí, esa', 'plan_b', dateQuestion, twoPlans)).toBeNull();
+    expect(resolvePlanReference('me interesa ese plan', 'plan_b', 'El de la mina suma la cabalgata. ¿Qué fecha tienen?', twoPlans)).toBe('plan_a');
+  });
+
+  it('does not accept a bare "esa" when the last bot message proposes no single plan', () => {
+    expect(resolvePlanReference('quiero esa', 'plan_b', '¿Prefieren la mina o el bosque?', twoPlans)).toBeNull();
+  });
+
+  it.each(['quiero esa fecha', 'esa semana no puedo', 'ese día está bien'])(
+    'does not treat a bare pronoun with another noun as a plan choice: %s',
+    text => {
+      expect(resolvePlanReference(text, 'plan_b', '¿Les suena más el de la mina?', twoPlans)).toBeNull();
+    },
+  );
+
+  it.each(['ese fin de semana', 'de ese', 'ese mismo día'])(
+    'does not resolve a bare "ese": %s',
+    text => {
+      expect(resolvePlanReference(text, 'plan_b', '¿Te cuento más del de la mina?', twoPlans)).toBeNull();
+    },
+  );
+});
+
+describe('isPlanQuestion', () => {
+  it.each(['¿el CORE incluye cabalgata?', 'el core incluye cabalgata?', 'que incluye el prime', 'cuanto vale el prime', 'Y como es el prime ?', 'el prime cuánto sale?', '¿y el prime?', 'y el prime?', 'el prime que tal?'])(
+    'treats a plan comparison as a question: %s',
+    text => expect(isPlanQuestion(text)).toBe(true),
+  );
+
+  it.each(['quiero el prime', 'mejor el core', 'dale con el prime', 'el prime entonces?', 'mejor el prime?', 'Creo que el core por el presupuesto', 'quiero el prime, ¿cuánto vale?', 'mejor el prime, cuanto sale para 2?'])(
+    'treats a statement as a choice: %s',
+    text => expect(isPlanQuestion(text)).toBe(false),
+  );
+});
+
+describe('plan named inside a question', () => {
+  const CORE = 'core_2d1n_chivor';
+  const PRIME = 'prime_2d1n_chivor';
+  let db: Database.Database;
+  let repos: Repositories;
+  const phone = '573001119901';
+
+  beforeEach(() => {
+    loadSkills();
+    db = new Database(':memory:');
+    migrate(db);
+    repos = createRepositories(db);
+  });
+
+  const extract = (message: string) => {
+    const experience = getActiveExperience(loadSkills());
+    return contextAwareExtract(message, repos, phone, extractBookingFields(message, experience), experience);
+  };
+
+  it('does not replace a stored plan', () => {
+    repos.conversation.upsert(phone, { collected_plan: CORE });
+    expect(extract('Y como es el prime ?').collected_plan).toBeUndefined();
+    db.close();
+  });
+
+  it.each([
+    'y el otro plan tiene brochure?', 'brochure del otro plan', 'brochure del prime, el otro plan',
+    '¿qué incluye la comida del otro plan?', 'cuanto vale el hospedaje del otro plan?',
+  ])(
+    'keeps the stored plan during extraction and history reconstruction: %s', message => {
+      try {
+        repos.conversation.upsert(phone, { collected_plan: CORE });
+        expect(extract(message).collected_plan).toBeUndefined();
+        const experience = getActiveExperience(loadSkills());
+        repos.message.addMessage({
+          customer_phone: phone, direction: 'inbound', message_type: 'text',
+          body: 'quiero el core', created_at: new Date(Date.now() - 60_000).toISOString(),
+        });
+        repos.message.addMessage({
+          customer_phone: phone, direction: 'inbound', message_type: 'text',
+          body: message, created_at: new Date().toISOString(),
+        });
+        expect(reconstructFromHistory(repos, phone, { plan: CORE }, experience).plan).toBe(CORE);
+      } finally {
+        db.close();
+      }
+    },
+  );
+
+  it('still selects a plan when none is stored', () => {
+    expect(extract('¿cuánto vale el prime de Chivor?').collected_plan).toBe(PRIME);
+    db.close();
+  });
+
+  it('switches on a stated choice that only carries a question mark', () => {
+    repos.conversation.upsert(phone, { collected_plan: CORE });
+    expect(extract('el prime entonces?').collected_plan).toBe(PRIME);
+    db.close();
+  });
+
+  it('is skipped by the history scan when a plan is already chosen', () => {
+    const experience = getActiveExperience(loadSkills());
+    repos.message.addMessage({
+      customer_phone: phone, direction: 'inbound', message_type: 'text',
+      body: 'quiero el core', created_at: new Date(Date.now() - 120_000).toISOString(),
+    });
+    repos.message.addMessage({
+      customer_phone: phone, direction: 'inbound', message_type: 'text',
+      body: '¿y cómo es el prime?', created_at: new Date(Date.now() - 60_000).toISOString(),
+    });
+    repos.message.addMessage({
+      customer_phone: phone, direction: 'inbound', message_type: 'text',
+      body: 'ok', created_at: new Date().toISOString(),
+    });
+    expect(reconstructFromHistory(repos, phone, { plan: CORE }, experience).plan).toBe(CORE);
+    db.close();
+  });
+});
+
+describe('reconstructFromHistory — plan reference switch', () => {
+  it('keeps a stored plan switched by reference over an older keyword mention', () => {
+    const skills = loadSkills();
+    const experience = getActiveExperience(skills);
+    const [first, second] = experience.plans;
+    const firstKeyword = first?.selectionAliases?.[0] ?? first?.keywords?.[0];
+    if (!first || !second || !firstKeyword) throw new Error("fixture needs two plans with a keyword");
+    expect(detectPlan(firstKeyword, experience, first.siteId)).toBe(first.id);
+
+    const db = new Database(':memory:');
+    migrate(db);
+    const repos = createRepositories(db);
+    const phone = '573001112236';
+    repos.message.addMessage({
+      customer_phone: phone, direction: 'inbound', message_type: 'text',
+      body: firstKeyword, created_at: new Date(Date.now() - 60_000).toISOString(),
+    });
+    repos.message.addMessage({
+      customer_phone: phone, direction: 'inbound', message_type: 'text',
+      body: '¿y el otro plan?', created_at: new Date().toISOString(),
+    });
+
+    try {
+      expect(reconstructFromHistory(repos, phone, { plan: second.id }, experience).plan).toBe(second.id);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('still lets a newer keyword mention win over the stored plan', () => {
+    const skills = loadSkills();
+    const experience = getActiveExperience(skills);
+    const [first, second] = experience.plans;
+    const firstKeyword = first?.selectionAliases?.[0] ?? first?.keywords?.[0];
+    if (!first || !second || !firstKeyword) throw new Error("fixture needs two plans with a keyword");
+
+    const db = new Database(':memory:');
+    migrate(db);
+    const repos = createRepositories(db);
+    const phone = '573001112237';
+    repos.message.addMessage({
+      customer_phone: phone, direction: 'inbound', message_type: 'text',
+      body: firstKeyword, created_at: new Date().toISOString(),
+    });
+
+    try {
+      expect(reconstructFromHistory(repos, phone, { plan: second.id }, experience).plan).toBe(first.id);
+    } finally {
+      db.close();
+    }
   });
 });

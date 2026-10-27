@@ -8,6 +8,7 @@ import type { LlmResult, LlmTurn } from '../../services/llm/llm-client.js';
 import type { LlmClientInput } from '../../services/llm/llm-client.js';
 import type { Scenario, ScenarioTurn } from './schema.js';
 import { getDynamicService, getSkills, loadSkills, setDynamicService } from '../../services/skill-loader.js';
+import { useAllSitesActive } from '../helpers/all-sites-catalog.js';
 import { getActiveExperience } from '../../services/product-registry.js';
 import { DynamicDataService, PRICING_NOT_AVAILABLE } from '../../services/dynamic-data-service.js';
 import type { InternalDynamicData, InternalPaymentData } from '../../services/dynamic-data-service.js';
@@ -108,6 +109,10 @@ function createDynamicData(scenario: Scenario): InternalDynamicData {
           shortDescription: plan.shortDescription,
           benefits: plan.benefits,
           keywords: plan.keywords,
+          galleryTheme: plan.galleryTheme,
+          selectionAliases: plan.selectionAliases,
+          includedAddonIds: plan.includedAddonIds,
+          calculation: plan.calculation,
           clarifications: plan.clarifications ?? [],
           imageId: plan.imageId,
         })),
@@ -116,6 +121,10 @@ function createDynamicData(scenario: Scenario): InternalDynamicData {
           lastUpdated: seed?.currentDate ?? '2026-01-01',
           items: experience.pricing.items.map(item => ({
             id: item.id,
+            kind: item.kind,
+            category: item.category,
+            quoteMode: item.quoteMode,
+            role: item.role,
             siteId: DEFAULT_SITE_ID,
             planId: item.planId,
             label: item.label,
@@ -223,7 +232,17 @@ export function applyScenarioSeeds(ctx: RunContext, scenario: Scenario): () => v
   }
 
   const dynamicAvailable = scenario.seedSystem?.dynamicSkillAvailable;
-  const previousDynamicService = dynamicAvailable !== undefined ? getDynamicService() : null;
+  const reopenPausedSites = scenario.seedSystem?.reopenPausedSites === true;
+  if (reopenPausedSites && dynamicAvailable !== undefined) {
+    throw new Error(`${scenario.id}: reopenPausedSites cannot be combined with dynamicSkillAvailable`);
+  }
+  const previousDynamicService = dynamicAvailable !== undefined || reopenPausedSites ? getDynamicService() : null;
+  if (reopenPausedSites) useAllSitesActive();
+  const restoreReopened = (): void => {
+    if (!reopenPausedSites) return;
+    setDynamicService(previousDynamicService);
+    loadSkills();
+  };
   if (dynamicAvailable !== undefined) {
     setDynamicService(createDynamicService(dynamicAvailable ? createDynamicData(scenario) : null, dynamicAvailable));
     loadSkills();
@@ -233,6 +252,7 @@ export function applyScenarioSeeds(ctx: RunContext, scenario: Scenario): () => v
     exp.pricing.botRules = exp.pricing.botRules.filter(rule => rule !== PRICING_NOT_AVAILABLE);
     return () => {
       exp.pricing.botRules = prevRules;
+      restoreReopened();
     };
   }
 

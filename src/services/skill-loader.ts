@@ -4,7 +4,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import type { DynamicDataService, InternalDynamicData, InternalDynamicMedia, InternalExperienceData } from './dynamic-data-service.js';
 import { PRICING_NOT_AVAILABLE, AVAILABILITY_NOT_AVAILABLE, transformDynamicData } from './dynamic-data-service.js';
-import { assertDynamicCatalogReady, dynamicDataSchema } from './dynamic-data-schema.js';
+import { assertDynamicCatalogReady, dynamicDataSchema, planCalculationSchema, siteSelectionSchema } from './dynamic-data-schema.js';
 import { existsSync } from 'fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -35,6 +35,9 @@ const pricingItemSchema = z.object({
   peopleIncluded: z.number().int().nullable().optional(),
   minimumPeople: z.number().int().nullable().optional(),
   publiclyShow: z.boolean(),
+  category: z.enum(['optional', 'included', 'team_confirmation']).optional(),
+  quoteMode: z.enum(['separate', 'included_in_total', 'team_confirmation']).optional(),
+  role: z.enum(['activity', 'transport']).optional(),
   internalNote: z.string().optional(),
   botResponse: z.string().optional(),
 });
@@ -84,14 +87,17 @@ const experienceSchema = z.object({
   whatToBring: z.array(z.string()),
    plans: z.array(z.object({
      id: z.string(),
+     tier: z.string().min(1).optional(),
+     depositPercentage: z.number().min(0).max(100).optional(),
      siteId: z.string().optional(),
      name: z.string(),
      duration: z.string(),
      shortDescription: z.string(),
      benefits: z.string(),
-     keywords: z.array(z.string()),
-     imageId: z.string(),
-     clarifications: z.array(z.string()).default([]),
+      keywords: z.array(z.string()),
+      imageId: z.string(),
+      galleryTheme: z.string().optional(),
+      clarifications: z.array(z.string()).default([]),
      included: z.array(z.string()).default([]),
      notIncludedUnlessConfirmed: z.array(z.string()).default([]),
      itinerary: z.array(z.object({
@@ -101,8 +107,24 @@ const experienceSchema = z.object({
        meals: z.array(z.string()).default([]),
        notes: z.string().optional(),
      })).default([]),
+    selectionAliases: z.array(z.string()).optional(),
+    includedAddonIds: z.array(z.string()).optional(),
+    calculation: planCalculationSchema.optional(),
    })),
-  petPolicy: z.object({
+   sites: z.record(z.object({
+     name: z.string().optional(),
+     selectionAliases: z.array(z.string()).optional(),
+   }).strict()).optional(),
+   siteSelection: siteSelectionSchema.optional(),
+   unavailableSites: z.array(z.object({
+     siteId: z.string(),
+     siteName: z.string(),
+     planIds: z.array(z.string()),
+     planNames: z.array(z.string()),
+     planTiers: z.record(z.string()).default({}),
+     note: z.string(),
+   }).strict()).optional(),
+   petPolicy: z.object({
     allowed: z.boolean(),
     notes: z.string(),
   }).optional(),
@@ -425,6 +447,8 @@ function experienceFromDynamic(expId: string, dyn: InternalExperienceData): Expe
 
   const plans = dyn.plans.map(plan => ({
     id: plan.id,
+    tier: plan.tier,
+    depositPercentage: plan.depositPercentage,
     siteId: plan.siteId,
     name: plan.name ?? plan.id,
     duration: plan.duration ?? '',
@@ -432,10 +456,14 @@ function experienceFromDynamic(expId: string, dyn: InternalExperienceData): Expe
     benefits: plan.benefits ?? '',
     keywords: plan.keywords ?? [],
     imageId: plan.imageId ?? '',
+    galleryTheme: plan.galleryTheme,
     clarifications: plan.clarifications ?? dyn.clarifications?.plans?.[plan.id] ?? [],
     included: plan.included ?? [],
     notIncludedUnlessConfirmed: plan.notIncludedUnlessConfirmed ?? [],
     itinerary: (plan.itinerary ?? []).map(day => ({ ...day, meals: day.meals ?? [] })),
+    selectionAliases: plan.selectionAliases,
+    includedAddonIds: plan.includedAddonIds,
+    calculation: plan.calculation,
   }));
 
   const pricingItems: Experience['pricing']['items'] = dyn.pricing.items.map(item => ({
@@ -448,6 +476,9 @@ function experienceFromDynamic(expId: string, dyn: InternalExperienceData): Expe
     couplePrice: item.couplePrice ?? null,
     peopleIncluded: item.peopleIncluded ?? null,
     publiclyShow: item.publiclyShow,
+    category: item.category,
+    quoteMode: item.quoteMode,
+    role: item.role,
   }));
 
   const commonQuestions = safetyFaqs.map(faq => ({
@@ -459,6 +490,12 @@ function experienceFromDynamic(expId: string, dyn: InternalExperienceData): Expe
 
   return {
     id: expId,
+    sites: Object.fromEntries(Object.entries(dyn.sites).map(([id, site]) => [id, {
+      name: site.name,
+      selectionAliases: site.selectionAliases,
+    }])),
+    siteSelection: dyn.siteSelection,
+    unavailableSites: dyn.unavailableSites,
     name: dyn.name ?? expId,
     status: dyn.status ?? 'active',
     clarifications: dyn.clarifications?.experience ?? [],

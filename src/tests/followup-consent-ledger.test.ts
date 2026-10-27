@@ -124,6 +124,40 @@ describe('followup consent grant ledger — write paths', () => {
     repos.followupSubscription.markAsked(PHONE, 'wamid.ask');
   }
 
+  function supersededAsk(): void {
+    repos.followupSubscription.ensureExists(PHONE);
+    repos.message.addMessage({
+      whatsapp_message_id: 'wamid.ask', customer_phone: PHONE, direction: 'outbound', message_type: 'text',
+      body: '¿Te parece si te escribo por acá?', created_at: new Date(Date.now() - 60_000).toISOString(),
+    });
+    repos.followupSubscription.markAsked(PHONE, 'wamid.ask');
+    repos.message.addMessage({
+      customer_phone: PHONE, direction: 'outbound', message_type: 'text',
+      body: '¿Quieren que iniciemos la reserva?', created_at: new Date(Date.now() - 30_000).toISOString(),
+    });
+  }
+
+  it.each(['si', 'ok', 'dale', 'no'])('a bare "%s" after a newer bot question is not a consent decision', async text => {
+    supersededAsk();
+
+    await postInbound(text, `wamid.bare.${text}`);
+
+    await vi.waitFor(() => expect(processMessageMock).toHaveBeenCalled());
+    expect(repos.followupConsentGrant.listByPhone(PHONE)).toHaveLength(0);
+    expect(repos.followupSubscription.getByPhone(PHONE)?.status).toBe('pending');
+  });
+
+  it.each([['si, escribeme', 'affirm'], ['no quiero mensajes', 'decline']])(
+    'an explicit permission reply after a newer bot question still counts: %s', async (text, decision) => {
+      supersededAsk();
+
+      await postInbound(text, 'wamid.explicit');
+
+      await vi.waitFor(() => expect(repos.followupConsentGrant.listByPhone(PHONE)).toHaveLength(1));
+      expect(repos.followupConsentGrant.listByPhone(PHONE)[0].decision).toBe(decision);
+    },
+  );
+
   it('records a customer affirmation with the message that granted it', async () => {
     pendingAsk();
 

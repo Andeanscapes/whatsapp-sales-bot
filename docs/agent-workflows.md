@@ -122,7 +122,7 @@ For live LLM quality (costs tokens):
 npm run eval:conversations:llm-bot
 ```
 
-Costs ~$0.37 for the 20 `live`-tagged scenarios. Watch: `group-of-5-math` and
+Costs ~$0.50 for the 32 `live`-tagged scenarios. Watch: `group-of-5-math` and
 `group-then-plan-quote` (QUOTE LOCK total), `entry-retarget-R01-with-history` (no
 brochure on return), `plan-selection-gallery` (plan choice must quote AND demo),
 `consecutive-gallery-requests` (repeat and "show me" photo requests),

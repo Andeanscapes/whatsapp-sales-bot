@@ -3,6 +3,7 @@ import {
   CONSENT_ASK_MARKER,
   addMonthsClamped,
   classifyConsentReply,
+  classifyPendingConsentReply,
   consentCycleKey,
   isDuplicateConsentEcho,
   recurringCycleKey,
@@ -700,5 +701,28 @@ describe('isDuplicateConsentEcho', () => {
 
   it('ignores an activation timestamp in the future', () => {
     expect(isDuplicateConsentEcho(active, 'Si', 120, activatedMs - 5_000)).toBe(false);
+  });
+});
+
+describe('classifyPendingConsentReply', () => {
+  it.each(['si', 'ok', 'dale', 'claro', 'no', 'no gracias', 'si quiero', '👍'])(
+    'a superseded ask ignores the bare reply "%s"', text => {
+      expect(classifyPendingConsentReply(text, true)).toBe('ambiguous');
+    },
+  );
+
+  it.each([
+    ['si, escribeme', 'affirm'], ['escribeme', 'affirm'], ['si mandame novedades', 'affirm'],
+['no me escribas', 'decline'], ['no me mandes mensajes', 'decline'],
+  ])('a superseded ask still honours the explicit reply "%s"', (text, expected) => {
+    expect(classifyPendingConsentReply(text, true)).toBe(expected);
+  });
+
+  it('a commercial object never counts on a superseded ask', () => {
+    expect(classifyPendingConsentReply('si mandame la cuenta', true)).toBe('ambiguous');
+  });
+
+  it.each(['si', 'no gracias', 'si, escribeme'])('the latest ask keeps the original classification: %s', text => {
+    expect(classifyPendingConsentReply(text, false)).toBe(classifyConsentReply(text));
   });
 });

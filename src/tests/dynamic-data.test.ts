@@ -285,17 +285,19 @@ describe('dynamic data validation', () => {
 
   it('keeps mining duration, medical assistance, and mine type distinctions', () => {
     setDynamicService(null);
-    const experience = getActiveExperience(loadSkills());
+    const skills = loadSkills();
+    const experience = skills.dynamicData?.experiences.emerald_mining_tour.sites.chivor;
+    if (!experience) throw new Error('CI catalog must include Chivor');
     const reality = experience.experienceReality;
     const safety = experience.safetyInfo;
     if (!reality || !safety) throw new Error('CI catalog must include experience reality and safety info');
 
-    expect(reality.physicalDemands).toMatch(/jornada total de unas 6 horas/i);
+    expect(reality.physicalDemands).toMatch(/CORE.*2\.5 horas.*PRIME.*5 horas/i);
     expect(reality.physicalDemands).toMatch(/ingreso variable/i);
-    expect(safety.medicalSupport).toMatch(/seguro de asistencia medica incluido/i);
-    expect(safety.medicalSupport).toMatch(/no hay personal sanitario presencial/i);
-    expect(experience.mineDetails.type).toMatch(/minas reales de esmeralda/i);
-    expect(experience.mineDetails.type).toMatch(/no son minas de carbon/i);
+    expect(safety.medicalSupport).toMatch(/poliza de asistencia medica/i);
+    expect(safety.medicalSupport).toMatch(/no con personal sanitario presencial/i);
+    expect(experience.mineDetails?.type).toMatch(/minas reales de esmeralda/i);
+    expect(experience.mineDetails?.type).toMatch(/no son minas de carbon/i);
   });
 
   it('accepts valid dynamic media config and distributes flat images into sites', () => {

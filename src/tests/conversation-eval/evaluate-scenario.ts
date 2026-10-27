@@ -1,7 +1,7 @@
 import { env } from '../../config/env.js';
 import { getSkills } from '../../services/skill-loader.js';
 import { getActiveExperience, getFutureAvailableDates } from '../../services/product-registry.js';
-import { calculatePriceQuote } from '../../services/pricing-calculator.js';
+import { calculatePerPersonEquivalent, calculatePriceQuote } from '../../services/pricing-calculator.js';
 import { countEmojis } from '../../services/reply-guard.js';
 import type { Criterion, CriterionResult, Scenario } from './schema.js';
 import type { TurnRecord } from './runner.js';
@@ -206,10 +206,23 @@ function evaluateCriterion(criterion: Criterion, turns: TurnRecord[]): Criterion
     // A currency marker is required ($ prefix OR COP suffix) so plain counts like
     // "5 personas" are never read as money. Requiring BOTH produced false
     // negatives: the model routinely writes "$2.500.000" with no "COP".
-    const amounts = [...replyText.matchAll(GROUP_QUOTE_AMOUNT_PATTERN)]
+    const moneyMatches = [...replyText.matchAll(GROUP_QUOTE_AMOUNT_PATTERN)];
+    const amounts = moneyMatches
       .map(match => Number((match[1] ?? match[2]).replace(/[.,]/g, '')));
     const peopleMatch = peopleCounts.includes(expectedPeople) && peopleCounts.every(count => count === expectedPeople);
-    const totalMatch = amounts.length === 1 && amounts[0] === expectedTotal;
+    const equivalent = expectedPeople > 1 ? calculatePerPersonEquivalent(expectedTotal, expectedPeople) : null;
+    const equivalentIndex = moneyMatches.findIndex((match, index) => {
+      if (amounts[index] !== equivalent?.amount) return false;
+      const after = replyText.slice(match.index + match[0].length);
+      const before = replyText.slice(0, match.index);
+      // Require the label beside this amount, without crossing another amount or
+      // sentence. Merely mentioning "por persona" elsewhere cannot excuse a wrong total.
+      return /^[^$€£\d.!?\n]{0,35}\b(?:por persona|per person|cada un[oa]|each)\b/i.test(after)
+        || /\b(?:por persona|per person|cada un[oa]|each)\b[^$€£\d.!?\n]{0,35}$/i.test(before);
+    });
+    const totalAmounts = amounts.filter((_, index) => index !== equivalentIndex);
+    const totalMatch = totalAmounts.length === 1 && totalAmounts[0] === expectedTotal
+      && (amounts.length === 1 || (amounts.length === 2 && equivalentIndex !== -1));
     return criterionResult(
       criterion,
       peopleMatch && totalMatch,

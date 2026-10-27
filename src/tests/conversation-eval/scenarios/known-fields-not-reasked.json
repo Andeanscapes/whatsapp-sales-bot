@@ -13,6 +13,6 @@
     { "user": "Pareja", "mockReply": "Perfecto para ustedes dos. ¿Qué fecha tienen en mente?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2 } },
     { "user": "En octubre", "mockReply": "Octubre puede funcionar. ¿Vienen en carro propio o necesitan transporte?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2, "date": "octubre" } },
     { "user": "Carro propio", "mockReply": "Perfecto, con carro propio revisamos la ruta más conveniente. ¿Qué plan les interesa?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2, "date": "octubre", "transport": "own" } },
-    { "user": "El de 2 días", "mockReply": "Buena elección. Te comparto el valor del plan y luego validamos la fecha exacta.", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2, "date": "octubre", "transport": "own", "plan": "2d1n_mining" } }
+    { "user": "El CORE", "mockReply": "Buena elección. Te comparto el valor del plan y luego validamos la fecha exacta.", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2, "date": "octubre", "transport": "own", "plan": "core_2d1n_chivor" } }
   ]
 }

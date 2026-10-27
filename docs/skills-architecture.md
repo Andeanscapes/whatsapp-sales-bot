@@ -71,6 +71,13 @@ Implementation: `src/services/skills-prompt-assembly.ts` — sole prompt builder
 
    Free-form sales nudges, score-band/date/cold-loop template tracks, and the old multi-track stack stay removed. Never add a fourth outbound path without a fresh design.
 8. **QUOTE LOCK for group totals.** When people + settled plan are known, assembly injects the authorized plan total. Skills must copy it; never rebuild totals from unit rates or 3/4-person patterns for 5+.
+   It also supplies a calculated per-person equivalent for groups, beside the total.
+   The equivalent is total divided by group size, including quoted transport; it is
+   never the solo rate. Non-integral equivalents are rounded and labelled approximate;
+   the payable group total is unchanged. The diagnostic accepts that same calculation.
+   Before selection, a known destination with more than two active plans gets
+   `OPCIONES DE PLAN ESTE TURNO`: name every available option with a short distinction,
+   rather than hiding options behind an essential/complete binary. No prices until choice.
 
 ## Whitelist: legitimate deterministic interceptors
 
@@ -87,7 +94,7 @@ These functions in `response-engine.ts` are allowed to run before or after the L
 - Organizer contact share → alert
 - Large group (>maxGroupSizePerDate) → escalate
 - Payment methods question in human_pending mode → public facts reply
-- Soft-close message detection → IG soft-close
+- Soft-close message detection → IG soft-close. Exception: after a quote, a cost objection without an explicit decline reaches the LLM with an `OBJECION DE PRECIO` RUNTIME cue listing only catalog-priced cheaper plans (another site only when cheaper than the active site's cheapest plan). The cue is state, never copy.
 - Child suitability boundary
 - Price-depends-on-group regex
 - Rate limits → limit reply or silence
@@ -167,6 +174,72 @@ Keep three layers separate:
 4. Do NOT edit any skill MD file — all five are experience-agnostic and gated by `npm run validate:prompt`.
 5. Run `npm run validate:dynamic -- <file>` + acceptance tests with the new experience id.
 
+Use `npm run sync:fixture -- scripts/bot-dynamic-dev.json` to
+mirror the validated catalog into CI. It strips private payment fields and anonymizes
+referent attribution; it preserves product facts and both sites. It refuses a catalog
+that carries placeholder photos (see "Media and catalog sync" below); while the dev
+catalog holds the Coscuez placeholders, it cannot be mirrored.
+
+## Catalog selection and quoting metadata
+
+- A site gallery photo may define `planIds` (plans of the same site). It is then shown,
+  advertised and cued only to customers whose stored plan is listed; e.g. Fura y Tena
+  excursion photos for PRIME Coscuez only. The plan's `galleryTheme` can point at that
+  theme (first plan choice shows it); the site photo fallback ignores plan-only themes.
+- Plans may define `selectionAliases` and `includedAddonIds`. Aliases match whole words/phrases; shared durations do not select a plan. Included addon ids must exist in the same site's addon catalog and must not also appear in the plan's priced `addons`. DATOS renders them as `INCLUDED_ADDONS <planId>` with no price.
+- `pricing.calculation`: `couple_half_from_five` preserves the existing group formula; `pairs_plus_single` uses complete pairs plus one individual for odd groups; `per_person` uses the individual rate for every participant. Unknown rules fail validation; formulas are never evaluated as code and are not rendered into the prompt (QUOTE LOCK carries the computed total).
+- Addons may define `category`, `quoteMode` (`separate`, `included_in_total`, `team_confirmation`), and `role` (`activity`, `transport`). Transport capacity comes from `max`. Included addons are never charged; `separate` addons stay out of the QUOTE LOCK total; `included_in_total` addons (e.g. requested private transport) are summed into it.
+- Delivered quote state carries `quote_fingerprint` (`<planId>:<hash>`) alongside `price_given_at`. The hash covers only catalog facts for the quoted plan: plan and eligible addon prices/modes, calculation rule, included addons, deposit. A catalog change, or the quoted plan disappearing, clears the recorded price state before prompt assembly. Customer changes (group size, transport, plan switch) never clear it. Historical rows without a fingerprint are never invalidated.
+- Shared plan aliases require destination context. Selection reads site ids and
+  catalog-owned site `selectionAliases`
+  from recent customer statements (up to 20 inbound messages), then falls back to the
+  stored plan's site. Before any destination is known, a tied alias stays unresolved.
+  Site comparisons do not replace a stored destination. Brochure references and
+  quoted-price card matching use the resolved site; a brochure alone does not choose
+  a plan, while an explicit choice plus a brochure request still does.
+- Destination-first entry carries `SITIO PENDIENTE` until a destination is chosen;
+  campaign diagnosis blocks and site-specific gallery themes stay unadvertised.
+  `siteSelection` supplies regional context and explicitly marked coming-soon sites.
+  A destination choice carries the stored plan's catalog `tier` to a unique matching
+  plan at that site and clears the previous quote. Missing or ambiguous tiers clear
+  the plan; destination comparisons preserve the current selection.
+  A mention is not a choice (`detectSiteChoice`): a clause chooses only when it names
+  one site with a choice/interest verb ("mejor X", "me interesa X") or is the site alone.
+  "Mi tío vive en X", "ya conocemos X" and "¿X queda cerca?" never switch, and negation
+  is clause-scoped ("no sé, me interesa X" chooses; "no quiero X" does not).
+  `validate:dynamic` fails a multi-site catalog whose active plans lack a unique `tier`
+  per site. `COMING_SOON` destinations are context only — never quoted or booked.
+- A plan may set `depositPercentage` (0-100). It overrides the experience-wide
+  `payments.deposit` for that plan only: DATOS renders it as `deposit_by_plan` next to
+  the global line, and `/payment`, close replies and quote fingerprints read it through
+  `getPublicPaymentFactsForPlan(skills, experience, planId)`. Omitted = global deposit.
+- A site may be paused with `status: "inactive"` plus a required `unavailableNote`.
+  Its data stays in the feed for reactivation, but the transform drops its plans,
+  prices, addons, availability, segments and photos. CATALOGO carries only
+  `DESTINO NO DISPONIBLE TEMPORALMENTE: <site> (planes: ...)` plus the note; the
+  note is catalog copy and must not promise a callback the bot cannot keep. Leads
+  whose stored plan belongs to a paused site receive no automated outbound
+  (`isPlanPaused`). Reactivate by removing both fields; no code change.
+  `unavailableSites` is derived internal metadata, never a second editable catalog.
+  Its `planTiers` preserves catalog tiers for explicit acceptance of an active
+  destination: the existing site-choice predicate transfers a unique equivalent
+  tier, or clears the plan when no equivalent exists. Paused tiers are not rendered
+  into the prompt.
+  Stored paused-plan identity survives inbound replies; only an actual customer
+  choice replaces it. Pending payment links and final outbound dispatches must
+  recheck current availability, including after awaiting the consent draft.
+- Paused sites still count as "sites" for `validate:dynamic` tier checks: their plans
+  keep a unique `tier` so reactivation does not need a catalog edit.
+- **Release order: deploy the code before uploading a catalog that uses
+  `depositPercentage`, a site `status` or `unavailableNote`.** The schema is strict, so
+  older code rejects the whole catalog. Same rule as v19 below.
+- **Release order: deploy the code before uploading a v19 catalog.** The schema is strict
+  (no `.passthrough()`), so code older than this change rejects `tier`,
+  `selectionAliases` and `siteSelection` and serves NO catalog ("No active product
+  experience"). Verified 2026-10-14 against the dev CDN. The reverse order is safe: new
+  code accepts an older catalog (switching destination then clears the plan instead of
+  carrying the tier).
+
 ## How to add or retune a campaign segment
 
 1. Add/edit `experiences.<id>.sites.<siteId>.entrySegments.<CODE>` in the CDN feed
@@ -210,17 +283,17 @@ overlay — do not grow more product nouns into the shared personality skill.
 
 ## Eval harness
 
-The conversation eval suite contains 31 golden scenarios grounded in the full
+The conversation eval suite contains 49 golden scenarios grounded in the full
 conversation export. Deterministic runs validate state, flags, pricing math,
 known-field continuity, safety boundaries, and leak suppression without provider
-cost. Twenty scenarios are tagged `live` and carry `minLiveScore` plus
+cost. Thirty-two scenarios are tagged `live` and carry `minLiveScore` plus
 copy-quality criteria for bounded real-LLM runs.
 
 | Command | Scope | Approx cost |
 |---|---|---|
-| `npm run eval:conversations` | all 31, deterministic | $0 |
-| `npm run eval:conversations:llm-bot` | 20 `live`-tagged only | ~$0.37 |
-| `npm run eval:conversations:llm-bot -- --all` | all 31 message scenarios | ~$0.55 |
+| `npm run eval:conversations` | all 49, deterministic | $0 |
+| `npm run eval:conversations:llm-bot` | 32 `live`-tagged only | ~$0.50 |
+| `npm run eval:conversations:llm-bot -- --all` | all 49 message scenarios | ~$0.75 |
 | `npm run eval:conversations:llm-bot -- --scenario <id>` | one scenario | ~$0.02 |
 
 Costs scale with `liveRuns`: variance hotspots run 2–5 times and `aggregateRuns`
@@ -246,3 +319,108 @@ npm run eval:conversations   # Harness + compliance canary
 npm run measure:prompt       # Deterministic prompt-size gate using the CI fixture
 npm run report:iteration -- <day-summary.json>
 ```
+
+## Media and catalog sync (Cloudflare R2)
+
+Everything the bot sends (gallery photos, plan cards, owner photo) and the catalog
+JSON live in one R2 bucket (`andean-app-dev`) under `whatsapp_bot/`, served from
+`cdn.andeanscapes.com`.
+
+| Local | Bucket key |
+|---|---|
+| `scripts/bot-dynamic-dev.json` | `whatsapp_bot/bot-dynamic-dev.json` |
+| `scripts/bot-dynamic.json` (prod) | `whatsapp_bot/bot-dynamic.json` |
+| `r2-cache/whatsapp_bot/**` (gitignored mirror) | `whatsapp_bot/**` |
+
+Media layout (bucket keys; ids come from the catalog):
+
+```
+whatsapp_bot/media/brand/owner.jpg
+whatsapp_bot/media/<experienceId>/<siteId>/gallery/<type>/<NN>.jpg
+whatsapp_bot/media/<experienceId>/<siteId>/plans/<tier>/card.png
+```
+
+A site's `media.types` must list only types that have at least one photo in that
+site's gallery: the type list is advertised to the model as photo themes, so an empty
+type invites a `[[FOTOS:<type>]]` that resolves to nothing.
+
+Setup once: copy `.env.wrangler.example` to `.env.wrangler` and paste the andean_v3
+token and account id. `.env.wrangler` is gitignored.
+
+```bash
+npm run dynamic:pull -- --target dev     # live catalog -> scripts/
+npm run media:pull                       # every referenced object -> r2-cache/
+npm run media:push -- --dry-run          # plan: new / changed / current
+npm run media:push                       # upload what differs
+npm run dynamic:push -- --target dev --dry-run
+npm run dynamic:push -- --target dev     # validate, check media, back up, upload, purge
+npm run dynamic:push -- --target prod --confirm
+```
+
+**Day-to-day: `npm run media:sync`.** Edit files under `r2-cache/whatsapp_bot/media/`,
+then run it. It pushes local edits and new files, pulls anything changed or missing
+locally, and stops on a conflict (changed on both sides since the last sync) unless
+`--prefer-local` or `--prefer-remote` is passed. `--dry-run` prints the plan. The last
+agreed hash per key lives in `r2-cache/.sync-base.json`; `media:pull` and `media:push`
+update it too. It never deletes on R2 and never edits the catalog: a new photo still
+needs its gallery entry, then `npm run dynamic:push -- --target dev`.
+
+**Photos straight from a phone.** Drop `01.heic` (or `.heif`, `.jpeg`, `.tiff`,
+`.webp`) where `01.jpg` should live and run `npm run media:sync`. Step 1 converts it
+(`lib/optimize-media.ts`, also `npm run media:optimize [-- --dry-run]`): auto-rotated,
+longest edge 1600 px, progressive mozjpeg q82 stepping down to fit 1 MB, and **all
+metadata stripped** (iPhone photos carry GPS; the CDN is public). An existing `.jpg`
+over 1600 px or 1 MB is re-encoded too, unless that would not make it smaller; a
+`.jpg` carrying EXIF/XMP/IPTC or a rotation flag is always rewritten. This is
+intentional for published photos as well: the first sync after adopting it
+re-uploads the oversized ones under the same URLs (originals backed up). Without
+cache-purge permission the CDN may serve the old bytes until its TTL expires.
+A source is converted only when new or changed (md5 in `r2-cache/.optimize-base.json`),
+so a lingering source never re-converts over a `.jpg` you edited by hand; a new
+source that replaces an existing `.jpg` backs it up to `.previous/<ts>/local/` first.
+A large photo changed on R2 is pulled as-is and re-encoded and pushed on the next
+run, so it converges in two runs. `--dry-run` lists pending conversions as pushes and measures re-encodes, so it matches the real run.
+`.png` plan cards are not touched. HEIC needs `sips` (macOS) or `ffmpeg`: sharp's
+libvips has no HEVC decoder. Any conversion failure stops the run before upload.
+Sources are never uploaded, and are deleted only after their `.jpg` is confirmed on
+R2 with the same bytes (`--keep-sources` keeps them). `media:push` runs the same
+conversion but never deletes sources.
+
+Rules enforced by the scripts:
+- **Media**: only jpg/jpeg/png up to 5 MB. Every file must be referenced by a catalog
+  (`--allow-orphan` overrides). Diff is against origin md5, not the edge.
+- **Pull**: preserves differing local images, including same-size replacements.
+  `media:pull -- --overwrite` backs them up before replacing them. Catalog pulls
+  validate remote JSON before writing the editable file or sync base.
+- **Bucket**: only `andean-app-dev` is supported. Other `R2_BUCKET` values are rejected:
+  comparison and backup reads use the fixed CDN backed by that bucket.
+- **Catalog push**: runs `validate-dynamic` first. Classification uses
+  `scripts/.dynamic-base/<file>` (last synced live bytes). Local-only edits push;
+  live-only changes pull; both changed is a conflict and uploads nothing.
+  Push refuses if a referenced media object is not on the CDN yet.
+- **Backups**: live catalogs go to `scripts/.dynamic-previous/<timestamp>/`, and published
+  media about to be overwritten goes to `r2-cache/.previous/<timestamp>/`. R2 object
+  versioning is off, so these are the only undo.
+- **Prod**: needs `--confirm`, refuses placeholder photos, and checks that published
+  bytes match verified local files (downloads for hashing when no MD5 ETag exists).
+- **Placeholders**: a site photo byte-identical to another site's photo is a placeholder
+  (the Coscuez gallery is currently Chivor photos). Allowed in the dev catalog only:
+  `sync:fixture` and the prod push refuse it. Replace the files under the same key
+  and run `media:push`; the catalog does not change. Both operations also refuse
+  unverified site media when local files are missing; no warning-only bypass.
+- **Order**: media first, then catalog. A catalog that references unpublished media breaks
+  every lead who gets that photo.
+- Purge uses `CLOUDFLARE_ZONE_ID` when set; a failed purge is reported with URLs to purge by hand.
+
+`scripts/upload-dynamic.sh [dev|prod]` and `scripts/download-dynamic.sh [dev|prod]` wrap
+the catalog commands.
+
+**Moving a media URL resets its send history.** Gallery dedupe and the follow-up and
+plan-card "already sent" checks key on the URL path. After a URL moves, a lead can
+receive a photo they already got within the last 72h, once. Accepted for the 2026-10
+move to `whatsapp_bot/media/`. Plan-card id claims survive, but gallery-URL claims
+for the same card do not; unchanged card ids cannot preserve every dedupe path.
+
+`media:restructure` performed that move (legacy flat keys -> the layout above). It is
+idempotent and a no-op on migrated catalogs. Delete it and `src/tests/media-layout.test.ts`
+once the prod catalog is published with the new keys.

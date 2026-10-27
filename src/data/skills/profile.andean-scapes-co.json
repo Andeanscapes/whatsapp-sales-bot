@@ -32,6 +32,6 @@
     "maxReferents": 4
   },
   "tokenBudget": {
-    "systemPromptMaxTokens": 31500
+    "systemPromptMaxTokens": 40000
   }
 }

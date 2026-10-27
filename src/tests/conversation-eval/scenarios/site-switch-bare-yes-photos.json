@@ -1,0 +1,18 @@
+{
+  "id": "site-switch-bare-yes-photos",
+  "source": "regression 2026-10-14: a bare 'Si' to '¿Te interesa Chivor…?' left the Coscuez plan stored, so Chivor hospedaje photos resolved to nothing and the fallback was sent",
+  "tags": ["gallery", "plan", "multisite"],
+  "lang": "es",
+  "criteria": [
+    { "id": "photos-after-site-switch", "rule": "output_flag_equals", "flag": "shouldSendGalleryImages", "expected": true, "turn": 4, "weight": 2, "critical": true },
+    { "id": "marker-hidden", "rule": "reply_must_not_match", "patterns": ["\\[\\[\\s*FOTOS"], "turn": 4, "weight": 2, "critical": true },
+    { "id": "no-validation-fallback", "rule": "reply_must_not_match", "patterns": ["Dejame validar"], "turn": 4, "weight": 2, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 4, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "Hola, somos 2 y nos interesa el PRIME en Coscuez", "mockReply": "Buena elección para ustedes dos. ¿Qué fecha tienen en mente?", "expect": { "shouldSendReply": true } },
+    { "user": "Oye una pregunta como es el plan de Chivor ?", "mockReply": "Chivor es la otra región esmeraldera, con alojamiento en hacienda.\n\n¿Te interesa Chivor para el mismo grupo de 2?", "expect": { "shouldSendReply": true, "shouldSendGalleryImages": false } },
+    { "user": "Si", "mockReply": "Perfecto, en Chivor la PRIME suma cabalgata a la segunda mina. ¿Qué fecha tienen en mente?", "expect": { "shouldSendReply": true } },
+    { "user": "Tienes fotos del hospedaje en Chivor ?", "mockReply": "Claro, así es el hospedaje en la hacienda. ¿Qué fecha tienen en mente?\n[[FOTOS:hotel]]", "expect": { "shouldSendReply": true, "shouldSendGalleryImages": true } }
+  ]
+}

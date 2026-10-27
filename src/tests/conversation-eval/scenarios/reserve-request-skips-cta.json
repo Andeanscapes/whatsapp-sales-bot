@@ -1,0 +1,29 @@
+{
+  "id": "reserve-request-skips-cta",
+  "source": "live 2026-10-09: '¿cómo se reserva?' after price + date was answered with a second '¿quieres que iniciemos la reserva?'",
+  "tags": ["closing", "live"],
+  "lang": "es",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "mockPricing": { "planId": "core_2d1n_chivor", "individual": 550000, "couple": 1000000 },
+  "seedConversation": {
+    "phase": "closing",
+    "priceGiven": true,
+    "qualification": { "people": 2, "plan": "core_2d1n_chivor", "date": "14 de noviembre" }
+  },
+  "seedQualification": { "people": 2, "plan": "core_2d1n_chivor", "date": "14 de noviembre" },
+  "criteria": [
+    { "id": "no-start-booking-question", "rule": "reply_must_not_match", "patterns": ["iniciemos|la iniciamos|(arrancamos|empezamos|comenzamos)( con)? la reserva|(arranquemos|empecemos|comencemos) con la reserva|quieres reservar|quieren reservar"], "turn": 1, "weight": 3, "critical": true },
+    { "id": "deposit-and-validation", "rule": "reply_must_match", "patterns": ["anticipo|Nequi|Mercado Pago"], "turn": 1, "weight": 2, "critical": true },
+    { "id": "asks-missing-name", "rule": "reply_must_match", "patterns": ["nombre|llamas|llaman"], "turn": 1, "weight": 2 },
+    { "id": "no-requote", "rule": "reply_must_not_match", "patterns": ["1\\.000\\.000|1000000"], "turn": 1, "weight": 2 }
+  ],
+  "turns": [
+    {
+      "user": "Si está perfecto como se reserva ?",
+      "mockReply": "Quedo validando el cupo del 14 de noviembre con el equipo. Si hay cupo, el anticipo es del 25% por Nequi o Mercado Pago. ¿Cómo te llamas?",
+      "expect": { "shouldSendReply": true },
+      "seedQualification": { "people": 2, "plan": "core_2d1n_chivor", "date": "14 de noviembre" }
+    }
+  ]
+}

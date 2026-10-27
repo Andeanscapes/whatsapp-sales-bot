@@ -469,6 +469,95 @@ describe('listRecurringCandidates', () => {
     expect(rows[0].sends_so_far).toBe(0);
     expect(repos.followupSubscriptionEvent.claim(PHONE, 'recurring', 'c1-r1', 3, 10)).toBe(id);
   });
+
+  describe('one-shot anchor', () => {
+    const seedOneShot = (status: string, minutesAgo: number): string => {
+      const at = isoAgo(minutesAgo);
+      db.prepare(`
+        INSERT INTO followup_events (customer_phone, anchor_at, claimed_at, sent_at, failed_at, status)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(PHONE, at, at, status === 'sent' ? at : null, status === 'uncertain' ? at : null, status);
+      return at;
+    };
+
+    // The reported incident: consent "sí", then one-shot and r1 shipped in one tick.
+    it('makes r1 wait one interval after a one-shot sent inside the consent cycle', () => {
+      activate(30);
+      seedOneShot('sent', 1);
+      expect(query(3)).toHaveLength(0);
+    });
+
+    it('makes r1 due once the interval elapsed since the one-shot', () => {
+      activate(30);
+      const oneShotAt = seedOneShot('sent', 10);
+      const rows = query(3);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].sends_so_far).toBe(0);
+      expect(rows[0].last_send_at).toBe(oneShotAt);
+    });
+
+    it.each(['pending', 'uncertain'])('treats a %s one-shot as an anchor (Meta may hold it)', status => {
+      activate(30);
+      seedOneShot(status, 1);
+      expect(query(3)).toHaveLength(0);
+    });
+
+    it('ignores a failed one-shot', () => {
+      activate(30);
+      seedOneShot('failed', 1);
+      expect(query(3)).toHaveLength(1);
+    });
+
+    it('ignores a one-shot sent before the consent was activated', () => {
+      activate(30);
+      const activatedAt = repos.followupSubscription.getByPhone(PHONE)?.activated_at;
+      seedOneShot('sent', 60);
+      const rows = query(3);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].last_send_at).toBe(activatedAt);
+    });
+
+    // An older one-shot must not pin the cadence once recurring sends overtook it.
+    it('anchors on the later recurring send, not the older one-shot', () => {
+      activate(60);
+      seedOneShot('sent', 50);
+      recordSend('c1-r1', 20);
+      const rows = query(3);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].sends_so_far).toBe(1);
+      const r1At = repos.followupSubscriptionEvent.getByPhoneKindCycle(PHONE, 'recurring', 'c1-r1')?.accepted_at;
+      expect(rows[0].last_send_at).toBe(r1At);
+    });
+
+    it('never counts the one-shot against the recurring cap', () => {
+      activate(60);
+      seedOneShot('sent', 50);
+      recordSend('c1-r1', 20);
+      expect(query(3, 2)).toHaveLength(1);
+      expect(query(3, 1)).toHaveLength(0);
+    });
+  });
+
+  describe('followupEvent.latestSendAt', () => {
+    it('returns null without a one-shot', () => {
+      expect(repos.followupEvent.latestSendAt(PHONE)).toBeNull();
+    });
+
+    it('returns the newest in-flight or reached one-shot and skips failed ones', () => {
+      const insert = (status: string, at: string): string => {
+        db.prepare(`
+          INSERT INTO followup_events (customer_phone, anchor_at, claimed_at, sent_at, status)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(PHONE, at, at, status === 'sent' ? at : null, status);
+        return at;
+      };
+      const sentAt = insert('sent', isoAgo(30));
+      insert('failed', isoAgo(5));
+      expect(repos.followupEvent.latestSendAt(PHONE)).toBe(sentAt);
+      const pendingAt = insert('pending', isoAgo(2));
+      expect(repos.followupEvent.latestSendAt(PHONE)).toBe(pendingAt);
+    });
+  });
 });
 
 describe('opt-out revokes the subscription atomically', () => {

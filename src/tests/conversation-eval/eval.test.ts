@@ -2,7 +2,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { getSkills, loadSkills } from '../../services/skill-loader.js';
-import { getActiveExperience, getEntrySegment } from '../../services/product-registry.js';
+import { getActiveExperience, getDynamicPlanImages, getEntrySegment } from '../../services/product-registry.js';
+import { findPlanBrochureImage } from '../../services/media-service.js';
 import { PRICING_NOT_AVAILABLE } from '../../services/dynamic-data-service.js';
 import type { AnalyzerInput, LeadAnalysis } from '../../services/lead-analyzer.js';
 import { applyScenarioSeeds, createRunContext, defaultMockResult, runTurn, type MockLlmFunction } from './runner.js';
@@ -66,11 +67,53 @@ describe('Conversation Quality Eval V2', () => {
       await runTurn(ctx, scenario.turns[0], 1, mode);
       await runTurn(ctx, scenario.turns[1], 2, mode);
       const prompt = mockLlmComplete.mock.calls.find(([input]) => input.message === scenario.turns[1].user)?.[0].systemPrompt;
-      expect(ctx.repos.conversation.getByPhone(ctx.customerPhone)?.collected_plan).toBe('2d1n_mining');
-      expect(prompt).toContain('PLAN ACTIVO: 2d1n_mining');
+      expect(ctx.repos.conversation.getByPhone(ctx.customerPhone)?.collected_plan).toBe('core_2d1n_chivor');
+      expect(prompt).toContain('PLAN ACTIVO: core_2d1n_chivor');
       expect(prompt).toMatch(/TEMAS DE GALERIA DISPONIBLES: [^\n]*\bmine\b/);
       expect(prompt).toMatch(/CUPO_FOTOS_RESTANTE: [1-9]\d*\./);
       expect(prompt?.split('\nRUNTIME:').at(-1)).not.toContain('GALERIA_YA_MOSTRADA: true');
+    } finally {
+      ctx.destroy();
+    }
+  });
+
+  it('cues the reservation-requested close when the customer asks how to book', async () => {
+    const scenario = scenarios.find(item => item.id === 'reserve-request-skips-cta')!;
+    const ctx = createRunContext({ phoneSuffix: 903 });
+    mockLlmComplete.mockReset();
+    mockAnalyzeLead.mockReset();
+    mockLlmComplete.mockResolvedValue(defaultMockResult(scenario.turns[0].mockReply));
+    const restoreSeeds = applyScenarioSeeds(ctx, scenario);
+    try {
+      await runTurn(ctx, scenario.turns[0], 1, 'deterministic');
+      const prompt = mockLlmComplete.mock.calls[0]?.[0].systemPrompt ?? '';
+      expect(prompt).toContain('ESTADO DE TURNO: T3b RESERVA PEDIDA');
+      expect(prompt).not.toContain('ESTADO DE TURNO: T3b. Hay fecha concreta');
+    } finally {
+      restoreSeeds();
+      ctx.destroy();
+    }
+  });
+
+  it('switches plan by name and ships the new plan card on a brochure request', async () => {
+    const scenario = scenarios.find(item => item.id === 'plan-switch-brochure')!;
+    const ctx = createRunContext({ phoneSuffix: 902 });
+    mockLlmComplete.mockReset();
+    mockAnalyzeLead.mockReset();
+    mockLlmComplete.mockImplementation(async input => {
+      const turn = scenario.turns.find(item => item.user === input.message);
+      return turn ? defaultMockResult(turn.mockReply) : null;
+    });
+    try {
+      await runTurn(ctx, scenario.turns[0], 1, 'deterministic');
+      expect(ctx.repos.conversation.getCollectedPlan(ctx.customerPhone)).toBe('core_2d1n_chivor');
+      await runTurn(ctx, scenario.turns[1], 2, 'deterministic');
+      expect(ctx.repos.conversation.getCollectedPlan(ctx.customerPhone)).toBe('prime_2d1n_chivor');
+      const { processOutput } = await runTurn(ctx, scenario.turns[2], 3, 'deterministic');
+      expect(ctx.repos.conversation.getCollectedPlan(ctx.customerPhone)).toBe('prime_2d1n_chivor');
+      expect(processOutput.requestedGalleryImages).toEqual([
+        'https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/plans/prime/card.png?v=61b11c8f405b',
+      ]);
     } finally {
       ctx.destroy();
     }
@@ -139,13 +182,21 @@ describe('Conversation Quality Eval V2', () => {
         }
 
         if (scenario.id === 'entry-funnel-H02-car') {
-          const segment = getEntrySegment(getSkills(), experience.id, 'H02');
+          const segment = getEntrySegment(getSkills(), experience.id, 'H02', 'chivor');
           expect(segment).not.toBeNull();
           const prompt = mockLlmComplete.mock.calls[0]?.[0].systemPrompt;
           expect(prompt).toContain('ENTRY_SEGMENT H02');
           expect(prompt).toContain('SEGMENT_DETECTED: H02');
           expect(prompt).toContain(segment!.segment.diagnosisQuestion);
           expect(prompt).toContain(segment!.segment.planMatch);
+        }
+        if (scenario.id === 'brochure-typo-after-price') {
+          const brochure = findPlanBrochureImage(getDynamicPlanImages(getSkills()), experience.id, 'prime_2d1n_chivor');
+          expect(brochure).toBeDefined();
+          expect(ctx.turns[3]?.processOutput.requestedGalleryImages).toEqual([brochure?.url]);
+          expect(ctx.repos.conversation.getCollectedPlan(ctx.customerPhone)).toBe('core_2d1n_chivor');
+          expect(ctx.repos.conversation.getPriceGivenAt(ctx.customerPhone)).not.toBeNull();
+          expect(ctx.turns[2]?.processOutput.quotedPlanId).toBe('prime_2d1n_chivor');
         }
         expect(validateTurnExpectations(scenario, ctx.turns)).toEqual([]);
 

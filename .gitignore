@@ -3,6 +3,7 @@
 .env.local
 .env.*
 !.env.example
+!.env.wrangler.example
 .env.*.local
 
 # runtime data
@@ -12,6 +13,7 @@
 scripts/bot-dynamic.corrected.json
 scripts/bot-dynamic.json
 scripts/bot-dynamic-dev.json
+scripts/bot-dynamic-dev.json.tmp
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
@@ -27,3 +29,9 @@ node_modules/
 .claude/settings.local.json
 *.log
 .opencode/plans/
+
+# Media and catalog sync (npm run media:* / dynamic:*)
+/r2-cache/
+.env.wrangler
+scripts/.dynamic-base/
+scripts/.dynamic-previous/

@@ -76,7 +76,7 @@ export const envSchema = z.object({
 
   DAILY_AI_BUDGET_USD: z.coerce.number().positive().catch(2.00),
   MONTHLY_AI_BUDGET_USD: z.coerce.number().positive().catch(30.00),
-  MAX_AI_CALLS_PER_CUSTOMER_PER_DAY: z.coerce.number().int().positive().catch(30),
+  MAX_AI_CALLS_PER_CUSTOMER_PER_DAY: z.coerce.number().int().positive().catch(50),
   MAX_AI_CALLS_GLOBAL_PER_DAY: z.coerce.number().int().positive().catch(1500),
   AI_CACHE_TTL_SECONDS: z.coerce.number().catch(604800),
 

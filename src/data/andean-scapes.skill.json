@@ -15,7 +15,7 @@
       "French on request"
     ],
     "publicPaymentFallback": {
-      "depositPercent": 15,
+      "depositPercent": 25,
       "methodNames": [
         "Nequi",
         "Mercado Pago"

@@ -66,7 +66,7 @@ const ALLOWED_CONVERSATION_COLUMNS = new Set([
   'collected_adults', 'collected_children', 'collected_child_ages_json', 'collected_travel_origin',
   'free_entry_detected', 'ad_referral_json', 'entry_marker', 'entry_temperature', 'entry_marker_at',
   'hot_alert_sent_at', 'urgent_alert_sent_at',
-  'price_given_at', 'soft_closed_at',
+  'price_given_at', 'quote_fingerprint', 'soft_closed_at',
   'sales_phase', 'lead_intent',
   'assigned_line_id', 'assigned_agent_chat', 'conversation_mode',
   'converted_at', 'gallery_nudged_at',
@@ -196,7 +196,10 @@ export class SqliteConversationRepo implements ConversationRepository {
         AND c.converted_at IS NULL
         AND c.handed_off_at IS NULL
         AND c.soft_closed_at IS NULL
-        AND COALESCE(c.conversation_mode, 'bot') IN ('bot', 'human_pending')
+        -- Consent is not asked while the team holds the booking (human_pending).
+        -- Owner decision 2026-10-26; the one-shot and recurring queries keep
+        -- human_pending eligible. The digest reuses this query, so both agree.
+        AND COALESCE(c.conversation_mode, 'bot') = 'bot'
         AND ${QUALIFIED_FOR_FOLLOWUP_SQL}
         -- A lead the analyzer marked not_interested is never re-asked. lead_intent
         -- is NULL for anyone never analysed, and in SQLite NULL != 'not_interested'
@@ -244,10 +247,27 @@ export class SqliteConversationRepo implements ConversationRepository {
         WHERE event_kind = 'consent_ask'
           AND status IN ('accepted', 'delivered', 'uncertain')
         GROUP BY customer_phone
+      ), oneshot_latest AS (
+        -- The one-shot template is an outbound in the same consent cycle, so it
+        -- anchors the next recurring send. Pre-aggregated to one row per customer
+        -- so the join cannot multiply COUNT(tr.terminal_at). 'pending' is the
+        -- in-flight one-shot state.
+        SELECT fe.customer_phone,
+               MAX(COALESCE(fe.sent_at, fe.failed_at, fe.claimed_at)) AS sent_at
+        FROM followup_events fe
+        JOIN followup_subscriptions fs1 ON fs1.customer_phone = fe.customer_phone
+        WHERE fe.status IN ('pending', 'sent', 'uncertain')
+          AND datetime(COALESCE(fe.sent_at, fe.failed_at, fe.claimed_at)) >= datetime(fs1.activated_at)
+        GROUP BY fe.customer_phone
       )
       SELECT c.customer_phone, c.language, c.collected_plan, c.selected_experience_id,
              COUNT(tr.terminal_at) AS sends_so_far,
-             COALESCE(MAX(tr.terminal_at), fs.activated_at) AS last_send_at,
+             CASE
+               WHEN os.sent_at IS NOT NULL
+                AND (MAX(tr.terminal_at) IS NULL OR datetime(os.sent_at) > datetime(MAX(tr.terminal_at)))
+               THEN os.sent_at
+               ELSE COALESCE(MAX(tr.terminal_at), fs.activated_at)
+             END AS last_send_at,
              COALESCE(cc.consent_cycle, 0) AS consent_cycle
       FROM conversations c
       JOIN followup_subscriptions fs ON fs.customer_phone = c.customer_phone
@@ -258,6 +278,7 @@ export class SqliteConversationRepo implements ConversationRepository {
       LEFT JOIN terminal_recurring tr
         ON tr.customer_phone = c.customer_phone
        AND datetime(tr.terminal_at) >= datetime(fs.activated_at)
+      LEFT JOIN oneshot_latest os ON os.customer_phone = c.customer_phone
       LEFT JOIN consent_cycles cc ON cc.customer_phone = c.customer_phone
       WHERE fs.status = 'active'
         AND fs.activated_at IS NOT NULL
@@ -283,9 +304,9 @@ export class SqliteConversationRepo implements ConversationRepository {
         -- In-flight state is resolved atomically by claim(): a fresh claim blocks,
         -- while a stale dispatch becomes terminal uncertain and never resends.
       GROUP BY c.customer_phone, c.language, c.collected_plan,
-               c.selected_experience_id, fs.activated_at, cc.consent_cycle
+               c.selected_experience_id, fs.activated_at, cc.consent_cycle, os.sent_at
       HAVING (@maxSends = 0 OR COUNT(tr.terminal_at) < @maxSends)
-         AND datetime(COALESCE(MAX(tr.terminal_at), fs.activated_at)) <= datetime(@dueBeforeIso)
+         AND datetime(last_send_at) <= datetime(@dueBeforeIso)
       -- Oldest first, then a generous memory bound. The exact exponential due filter
       -- runs in the service over this set, so the bound must not be the send limit.
       ORDER BY datetime(last_send_at) ASC
@@ -416,6 +437,10 @@ export class SqliteConversationRepo implements ConversationRepository {
     this.upsert(phone, { price_given_at: new Date().toISOString() });
   }
 
+  clearPriceQuote(phone: string): void {
+    this.db.prepare('UPDATE conversations SET price_given_at = NULL, quote_fingerprint = NULL WHERE customer_phone = ?').run(phone);
+  }
+
   getLeadScore(phone: string): number {
     const row = this.db.prepare(
       'SELECT lead_score FROM conversations WHERE customer_phone = ?'
@@ -464,6 +489,7 @@ export class SqliteConversationRepo implements ConversationRepository {
       `UPDATE conversations
        SET collected_plan = NULL,
            price_given_at = NULL,
+           quote_fingerprint = NULL,
            sales_phase = NULL,
            lead_intent = NULL,
            gallery_nudged_at = NULL,
@@ -478,6 +504,10 @@ export class SqliteConversationRepo implements ConversationRepository {
 
   clearCollectedTransport(phone: string): void {
     this.db.prepare('UPDATE conversations SET collected_transport_need = NULL WHERE customer_phone = ?').run(phone);
+  }
+
+  clearCollectedPlan(phone: string): void {
+    this.db.prepare('UPDATE conversations SET collected_plan = NULL WHERE customer_phone = ?').run(phone);
   }
 
   clearCollectedDate(phone: string): void {
@@ -753,6 +783,17 @@ export class SqliteMessageRepo implements MessageRepository {
       "SELECT body FROM messages WHERE customer_phone = ? AND direction = 'outbound' ORDER BY created_at DESC, id DESC LIMIT 1"
     ).get(phone) as { body: string | null } | undefined;
     return row?.body ?? null;
+  }
+
+  hasOutboundAfterMessage(phone: string, whatsappMessageId: string): boolean {
+    const row = this.db.prepare(
+      `SELECT 1 FROM messages later
+       JOIN messages anchor ON anchor.customer_phone = later.customer_phone
+       WHERE anchor.customer_phone = ? AND anchor.whatsapp_message_id = ?
+         AND later.direction = 'outbound' AND later.id > anchor.id
+       LIMIT 1`
+    ).get(phone, whatsappMessageId);
+    return row !== undefined;
   }
 
   getLastOutboundTextBody(phone: string): string | null {
@@ -2058,6 +2099,17 @@ export class SqliteFollowupEventRepo implements FollowupEventRepository {
       ORDER BY claimed_at DESC, id DESC LIMIT 1
     `).get(phone) as FollowupEventRow | undefined;
     return row ?? null;
+  }
+
+  latestSendAt(phone: string): string | null {
+    const row = this.db.prepare(`
+      SELECT COALESCE(sent_at, failed_at, claimed_at) AS sent_at
+      FROM followup_events
+      WHERE customer_phone = ? AND status IN ('pending', 'sent', 'uncertain')
+      ORDER BY datetime(COALESCE(sent_at, failed_at, claimed_at)) DESC, id DESC
+      LIMIT 1
+    `).get(phone) as { sent_at: string | null } | undefined;
+    return row?.sent_at ?? null;
   }
 
   listReachedMetaBetween(sinceIso: string, untilIso: string): FollowupEventRow[] {
