@@ -1544,6 +1544,8 @@ export class SqliteCustomerDataRepo implements CustomerDataRepository {
       const followupConsent = this.db.prepare('DELETE FROM followup_consent WHERE customer_phone = ?').run(customerPhone).changes;
       const followupConsentGrants = this.db.prepare('DELETE FROM followup_consent_grants WHERE customer_phone = ?').run(customerPhone).changes;
       const mediaSends = this.db.prepare('DELETE FROM media_sends WHERE customer_phone = ?').run(customerPhone).changes;
+      const outboundMedia = this.db.prepare('DELETE FROM outbound_media WHERE customer_phone = ?').run(customerPhone).changes;
+      const paymentReservations = this.db.prepare('DELETE FROM payment_reservations WHERE customer_phone = ?').run(customerPhone).changes;
       const ownerAlerts = this.db.prepare('DELETE FROM owner_alerts WHERE customer_phone = ?').run(customerPhone).changes;
       const aiUsage = this.db.prepare('DELETE FROM ai_usage WHERE customer_phone = ?').run(customerPhone).changes;
       const messages = this.db.prepare('DELETE FROM messages WHERE customer_phone = ?').run(customerPhone).changes;
@@ -1556,6 +1558,8 @@ export class SqliteCustomerDataRepo implements CustomerDataRepository {
         aiUsage,
         ownerAlerts,
         mediaSends,
+        outboundMedia,
+        paymentReservations,
         bridgeSessions,
         followupConsent,
         followupConsentGrants,

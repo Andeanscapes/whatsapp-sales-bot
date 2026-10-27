@@ -12,7 +12,7 @@ export const AVAILABILITY_NOT_AVAILABLE = 'AVAILABILITY_NOT_AVAILABLE';
 export const ADDON_ID_PRIVATE_TRANSPORT = 'private_transport';
 export const ADDON_ID_APIARY_CATTLE = 'apiary_cattle';
 
-function todayInTimeZone(timeZone = 'America/Bogota'): string {
+export function todayInTimeZone(timeZone = 'America/Bogota'): string {
   const parts = new Intl.DateTimeFormat('en', {
     timeZone,
     year: 'numeric',
@@ -352,10 +352,12 @@ export class DynamicDataService {
   private refreshMs: number;
   private cache: {
     data: InternalDynamicData | null;
+    /** Validated source payload, kept for operator-only views (Telegram /plans, /dates, /images). */
+    raw: DynamicData | null;
     etag: string | null;
     lastFetchMs: number;
     lastFetchOk: boolean;
-  } = { data: null, etag: null, lastFetchMs: 0, lastFetchOk: false };
+  } = { data: null, raw: null, etag: null, lastFetchMs: 0, lastFetchOk: false };
 
   private lastErrorLogMs = 0;
   private static readonly ERROR_LOG_INTERVAL_MS = 60_000;
@@ -387,6 +389,11 @@ export class DynamicDataService {
     return this.cache.data;
   }
 
+  /** Full catalog including paused sites. Operator views only; never feed the customer prompt. */
+  getRawData(): DynamicData | null {
+    return this.cache.raw;
+  }
+
   async refreshIfStale(): Promise<void> {
     if (this.refreshMs <= 0) return;
     const now = Date.now();
@@ -402,7 +409,7 @@ export class DynamicDataService {
 
   /** Seed cache from already-validated internal data (tests / offline catalog). */
   seedData(data: InternalDynamicData): void {
-    this.cache = { data, etag: null, lastFetchMs: Date.now(), lastFetchOk: true };
+    this.cache = { data, raw: null, etag: null, lastFetchMs: Date.now(), lastFetchOk: true };
   }
 
   private async fetch(): Promise<void> {
@@ -438,7 +445,7 @@ export class DynamicDataService {
       }
       const transformed = transformDynamicData(validated);
 
-      this.cache = { data: transformed, etag, lastFetchMs: Date.now(), lastFetchOk: true };
+      this.cache = { data: transformed, raw: validated, etag, lastFetchMs: Date.now(), lastFetchOk: true };
       logger.info(
         { experiences: Object.keys(transformed.experiences) },
         '[DYNAMIC] data updated',
