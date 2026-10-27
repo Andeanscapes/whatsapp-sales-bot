@@ -23,6 +23,12 @@ function seedCustomer(phone: string, messageId: string): void {
   repos.mediaSend.recordSend(phone, 'media-1');
   repos.bridgeSession.open(`chat-${phone}`, phone);
   repos.followupConsent.grantConsent(phone, 'test');
+  repos.followupConsentGrant.record({
+    customer_phone: phone,
+    decision: 'grant',
+    decided_at: new Date().toISOString(),
+    source: 'operator_grant',
+  });
   repos.followupSubscription.ensureExists(phone);
   repos.followupSubscription.markAsked(phone, `${messageId}.ask`);
   repos.followupSubscription.affirm(phone, `${messageId}.yes`, 'test');
@@ -52,6 +58,7 @@ describe('CustomerDataRepository.deleteCustomer', () => {
       mediaSends: 1,
       bridgeSessions: 1,
       followupConsent: 1,
+      followupConsentGrants: 1,
       followupEvents: 1,
       followupSubscriptions: 1,
       followupSubscriptionEvents: 1,
@@ -60,6 +67,7 @@ describe('CustomerDataRepository.deleteCustomer', () => {
     expect(repos.conversation.getByPhone(phone)).toBeUndefined();
     expect(repos.dedupe.isProcessed('wamid.AAA')).toBe(false);
     expect(repos.bridgeSession.getByCustomer(phone)).toBeNull();
+    expect(repos.followupConsentGrant.listByPhone(phone)).toEqual([]);
   });
 
   it('does not touch an unrelated customer', () => {
@@ -86,6 +94,7 @@ describe('CustomerDataRepository.deleteCustomer', () => {
       mediaSends: 0,
       bridgeSessions: 0,
       followupConsent: 0,
+      followupConsentGrants: 0,
       followupEvents: 0,
       followupSubscriptions: 0,
       followupSubscriptionEvents: 0,

@@ -67,6 +67,22 @@ const TONE_GUARDS: Check[] = [
   { label: 'availability claim ("hay/está disponible")', pattern: /\b(?:hay|est[aá])\s+disponible\b/i },
 ];
 
+/**
+ * Register guard: the model copies the instruction register, so voseo imperatives in
+ * the skill files leak into replies (live 2026-10: "dejás", "tenés razón", "gracias a
+ * vos" mixed with tú). Explicit accented word list on purpose (the unaccented forms are valid tú) — a generic "-á/-és" suffix
+ * would flag "está", "será", "después". The single line that LISTS the banned forms
+ * (contains "nunca voseo") is excluded before matching.
+ */
+const VOSEO_GUARD: Check = {
+  label: 'voseo in skill instructions (use tú/ustedes)',
+  pattern: /(?<![\p{L}])(?:vos|tenés|querés|podés|sabés|dejás|pensás|hacés|decís|preferís|escribís|usá|preguntá|cerrá|decí|listá|mirá|contame|decime|fijate|presentate|pedilo|ponelo|mantenelo|decilo|respondelo|reemplazalo)(?![\p{L}])/iu,
+};
+
+function stripVoseoBanLine(content: string): string {
+  return content.split('\n').filter(line => !/nunca voseo/i.test(line)).join('\n');
+}
+
 interface PlanEntry { name?: unknown }
 interface ExperienceEntry { name?: unknown; plans?: unknown }
 interface RegistryShape { experiences?: unknown }
@@ -169,6 +185,7 @@ function main(): void {
   for (const file of FILES) {
     const content = readFileSync(file.path, 'utf-8');
     failures.push(...collectFailures(file.label, content, checks));
+    failures.push(...collectFailures(file.label, stripVoseoBanLine(content), [VOSEO_GUARD]));
   }
 
   const referentBlock = renderReferentStrategies();

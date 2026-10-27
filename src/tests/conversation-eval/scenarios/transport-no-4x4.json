@@ -11,7 +11,7 @@
     { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 2, "weight": 1 }
   ],
   "turns": [
-    { "user": "Tengo carro pero no es 4x4", "mockReply": "En ese caso lo más práctico es llegar a Chivor pueblo y usar el transporte local 4x4 hacia la mina. ¿Quieres que te explique la ruta?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2, "transport": "own_car" } },
+    { "user": "Tengo carro pero no es 4x4", "mockReply": "En ese caso lo más práctico es llegar a Chivor pueblo y usar el transporte local 4x4 hacia la mina. ¿Quieres que te explique la ruta?", "replay": true, "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2, "transport": "own_car" } },
     { "user": "Sí, explícame cómo llegar", "mockReply": "La ruta recomendada llega a Chivor pueblo; desde allí el equipo coordina el acceso local 4x4 a la mina. El horario ideal se valida según la fecha. ¿Qué fecha tienes en mente?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2, "transport": "own_car" } }
   ]
 }

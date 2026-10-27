@@ -286,23 +286,43 @@ export function galleryImageLastSentAt(
   );
 }
 
-function pickBest<T extends { planId?: string; url: string; caption: string }>(images: T[], planId: string | null | undefined): T | undefined {
-  if (!images.length) return undefined;
-  if (planId) {
-    const match = images.find(i => i.planId === planId);
-    if (match) return match;
-  }
-  return images[0];
+/** Reserved `[[FOTOS:…]]` theme for the active plan's card. Never a gallery type. */
+export const PLAN_BROCHURE_THEME = 'plan';
+
+/**
+ * The card of exactly this plan, or none. Never falls back to another plan's card:
+ * a card for the wrong plan (or site) is a wrong quote.
+ */
+export function findPlanBrochureImage(
+  planImages: InternalPlanImage[],
+  experienceId: string | null | undefined,
+  planId: string | null | undefined,
+): InternalPlanImage | undefined {
+  if (!experienceId || !planId) return undefined;
+  return planImages.find(image => image.experienceId === experienceId && image.planId === planId);
 }
 
+/**
+ * A plan card ships through two ledgers: the price/switch card claims its feed id,
+ * a requested `[[FOTOS:plan]]` claims its url. Either one counts as "already sent".
+ */
+export function planCardSentRecently(
+  repos: Repositories,
+  phone: string,
+  card: Pick<InternalPlanImage, 'id' | 'url'>,
+): boolean {
+  const cutoff = new Date(Date.now() - MS_72H).toISOString();
+  if (repos.mediaSend.hasRecentSameImage(phone, card.id, cutoff)) return true;
+  const lastSentAt = galleryImageLastSentAt(repos, phone, card);
+  return lastSentAt !== null && lastSentAt >= cutoff;
+}
+
+/** The price/switch card: exactly the given plan's card, or none (no first-card fallback). */
 export function selectPlanImage(
   dynamicImages: InternalPlanImage[],
   planId: string | null | undefined,
   experienceId: string,
 ): ResolvedPlanImage | undefined {
-  const experienceImages = dynamicImages.filter(image => image.experienceId === experienceId);
-  if (!experienceImages.length) return undefined;
-  const picked = pickBest(experienceImages, planId);
-  if (!picked) return undefined;
-  return { id: picked.id, url: picked.url, caption: picked.caption };
+  const picked = findPlanBrochureImage(dynamicImages, experienceId, planId);
+  return picked ? { id: picked.id, url: picked.url, caption: picked.caption } : undefined;
 }

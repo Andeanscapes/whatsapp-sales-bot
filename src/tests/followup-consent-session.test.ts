@@ -54,13 +54,17 @@ describe('consent_session lifecycle', () => {
     expect(consentCycleKey(sessionOf())).toBe('c2');
   });
 
-  it('opens a new session when an active cycle is closed by a customer inbound', () => {
+  // Consent is DURABLE (2026-09-03): only an explicit refusal, a customer opt-out or an
+  // operator revocation ends it. An ordinary inbound must NOT mint a new session, or
+  // the lead gets asked for permission they already granted.
+  it('keeps the session when an active consent holder writes again', () => {
     repos.followupSubscription.ensureExists(PHONE);
     repos.followupSubscription.markAsked(PHONE, 'wamid.ask1');
     repos.followupSubscription.affirm(PHONE, 'wamid.yes', 'customer_reply');
 
-    expect(repos.followupSubscription.closeCycleOnCustomerInbound(PHONE)).toBe(true);
-    expect(sessionOf()).toBe(2);
+    expect(sessionOf()).toBe(1);
+    expect(repos.followupSubscription.getByPhone(PHONE)?.status).toBe('active');
+    expect(repos.followupSubscription.getByPhone(PHONE)?.activated_at).not.toBeNull();
   });
 
   it('opens a new session for the bounded pending deferral', () => {
@@ -73,6 +77,40 @@ describe('consent_session lifecycle', () => {
     repos.followupSubscription.markAsked(PHONE, 'wamid.ask2');
     expect(repos.followupSubscription.deferPendingAskAfterCustomerInbound(PHONE)).toBe(false);
     expect(sessionOf()).toBe(2);
+  });
+
+  // The sender calls markAsked AFTER awaiting Meta, so the customer's reply can be
+  // classified during that await. An unconditional write reset the fresh decision
+  // back to `pending`: durable consent erased, or — with a standing operator grant —
+  // the refusal that blocks the one-shot template erased.
+  it('never overwrites a decision recorded while the ask was in flight', () => {
+    repos.followupSubscription.ensureExists(PHONE);
+    repos.followupSubscription.markAsked(PHONE, null);
+    repos.followupSubscription.affirm(PHONE, 'wamid.yes', 'customer_reply');
+
+    repos.followupSubscription.markAsked(PHONE, 'wamid.ask1');
+
+    const active = repos.followupSubscription.getByPhone(PHONE);
+    expect(active?.status).toBe('active');
+    expect(active?.activated_at).not.toBeNull();
+
+    repos.followupSubscription.ensureExists(PHONE);
+    repos.followupSubscription.decline(PHONE, 'wamid.no');
+    repos.followupSubscription.markAsked(PHONE, 'wamid.ask2');
+    expect(repos.followupSubscription.getByPhone(PHONE)?.status).toBe('declined');
+  });
+
+  it('still marks a pending cycle as asked when the outbound id arrives', () => {
+    // The legitimate two-step write: pre-send with a null id, post-send with the
+    // real one. The guard must not break the deferral gate, which requires it.
+    repos.followupSubscription.ensureExists(PHONE);
+    repos.followupSubscription.markAsked(PHONE, null);
+    repos.followupSubscription.markAsked(PHONE, 'wamid.ask1');
+
+    const row = repos.followupSubscription.getByPhone(PHONE);
+    expect(row?.status).toBe('pending');
+    expect(row?.ask_outbound_message_id).toBe('wamid.ask1');
+    expect(repos.followupSubscription.deferPendingAskAfterCustomerInbound(PHONE)).toBe(true);
   });
 
   it('does NOT open a new session when a failed send rolls back to unasked', () => {
@@ -180,5 +218,39 @@ describe('hasAskedSince', () => {
     const id = repos.followupSubscriptionEvent.claim(PHONE, 'recurring', 'c1-r1', 3, 10);
     repos.followupSubscriptionEvent.markAccepted(id!, 'wamid.tpl1');
     expect(repos.followupSubscriptionEvent.hasAskedSince(PHONE, isoAgo(60))).toBe(false);
+  });
+});
+
+// Owner decision 2026-10-26: no permission ask while the team holds the booking.
+// The gate lives only in the candidate SQL, so the sender and the digest agree.
+describe('consent ask skipped during a booking exchange', () => {
+  let db: Database.Database;
+  let repos: Repositories;
+
+  beforeEach(() => {
+    db = new Database(':memory:');
+    migrate(db);
+    repos = createRepositories(db);
+  });
+
+  const candidates = () => repos.conversation.listConsentAskCandidates({
+    silentSinceIso: isoAgo(2),
+    windowExpiryIso: isoAgo(24 * 60),
+    limit: 10,
+  });
+
+  it('excludes a human_pending lead from the consent-ask candidates', () => {
+    seedUnansweredLead(db, 5);
+    repos.conversation.setMode(PHONE, 'human_pending');
+    expect(candidates()).toHaveLength(0);
+  });
+
+  // A lead who went silent right after the booking question is still a dormant,
+  // high-value lead. It must stay askable while the conversation is in bot mode.
+  it('keeps a bot-mode lead eligible even when the last bot message is the booking question', () => {
+    seedUnansweredLead(db, 5);
+    db.prepare(`INSERT INTO messages (customer_phone, direction, message_type, body, created_at) VALUES (?, 'outbound', 'text', ?, ?)`)
+      .run(PHONE, 'Primero confirmo el cupo con el equipo. ¿Quieres que iniciemos la reserva?', isoAgo(1));
+    expect(candidates()).toHaveLength(1);
   });
 });

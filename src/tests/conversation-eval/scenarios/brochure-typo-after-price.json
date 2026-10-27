@@ -1,0 +1,17 @@
+{
+  "id": "brochure-typo-after-price",
+  "source": "regression: misspelled brochure request for the other plan ('brosure de la mas completa') after both prices must ship that plan's card, not a fallback",
+  "tags": ["gallery", "plan"],
+  "lang": "es",
+  "criteria": [
+    { "id": "card-on-misspelled-request", "rule": "output_flag_equals", "flag": "shouldSendGalleryImages", "expected": true, "turn": 4, "weight": 2, "critical": true },
+    { "id": "marker-hidden", "rule": "reply_must_not_match", "patterns": ["\\[\\[\\s*FOTOS"], "turn": 4, "weight": 2, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 4, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "somos una pareja, queremos conocer Chivor", "mockReply": "¡Buenísimo! ¿Les atrae más la experiencia esencial o la más completa?", "expect": { "shouldSendReply": true, "shouldSendGalleryImages": false } },
+    { "user": "si la esencial que vale ?", "mockReply": "La CORE para ustedes dos queda en $950.000. ¿Les suena para avanzar con una fecha?", "expect": { "shouldSendReply": true, "priceJustGiven": true } },
+    { "user": "y la otra que vale ?", "mockReply": "La PRIME para ustedes dos queda en $1.700.000. Suma una segunda mina y la cabalgata. ¿Con cuál se quedan?", "expect": { "shouldSendReply": true, "priceJustGiven": true } },
+    { "user": "tienes brosure de la mas completa ?", "mockReply": "Claro, aquí va. ¿Qué fecha tienen en mente?\n[[FOTOS:plan]]", "expect": { "shouldSendReply": true, "shouldSendGalleryImages": true } }
+  ]
+}

@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { partitionLiveScenarios } from './scenario-loader.js';
 import { scenarioSchema } from './schema.js';
 import { validateTurnExpectations } from './turn-expectations.js';
+import { loadScenarios } from './scenario-loader.js';
+import { evaluateScenario } from './evaluate-scenario.js';
+import { fileURLToPath } from 'node:url';
 import type { TurnRecord } from './runner.js';
 
 function scenario(runner: 'message' | 'lifecycle' = 'message', tags?: string[]) {
@@ -42,6 +45,26 @@ function turn(shouldSendGalleryImages: boolean): TurnRecord {
 }
 
 describe('conversation eval integrity', () => {
+  it.each([
+    ['¿Vienen en pareja, solos o en grupo?', true],
+    ['¿Qué les atrae más: la intensidad de la mina o un ritmo con naturaleza y actividades?', true],
+    ['¿Cuánto tiempo tienen disponible?', true],
+    ['La experiencia es para parejas y grupos. ¿Te cuento más?', false],
+    ['La intensidad y la naturaleza son parte de la experiencia. ¿Te cuento más?', false],
+  ])('checks H01 qualification inside its question: %s', (reply, passed) => {
+    const h01 = loadScenarios(fileURLToPath(new URL('./scenarios', import.meta.url)))
+      .find(item => item.id === 'entry-funnel-H01')!;
+    const record = { ...turn(false), reply };
+    expect(evaluateScenario(h01, [record]).criteria.find(item => item.id === 'qualifies-lead')?.passed)
+      .toBe(passed);
+  });
+  it.each([2, 4, undefined])('rejects criteria targeting replay turn %s', checkedTurn => {
+    expect(() => scenarioSchema.parse({
+      id: 'replay-validation',
+      turns: [1, 2, 3, 4].map(n => ({ user: `turn ${n}`, mockReply: 'reply', replay: n === 2 || n === 4 })),
+      criteria: [{ id: 'reply', rule: 'reply_must_match', patterns: ['reply'], turn: checkedTurn }],
+    })).toThrow('checks a replay turn');
+  });
   it('validates reply patterns and real output flags without mutating output', () => {
     const record = turn(true);
     expect(validateTurnExpectations(scenario(), [record])).toEqual([]);

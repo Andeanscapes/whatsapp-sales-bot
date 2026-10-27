@@ -62,6 +62,23 @@ export function getPlans(exp: ActiveExperience): ActiveExperience['plans'] {
   return exp.plans;
 }
 
+export function getSites(exp: ActiveExperience): Array<{ id: string; name?: string; selectionAliases?: string[] }> {
+  const ids = [...new Set(getPlans(exp).map(plan => plan.siteId).filter((id): id is string => !!id))];
+  return ids.map(id => ({ id, ...exp.sites?.[id] }));
+}
+
+export function getSiteSelection(exp: ActiveExperience): ActiveExperience['siteSelection'] {
+  return exp.siteSelection;
+}
+
+export function getEquivalentPlan(exp: ActiveExperience, planId: string, siteId: string): string | null {
+  const tier = getPlans(exp).find(plan => plan.id === planId)?.tier
+    ?? getUnavailableSites(exp).find(site => site.planIds.includes(planId))?.planTiers[planId];
+  if (!tier) return null;
+  const matches = getPlans(exp).filter(plan => plan.siteId === siteId && plan.tier === tier);
+  return matches.length === 1 ? matches[0].id : null;
+}
+
 export function getPricingItems(exp: ActiveExperience): ActiveExperience['pricing']['items'] {
   return exp.pricing.items;
 }
@@ -72,6 +89,13 @@ export function getShortDescription(exp: ActiveExperience): string {
 
 export function getCommonQuestions(exp: ActiveExperience): ActiveExperience['commonQuestions'] {
   return exp.commonQuestions;
+}
+
+/** The site's own safety FAQs when the feed defines them, else the experience-wide ones. */
+export function getSiteCommonQuestions(skills: Skills, exp: ActiveExperience, siteId: string | undefined): ActiveExperience['commonQuestions'] {
+  const siteFaqs = siteId ? skills.dynamicData?.experiences[exp.id]?.sites[siteId]?.safetyFaqs : undefined;
+  if (siteFaqs) return siteFaqs.map(faq => ({ ...faq, question: faq.question ?? faq.intent }));
+  return getCommonQuestions(exp);
 }
 
 export function isPricingAvailable(exp: ActiveExperience): boolean {
@@ -149,6 +173,54 @@ export function getMediaTypes(skills: Skills, experienceId?: string | null, site
   return [...new Set(entries.flatMap(([, types]) => types))];
 }
 
+/** A gallery photo the customer on `planId` may receive: unrestricted, or restricted to that plan. */
+export function isGalleryImageForPlan(image: InternalGalleryImage, planId: string | null | undefined): boolean {
+  return !image.planIds || (!!planId && image.planIds.includes(planId));
+}
+
+/**
+ * The same skills with plan-restricted gallery photos removed unless `planId` is
+ * listed on them (e.g. Fura y Tena photos only reach PRIME Coscuez customers).
+ * Every customer-facing photo path runs on this view, so an unauthorised photo
+ * is neither advertised to the model, cued, resolved, nor sent.
+ */
+export function scopeGalleryToPlan(skills: Skills, planId: string | null | undefined): Skills {
+  const media = skills.dynamicMedia;
+  if (!media || !media.galleryImages.some(image => image.planIds)) return skills;
+  return {
+    ...skills,
+    dynamicMedia: { ...media, galleryImages: media.galleryImages.filter(image => isGalleryImageForPlan(image, planId)) },
+  };
+}
+
+/**
+ * Gallery theme that stands in when a requested theme has no photos at a site
+ * (e.g. Coscuez has no kids photos yet). Catalog-driven, never a literal: the
+ * stored plan's `galleryTheme`, else the one other plan theme of that site.
+ * Only a theme with **unrestricted** photos at the same site qualifies, so a
+ * substitute is never plan-specific (PRIME's Fura y Tena excursion stands in for
+ * nothing; PRIME falls back to the site's mine photos). Null otherwise: never
+ * crosses sites, never invents a category.
+ */
+export function getSiteFallbackGalleryTheme(
+  skills: Skills,
+  experienceId: string | null | undefined,
+  siteId: string | null | undefined,
+  planId?: string | null,
+): string | null {
+  if (!siteId) return null;
+  const experience = findActiveExperience(skills, experienceId);
+  if (!experience) return null;
+  const hasSharedPhotos = (theme: string): boolean => getGalleryImages(skills, experience.id)
+    .some(image => image.siteId === siteId && image.type === theme && !image.planIds);
+  const sitePlans = getPlans(experience).filter(plan => plan.siteId === siteId);
+  const planTheme = planId ? sitePlans.find(plan => plan.id === planId)?.galleryTheme : undefined;
+  if (planTheme && hasSharedPhotos(planTheme)) return planTheme;
+  const candidates = [...new Set(sitePlans.map(plan => plan.galleryTheme).filter((theme): theme is string => !!theme))]
+    .filter(hasSharedPhotos);
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
 export function getTypeKeywords(
   skills: Skills,
   experienceId?: string | null,
@@ -186,6 +258,32 @@ export function getPublicPaymentFacts(skills: Skills): PublicPaymentFacts {
     }
   }
   return skills.andeanScapes.business.publicPaymentFallback;
+}
+
+/**
+ * Anticipo for one plan of `exp`: the plan's own `depositPercentage` when the catalog
+ * sets one, else the experience-wide deposit. Scoped to one experience because plan
+ * ids are only unique within it.
+ */
+export function getPublicPaymentFactsForPlan(
+  skills: Skills,
+  exp: ActiveExperience | null | undefined,
+  planId: string | null | undefined,
+): PublicPaymentFacts {
+  const base = getPublicPaymentFacts(skills);
+  const planDeposit = planId ? exp?.plans.find(plan => plan.id === planId)?.depositPercentage : undefined;
+  return planDeposit != null ? { ...base, depositPercent: planDeposit } : base;
+}
+
+/** Paused destinations: acknowledged by name only, never quoted, photographed or booked. */
+export function getUnavailableSites(exp: ActiveExperience): NonNullable<ActiveExperience['unavailableSites']> {
+  return exp.unavailableSites ?? [];
+}
+
+/** True when `planId` belongs to a paused destination of `exp`. */
+export function isPlanPaused(exp: ActiveExperience | null | undefined, planId: string | null | undefined): boolean {
+  if (!exp || !planId) return false;
+  return getUnavailableSites(exp).some(site => site.planIds.includes(planId));
 }
 
 export function hasPublicPaymentFacts(skills: Skills): boolean {

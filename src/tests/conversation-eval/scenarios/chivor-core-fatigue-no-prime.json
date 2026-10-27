@@ -1,0 +1,18 @@
+{
+  "id": "chivor-core-fatigue-no-prime",
+  "source": "review 2026-10-26: a fatigue concern must never be answered with the plan that has the longest day",
+  "tags": ["plan", "objection", "live"],
+  "lang": "es",
+  "liveRuns": 1,
+  "minLiveScore": 85,
+  "criteria": [
+    { "id": "no-prime-for-fatigue", "rule": "reply_must_not_match", "patterns": ["\\bPRIME\\b"], "turn": 4, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 4, "critical": true }
+  ],
+  "turns": [
+    { "user": "hola", "mockReply": "Hola, soy Heinner de Andean Scapes. ¿Vienen en pareja, solos o en grupo?", "expect": { "shouldSendReply": true } },
+    { "user": "pareja", "mockReply": "Tenemos BASIC pasadía sin noche, CORE con una mina y alojamiento, y PRIME con dos minas y cabalgata. ¿Cuál les encaja más?", "expect": { "shouldSendReply": true } },
+    { "user": "el core", "mockReply": "CORE es una mina guiada, caminata al mirador y noche en la hacienda. Para 2 personas queda en $950.000 COP, equivalente a $475.000 COP por persona. ¿Qué fecha tienen en mente?", "expect": { "shouldSendReply": true, "priceJustGiven": true } },
+    { "user": "es muy pesado? me canso facil caminando", "mockReply": "Hay caminata y esfuerzo físico, pero la noche en la hacienda reparte la jornada en dos días y el ritmo se adapta al grupo. ¿Alguno tiene alguna condición que debamos tener en cuenta?", "expect": { "shouldSendReply": true } }
+  ]
+}

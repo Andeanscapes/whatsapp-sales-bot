@@ -2,10 +2,11 @@ import type { Repositories } from '../db/repositories/index.js';
 import { normalizeText, detectLanguageOrNull, detectExplicitLanguageSwitch, type SupportedLanguage } from './language-service.js';
 import type { FallbackReplies } from './skill-loader.js';
 import type { MergedQualification } from './types.js';
-import { getPlans, type ActiveExperience } from './product-registry.js';
+import { getEquivalentPlan, getPlans, getSites, getUnavailableSites, type ActiveExperience } from './product-registry.js';
 import { MONTH_NAMES } from './constants.js';
 import { env } from '../config/env.js';
 import { parseChildAges } from './qualification-format.js';
+import { calculatePriceQuote } from './pricing-calculator.js';
 
 function isForbiddenCustomerName(name: string): boolean {
   const n = name.toLowerCase().trim();
@@ -196,36 +197,164 @@ function extractDeclaredOrigin(text: string): string | null {
 /** "niño de 5 años" / "child of 5 years old" — single explicit age mention. */
 const CHILD_AGE_INLINE_RE = /\b(?:ni[ñn][oa]|child|kid)\s+(?:de\s+)?(\d{1,2})\s*(?:a[ñn]os|years?\s*old)\b/i;
 
-export function detectPlan(message: string, experience: ActiveExperience): string | null {
+const textTokens = (text: string): string[] => normalizeText(text).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+
+/** First position of each site named in the text, via its id or catalog `selectionAliases`. */
+function siteMentions(text: string, experience: ActiveExperience): Array<{ id: string; start: number; length: number }> {
+  const words = textTokens(text);
+  return getSites(experience).flatMap(site => {
+    const hits = [site.id, ...(site.selectionAliases ?? [])].map(textTokens).filter(alias => alias.length > 0)
+      .flatMap(alias => {
+        const start = words.findIndex((_, i) => alias.every((token, offset) => words[i + offset] === token));
+        return start === -1 ? [] : [{ id: site.id, start, length: alias.length }];
+      })
+      .sort((a, b) => a.start - b.start || b.length - a.length);
+    return hits.slice(0, 1);
+  });
+}
+
+function mentionedSites(message: string, experience: ActiveExperience): string[] {
+  return siteMentions(message, experience).map(hit => hit.id);
+}
+
+export function detectSite(message: string, experience: ActiveExperience): string | null {
+  const matches = mentionedSites(message, experience);
+  return matches.length === 1 ? matches[0] : null;
+}
+
+const SITE_CHOICE_MARKER = /\b(?:quiero|queremos|mejor|prefiero|preferimos|me quedo con|nos quedamos con|vamos con|voy con|elijo|elegimos|dale|me interesa|nos interesa|me gustaria|nos gustaria|me llama|nos llama)\b/;
+const SITE_INQUIRY = /\b(?:saber|preguntar|consultar)\b/;
+const NEGATION_WORDS = new Set(['no', 'ni', 'tampoco', 'nunca']);
+const BARE_SITE_FILLER = new Set(['el', 'la', 'en', 'de', 'a', 'si', 'ok', 'pues', 'porfa', 'por', 'favor', 'entonces', 'dale', 'mejor']);
+// Bare affirmations to a site question: "si", "ok", "dale", "claro", "de una", "listo", "me interesa", "va"
+const BARE_AFFIRMATION = /^(?:si|ok|dale|claro|de una|listo|me interesa|va)\s*$/i;
+
+function selectionClauses(message: string): string[] {
+  return message.split(/[,;.!?¿¡\n]+/).flatMap(clause =>
+    normalizeText(clause).split(/\by\b|\b(?:mandame|enviame|pasame|muestrame|send me)\b/));
+}
+
+/**
+ * The single destination the customer chooses in this message, or null. A mention is
+ * not a choice: "mi tío vive en X", "ya conocemos X" and "¿X queda cerca?" name a site
+ * without choosing it. A clause chooses when it names one site with a choice/interest
+ * verb ("mejor X", "me interesa X") or is the site alone (answer to our question).
+ * Negation is clause-scoped so "no sé, me interesa X" chooses and "no quiero X" does not.
+ */
+export function detectSiteChoice(message: string, experience: ActiveExperience): string | null {
+  const clauses = message.split(/[,;.!?¿¡\n]+/).flatMap(clause =>
+    isPlanBrochureRequest(clause) ? selectionClauses(clause) : [clause]);
+  const choices = new Set(clauses.flatMap(clause => {
+    if (isPlanBrochureRequest(clause)) return [];
+    const mentions = siteMentions(clause, experience);
+    if (mentions.length !== 1) return [];
+    const [{ id, start, length }] = mentions;
+    const words = textTokens(clause);
+    if (words.slice(0, start).some(word => NEGATION_WORDS.has(word))) return [];
+    const rest = words.filter((_, i) => i < start || i >= start + length);
+    if (rest.every(word => BARE_SITE_FILLER.has(word))) return [id];
+    const norm = words.join(' ');
+    return !SITE_INQUIRY.test(norm) && SITE_CHOICE_MARKER.test(norm) ? [id] : [];
+  }));
+  return choices.size === 1 ? [...choices][0] : null;
+}
+
+// The closing question must offer the site as a choice ("¿Te interesa Chivor…?"). A
+// "sí" to a media offer ("¿Te mando fotos de Chivor?") is not a destination choice.
+const SITE_INTEREST_FRAME = /\b(?:te|les) (?:interesa|llama|suena|gustaria|sirve|animas?|anima)\b|\b(?:se animan|prefieres|prefieren|preferis|quieres conocer|quieren conocer|vamos con)\b/;
+const SITE_PLAN_REVIEW_FRAME = /\b(?:quieres|quieren|te gustaria|les gustaria)\b.*\b(?:revisar|ver|conocer|cuente|contemos|explique|expliquemos)\b.*\b(?:plan(?:es)?|informacion|info|detalles)\b/;
+const SITE_MEDIA_OFFER = /\b(?:fotos?|imagen(?:es)?|videos?|brochure|folleto)\b/;
+const SITE_OPERATIONAL_QUESTION = /\b(?:fechas?|lunes|martes|miercoles|jueves|viernes|sabados?|domingos?|hoy|manana|reserv\w*|inici(?:ar|emos|amos)|confirm\w*|cupos?|pagos?|pagar|anticipo)\b/;
+
+/**
+ * A bare affirmation ("si", "ok", "dale"…) chooses the single site the bot's closing
+ * question offered. Null when the message names a site itself (detectSiteChoice owns
+ * that), the question names zero or several sites, or it is not a site-interest frame.
+ */
+export function resolveSiteAnswer(
+  message: string,
+  lastOutboundText: string | null,
+  experience: ActiveExperience,
+): string | null {
+  if (!lastOutboundText || !BARE_AFFIRMATION.test(normalizeText(message))) return null;
+  if (mentionedSites(message, experience).length > 0) return null;
+  const question = closingQuestion(lastOutboundText);
+  if (!question) return null;
+  const normQuestion = normalizeText(question);
+  // A date/booking/media question still owns its yes even when it names a site.
+  if (SITE_MEDIA_OFFER.test(normQuestion) || SITE_OPERATIONAL_QUESTION.test(normQuestion)
+    || isDateAskQuestion(question)
+    || MONTH_NAMES.some(month => normQuestion.split(' ').includes(month))
+    || /\b(?:el|para|este) \d{1,2}\b/.test(normQuestion)
+    || /\b\d{1,2}[/-]\d{1,2}\b/.test(question)) return null;
+  if (!SITE_INTEREST_FRAME.test(normQuestion) && !SITE_PLAN_REVIEW_FRAME.test(normQuestion)) return null;
+  const sites = mentionedSites(question, experience);
+  return sites.length === 1 ? sites[0] : null;
+}
+
+/** The site chosen by THIS inbound. Engine and extractor must share this predicate. */
+export function siteChoiceThisTurn(
+  message: string,
+  lastOutboundText: string | null,
+  experience: ActiveExperience,
+): string | null {
+  return detectSiteChoice(message, experience) ?? resolveSiteAnswer(message, lastOutboundText, experience);
+}
+
+/**
+ * Destination context: when a plan is stored, use its site. Older messages cannot
+ * override it. Before any plan is stored, an explicit site choice wins; a question
+ * naming one site also counts as interest.
+ */
+export function resolveSiteContext(
+  experience: ActiveExperience,
+  currentPlan: string | null | undefined,
+  inboundBodies: readonly string[],
+): string | undefined {
+  // Plan is stored: always use its site. New choices can be made via contextAwareExtract,
+  // which runs before the next read and updates the plan.
+  if (currentPlan) {
+    return getPlans(experience).find(plan => plan.id === currentPlan)?.siteId;
+  }
+
+  // No plan yet: scan for a site choice or question.
+  for (const body of inboundBodies) {
+    const site = detectSiteChoice(body, experience)
+      ?? (/[?¿]/.test(body) ? detectSite(body, experience) : null);
+    if (site) return site;
+  }
+  return undefined;
+}
+
+export function detectPlan(message: string, experience: ActiveExperience, preferredSiteId?: string | null): string | null {
+  if (mentionedSites(message, experience).length > 1) return null;
   const norm = normalizeText(message);
-  const plans = getPlans(experience);
+  const siteId = detectSite(message, experience) ?? preferredSiteId;
+  // No plan before the destination is chosen (when multiple sites and no site known).
+  const allSites = [...new Set(getPlans(experience).map(plan => plan.siteId).filter((id): id is string => !!id))];
+  if (allSites.length > 1 && !siteId) return null;
+  const plans = getPlans(experience).filter(plan => !siteId || plan.siteId === siteId);
   if (!plans.length) return null;
 
-  // Nights beat bare ordinals: "el de 2 noches" → 3d2n, not 2d1n.
-  const durationBoosts = new Map<string, RegExp>([
-    ['3d2n_rural', /\b(3\s*d|3\s*dias|3\s*días|tres\s+dias|tres\s+días|2\s*noches|dos\s+noches)\b/],
-    ['2d1n_mining', /\b(2\s*d|2\s*dias|2\s*días|dos\s+dias|dos\s+días|1\s*noche|una\s+noche)\b/],
-  ]);
-
-  // Negative lookahead prevents "el de 2 noches" from matching 2d1n.
-  const ordinalPlanBoosts = new Map<string, RegExp>([
-    ['2d1n_mining', /\b(?:el\s+primer[oa]?|el\s+de\s+2(?!\s*noches)|el\s+de\s+dos(?!\s+noches)|el\s+corto|plan\s+de\s+2(?!\s*noches)|plan\s+de\s+dos(?!\s+noches))\b/],
-    ['3d2n_rural', /\b(?:el\s+segundo[oa]?|el\s+de\s+3|el\s+de\s+tres|el\s+largo|plan\s+de\s+3|plan\s+de\s+tres)\b/],
-  ]);
-
+  const words = norm.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  const siteAliases = new Set(getSites(experience).flatMap(site =>
+    [site.id, ...(site.selectionAliases ?? [])].map(normalizeText)));
+  const matches = (value: string): boolean => {
+    const tokens = normalizeText(value).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+    if (tokens.length === 0) return false;
+    return words.some((_, index) => tokens.every((token, offset) => words[index + offset] === token));
+  };
   let best: { id: string; score: number } | null = null;
   let tied = false;
 
   for (const plan of plans) {
-    let score = plan.keywords.reduce((total, keyword) => {
-      return norm.includes(normalizeText(keyword)) ? total + 1 : total;
+    let score = (plan.keywords ?? []).reduce((total, keyword) => {
+      return !siteAliases.has(normalizeText(keyword)) && matches(keyword) ? total + 1 : total;
     }, 0);
-
-    const durationBoost = durationBoosts.get(plan.id);
-    if (durationBoost?.test(norm)) score += 15;
-
-    const ordinalBoost = ordinalPlanBoosts.get(plan.id);
-    if (ordinalBoost?.test(norm)) score += 12;
+    if (plan.selectionAliases?.length) {
+      const aliasMatch = plan.selectionAliases.some(matches);
+      if (aliasMatch) score += 10;
+    }
 
     if (score === 0) continue;
     if (!best || score > best.score) {
@@ -239,6 +368,109 @@ export function detectPlan(message: string, experience: ActiveExperience): strin
   return best && !tied ? best.id : null;
 }
 
+const OTHER_PLAN_REFERENCE = /\b(?:el otro (?:plan|paquete)|la otra opcion)\b|^(?:y )?el otro$/;
+// Brochure-only: "brochure del otro plan". Never widen OTHER_PLAN_REFERENCE with this —
+// "¿qué incluye la comida del otro plan?" is a plan question and must not switch plans.
+const BROCHURE_OTHER_PLAN = /\b(?:d?el otro (?:plan|paquete)|la otra opcion)\b/;
+const THAT_PLAN_NOUN_REFERENCE = /\b(?:ese (?:plan|paquete)|esa opcion)\b/;
+// A bare "ese/esa" that closes a choice ("quiero esa entonces", "sí, esa"). A bare
+// pronoun followed by any other noun ("esa fecha") never matches.
+const BARE_PLAN_CHOICE = new RegExp(
+  '(?:^|\\b(?:quiero|queremos|me quedo con|nos quedamos con|vamos con|voy con|prefiero|preferimos|elijo|elegimos|tomamos|tomo|dale|si|ok)\\s+(?:con\\s+)?)'
+  + '(?:ese|esa)(?:\\s+(?:entonces|pues|mismo|misma|porfa|por favor))*$',
+);
+// "no quiero esa" names the plan it refuses; a refusal is never a selection.
+const PLAN_REFERENCE_NEGATION = /\b(?:no|tampoco|ni|nunca)\b/;
+
+/**
+ * True when the message chooses a plan by reference. Also used by the history scan,
+ * so a newer reference keeps the stored plan instead of an older keyword mention.
+ */
+export function isPlanReference(message: string): boolean {
+  const norm = normalizeText(message);
+  if (PLAN_REFERENCE_NEGATION.test(norm)) return false;
+  return OTHER_PLAN_REFERENCE.test(norm) || THAT_PLAN_NOUN_REFERENCE.test(norm) || BARE_PLAN_CHOICE.test(norm);
+}
+
+/**
+ * A plan keyword inside a question ("¿el CORE incluye cabalgata?") compares plans; it
+ * does not choose one. References ("¿y el otro plan?") are judged by isPlanReference.
+ */
+const PLAN_QUESTION_WORD = /\b(?:que|como|cual|cuales|cuanto|cuanta|cuando|donde|incluye|incluyen|tiene|tienen|trae|traen|diferencia|vale|valen|cuesta|cuestan|sale)\b/;
+
+// A choice marker wins over a trailing question: "quiero el prime, ¿cuánto vale?" chooses.
+const PLAN_CHOICE_MARKER = /\b(?:quiero|queremos|mejor|prefiero|preferimos|me quedo con|nos quedamos con|vamos con|voy con|elijo|elegimos|tomamos|tomo|dale|entonces)\b/;
+
+// Explicit spellings only: brochure/brosure/broshure/brouchure/bruschure, folleto/foleto/foyeto, ficha.
+const PLAN_BROCHURE_REQUEST = /\b(?:br[ou]{1,2}(?:sch|ch|sh|s)ure?s?|fol{1,2}etos?|foyetos?|fichas?)\b/i;
+
+/** Asks for the plan card. Downstream it only resolves when the active plan has one. */
+export function isPlanBrochureRequest(text: string): boolean {
+  return PLAN_BROCHURE_REQUEST.test(normalizeText(text));
+}
+
+export function isPlanQuestion(message: string): boolean {
+  const norm = normalizeText(message);
+  // Wanting the brochure is not choosing its plan; choosing a plan plus asking
+  // for its brochure still follows the ordinary choice-marker precedence.
+  if (isPlanBrochureRequest(message)) {
+    const clauses = selectionClauses(message);
+    return !clauses.some(clause => {
+      const choice = PLAN_CHOICE_MARKER.exec(clause);
+      return choice != null && clause.slice(choice.index + choice[0].length).trim().length > 0
+        && !PLAN_REFERENCE_NEGATION.test(clause) && !isPlanBrochureRequest(clause);
+    });
+  }
+  if (PLAN_CHOICE_MARKER.test(norm)) return false;
+  const hasQuestionMark = /[?¿]/.test(message);
+  // "¿y el prime?" has no question word but asks "what about PRIME?".
+  if (hasQuestionMark && norm.split(' ').length <= 4) return true;
+  if (!PLAN_QUESTION_WORD.test(norm)) return false;
+  return hasQuestionMark || /^(?:y )?(?:que|como|cual|cuales|cuanto|cuanta|cuando|donde|incluye|tiene|trae)\b/.test(norm);
+}
+
+function closingQuestion(outboundText: string): string | null {
+  return outboundText.match(/¿[^?]*\?/g)?.at(-1) ?? null;
+}
+
+/**
+ * Resolve anaphoric plan references when no plan keyword was named.
+ * - "el otro plan" / "la otra opción" (or a bare "y el otro?") with exactly 2 plans
+ *   and a stored plan → the non-active plan.
+ * - "ese plan" → the single plan the bot's closing question names, else its whole message.
+ * - Bare "quiero esa" → only the plan the closing question names: a bare pronoun answers
+ *   that question, which may be about a date rather than a plan.
+ * Negated references and bare "otro" / "ese" inside a sentence never match.
+ */
+export function resolvePlanReference(
+  message: string,
+  currentPlan: string | null | undefined,
+  lastOutboundText: string | null,
+  experience: ActiveExperience,
+  preferredSiteId?: string | null,
+): string | null {
+  const siteId = detectSite(message, experience) ?? preferredSiteId
+    ?? getPlans(experience).find(plan => plan.id === currentPlan)?.siteId;
+  const plans = getPlans(experience).filter(plan => !siteId || plan.siteId === siteId);
+  if (plans.length < 2) return null;
+  const norm = normalizeText(message);
+  if (PLAN_REFERENCE_NEGATION.test(norm)) return null;
+
+  if (OTHER_PLAN_REFERENCE.test(norm)) {
+    if (plans.length !== 2 || typeof currentPlan !== 'string') return null;
+    return plans.find(plan => plan.id !== currentPlan)?.id ?? null;
+  }
+
+  if (!lastOutboundText) return null;
+  const question = closingQuestion(lastOutboundText);
+  const questionPlan = question ? detectPlan(question, experience, siteId) : null;
+  let referenced: string | null = null;
+  if (THAT_PLAN_NOUN_REFERENCE.test(norm)) referenced = questionPlan ?? detectPlan(lastOutboundText, experience, siteId);
+  else if (BARE_PLAN_CHOICE.test(norm)) referenced = questionPlan;
+
+  return referenced && referenced !== currentPlan ? referenced : null;
+}
+
 export function isCorrectionMessage(text: string): boolean {
   const norm = normalizeText(text);
   return /ya (te |lo )?(dije|dine|dige|mencione|habia dicho|habia digo|habia mencionado|lo he dicho)/i.test(norm)
@@ -248,6 +480,14 @@ export function isCorrectionMessage(text: string): boolean {
 
 export function getLastAssistantQuestion(repos: Repositories, phone: string): string | null {
   return repos.message.getLastOutboundTextBody(phone);
+}
+
+/**
+ * Day-level date ("14 de noviembre", "2026-11-14"). Month-only stays discovery. The
+ * prompt's T3b cue and the engine's close-turn flags must read the same test.
+ */
+export function isConcreteDayDate(value: unknown): boolean {
+  return typeof value === 'string' && (/\b\d{1,2}\b/.test(value) || /\b\d{4}-\d{2}-\d{2}\b/.test(value));
 }
 
 export function isConfirmedDate(value: unknown): boolean {
@@ -375,9 +615,13 @@ export function extractBookingFields(text: string, experience?: ActiveExperience
   }
 
   if (!fields.collected_date) {
-    const dayMonthEs = text.match(/\b(\d{1,2})\s+de\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)(?:\s+de\s+\d{4})?\b/i);
+    // "28 noviembre" drops the "de"; store the canonical "28 de noviembre" so it is
+    // a day-level date, not month-only discovery. Without "de" the number must open
+    // the clause or follow "el": "somos 2 noviembre" is a group size, not a day.
+    const dayMonthEs = text.match(/\b(\d{1,2})\s+de\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)(\s+de\s+\d{4})?\b/i)
+      ?? text.match(/(?:^|[,;.!?¿¡]\s*|\bel\s+)(\d{1,2})\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)(\s+de\s+\d{4})?\b/i);
     if (dayMonthEs) {
-      fields.collected_date = dayMonthEs[0].toLowerCase();
+      fields.collected_date = `${dayMonthEs[1]} de ${dayMonthEs[2]}${dayMonthEs[3] ?? ''}`.toLowerCase();
     }
   }
 
@@ -583,7 +827,7 @@ export function contextAwareExtract(message: string, repos: Repositories, phone:
   }
 
   if (lastQuestion && !fields.collected_name) {
-    const askedName = normQuestion != null && /como te llamas|cual es tu nombre|con quien tengo/i.test(normQuestion);
+    const askedName = normQuestion != null && /como (?:te llamas|se llama)|cual es (?:tu|su) nombre|con quien tengo|a nombre de quien/i.test(normQuestion);
     if (askedName) {
       const standaloneName = extractStandaloneName(norm);
       if (standaloneName && !isForbiddenCustomerName(standaloneName)) fields.collected_name = standaloneName;
@@ -673,16 +917,39 @@ export function contextAwareExtract(message: string, repos: Repositories, phone:
     }
   }
 
+  const storedPlan = repos.conversation.getCollectedPlan(phone);
+  const chosenSite = experience ? siteChoiceThisTurn(message, lastQuestion, experience) : null;
+  const preferredSiteId = chosenSite ?? (experience ? resolveSiteContext(experience, storedPlan, [
+    message, ...repos.message.getLastInboundBodies(phone, 20).map(row => row.body ?? ''),
+  ]) : undefined);
+  if (experience) delete fields.collected_plan;
+  if (experience && storedPlan && chosenSite) {
+    const storedPlanObj = getPlans(experience).find(p => p.id === storedPlan);
+    const storedSiteId = storedPlanObj?.siteId
+      ?? getUnavailableSites(experience).find(site => site.planIds.includes(storedPlan))?.siteId;
+    if (storedSiteId && storedSiteId !== chosenSite) {
+      fields.collected_plan = getEquivalentPlan(experience, storedPlan, chosenSite);
+    }
+  }
   if (lastQuestion && !fields.collected_plan) {
     const askedPlan = /que plan|which plan|cual plan|2 dias|3 dias|2d|3d/i.test(lastQuestion);
     if (askedPlan) {
-      const detectedPlan = experience ? detectPlan(norm, experience) : null;
+      const detectedPlan = experience ? detectPlan(norm, experience, preferredSiteId) : null;
       if (detectedPlan) fields.collected_plan = detectedPlan;
     }
   }
 
-  const explicitPlan = experience ? detectPlan(norm, experience) : null;
+  const explicitPlan = experience ? detectPlan(norm, experience, preferredSiteId) : null;
   if (explicitPlan) fields.collected_plan = explicitPlan;
+
+  if (!explicitPlan && experience) {
+    const referencedPlan = resolvePlanReference(message, storedPlan, lastQuestion, experience, preferredSiteId);
+    if (referencedPlan) fields.collected_plan = referencedPlan;
+  }
+
+  // "¿y cómo es el prime?" compares plans; it must not replace the plan already chosen.
+  // With no stored plan it is still the first selection.
+  if (storedPlan && isPlanQuestion(message) && (isPlanBrochureRequest(message) || !isPlanReference(message))) delete fields.collected_plan;
 
   return fields;
 }
@@ -702,10 +969,18 @@ export function reconstructFromHistory(repos: Repositories, phone: string, curre
     origen: !fields.origen,
   };
   let scannedPlan: string | null = null;
-  for (const row of allInbound) {
+  let planScanDone = false;
+  for (const [index, row] of allInbound.entries()) {
     if (!row.body || (!need.nombre && !need.personas && !need.fecha && !need.transporte && !need.mascota
       && !need.adultos && !need.ninos && !need.edadesNinos && !need.origen && !scannedPlan)) continue;
     const extracted = extractBookingFields(row.body, experience);
+    if (experience) {
+      const siteId = resolveSiteContext(experience, typeof current.plan === 'string' ? current.plan : null,
+        allInbound.slice(index).map(item => item.body ?? ''));
+      const planId = detectPlan(row.body, experience, siteId);
+      if (planId) extracted.collected_plan = planId;
+      else delete extracted.collected_plan;
+    }
     if (need.nombre && extracted.collected_name) { fields.nombre = extracted.collected_name; need.nombre = false; }
     if (need.personas && extracted.collected_people) { fields.personas = extracted.collected_people; need.personas = false; }
     if (need.fecha && extracted.collected_date) { fields.fecha = extracted.collected_date; need.fecha = false; }
@@ -721,9 +996,27 @@ export function reconstructFromHistory(repos: Repositories, phone: string, curre
       need.edadesNinos = false;
     }
     if (need.origen && extracted.collected_travel_origin) { fields.origen = extracted.collected_travel_origin; need.origen = false; }
-    if (typeof extracted.collected_plan === 'string' && !scannedPlan) scannedPlan = extracted.collected_plan;
+    // With a plan already chosen, a past plan question ("¿cómo es el prime?") only
+    // compared plans: skip it and keep scanning older messages.
+    const comparedPlans = typeof fields.plan === 'string' && isPlanQuestion(row.body)
+      && (isPlanBrochureRequest(row.body) || !isPlanReference(row.body));
+    if (!planScanDone && !comparedPlans) {
+      if (typeof extracted.collected_plan === 'string') {
+        scannedPlan = extracted.collected_plan;
+        planScanDone = true;
+      } else if (isPlanReference(row.body) || (experience && detectSiteChoice(row.body, experience) !== null)) {
+        // Newest-first: a plan reference newer than any keyword mention means the
+        // stored plan came from that switch; older keyword mentions must not revert it.
+        planScanDone = true;
+      }
+    }
   }
-  if (scannedPlan && typeof fields.plan === 'string' && scannedPlan !== fields.plan) {
+  // A history keyword never moves the stored plan to another site: only
+  // contextAwareExtract switches sites, because only it sees the bot's question.
+  const planSite = (planId: unknown): string | undefined =>
+    experience ? getPlans(experience).find(plan => plan.id === planId)?.siteId : undefined;
+  if (scannedPlan && typeof fields.plan === 'string' && scannedPlan !== fields.plan
+    && planSite(scannedPlan) === planSite(fields.plan)) {
     fields.plan = scannedPlan;
   }
   if (!fields.plan && scannedPlan && !repos.conversation.getSelectedExperienceId(phone)) {
@@ -761,4 +1054,101 @@ export function resolveLanguage(repos: Repositories, phone: string, message: str
   if (existing) return existing;
 
   return detectLanguageOrNull(message) ?? 'es';
+}
+
+const COP_AMOUNT = /(?:\$\s*|COP\s*)?(\d{1,3}(?:[.,]\d{3})+|\d{6,})(?:\s*(?:COP|pesos))?/gi;
+
+export function extractCopAmounts(reply: string): number[] {
+  return [...reply.matchAll(COP_AMOUNT)]
+    .map(match => Number.parseInt(match[1].replace(/[.,]/g, ''), 10))
+    .filter(amount => Number.isFinite(amount) && amount >= 100_000);
+}
+
+/** The single plan whose total for `people` appears in the reply; null when none or several do. */
+export function detectQuotedPlan(
+  reply: string,
+  experience: ActiveExperience,
+  people: number | null | undefined,
+  preferredSiteId?: string | null,
+): string | null {
+  if (!people || people < 1) return null;
+  const amounts = new Set(extractCopAmounts(reply));
+  if (amounts.size === 0) return null;
+  const quoted = getPlans(experience).filter(plan => {
+    if (preferredSiteId && plan.siteId !== preferredSiteId) return false;
+    const quote = calculatePriceQuote(experience, { planId: plan.id, people });
+    return quote != null && amounts.has(quote.planTotal);
+  });
+  return quoted.length === 1 ? quoted[0].id : null;
+}
+
+/**
+ * The single site the reply names, when the customer also named it in one of
+ * `recentInbounds`. Null when the reply names no site or several.
+ */
+export function siteNamedRecently(
+  reply: string,
+  recentInbounds: readonly string[],
+  experience: ActiveExperience,
+): string | null {
+  const replySite = detectSite(reply, experience);
+  if (!replySite) return null;
+  return recentInbounds.some(body => detectSite(body, experience) === replySite) ? replySite : null;
+}
+
+/**
+ * The plan whose card a brochure request asks for. The target site is the single
+ * site the message names, else the conversation site. The anchor is the stored
+ * plan's same-tier counterpart in the target site (the stored plan itself when the
+ * site is unchanged). Resolution order:
+ * 1. A plan named in the message.
+ * 2. "del otro plan" — the target site's other plan relative to the anchor.
+ * 3. A plan reference ("ese plan", "esa") relative to the anchor.
+ * 4. The plan the last bot message quoted for the target site.
+ * 5. The anchor.
+ * 6. The target site's only plan.
+ * 7. The stored plan when the site is unchanged; null for a different site, so a
+ *    card from the wrong site never ships.
+ */
+export function resolveBrochurePlanId(
+  message: string,
+  currentPlanId: string | null | undefined,
+  lastBotQuestion: string | null | undefined,
+  experience: ActiveExperience,
+  conversationSiteId: string | undefined,
+  people?: number | null,
+): string | null {
+  const namedSite = detectSite(message, experience);
+  const isDifferentSite = namedSite !== null && namedSite !== conversationSiteId;
+  const targetSiteId = isDifferentSite ? namedSite : conversationSiteId;
+  if (!targetSiteId) return currentPlanId ?? null;
+
+  const plansInSite = getPlans(experience).filter(plan => plan.siteId === targetSiteId);
+  if (!plansInSite.length) return isDifferentSite ? null : currentPlanId ?? null;
+
+  const namedPlan = detectPlan(message, experience, targetSiteId);
+  if (namedPlan) return namedPlan;
+
+  const storedPlan = plansInSite.find(plan => plan.id === currentPlanId);
+  const anchor = storedPlan?.id ?? (currentPlanId ? getEquivalentPlan(experience, currentPlanId, targetSiteId) : null);
+  const norm = normalizeText(message);
+  if (anchor && BROCHURE_OTHER_PLAN.test(norm) && !PLAN_REFERENCE_NEGATION.test(norm)) {
+    // Unique only on a two-plan site. With more it is ambiguous, and falling through
+    // would ship the stored plan's card in answer to a request for a different one.
+    return plansInSite.length === 2 ? plansInSite.find(plan => plan.id !== anchor)?.id ?? null : null;
+  }
+
+  if (anchor) {
+    const referenced = resolvePlanReference(message, anchor, lastBotQuestion ?? null, experience, targetSiteId);
+    if (referenced) return referenced;
+  }
+
+  if (lastBotQuestion && typeof people === 'number') {
+    const quoted = detectQuotedPlan(lastBotQuestion, experience, people, targetSiteId);
+    if (quoted) return quoted;
+  }
+
+  if (anchor) return anchor;
+  if (plansInSite.length === 1) return plansInSite[0].id;
+  return isDifferentSite ? null : currentPlanId ?? null;
 }

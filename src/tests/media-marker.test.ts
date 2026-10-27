@@ -1,9 +1,18 @@
 import { afterEach, beforeEach, describe, it, expect, vi, type MockInstance } from 'vitest';
 import { containsMediaMarkerSyntax, parseMediaMarker, resolveMediaThemes } from '../services/media-marker.js';
-import { diagnosticMediaReply, hasUnmarkedPhotoPromise, isGalleryContinuationRequest, isGalleryRequest } from '../services/reply-guard.js';
+import { diagnosticMediaReply, hasUnmarkedPhotoPromise, isGalleryContinuationRequest, isGalleryRequest, isGenericGalleryRequest, isPhotoSiteCorrection, isPlanBrochureRequest } from '../services/reply-guard.js';
 import { detectRequestedGalleryThemes } from '../services/contextual-media.js';
+import { findPlanBrochureImage } from '../services/media-service.js';
 import { logger } from '../config/logger.js';
 import { loadSkills, type Skills } from '../services/skill-loader.js';
+import { getActiveExperience } from '../services/product-registry.js';
+import { useAllSitesActive } from './helpers/all-sites-catalog.js';
+
+// The multi-site regression net runs with every destination active, as the CI
+// fixture had before destinations could be paused.
+beforeEach(() => {
+  useAllSitesActive();
+});
 
 const baseSkills = loadSkills();
 const mockSkills: Skills = {
@@ -73,7 +82,11 @@ describe('isGalleryRequest', () => {
     'Show me the lodging',
     'show us the route',
     '¿Tienes fotos de la mina?',
-  ])('treats a visual request as a gallery request: %s', text => {
+    '¿Tienes un brochure?',
+    'Pasa el folleto',
+    'Mandame la ficha',
+    'broshure del plan',
+  ])('treats a visual or brochure request as a gallery request: %s', text => {
     expect(isGalleryRequest(text)).toBe(true);
   });
 
@@ -86,6 +99,52 @@ describe('isGalleryRequest', () => {
     '¿Cuánto cuesta?',
   ])('does not treat a plain sales message as a gallery request: %s', text => {
     expect(isGalleryRequest(text)).toBe(false);
+  });
+});
+
+describe('isPhotoSiteCorrection', () => {
+  it.each([
+    'pero esas fotos son de coscuez',
+    'esas fotos son de coscuez',
+    'estas fotos son de coscuez',
+    'las fotos no son de chivor',
+    'esas no son de chivor',
+    'esas imagenes eran de coscuez',
+    'pero esas fotos son de otro lado',
+    'Those photos are from Coscuez',
+    "These pictures aren't from Chivor",
+    'That image is from Coscuez',
+  ])('recognizes a correction about where sent photos came from: %s', text => {
+    expect(isPhotoSiteCorrection(text, getActiveExperience(loadSkills()), 'chivor', true)).toBe(true);
+  });
+
+  it.each([
+    'quiero fotos de coscuez',
+    'tienes fotos de la mina',
+    'mandame las fotos de chivor',
+    'esas fotos me gustaron',
+    '¿cuánto cuesta?',
+    'esas fotos son de noche',
+    'esas fotos son de la mina',
+    '¿esas fotos son de Coscuez?',
+    'Are those photos from Coscuez?',
+    'esas fotos son de Chivor',
+    'Those pictures are from Chivor',
+  ])('does not treat a request or plain message as a correction: %s', text => {
+    expect(isPhotoSiteCorrection(text, getActiveExperience(loadSkills()), 'chivor')).toBe(false);
+  });
+
+  it('does not interpret a bare reference to dates or plans as a photo complaint', () => {
+    expect(isPhotoSiteCorrection('esas no son de Chivor', getActiveExperience(loadSkills()), 'chivor')).toBe(false);
+  });
+});
+
+describe('isGenericGalleryRequest', () => {
+  it.each(['tienes fotos de la experiencia ?', 'fotos del plan', 'mandame fotos', 'Do you have photos of the experience?', 'show me pictures of the tour'])('recognizes a broad request: %s', text => {
+    expect(isGenericGalleryRequest(text)).toBe(true);
+  });
+  it.each(['tienes fotos del helicoptero?', 'muéstrame los precios', 'fotos del hospedaje', 'no quiero fotos', 'pictures of the helicopter'])('does not replace a specific or unrelated request: %s', text => {
+    expect(isGenericGalleryRequest(text)).toBe(false);
   });
 });
 
@@ -435,5 +494,53 @@ describe('detectRequestedGalleryThemes', () => {
 
     expect(detectRequestedGalleryThemes(ambiguousSkills, 'fotos del hotel', 'test')).toEqual([]);
     expect(detectRequestedGalleryThemes(ambiguousSkills, 'fotos del hotel', 'test', 'test')).toEqual(['hotel']);
+  });
+});
+
+describe('plan brochure theme', () => {
+  const brochureSkills = {
+    ...mockSkills,
+    dynamicMedia: {
+      ...mockSkills.dynamicMedia,
+      planImages: [
+        { id: 'core_card', planId: 'core_plan', experienceId: 'test', siteId: 'test', url: 'https://cdn.example.com/core_card.png', caption: '' },
+      ],
+    },
+  } as Skills;
+
+  it.each(['¿Tienes un brochure?', 'Pasa el folleto', 'Mandame la ficha', 'broshure por favor'])(
+    'recognizes a brochure request: %s',
+    text => {
+      expect(isPlanBrochureRequest(text)).toBe(true);
+      expect(detectRequestedGalleryThemes(brochureSkills, text, 'test', 'test', 'core_plan')).toEqual(['plan']);
+    },
+  );
+
+  it('does not cue "plan" without a chosen plan', () => {
+    expect(detectRequestedGalleryThemes(brochureSkills, '¿Tienes un brochure?', 'test', 'test', null)).toEqual([]);
+  });
+
+  it('does not cue "plan" when the chosen plan has no card', () => {
+    expect(detectRequestedGalleryThemes(brochureSkills, '¿Tienes un brochure?', 'test', 'test', 'prime_plan')).toEqual([]);
+  });
+
+  it('keeps co-requested gallery themes alongside the brochure', () => {
+    expect(detectRequestedGalleryThemes(brochureSkills, 'el brochure y fotos de la mina', 'test', 'test', 'core_plan'))
+      .toEqual(['plan', 'mine']);
+  });
+
+  it('leaves a plain photo request unchanged', () => {
+    expect(detectRequestedGalleryThemes(brochureSkills, 'Fotos de la mina?', 'test', 'test', 'core_plan')).toEqual(['mine']);
+  });
+
+  it('never falls back to another plan card', () => {
+    const planImages = brochureSkills.dynamicMedia?.planImages ?? [];
+    expect(findPlanBrochureImage(planImages, 'test', 'core_plan')?.id).toBe('core_card');
+    expect(findPlanBrochureImage(planImages, 'test', 'prime_plan')).toBeUndefined();
+    expect(findPlanBrochureImage(planImages, 'other', 'core_plan')).toBeUndefined();
+  });
+
+  it('is not resolved by gallery theme resolution', () => {
+    expect(resolveMediaThemes(brochureSkills, ['plan'], 'test', 'test')).toEqual([]);
   });
 });

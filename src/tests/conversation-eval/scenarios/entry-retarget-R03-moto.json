@@ -15,8 +15,8 @@
     { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 3, "weight": 2, "critical": true }
   ],
   "turns": [
-    { "user": "Hola", "mockReply": "¡Hola! ¿Viajarías solo, en pareja o en grupo?", "expect": { "shouldSendReply": true } },
-    { "user": "Dos, somos pareja; nos interesa la ruta intensa en moto", "mockReply": "Perfecto para dos y con la ruta en moto como prioridad. ¿Qué fecha tienen en mente?", "expect": { "shouldSendReply": true } },
+    { "user": "Hola", "mockReply": "¡Hola! ¿Viajarías solo, en pareja o en grupo?", "replay": true, "expect": { "shouldSendReply": true } },
+    { "user": "Dos, somos pareja; nos interesa la ruta intensa en moto", "mockReply": "Perfecto para dos y con la ruta en moto como prioridad. ¿Qué fecha tienen en mente?", "replay": true, "expect": { "shouldSendReply": true } },
     { "user": "R03 hola de nuevo", "mockReply": "La ruta en moto te había gustado la última vez. ¿Qué nos frenó: fecha, precio, logística, o preocupación por la ruta?", "expect": { "shouldSendReply": true } }
   ]
 }

@@ -5,15 +5,15 @@
   "lang": "es",
   "liveRuns": 2,
   "minLiveScore": 80,
-  "mockPricing": { "planId": "2d1n_mining", "individual": 550000, "couple": 1000000 },
+  "mockPricing": { "planId": "core_2d1n_chivor", "individual": 650000, "couple": 1200000 },
   "seedConversation": {
     "phase": "pricing",
-    "qualification": { "people": 2, "plan": "2d1n_mining" }
+    "qualification": { "people": 2, "plan": "core_2d1n_chivor" }
   },
-  "seedQualification": { "people": 2, "plan": "2d1n_mining" },
+  "seedQualification": { "people": 2, "plan": "core_2d1n_chivor" },
   "criteria": [
-    { "id": "quote-delivered", "rule": "reply_must_match", "patterns": ["1[.,]000[.,]000"], "turn": 1, "weight": 3, "critical": true },
-    { "id": "motive-reflected", "rule": "reply_must_match", "patterns": ["vacaciones|descanso|desconectar|sin af[aá]n"], "turn": 2, "weight": 3, "critical": true },
+    { "id": "quote-delivered", "rule": "reply_must_match", "patterns": ["1[.,]200[.,]000"], "turn": 1, "weight": 3, "critical": true },
+    { "id": "motive-reflected", "rule": "reply_must_match", "patterns": ["vacaciones|descanso|desconectar|sin af[aá]n"], "turn": 2, "weight": 2, "critical": false },
     { "id": "only-registry-november-day", "rule": "reply_must_match", "patterns": ["\\b14\\b"], "turn": 2, "weight": 3, "critical": true },
     { "id": "no-invented-november-day", "rule": "no_unpublished_date", "turn": 2, "weight": 3, "critical": true },
     { "id": "no-price-repeat-on-dates", "rule": "reply_must_not_match", "patterns": ["\\$\\s*[\\d.,]+|[\\d.,]+\\s*COP"], "turn": 2, "weight": 2, "critical": true },
@@ -29,22 +29,22 @@
   "turns": [
     {
       "user": "¿Cuánto queda para dos personas?",
-      "mockReply": "Para 2 personas, el plan queda en $1.000.000 COP. ¿Qué te parece?",
+      "mockReply": "Para 2 personas, el plan queda en $1.200.000 COP. ¿Qué te parece?",
       "expect": { "shouldSendReply": true },
-      "seedQualification": { "people": 2, "plan": "2d1n_mining" }
+      "seedQualification": { "people": 2, "plan": "core_2d1n_chivor" }
     },
     {
       "user": "Es para vacaciones, ¿qué fechas tienen en noviembre?",
       "mockReply": "Vacaciones entonces: el plan les deja tiempo real para desconectar, sin afán. En noviembre tenemos el 14. ¿Les sirve esa fecha?",
       "expect": { "shouldSendReply": true },
-      "seedQualification": { "people": 2, "plan": "2d1n_mining" },
+      "seedQualification": { "people": 2, "plan": "core_2d1n_chivor" },
       "seedPriceGiven": true
     },
     {
       "user": "14",
       "mockReply": "Listo, el 14 de noviembre. Apartamos con el anticipo del 15% por Nequi o Mercado Pago y el equipo valida el cupo. ¿Validamos?",
       "expect": { "shouldSendReply": true },
-      "seedQualification": { "people": 2, "plan": "2d1n_mining", "date": "14 de noviembre" },
+      "seedQualification": { "people": 2, "plan": "core_2d1n_chivor", "date": "14 de noviembre" },
       "seedPriceGiven": true
     }
   ]

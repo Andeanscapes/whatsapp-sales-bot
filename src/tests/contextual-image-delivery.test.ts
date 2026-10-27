@@ -8,6 +8,19 @@ import { createRepositories, type Repositories } from '../db/repositories/index.
 import { loadSkills } from '../services/skill-loader.js';
 import { galleryMediaId, REQUESTED_GALLERY_MEDIA_ID_PREFIX } from '../services/media-service.js';
 import { MAX_IMAGE_CAPTION_CHARS } from '../services/whatsapp-client.js';
+import * as budgetGuard from '../services/budget-guard.js';
+import * as leadAnalyzer from '../services/lead-analyzer.js';
+import * as completion from '../services/llm/deepseek-completion.js';
+import * as skillLoader from '../services/skill-loader.js';
+import { getActiveExperience, getDynamicPlanImages } from '../services/product-registry.js';
+import { calculatePriceQuote, formatCop } from '../services/pricing-calculator.js';
+import { useAllSitesActive } from './helpers/all-sites-catalog.js';
+
+// The multi-site regression net runs with every destination active, as the CI
+// fixture had before destinations could be paused.
+beforeEach(() => {
+  useAllSitesActive();
+});
 
 const IMAGE_URL = 'https://cdn.andeanscapes.com/whatsapp_bot/media/mine1.jpg';
 const REPLY = '¡Perfecto! ¿Qué buscan: la mina como protagonista, o algo más rural?';
@@ -116,8 +129,8 @@ describe('contextual image delivery', () => {
     db.close();
   });
 
-  async function inbound(phone: string, id: string): Promise<void> {
-    const body = inboundPayload(phone, 'Pareja', id);
+  async function inbound(phone: string, id: string, text = 'Pareja'): Promise<void> {
+    const body = inboundPayload(phone, text, id);
     const res = await app.inject({
       method: 'POST',
       url: '/webhooks/whatsapp',
@@ -195,6 +208,7 @@ describe('contextual image delivery', () => {
   // generic "Imagen de referencia del plan …", pushing the reply above it.
   it('puts the reply on the plan card on a price turn, as a single message', async () => {
     const phone = '573001110007';
+    repos.conversation.upsert(phone, { collected_plan: 'core_2d1n_chivor' });
     processMessageMock.mockResolvedValue(baseResult({ priceJustGiven: true }));
 
     await inbound(phone, 'wamid-ctx-7');
@@ -208,10 +222,97 @@ describe('contextual image delivery', () => {
     expect(sendTextMock).not.toHaveBeenCalled();
   });
 
+  it('sends the quoted plan card with the unchanged reply while keeping the stored plan', async () => {
+    const phone = '573001110017';
+    const reply = 'La PRIME para ustedes dos queda en $1.840.000. ¿Con cuál se quedan?';
+    repos.conversation.upsert(phone, { collected_plan: 'core_2d1n_chivor' });
+    processMessageMock.mockResolvedValue(baseResult({
+      reply, priceJustGiven: true, quotedPlanId: 'prime_2d1n_chivor',
+    }));
+
+    await inbound(phone, 'wamid-quoted-plan-card');
+
+    await vi.waitFor(() => expect(sendImageUrlMock).toHaveBeenCalledWith(
+      phone, 'https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/plans/prime/card.png?v=61b11c8f405b', reply,
+    ));
+    expect(sendImageUrlMock).toHaveBeenCalledTimes(1);
+    expect(sendTextMock).not.toHaveBeenCalled();
+    expect(repos.conversation.getCollectedPlan(phone)).toBe('core_2d1n_chivor');
+  });
+
+  it('sends no stored-plan card for a price objection without a uniquely quoted alternative', async () => {
+    const phone = '573001110027';
+    repos.conversation.upsert(phone, { collected_plan: 'prime_2d1n_coscuez' });
+    processMessageMock.mockResolvedValue(baseResult({
+      reply: 'Podemos comparar el alcance de la opción esencial. ¿Te interesa?',
+      priceJustGiven: true,
+      priceObjectionThisTurn: true,
+    }));
+
+    await inbound(phone, 'wamid-price-objection-no-card');
+
+    await vi.waitFor(() => expect(sendTextMock).toHaveBeenCalledWith(phone, expect.any(String)));
+    expect(sendImageUrlMock).not.toHaveBeenCalled();
+  });
+
+  it('still sends the switched plan card when a price objection also switches plan', async () => {
+    const phone = '573001110029';
+    repos.conversation.upsert(phone, { collected_plan: 'core_2d1n_coscuez' });
+    processMessageMock.mockResolvedValue(baseResult({
+      reply: 'Listo, quedamos con la esencial. ¿Qué fecha les sirve?',
+      priceObjectionThisTurn: true,
+      planSwitchedAfterQuote: true,
+    }));
+
+    await inbound(phone, 'wamid-price-objection-switch');
+
+    await vi.waitFor(() => expect(sendImageUrlMock).toHaveBeenCalledWith(
+      phone,
+      'https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/plans/core/card.png',
+      expect.any(String),
+    ));
+  });
+
+  it('sends only the uniquely quoted alternative card on a price objection', async () => {
+    const phone = '573001110028';
+    repos.conversation.upsert(phone, { collected_plan: 'prime_2d1n_coscuez' });
+    processMessageMock.mockResolvedValue(baseResult({
+      reply: 'La opción esencial queda en el total indicado. ¿La comparamos?',
+      priceJustGiven: true,
+      priceObjectionThisTurn: true,
+      quotedPlanId: 'core_2d1n_coscuez',
+    }));
+
+    await inbound(phone, 'wamid-price-objection-alternative-card');
+
+    await vi.waitFor(() => expect(sendImageUrlMock).toHaveBeenCalledWith(
+      phone,
+      'https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/plans/core/card.png',
+      expect.any(String),
+    ));
+    expect(sendImageUrlMock).toHaveBeenCalledTimes(1);
+    expect(sendTextMock).not.toHaveBeenCalled();
+    expect(repos.conversation.getCollectedPlan(phone)).toBe('prime_2d1n_coscuez');
+  });
+
   // The plan card on a price turn is mandatory: it must never fall behind the
   // contextual-image dice roll. Only the themed gallery photo is probabilistic.
+  // A plan without its own card used to ship the first plan's card (a Chivor CORE card
+  // under a Coscuez PRIME quote). Now the reply goes out as plain text instead.
+  it('sends plain text on a price turn when the stored plan has no card of its own', async () => {
+    const phone = '573001110018';
+    repos.conversation.upsert(phone, { collected_plan: 'plan_without_card_fixture' });
+    processMessageMock.mockResolvedValue(baseResult({ priceJustGiven: true }));
+
+    await inbound(phone, 'wamid-no-card');
+
+    await vi.waitFor(() => expect(sendTextMock).toHaveBeenCalledWith(phone, REPLY));
+    expect(sendImageUrlMock).not.toHaveBeenCalled();
+  });
+
   it('still sends the plan card on a price turn when the contextual probability is zero', async () => {
     const phone = '573001110011';
+    repos.conversation.upsert(phone, { collected_plan: 'core_2d1n_chivor' });
     env.CONTEXTUAL_IMAGES_PROBABILITY = 0;
     processMessageMock.mockResolvedValue(baseResult({ priceJustGiven: true }));
 
@@ -223,6 +324,7 @@ describe('contextual image delivery', () => {
 
   it('falls back to text plus the captioned plan card when the reply is too long', async () => {
     const phone = '573001110008';
+    repos.conversation.upsert(phone, { collected_plan: 'core_2d1n_chivor' });
     const longReply = 'a'.repeat(MAX_IMAGE_CAPTION_CHARS + 1);
     processMessageMock.mockResolvedValue(baseResult({ reply: longReply, priceJustGiven: true }));
 
@@ -237,6 +339,7 @@ describe('contextual image delivery', () => {
   // The 72h claim is per media id, so a repeat quote finds the card already sent.
   it('sends plain text on a price turn when the plan card was already claimed', async () => {
     const phone = '573001110009';
+    repos.conversation.upsert(phone, { collected_plan: 'core_2d1n_chivor' });
     processMessageMock.mockResolvedValue(baseResult({ priceJustGiven: true }));
 
     await inbound(phone, 'wamid-ctx-9a');
@@ -245,6 +348,60 @@ describe('contextual image delivery', () => {
     sendTextMock.mockClear();
 
     await inbound(phone, 'wamid-ctx-9b');
+
+    await vi.waitFor(() => expect(sendTextMock).toHaveBeenCalledWith(phone, REPLY));
+    expect(sendImageUrlMock).not.toHaveBeenCalled();
+  });
+
+  it('sends the card of the newly selected plan on a price turn after a plan switch', async () => {
+    const phone = '573001110012';
+    const coreCard = 'https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/plans/core/card.png?v=d6a8dd2cee2b';
+    const primeCard = 'https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/plans/prime/card.png?v=61b11c8f405b';
+    processMessageMock.mockImplementationOnce(async () => {
+      repos.conversation.upsert(phone, { collected_plan: 'core_2d1n_chivor' });
+      return baseResult({ priceJustGiven: true });
+    });
+
+    await inbound(phone, 'wamid-ctx-12a');
+    await vi.waitFor(() => expect(sendImageUrlMock).toHaveBeenCalledTimes(1));
+    expect(sendImageUrlMock.mock.calls[0]?.[1]).toBe(coreCard);
+
+    processMessageMock.mockImplementationOnce(async () => {
+      repos.conversation.upsert(phone, { collected_plan: 'prime_2d1n_chivor' });
+      return baseResult({ priceJustGiven: true });
+    });
+
+    await inbound(phone, 'wamid-ctx-12b');
+    await vi.waitFor(() => expect(sendImageUrlMock).toHaveBeenCalledTimes(2));
+    expect(sendImageUrlMock.mock.calls[1]?.[1]).toBe(primeCard);
+    expect(sendImageUrlMock.mock.calls[1]?.[2]).toBe(REPLY);
+  });
+
+  it('sends the new plan card with the reply when the plan switches after a quote, even without a price', async () => {
+    const phone = '573001110013';
+    const primeCard = 'https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/plans/prime/card.png?v=61b11c8f405b';
+    processMessageMock.mockImplementationOnce(async () => {
+      repos.conversation.upsert(phone, { collected_plan: 'prime_2d1n_chivor' });
+      return baseResult({ planSwitchedAfterQuote: true });
+    });
+
+    await inbound(phone, 'wamid-ctx-13');
+
+    await vi.waitFor(() => expect(sendImageUrlMock).toHaveBeenCalledTimes(1));
+    expect(sendImageUrlMock).toHaveBeenCalledWith(phone, primeCard, REPLY);
+    expect(sendTextMock).not.toHaveBeenCalled();
+  });
+
+  it('does not resend on a price turn the card already shipped as a requested brochure', async () => {
+    const phone = '573001110014';
+    const coreCard = 'https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/plans/core/card.png?v=d6a8dd2cee2b';
+    repos.mediaSend.claimSend(phone, `${REQUESTED_GALLERY_MEDIA_ID_PREFIX}wamid-old_${galleryMediaId({ url: coreCard })}`, new Date(0).toISOString());
+    processMessageMock.mockImplementationOnce(async () => {
+      repos.conversation.upsert(phone, { collected_plan: 'core_2d1n_chivor' });
+      return baseResult({ priceJustGiven: true });
+    });
+
+    await inbound(phone, 'wamid-ctx-14');
 
     await vi.waitFor(() => expect(sendTextMock).toHaveBeenCalledWith(phone, REPLY));
     expect(sendImageUrlMock).not.toHaveBeenCalled();
@@ -259,6 +416,192 @@ describe('contextual image delivery', () => {
 
     await vi.waitFor(() => expect(sendTextMock).toHaveBeenCalledWith(phone, REPLY));
     expect(sendImageUrlMock).not.toHaveBeenCalled();
+  });
+
+  // A first plan choice cues a proactive [[FOTOS:<theme>]] demonstration, but on a
+  // price turn the plan card is the detailed image and must carry the reply instead
+  // of being displaced by the unsolicited gallery.
+  it('prefers the plan card over a proactive gallery on a price turn', async () => {
+    const phone = '573001110020';
+    const card = 'https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/plans/core/card.png';
+    repos.conversation.upsert(phone, { collected_plan: 'core_2d1n_coscuez' });
+    processMessageMock.mockResolvedValue(baseResult({
+      priceJustGiven: true,
+      requestedGalleryImages: [IMAGE_URL],
+      galleryRequestedByCustomer: false,
+    }));
+
+    await inbound(phone, 'wamid-card-vs-gallery-1');
+
+    await vi.waitFor(() => expect(sendImageUrlMock).toHaveBeenCalledWith(phone, card, REPLY));
+    expect(sendImageUrlMock).toHaveBeenCalledTimes(1);
+    expect(sendImageUrlMock.mock.calls.some(call => call[1] === IMAGE_URL)).toBe(false);
+    expect(sendTextMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps an explicit gallery request on a price turn instead of the card', async () => {
+    const phone = '573001110021';
+    const card = 'https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/plans/core/card.png?v=d6a8dd2cee2b';
+    repos.conversation.upsert(phone, { collected_plan: 'core_2d1n_chivor' });
+    processMessageMock.mockResolvedValue(baseResult({
+      priceJustGiven: true,
+      requestedGalleryImages: [IMAGE_URL],
+      galleryRequestedByCustomer: true,
+    }));
+
+    await inbound(phone, 'wamid-card-vs-gallery-2');
+
+    await vi.waitFor(() => expect(sendImageUrlMock).toHaveBeenCalledWith(phone, IMAGE_URL, REPLY));
+    expect(sendImageUrlMock.mock.calls.some(call => call[1] === card)).toBe(false);
+    expect(sendTextMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['missing', 'recently sent'])('keeps the proactive gallery when the card is %s', async (state) => {
+    const phone = '573001110024';
+    const planId = 'core_2d1n_coscuez';
+    const card = getDynamicPlanImages(skillLoader.getSkills()).find(image => image.planId === planId)!;
+    repos.conversation.upsert(phone, { collected_plan: state === 'missing' ? 'plan_without_card_fixture' : planId });
+    if (state === 'recently sent') {
+      repos.mediaSend.claimSend(phone, card.id, new Date(0).toISOString());
+    }
+    processMessageMock.mockResolvedValue(baseResult({
+      priceJustGiven: true, requestedGalleryImages: [IMAGE_URL], galleryRequestedByCustomer: false,
+    }));
+
+    await inbound(phone, 'wamid-gallery-card-unavailable');
+
+    await vi.waitFor(() => expect(sendImageUrlMock).toHaveBeenCalledExactlyOnceWith(phone, IMAGE_URL, REPLY));
+    expect(sendTextMock).not.toHaveBeenCalled();
+  });
+
+  describe('media delivery through the real engine', () => {
+    beforeEach(async () => {
+      const engine = await vi.importActual<typeof import('../services/response-engine.js')>('../services/response-engine.js');
+      processMessageMock.mockImplementation(engine.processMessage);
+      useAllSitesActive();
+      loadSkills();
+      vi.spyOn(skillLoader, 'refreshSkills').mockResolvedValue();
+      vi.spyOn(budgetGuard, 'checkBudget').mockReturnValue({ aiAllowed: true });
+      vi.spyOn(leadAnalyzer, 'analyzeLead').mockResolvedValue(null);
+      env.CONTEXTUAL_IMAGES_PROBABILITY = 0;
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('delivers the selected CORE card on the first quote and does not resend on date deferral', async () => {
+      const phone = '573001110022';
+      const planId = 'core_2d1n_coscuez';
+      const skills = skillLoader.getSkills();
+      const total = calculatePriceQuote(getActiveExperience(skills), { planId, people: 1 })!.planTotal;
+      const card = getDynamicPlanImages(skills).find(image => image.planId === planId)!;
+      const quote = `Perfecto, CORE en Coscuez. Para una persona queda en ${formatCop(total)}. ¿Tenés algún mes en mente?`;
+      const choice = 'Coscuez tiene una opción esencial y otra más completa. ¿Cuál te llama más?';
+      const deferral = 'Entendido. ¿Qué mes te vendría mejor?';
+      const provider = vi.spyOn(completion, 'requestDeepSeekCompletion');
+      for (const content of [choice, `${quote}\n[[FOTOS:mine]]`, deferral]) {
+        provider.mockResolvedValueOnce({ content, finishReason: 'stop', promptTokens: 10, completionTokens: 10 });
+      }
+      repos.conversation.upsert(phone, { language: 'es', collected_people: 1 });
+      repos.message.addMessage({
+        customer_phone: phone, direction: 'inbound', message_type: 'text',
+        body: 'Voy solo', created_at: new Date(Date.now() - 120_000).toISOString(),
+      });
+      repos.message.addMessage({
+        customer_phone: phone, direction: 'outbound', message_type: 'text',
+        body: '¿Cuál destino te llama más, Chivor o Coscuez?', created_at: new Date(Date.now() - 60_000).toISOString(),
+      });
+
+      await inbound(phone, 'wamid-coscuez-choice', 'el de coscuez que vale ?');
+      await vi.waitFor(() => expect(sendTextMock).toHaveBeenCalledWith(phone, choice));
+      await inbound(phone, 'wamid-coscuez-core-quote', 'si el basico');
+      await vi.waitFor(() => expect(repos.outboundMedia.listByPhone(phone)).toHaveLength(1));
+
+      expect(repos.conversation.getCollectedPlan(phone)).toBe(planId);
+      await expect(processMessageMock.mock.results[1]?.value).resolves.toMatchObject({
+        priceJustGiven: true, galleryRequestedByCustomer: false, mediaPlanId: planId,
+      });
+      expect(sendImageUrlMock).toHaveBeenCalledExactlyOnceWith(phone, card.url, quote);
+      expect(repos.outboundMedia.listByPhone(phone)[0]).toMatchObject({
+        media_url: card.url, caption: quote, carried_reply: 1, flow: 'price_image',
+      });
+
+      await inbound(phone, 'wamid-coscuez-deferred', 'no todavia');
+      await vi.waitFor(() => expect(sendTextMock).toHaveBeenCalledWith(phone, deferral));
+      expect(sendImageUrlMock).toHaveBeenCalledTimes(1);
+      expect(provider).toHaveBeenCalledTimes(3);
+    });
+
+    it('keeps photos accepted from an offer when the same turn quotes the plan', async () => {
+      const phone = '573001110023';
+      const planId = 'core_2d1n_coscuez';
+      const skills = skillLoader.getSkills();
+      const total = calculatePriceQuote(getActiveExperience(skills), { planId, people: 1 })!.planTotal;
+      const card = getDynamicPlanImages(skills).find(image => image.planId === planId)!;
+      const reply = `El plan queda en ${formatCop(total)}. ¿Qué mes te sirve?`;
+      vi.spyOn(completion, 'requestDeepSeekCompletion').mockResolvedValue({
+        content: `${reply}\n[[FOTOS:mine]]`, finishReason: 'stop', promptTokens: 10, completionTokens: 10,
+      });
+      repos.conversation.upsert(phone, { language: 'es', collected_plan: planId, collected_people: 1 });
+      repos.message.addMessage({
+        customer_phone: phone, direction: 'outbound', message_type: 'text',
+        body: '¿Te mando fotos de la mina?', created_at: new Date(Date.now() - 60_000).toISOString(),
+      });
+
+      await inbound(phone, 'wamid-coscuez-photo-offer', 'Si, ¿cuánto vale?');
+      await vi.waitFor(() => expect(repos.message.getRecentMessages(phone, 10)).toContainEqual(
+        expect.objectContaining({ role: 'assistant', content: reply }),
+      ));
+
+      expect(sendImageUrlMock).toHaveBeenCalled();
+      await expect(processMessageMock.mock.results[0]?.value).resolves.toMatchObject({
+        priceJustGiven: true, galleryRequestedByCustomer: true,
+      });
+      expect(sendImageUrlMock.mock.calls.every(call => call[1].includes('/coscuez/gallery/mine/'))).toBe(true);
+      expect(sendImageUrlMock.mock.calls.some(call => call[1] === card.url)).toBe(false);
+      expect(sendImageUrlMock.mock.calls.at(-1)?.[2]).toBe(reply);
+      expect(sendTextMock).not.toHaveBeenCalled();
+    });
+
+    it('delivers same-site photos after correcting missing markers for a generic request and a complaint', async () => {
+      const phone = '573001110025';
+      const previousRetry = env.MEDIA_MARKER_RETRY_ENABLED;
+      const previousCap = env.MAX_GALLERY_IMAGES_PER_SEND;
+      env.MEDIA_MARKER_RETRY_ENABLED = true;
+      env.MAX_GALLERY_IMAGES_PER_SEND = 1;
+      try {
+        repos.conversation.upsert(phone, { language: 'es', collected_plan: 'prime_2d1n_chivor', collected_people: 2 });
+        repos.message.addMessage({
+          customer_phone: phone, direction: 'inbound', message_type: 'text',
+          body: 'Elegimos PRIME en Chivor', created_at: new Date(Date.now() - 120_000).toISOString(),
+        });
+        repos.message.addMessage({
+          customer_phone: phone, direction: 'outbound', message_type: 'text',
+          body: '¿Qué mes les vendría mejor?', created_at: new Date(Date.now() - 60_000).toISOString(),
+        });
+        const reply = '¿Qué mes les vendría mejor?';
+        const provider = vi.spyOn(completion, 'requestDeepSeekCompletion');
+        for (const content of [reply, `${reply}\n[[FOTOS:mine]]`, reply, `${reply}\n[[FOTOS:mine]]`]) {
+          provider.mockResolvedValueOnce({ content, finishReason: 'stop', promptTokens: 10, completionTokens: 10 });
+        }
+
+        await inbound(phone, 'wamid-generic-experience', 'tienes fotos de la experiencia ?');
+        await vi.waitFor(() => expect(repos.outboundMedia.listByPhone(phone)).toHaveLength(1));
+        await inbound(phone, 'wamid-wrong-site-complaint', 'pero esas fotos son de coscuez');
+        await vi.waitFor(() => expect(repos.outboundMedia.listByPhone(phone)).toHaveLength(2));
+
+        expect(provider).toHaveBeenCalledTimes(4);
+        expect(sendImageUrlMock).toHaveBeenCalledTimes(2);
+        expect(sendImageUrlMock.mock.calls.every(call => call[1].includes('/chivor/gallery/mine/'))).toBe(true);
+        expect(repos.outboundMedia.listByPhone(phone).every(row => row.theme_site_id === 'chivor' && row.carried_reply === 1)).toBe(true);
+        expect(repos.conversation.getCollectedPlan(phone)).toBe('prime_2d1n_chivor');
+        expect(sendTextMock).not.toHaveBeenCalled();
+      } finally {
+        env.MEDIA_MARKER_RETRY_ENABLED = previousRetry;
+        env.MAX_GALLERY_IMAGES_PER_SEND = previousCap;
+      }
+    });
   });
 
   describe('requested gallery photos', () => {
@@ -458,7 +801,7 @@ describe('contextual image delivery', () => {
     it('resolves the gallery theme for a real feed url, and leaves it null otherwise', async () => {
       // A url that exists in the catalog feed carries theme metadata; a plan card
       // or owner image does not, and must degrade to null rather than guess.
-      const feedUrl = 'https://cdn.andeanscapes.com/whatsapp_bot/emerald_mining_chivor/exp/exp_01.jpg';
+      const feedUrl = 'https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/gallery/mine/01.jpg';
       const themed = '573001110103';
       processMessageMock.mockResolvedValue(baseResult({ contextualImage: { url: feedUrl } }));
 

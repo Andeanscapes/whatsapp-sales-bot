@@ -9,8 +9,10 @@ import {
   isQualificationComplete,
   nextQualificationQuestion,
   getLastAssistantQuestion,
+  isPlanBrochureRequest,
+  detectSite,
 } from './qualification-engine.js';
-import { getActiveExperience, getCommonQuestions } from './product-registry.js';
+import { getActiveExperience, getCommonQuestions, type ActiveExperience } from './product-registry.js';
 
 export { isCorrectionMessage, getLastAssistantQuestion };
 
@@ -81,7 +83,44 @@ export function isTruncatedReply(reply: string): boolean {
 
 export function isSoftCloseMessage(text: string): boolean {
   const norm = normalizeText(text);
-  return /\b(no gracias|por ahora no|no me interesa|dejemoslo|dejemoslo ahi|en otro momento|otra oportunidad|muy caro|esta caro|algo caro|me parece caro|se sale del presupuesto|no me alcanza|fuera de presupuesto|costoso|caro|gracias por la info|por el momento no|lo dejamos ahi|no por ahora|lo voy a pensar|mejor no|paso por ahora|lo dejo ahi|no es para mi|no es lo que busco|no me convence|no es lo que esperaba|muy costoso|carisimo|cuesta mucho|es mucho|se me va de presupuesto|no tengo esa plata|no tengo presupuesto|no llego|no me da|luego te contacto|luego te escribo|not now|not interested|too expensive|out of budget|not in my budget|thank you for the info|for now no|not for me|not what i expected|i'?ll pass|i'?ll think about it|too much|over budget|can'?t afford|i'?ll skip|i have to decline|no thanks anyway|thanks anyway|gracias de todos modos|gracias igual|gracias de todas formas|no quiero seguir|no quiero continuar|dejemoslo hasta a[hií]|no sigamos|no quiero m[aá]s|no insistas?|dej[aá]moslo as[ií]|lo dejamos hasta a[hií]|no quiero saber m[aá]s|basta|suficiente|para ya|don'?t want to continue|let'?s stop here|i'?d rather not|stop here please|no more please|quiero pausar|pausemos|pausar|want to pause|i want to pause|let'?s pause|take a pause|hold off|put this on hold|on hold)\b/i.test(norm);
+  return /\b(no gracias|por ahora no|no me interesa|dejemoslo|dejemoslo ahi|en otro momento|otra oportunidad|muy caro|esta caro|algo caro|me parece caro|se sale del presupuesto|no me alcanza|fuera de presupuesto|no tengo presupuesto|costoso|caro|gracias por la info|por el momento no|lo dejamos ahi|no por ahora|lo voy a pensar|mejor no|paso por ahora|lo dejo ahi|no es para mi|no es lo que busco|no me convence|no es lo que esperaba|muy costoso|carisimo|cuesta mucho|es mucho|se me va de presupuesto|no tengo esa plata|no llego|no me da|luego te contacto|luego te escribo|not now|not interested|too expensive|out of budget|not in my budget|thank you for the info|for now no|not for me|not what i expected|i'?ll pass|i'?ll think about it|too much|over budget|can'?t afford|i'?ll skip|i have to decline|no thanks anyway|thanks anyway|gracias de todos modos|gracias igual|gracias de todas formas|no quiero seguir|no quiero continuar|dejemoslo hasta a[hií]|no sigamos|no quiero m[aá]s|no insistas?|dej[aá]moslo as[ií]|lo dejamos hasta a[hií]|no quiero saber m[aá]s|basta|suficiente|para ya|don'?t want to continue|let'?s stop here|i'?d rather not|stop here please|no more please|quiero pausar|pausemos|pausar|want to pause|i want to pause|let'?s pause|take a pause|hold off|put this on hold|on hold)\b/i.test(norm);
+}
+
+/**
+ * Cost or budget wording only. Plan references ("el otro plan", "otra opción") and
+ * a neutral "presupuesto" question are plan/price questions, not objections: matching
+ * them would replace the plan-switch card and the price-given cue.
+ */
+export function isPriceObjectionMessage(text: string): boolean {
+  const norm = normalizeText(text);
+  return /\b(?:caro|costoso|costosa|carisimo|expensive|too much|over budget|out of budget|cuesta mucho|se sale del presupuesto|se me va de presupuesto|fuera de presupuesto|fuera de mi presupuesto|no me alcanza|no tengo presupuesto|no me da el presupuesto|mas barato|mas barata|mas economico|mas economica|mas basico|mas basica|cheaper|planes? mas (?:sencillos?|simples?))\b/i.test(norm);
+}
+
+const TRANSPORT_WORD = '(?:transporte|traslado|4x4|puerta a puerta|conductor|chofer|transport|transfer|pickup|driver)';
+const COST_WORD = '(?:caro|cara|costoso|costosa|carisimo|pesa|expensive|too much|cuesta mucho|mas barato|mas economico|cheaper)';
+const TRANSPORT_COST = new RegExp(`\\b${COST_WORD}\\b.{0,50}\\b${TRANSPORT_WORD}\\b|\\b${TRANSPORT_WORD}\\b.{0,50}\\b${COST_WORD}\\b`);
+// "es caro, ¿incluye transporte?" objects to the plan and asks what it covers.
+const TRANSPORT_INCLUSION_QUESTION = new RegExp(`\\b(?:incluye|incluyen|incluido|incluida|viene con|trae|includes?|included)\\b.{0,20}\\b${TRANSPORT_WORD}\\b`);
+// The negation must sit on the cost word: "no es caro", "no esta tan costoso". A loose
+// window also swallowed the hesitation opener "no se, el transporte es muy caro"
+// (normalizeText drops the comma), routing a transport objection back to a downsell.
+const NEGATED_COST = new RegExp(`\\b(?:no|not|isn t|isnt)\\s+(?:(?:es|esta|sale|parece|me parece|is)\\s+)?(?:(?:tan|muy|so|that)\\s+)?${COST_WORD}\\b`);
+
+/**
+ * The price objection is about the transport ("costoso, en particular el transporte"):
+ * a cost word sits next to a transport word. Only meaningful alongside
+ * isPriceObjectionMessage; on its own a transport mention is a logistics question.
+ */
+export function isTransportObjectionMessage(text: string): boolean {
+  const norm = normalizeText(text);
+  return norm.split(/[.!?;\n]|\b(?:pero|but)\b/).some(clause =>
+    TRANSPORT_COST.test(clause) && !TRANSPORT_INCLUSION_QUESTION.test(clause) && !NEGATED_COST.test(clause));
+}
+
+/** Phrases that explicitly end the sale, even when accompanied by a price objection. */
+export function isExplicitSalesDecline(text: string): boolean {
+  const norm = normalizeText(text);
+  return /\b(?:no gracias|gracias igual|gracias de todos modos|en otro momento|otra oportunidad|por ahora no|no me interesa|mejor no|no quiero seguir|no quiero continuar|no sigamos|dejemoslo|lo dejamos ahi|lo dejo ahi|i'?ll pass|no thanks|not interested|not now|let'?s stop)\b/i.test(norm);
 }
 
 export function isNonSalesInquiry(text: string): boolean {
@@ -99,10 +138,37 @@ export function isNonSalesInquiry(text: string): boolean {
 const VISUAL_REQUEST_VERB =
   /\b(?:mu[eé]stra(?:me|nos)?|mu[eé]stre(?:me|nos)?|mu[eé]strenme|ens[eé][ñn]a(?:me|nos)?|ens[eé][ñn]enme|show\s+(?:me|us)|let\s+(?:me|us)\s+see)\b/i;
 
+export { isPlanBrochureRequest };
+
 export function isGalleryRequest(text: string): boolean {
   const norm = normalizeText(text);
   return /\b(foto|fotos|imagen|imagenes|im[aá]genes|photo|photos|picture|pictures)\b/i.test(norm)
+    || isPlanBrochureRequest(norm)
     || VISUAL_REQUEST_VERB.test(norm);
+}
+
+/** A claim about the wrong destination, not a question about a photo's provenance. */
+export function isPhotoSiteCorrection(text: string, experience: ActiveExperience, selectedSiteId?: string | null, hasPhotoContext = false): boolean {
+  return text.split(/[,;.!\n]+/).some(clause => {
+    if (/[¿?]/.test(clause)) return false;
+    const norm = normalizeText(clause.replace(/aren['’]t/gi, 'are not').replace(/isn['’]t/gi, 'is not'));
+    const claim = /\b(?:esas?|estas?|aquellas?|las?)\s+(?:(fotos?|imagenes?)\s+)?(no\s+)?(?:son|eran|es|era)\s+de\s+(.+)/.exec(norm)
+      ?? /\b(?:these|those|the|this|that)\s+(?:(photos?|pictures?|images?)\s+)?(?:are|is|were|was)\s+(not\s+)?from\s+(.+)/.exec(norm);
+    if (!claim || (!claim[1] && !hasPhotoContext)) return false;
+    const claimedSite = detectSite(claim[3], experience);
+    if (claimedSite) {
+      if (!selectedSiteId) return true;
+      return claim[2] ? claimedSite === selectedSiteId : claimedSite !== selectedSiteId;
+    }
+    return !claim[2] && /^(?:otro (?:sitio|destino|lado|lugar)|otra parte|somewhere else|another (?:site|destination|place))\b/.test(claim[3]);
+  });
+}
+
+/** Only broad photo requests; an unknown specific subject must not select unrelated photos. */
+export function isGenericGalleryRequest(text: string): boolean {
+  const norm = normalizeText(text).replace(/[¿?!.]/g, '').trim();
+  return /^(?:(?:tienes|tienen|hay|quiero|queremos|mandame|enviame|pasame|muestrame|me mandas|me envias|me muestras|puedes mandar|puedes enviarme)\s+)?(?:fotos?|imagenes?)(?:\s+(?:de|del)\s+(?:(?:la|el|esta|este)\s+)?(?:experiencia|plan|tour|viaje))?(?:\s+(?:porfa|por favor))?$/.test(norm)
+    || /^(?:(?:do you have|can you send|can you send me|send me|show me|i want|we want)\s+)?(?:photos?|pictures?|images?)(?:\s+(?:of|from)\s+(?:(?:the|this|our)\s+)?(?:experience|plan|tour|trip))?(?:\s+please)?$/.test(norm);
 }
 
 /** Short follow-up whose photo theme must come from the immediately prior request. */
@@ -255,6 +321,14 @@ const CLOSE_CTA_QUESTION_PATTERNS: readonly RegExp[] = [
   /validacion ahora|validation now/,
 ];
 
+/**
+ * Close-CTA phrasing variants offered by whatsapp-sales T3b ("¿arrancamos con la
+ * reserva?"). Matched on the raw text and only inside `¿…?`, so a statement such as
+ * "ya estamos avanzando con la reserva" never reads as a close CTA.
+ */
+const CLOSE_CTA_QUESTION_VARIANT =
+  /¿\s*(?:(?:quier(?:e|es|en) que )?(?:arranquemos|empecemos|comencemos) con la reserva|(?:arrancamos|empezamos|comenzamos) (?:con )?la reserva)[^?¿]{0,40}\?/i;
+
 const SHORT_BOOKING_AFFIRMATION =
   /^\s*(s[ií]p?i?|yes|yeah|yep|yup|ok|okay|okey|listo|dale|dele|bueno|vamos|perfecto|perfect|de una|de acuerdo|claro|clarines|vale|genial|excelente|obvio|hecho|confirmo|confirmado|reservamos|reservemos|apartemos|separo|por supuesto|ya|let'?s do it|let'?s go|let'?s book|sure|for sure|alright|all right|absolutely|definitely|great|awesome|deal|done|of course|why not|i'?m in|count me in|go ahead|sounds good|sounds great|sounds perfect|works for me|fine by me|go for it)\b/i;
 
@@ -270,9 +344,21 @@ const SOFT_RESERVATION_QUESTION_PATTERNS: readonly RegExp[] = [
   /(?:listo para|preparado para|ready to)/,
 ];
 
+/**
+ * T3a soft-question variants ("¿les cuadra?"). Also common in logistics questions
+ * ("¿te cuadra el horario del bus?"), where a bare "sí" is not reservation intent.
+ */
+const SOFT_FIT_QUESTION = /(?:te|les) cuadra|les encaja/;
+const LOGISTICS_QUESTION = /\b(?:horario|hora|bus|transporte|ruta|salida|llegada|recogida|terminal|ferry)\b/;
+
+function matchesSoftReservationQuestion(questionNorm: string): boolean {
+  if (SOFT_RESERVATION_QUESTION_PATTERNS.some(p => p.test(questionNorm))) return true;
+  return SOFT_FIT_QUESTION.test(questionNorm) && !LOGISTICS_QUESTION.test(questionNorm);
+}
+
 export function matchesCloseCtaQuestion(text: string): boolean {
   const norm = normalizeText(text);
-  return CLOSE_CTA_QUESTION_PATTERNS.some(p => p.test(norm));
+  return CLOSE_CTA_QUESTION_PATTERNS.some(p => p.test(norm)) || CLOSE_CTA_QUESTION_VARIANT.test(text);
 }
 
 /**
@@ -302,7 +388,7 @@ export function isReservationIntentOrConfirmation(
 
   const questionNorm = normalizeText(lastAssistantQuestion);
   if (matchesCloseCtaQuestion(lastAssistantQuestion)) return true;
-  return SOFT_RESERVATION_QUESTION_PATTERNS.some(p => p.test(questionNorm));
+  return matchesSoftReservationQuestion(questionNorm);
 }
 
 export function replyMentionsPrice(reply: string): boolean {

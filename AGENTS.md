@@ -6,6 +6,11 @@
 - Branch: `main` (no `origin/main` yet — first push creates it)
 - Token/prod env file: `/etc/andean-whatsapp-bot.env` (never commit)
 - SQLite runtime path: `/var/lib/andean-whatsapp-bot/bot.sqlite`
+- Catalog and media publish to R2 only through `npm run media:push` then
+  `npm run dynamic:push -- --target dev|prod` (`docs/skills-architecture.md`
+  §Media and catalog sync). Placeholder photos (one site's photo reused for another)
+  are dev-only: `sync:fixture` and the prod push refuse them. Never hand-copy the dev
+  catalog into the CI fixture or prod.
 
 ## Architecture
 
@@ -35,12 +40,19 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
    One budget-gated corrective LLM rewrite may run on an active inbound turn when
    the model omits the mandatory final question. The engine supplies no customer
    copy; it validates shape, retries at most once, then sends the model output unchanged.
+   The final question is NOT mandatory on a POST-CTA turn, nor on a `T3b RESERVA
+   PEDIDA` turn with no operational field missing: "¿cómo se reserva?" after price +
+   date already answers the start-booking question, so the cue tells the model to ask
+   only for the missing name/transport. `reservationRequestedThisTurn` is a prompt
+   cue only — it changes no alert, close or handoff gate. It excludes balance
+   questions ("cómo se paga el resto"), and uses the same `isConcreteDayDate` test as
+   the prompt's T3b cue so the retry exemption never applies to a turn without the cue.
 9. **No deterministic sales copy:** Pre-LLM intercepts that generate brochure dumps, plan lists, price teasers, quote templates, partner-consult summaries, form CTAs, or close templates are forbidden. If you need a new one, you're doing it wrong — the skill MD files should handle it.
 10. **Automated outbound is limited to three explicitly-gated paths, all in `followup-service.ts`.** Conversational replies remain natural-inbound only. Never add a fourth without a fresh design.
 
     | Path | Switch | Timing | Channel | Consent |
     |---|---|---|---|---|
-    | One-shot post-24h template | `ALLOW_FOLLOWUP_TEMPLATE` | `FOLLOWUP_HOURS_AFTER_INBOUND` | approved template | operator `/followupgrant` |
+    | One-shot post-24h template | `ALLOW_FOLLOWUP_TEMPLATE` | `FOLLOWUP_HOURS_AFTER_INBOUND` | approved template | operator `/followupgrant` **OR** customer said yes |
     | Consent ask | `FOLLOWUP_CONSENT_ASK_ENABLED` | `FOLLOWUP_CONSENT_HOURS_AFTER_INBOUND` (max 23) | free-form, LLM-written | none needed (inside window) |
     | Recurring template | `FOLLOWUP_RECURRING_ENABLED` | production gaps multiply by 3 from `FOLLOWUP_RECURRING_INTERVAL_MONTHS` (1×, 3×, 9×…); dev uses fixed `FOLLOWUP_DEV_RECURRING_SECONDS`; capped by `FOLLOWUP_MAX_RECURRING_SENDS` | approved template | customer said yes |
 
@@ -49,7 +61,84 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
 
     Consent lifecycle lives in `followup_subscriptions`
     (`unasked → pending → active | declined`, any state `→ revoked`); per-stage
-    dispatch in `followup_subscription_events`. Rules:
+    dispatch in `followup_subscription_events`.
+
+    **Permission is one predicate over two provenances.** The one-shot template needs
+    an operator grant (`followup_consent`, written only by `/followupgrant`) **OR** an
+    `active` customer subscription. `listFollowupCandidates` and the post-claim
+    re-check must read the SAME predicate — before this, the one-shot INNER JOINed
+    `followup_consent`, so a customer "sí" unlocked the recurring cadence but never
+    the 7-day template, and with no operator grant in production the path was
+    unreachable for its entire life. Do not duplicate consent into both tables:
+    provenance must stay legible in `/followupstatus`.
+
+    **A `declined` subscription outranks BOTH provenances.** An operator grant is a
+    presumption of consent; a customer "no" is the answer to the question we asked.
+    `decline()` writes only `followup_subscriptions` and deliberately does not revoke
+    the operator row (provenance must survive), so the OR predicate on its own
+    re-enabled every declined lead that still carried an older `/followupgrant` and
+    shipped a marketing template **after a recorded refusal**. Three places must agree
+    and are asserted: the SQL clause (`COALESCE(fs.status,'') <> 'declined'`),
+    `hasFollowupPermission`, and `/followupstatus` — which must call the predicate
+    rather than re-deriving the OR, or the diagnostic contradicts the sender. Do not
+    "fix" this by revoking the operator grant on decline: that erases who authorised
+    what.     `/followupgrant` refuses on a `declined` subscription instead of writing a
+    grant the predicate would ignore. The pre-existing declined/revoked test passed
+    throughout because it seeded **no** operator grant — the regression test must seed
+    both.
+
+    **The live status alone cannot hold the refusal, because `revoke()` overwrites
+    `declined` with `revoked`.** `/followuprevoke` followed by `/followupgrant`
+    therefore erased the "no" from the only field the predicate read, and the template
+    shipped over a recorded refusal while `/followupstatus` reported `SI`. Both
+    `hasFollowupPermission` and `listFollowupCandidates` additionally consult the
+    newest `source = 'customer_reply'` row in `followup_consent_grants`
+    (`latestCustomerDecision`), and `/followupgrant` refuses on either provenance. It
+    is the NEWEST customer decision, not any decline ever: a later affirmation in a
+    new session is the customer changing their mind. Pre-ledger leads have no rows, so
+    absence still means "no refusal on record", never "no permission".
+
+    **`markAsked()` only writes over `unasked` or `pending`.** The sender calls it
+    after awaiting Meta, so the customer's reply can be classified during that await;
+    an unconditional write reset a fresh `active` or `declined` back to `pending` —
+    erasing durable consent, or erasing the refusal that blocks the one-shot template
+    when an operator grant is standing. The legitimate two-step write (pre-send with a
+    null id, post-send with the real one) still works, which the deferral gate needs.
+
+    **The consent classifier's contact continuation is vetoed by a commercial object.**
+    `CONSENT_CONTACT_CONTINUATION` matches `mand|envi` unanchored, which also matches
+    the *sales* senses of mandar/enviar: "si quiero enviar el anticipo", "dale mandame
+    la cuenta para pagar" and "si me mandas la cotizacion" all recorded durable
+    marketing consent from a payment message. Worse, a consent-answer turn freezes
+    `lead_score` and clears `isHot`, so the highest-intent turn in the funnel also
+    produced **no owner alert**.     `COMMERCIAL_OBJECT_VETO` keys on the object (pago,
+    anticipo, cotizacion, reserva, comprobante…), not the verb, so the legitimate
+    channel-naming forms ("mandame las promos", "mandame mensajes", "avisame") stay
+    affirms. Never widen the continuation verbs without extending the veto.
+    **The veto must gate BOTH continuation branches.** It was applied to the contact
+    branch only, so the question branch still read "si, ¿como pago?" and "si claro,
+    cuanto es el anticipo?" as permission — fabricating consent on the highest-intent
+    turn in the funnel and, because that turn freezes `lead_score` and clears `isHot`,
+    suppressing the owner alert with it. For the same reason the continuation stem
+    list carries no bare `perm`: unanchored it matched the *sales* verb permitir, so
+    "si permiten mascotas" (a policy question) granted marketing consent. The
+    permission sense is matched as `permiso|me permit`.
+
+    **Every permission change appends to `followup_consent_grants`** (append-only:
+    `affirm`/`decline`/`grant`/`revoke` × `customer_reply`/`operator_grant`/
+    `operator_revoke`/`customer_opt_out`). The live row is mutable and was previously
+    wiped on the next inbound, which is why "when was permission granted?" is
+    unanswerable for pre-ledger leads. Readers must NOT infer "no permission" from an
+    empty history — rows before 2026-09-03 simply do not exist.
+    All **five** writers append: webhook affirm/decline, `/followupgrant`,
+    `/followuprevoke`, `/block`, and the first customer opt-out. `/block` was the one
+    that did not, so the single action meant to be permanent was also the only one
+    with no provenance. `followup-consent-ledger.test.ts` asserts the callers, not the
+    repository — testing `record()` directly proved the table worked and nothing about
+    whether anything used it. An ambiguous reply is not a decision and must never
+    appear. Customer decisions store the consent `cycle_key`; operator actions store
+    the concrete `telegram:<chatId>` actor. Append-only means ordinary operation — the
+    explicit customer-data deletion path must erase these PII-bearing rows. Rules:
     - **Silence is not consent.** An unanswered ask stays `pending` and never
       receives a recurring send. If the customer keeps talking instead of answering,
       the pending ask may be deferred to `unasked` exactly once per consent session;
@@ -64,21 +153,39 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
       If the customer opts out, then later initiates a new conversation,
       `customer_opt_out` may reopen to `unasked`; a fresh silence may produce a new
       ask (`c2`, `c3`…). Operator revocations never reopen automatically.
-    - **Consent is session-scoped.** Any customer-initiated inbound closes an
-      `active` cycle back to `unasked`
-      (`followupSubscription.closeCycleOnCustomerInbound()`): recurring templates
-      stop until a fresh "sí", and a new ask becomes eligible once that new session
-      goes silent. The turn that grants consent is exempt
-      (`consentAcceptedThisTurn`). `declined`/`revoked` are untouched; `pending` has
-      only the bounded one-time deferral above. Permission is
-      therefore re-earned per conversation instead of ageing indefinitely, and
-      `FOLLOWUP_MAX_RECURRING_SENDS` counts per cycle (scoped by `activated_at`).
+    - **Consent is durable until explicitly ended** (changed 2026-09-03; was
+      session-scoped). An `active` subscription survives ordinary conversation
+      turns. It ends ONLY on an explicit decline, a customer opt-out, or an operator
+      `/followuprevoke`. `closeCycleOnCustomerInbound()` is **deleted** — do not
+      reintroduce it.
+      Session-scoping was removed because it destroyed the permission it was
+      protecting: `activated_at` was NULLed on the next inbound, so **7 of 10** real
+      production affirmations lost consent before any template could become due, and
+      those leads were then asked for permission a second time. The rule also made
+      the 1-month recurring cadence unreachable in principle — a lead had to say yes
+      and then never speak again for a month.
+      What replaces it: a template still cannot interrupt a live chat, because the
+      **dormancy floor is independent of consent** (next bullet). Permission
+      authorises writing later; dormancy decides when.
+      Consequence to keep in mind: a consent cycle now lives until revoked, so
+      `FOLLOWUP_MAX_RECURRING_SENDS` (scoped by `activated_at`) is a **per-consent**
+      cap, no longer a per-conversation one. Reducing total sends means lowering that
+      cap or lengthening the cadence, not relying on chat activity to reset it.
     - A recurring template only goes to a **dormant** customer: the last message in
       the thread must be ours **and** the customer must have been silent for
       `FOLLOWUP_RECURRING_MIN_SILENCE_HOURS`, re-checked after the claim. That floor
       is deliberately **independent of the cadence interval**: coupling them lets a
       short (or dev-accelerated) cadence interleave templates with a live
       conversation. Consent authorises writing later, never interrupting a chat.
+    - **`human_pending` is NOT excluded from the one-shot and recurring candidate
+      queries** (owner decision 2026-10-14). The silence floors already keep a template
+      out of a live chat.
+      **Consent-ask exception (owner decision 2026-10-26):** the consent-ask candidate
+      query requires `conversation_mode = 'bot'`, so no permission ask lands while the
+      team holds the booking. The gate lives only in that SQL, which the digest reuses,
+      so sender and digest agree. Do NOT gate on "the bot's last message was a booking
+      question": that lead went silent and stays a dormant, high-value lead, and a
+      post-claim check would block it forever and re-claim it every tick.
     - The consent ask is scheduled from the **customer's last inbound**, because
       Meta measures the 24h free-form window from their message, not ours. Anchoring
       on our outbound can push the send outside the window.
@@ -106,8 +213,16 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
       double-send. An automatic reset is forbidden — a persistently malformed draft
       would loop on the provider's bill forever.
     - A yes/no is classified **only** while status is `pending`; anything ambiguous
-      flows through the normal sales path untouched. `consentAcceptedThisTurn` tells
-      the model the "sí" is permission, not a booking confirmation.
+      flows through the normal sales path untouched.
+      **A pending ask stops owning bare answers once the bot asks something newer.**
+      `classifyPendingConsentReply` + `isConsentAskSuperseded` (any outbound after
+      `ask_outbound_message_id`): a bare "si"/"ok"/"no" then answers the newer question,
+      and only a reply naming the contact ("si, escribeme", "no quiero mensajes") still
+      decides consent. Live 2026-10-14 a "si" to "¿Quieren que iniciemos la reserva?"
+      was recorded as marketing consent, froze the score and paged no one. Webhook and
+      `consentAnswerTurn` must use the same predicate. Unknown ask id keeps the old rule.
+      `consentAcceptedThisTurn` tells the model the "sí" is permission, not a booking
+      confirmation.
     - **A bare leading "no" is not a refusal.** "no tengo fecha", "no todavía",
       "no sé aún" and "no entendí tu pregunta" are sales answers whose first token
       happens to be a negation; classifying them as `decline` recorded a refusal the
@@ -125,6 +240,16 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
       to be scored as a sales objection. Real interest still scores normally on the
       next turn — e.g. when the customer answers a template asking about dates —
       because a message with sales content classifies as `ambiguous`.
+      **A leading affirmative does not make the rest of the message disappear.** Both
+      the one- and two-word affirmative prefixes must validate the remainder against
+      `CONSENT_CONTINUATION`. The two-word prefix used to short-circuit to `affirm`,
+      routing around that check: "si claro un ritmo tranquilo" and "de acuerdo para
+      diciembre" recorded consent from a plain sales answer, and the same shortcut
+      froze the lead score on a booking reply ("si quiero reservar para el 14"),
+      which is now `ambiguous` and takes the normal sales path. A real yes must ask
+      what is coming ("si cuales?") or name the contact being authorised ("si claro
+      escribeme"). Bare-emoji assent is `👍 👌 ✅` only: 🙏, 💪, 👏 and ❤️ are
+      reactions, not permission to market.
     - Consent-ask `cycle_key` is a session sequence (`c1`, `c2`…); recurring
       `cycle_key` is consent-scoped (`c1-r1`, `c2-r1`…), never `YYYY-MM` — a
       calendar key silently caps sends at one per month.
@@ -142,6 +267,15 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
       without them a blocked customer could unblock themselves by sending "no me
       escribas mas" (downgrading the source to `customer_opt_out`) and then writing
       again to trigger the reopen path.
+
+    **A one-shot sent inside the consent cycle anchors the next recurring send.**
+    `listRecurringCandidates` takes the LATER of the newest one-shot (`pending`,
+    `sent` or `uncertain`, at or after `activated_at`) and the newest recurring send
+    as `last_send_at`; `processRecurring` releases its claim when `latestSendAt()`
+    is newer than that scanned anchor. The one-shot never counts in `sends_so_far`,
+    so it consumes neither `FOLLOWUP_MAX_RECURRING_SENDS` nor the 1×/3×/9× exponent.
+    The post-claim check compares against the anchor; an unconditional "one-shot
+    exists" check would stop recurring sends forever after the first template.
 
     Free-form nudges, the old multi-track/cold-loop template stack, and any
     deterministic sales copy in these paths stay removed.
@@ -183,6 +317,152 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
     - The model emits one proactive gallery on the first concrete plan selection,
       using only a clearly matching RUNTIME theme. It never repeats that gallery on
       later confirmations. This remains an inbound reply path, not automated outbound.
+      The cue fires on the **first** selection only (`!storedPlan`); a later switch
+      never re-cues it, because a marker on that turn would suppress the plan card.
+    - **The plan card is not gallery media.** It is a deterministic reply-carrying image
+      the webhook sends with the unchanged LLM reply as caption, for the **stored**
+      plan, on exactly two triggers: a price turn (`priceJustGiven`) or a plan switch
+      after a quote (`planSwitchedAfterQuote`). On those turns an eligible card takes
+      priority over a **proactive** first-selection gallery (`galleryRequestedByCustomer`
+      false), so the first quote shows the detailed plan card instead of the unsolicited
+      `[[FOTOS:<galleryTheme>]]` demonstration; an explicit customer photo/brochure
+      request (including a continuation or accepted photo offer) still ships the gallery
+      and suppresses the card. On a price-objection turn, only a uniquely identified
+      alternative plan quoted by the reply may ship its own card; otherwise send text
+      only, never the stored plan's card. A switch counts only when it is a
+      choice: a plan reference ("el otro plan", "quiero esa") or a keyword the
+      customer states ("quiero el prime", "mejor el core", "quiero el prime, ¿cuánto
+      vale?" — a choice marker wins over a trailing question).
+      **A plan question never replaces the stored plan** (`isPlanQuestion`): "¿el CORE
+      incluye cabalgata?", "Y como es el prime?", "¿y el prime?" compare plans. It is
+      enforced in three places that must agree — `contextAwareExtract`, the post-reply
+      `authoritativeBookingFields` write, and the `reconstructFromHistory` scan —
+      because the raw extraction sets `collected_plan` on any keyword, and any one of
+      them left alone re-saves the plan and ships the wrong card with the next quote.
+      With no stored plan, a plan question is still the first selection. A turn where the bot merely *proposes* another plan with
+      its price ships no card — the stored plan is still the old one; the card arrives
+      when the customer accepts.
+      **A plan with no card of its own ships no card.** `selectPlanImage` once fell back
+      to the feed's first card, so a Coscuez PRIME quote shipped the Chivor CORE card.
+      The card is exact-match only (`findPlanBrochureImage`); the reply goes as text.
+      **Exception: the customer asked about another plan.** On a price turn whose reply
+      contains exactly one plan's computed total (`detectQuotedPlan`, price match only —
+      never a name match), the card shows that plan (`quotedPlanId`) when either the
+      inbound is a price question, or the reply names a site the customer named in a
+      recent inbound (`siteNamedRecently`) **and that site differs from the stored
+      plan's**. The site check is what lets a bare "sí" to a cross-site quote ship the
+      right card; the "differs" clause is what keeps a same-site bot upsell card-less.
+      Price totals are identical across sites, so the quote is always resolved within
+      that site. The stored plan is unchanged. No new trigger: still only
+      `priceJustGiven` / `planSwitchedAfterQuote`.
+      **Plan question with a named plan.** On a price turn where the inbound is a plan
+      question naming a plan ("Y como es el prime?") and the reply quotes exactly that
+      plan's total, the card shows the named plan (`askedPlanId`). The stored plan is
+      unchanged.
+      **A brochure request is a plan question** (`isPlanBrochureRequest` inside
+      `isPlanQuestion`): "brosure de la más completa" ships the named plan's card via
+      `resolveBrochurePlanId` and never replaces the stored plan. Resolution is
+      site-scoped: the single site the message names, else the conversation site. Inside
+      it: named plan > "del otro plan" / reference relative to the stored plan's
+      same-tier counterpart > the plan the bot last quoted > that counterpart > the site's
+      only plan. A different named site with no match returns null — never the stored
+      plan's card from the other site. "del otro plan" is matched only there
+      (`BROCHURE_OTHER_PLAN`); never widen `OTHER_PLAN_REFERENCE` with it, because
+      "¿qué incluye la comida del otro plan?" would then count as a reference and switch
+      the stored plan. The prompt advertises a card only for `brochurePlanId`. The brochure matcher lists explicit spellings only — "tarjeta"/"carta" are
+      payment/menu words and must never match. The same card can also ship as `[[FOTOS:plan]]`
+      (brochure); both paths consult `planCardSentRecently`, which reads the card-id
+      claim **and** the gallery-url claim, so neither re-sends what the other shipped.
+      An explicit brochure request is the only exception: a repeat request is a full
+      request.
+    - **A bare pronoun resolves only from the bot's closing question.** "quiero esa"
+      answers "¿Les suena más PRIME?", but "sí, esa" after "¿Les sirve el 28?" is a
+      date answer even when the message body names a plan. Negated references
+      ("no quiero esa") never resolve: a refusal names the plan it refuses.
+    - **A bare yes chooses a site only from the bot's closing question.** "Si" after
+      "¿Te interesa Chivor…?" switches the stored plan to that site's equivalent tier
+      (`resolveSiteAnswer`); "si" to a media offer ("¿Te mando fotos de Chivor?"), to a
+      date or reservation question, or to a question naming two sites never does.
+      `siteChoiceThisTurn` is the ONE predicate: the engine's `conversationSiteId` and
+      `contextAwareExtract` must both read it — a mention is not a choice, so "¿y
+      Coscuez queda cerca?" keeps the stored site. Once a plan is stored,
+      `resolveSiteContext` returns its site and `reconstructFromHistory` never moves it
+      to another site; only `contextAwareExtract` switches sites. Live 2026-10-14 a
+      bare "Si" left the Coscuez plan stored, so the Chivor quote shipped no card and
+      "fotos del hospedaje en Chivor" resolved to zero photos and the fallback.
+    - **Photos of a site the customer has not chosen are an offer, not a delivery.**
+      `otherSitePhotoRequest` clears the requested themes (no corrective retry, no
+      `PEDIDO DE FOTOS`), cues the model to offer that site's plan first, and counts
+      as an ops block, so a stray marker is stripped and the model's text is sent —
+      never the fallback. The delivery gate and the unhonoured-marker check share
+      this block; automatic contextual photos are also suppressed. Test both site
+      directions: an empty gallery can hide a missing delivery gate. A "sí" to the
+      plan-review offer ("¿Quieres que primero te cuente el plan de Chivor?") switches
+      the site; the next photo request resolves against it. A date or booking
+      question naming that site still owns its yes and never switches destinations.
+      A brochure request is excluded from this block: its card resolves site-scoped
+      through `resolveBrochurePlanId`, so "brochure de Chivor" still ships.
+    - **Every tier word the bot offers must be a `selectionAliases` entry on every
+      site.** Live 2026-10-14 the bot offered "la esencial / la más completa" on
+      Coscuez, whose plans had no such aliases: "Si el más completo" stored no plan,
+      so no QUOTE LOCK and no card. The aliases are catalog data (CDN feed), not code;
+      the local fixtures do not reach the live bot until `upload-dynamic.sh`.
+    - **A site missing a photo category falls back to its own plan gallery theme.**
+      When the marker names a theme the stored/chosen site has no photos of (Coscuez
+      has no kids, bike, car or beekeeping photos yet), `resolveMediaThemes` sends
+      that site's catalog `galleryTheme` photos instead of failing the turn. The
+      consent ask opts in too (`selectThemedImage(..., { planId })`); the template
+      header does NOT, because its next candidate is the plan card. The requested
+      theme must be a real category (photos at another site or declared in some
+      `media.types`): an invented marker theme still alerts `media_marker_unhonoured`
+      and a typo'd `FOLLOWUP_*_IMAGE_TYPE` still yields no photo.
+      `getSiteFallbackGalleryTheme` reads it from the plans (stored plan first, else
+      the one theme all the site's plans share) and returns null unless that theme
+      has photos at the SAME site. It never crosses sites, never runs without a
+      known site, never adds a marker, and theme *detection* is unchanged: a visual
+      imperative with no matching theme still yields zero themes and no cue.
+    - **A gallery photo can be plan-only (`gallery[].planIds`).** Fura y Tena photos
+      exist only for PRIME Coscuez: the photo ships only to a customer whose stored
+      plan is listed. Every customer-facing path runs on `scopeGalleryToPlan(skills,
+      plan)`: themes advertised in the prompt and theme cues (stored plan), marker
+      resolution and contextual photos (this turn's plan), consent-ask and template
+      header photos (collected plan). The site fallback never substitutes a
+      plan-only theme (`getSiteFallbackGalleryTheme` counts unrestricted photos only),
+      so PRIME's missing category falls back to the site's mine photos, not the
+      excursion. The schema rejects a `planIds` entry that is not a plan of that site.
+      Code that predates this rejects the field (strict schema): deploy code before
+      a catalog that uses it.
+    - **A paused destination is acknowledged, never sold.** A site with
+      `status: "inactive"` keeps its data in the feed but contributes no plans, prices,
+      dates, segments or photos. The bot sees only its name and the catalog
+      `unavailableNote`; leads whose stored plan belongs to it get no automated
+      outbound on any of the three paths (`isPlanPaused`). Tests that need the site
+      active use `src/tests/helpers/all-sites-catalog.ts` (`useAllSitesActive`), or
+      `seedSystem.reopenPausedSites` in a conversation scenario. Never delete a paused
+      site's coverage because the live catalog paused it.
+      A lead stored on a paused plan may accept an active destination through the
+      same `siteChoiceThisTurn` predicate ("me interesa Chivor", or a bare "sí" to the
+      bot's "¿Te interesa Chivor?"): the plan moves to that site's unique equivalent
+      tier via `unavailableSites[].planTiers`, else it is cleared. Before this, the
+      paused plan was absent from `getPlans`, so the accepted alternative never
+      stored and the lead stayed stuck on the paused destination.
+    - **No destination chosen on a multi-site experience → no photos.**
+      `resolveMediaThemes` and `detectRequestedGalleryThemes` return nothing (brochure
+      excepted) when no site is preferred and the experience has 2+ sites, mirroring
+      `selectThemedImage`. Before this, a theme only one site had resolved to that
+      site: a `[[FOTOS:kids]]` with no destination shipped three Chivor photos,
+      because Coscuez has none. Single-site catalogs keep resolving without a site.
+    - **Generic photo requests and wrong-site complaints use catalog themes.** A
+      bounded generic request uses the selected plan's eligible `galleryTheme`, else
+      the site's unrestricted fallback. Specific unknown subjects stay unresolved.
+      Wrong-site claims in ES/EN are not destination choices or verified image facts;
+      provenance questions and non-site descriptions never trigger that cue. Missing
+      recovery markers use the same single budget-gated rewrite, never engine-authored copy.
+    - **Follow-up photos are site-scoped like reply photos.** The consent ask and the
+      template header use the stored plan's site, else the conversation's chosen site
+      (`followupSiteId` → `resolveSiteContext`). With several sites and none known,
+      `selectThemedImage` returns null rather than the only site that has a gallery —
+      a Coscuez lead once got a Chivor photo that way.
     - If an inbound explicitly requests photos and the model omits the marker, the
       engine may use the same single budget-gated corrective LLM call with a
       RUNTIME instruction. It must never add the marker, rewrite the reply, or retry
@@ -391,9 +671,9 @@ columns from the old feature remain in place and are ignored.
   `MAX_GALLERY_IMAGES_PER_SEND=3`; the default is 5, so they were green locally and
   red in CI. **A test must pin any env value it asserts on** — run this before
   pushing.
-- `npm run eval:conversations` — deterministic conversation-eval pack (31 scenarios).
-- `npm run eval:conversations:llm-bot` — live LLM quality suite (20 `live`-tagged
-  scenarios, ~$0.37 per pass; costs tokens).
+- `npm run eval:conversations` — deterministic conversation-eval pack (49 scenarios).
+- `npm run eval:conversations:llm-bot` — live LLM quality suite (32 `live`-tagged
+  scenarios, ~$0.60 per pass, estimated; costs tokens).
 - `npm run simulate -- "text"` — offline bot test.
 - `npm run typecheck` — must pass clean.
 - `npm run lint` — must pass.

@@ -1,0 +1,59 @@
+{
+  "id": "humanness-no-voseo-with-tu",
+  "source": "live 2026-10-27: customer wrote in tú; bot mixed voseo ('dejás', 'tenés razón', 'gracias a vos') with tú and ustedes",
+  "tags": [
+    "humanness",
+    "live"
+  ],
+  "lang": "es",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "seedConversation": {
+    "phase": "value",
+    "qualification": {
+      "people": 2,
+      "plan": "core_2d1n_chivor"
+    }
+  },
+  "seedQualification": {
+    "people": 2,
+    "plan": "core_2d1n_chivor"
+  },
+  "criteria": [
+    {
+      "id": "no-voseo",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "\\b(tenés|querés|podés|dejás|pensás|sabés|escribís|contame|decime|mirá|gracias a vos)(?![\\wáéíóúñ])"
+      ],
+      "turn": 1,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "no-mixed-ustedes",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "\\bustedes\\b.*\\b(te|tu|tú)\\b|\\b(te|tu|tú)\\b.*\\bustedes\\b"
+      ],
+      "turn": 1,
+      "weight": 1
+    },
+    {
+      "id": "still-asks-one-thing",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 1,
+      "weight": 1
+    }
+  ],
+  "turns": [
+    {
+      "user": "Tienes razón, me equivoqué con el día. ¿Entonces el sábado 31 sí sale?",
+      "mockReply": "Sí, el sábado 31 de octubre es la salida publicada. ¿Te sirve esa fecha para que lo revise con el equipo?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

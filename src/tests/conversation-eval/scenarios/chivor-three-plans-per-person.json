@@ -1,0 +1,25 @@
+{
+  "id": "chivor-three-plans-per-person",
+  "source": "customer replay 2026-10-26: after pareja the bot hid the pasadia behind a binary essential/complete question; BASIC quote needs total plus per-person equivalent",
+  "tags": ["plan", "live"],
+  "lang": "es",
+  "liveRuns": 1,
+  "minLiveScore": 85,
+  "criteria": [
+    { "id": "basic-visible", "rule": "reply_must_match", "patterns": ["BASIC"], "turn": 2, "critical": true },
+    { "id": "core-visible", "rule": "reply_must_match", "patterns": ["CORE"], "turn": 2, "critical": true },
+    { "id": "prime-visible", "rule": "reply_must_match", "patterns": ["PRIME"], "turn": 2, "critical": true },
+    { "id": "pasadia-distinguished", "rule": "reply_must_match", "patterns": ["pasad[ií]a|sin noche|sin alojamiento"], "turn": 2, "critical": true },
+    { "id": "no-price-before-choice", "rule": "reply_must_not_match", "patterns": ["\\$|\\bCOP\\b"], "turn": 2, "critical": true },
+    { "id": "one-choice-question", "rule": "max_question_marks", "max": 1, "turn": 2, "critical": true },
+    { "id": "group-total", "rule": "reply_must_match", "patterns": ["740[., ]000"], "turn": 3, "critical": true },
+    { "id": "per-person-equivalent", "rule": "reply_must_match", "patterns": ["370[., ]000.{0,35}(?:por persona|cada uno|cada una)"], "turn": 3, "critical": true },
+    { "id": "no-solo-rate", "rule": "reply_must_not_match", "patterns": ["480[., ]000"], "turn": 3, "critical": true },
+    { "id": "basic-card", "rule": "output_flag_equals", "flag": "mediaPlanId", "expected": "basic_1d_chivor", "turn": 3, "critical": true }
+  ],
+  "turns": [
+    { "user": "hola", "mockReply": "Hola, soy Heinner de Andean Scapes. ¿Vienen en pareja, solos o en grupo?", "expect": { "shouldSendReply": true } },
+    { "user": "pareja", "mockReply": "Tenemos BASIC pasadía sin noche, CORE con una mina y alojamiento, y PRIME con dos minas y cabalgata. ¿Cuál les encaja más?", "expect": { "shouldSendReply": true, "priceJustGiven": false } },
+    { "user": "la basica", "mockReply": "BASIC es el pasadía con mina guiada, caminata, desayuno y almuerzo. Para 2 personas queda en $740.000 COP, equivalente a $370.000 COP por persona. ¿Qué fecha tienen en mente?", "expect": { "shouldSendReply": true, "priceJustGiven": true, "mediaPlanId": "basic_1d_chivor" } }
+  ]
+}

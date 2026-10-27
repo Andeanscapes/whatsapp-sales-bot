@@ -22,17 +22,17 @@ const legacyPayload = {
     emerald_mining_tour: {
       clarifications: {
         experience: ['Real emerald mines, not coal.'],
-        plans: { '2d1n_mining': ['Plan-level note.'] },
+        plans: { 'core_2d1n_chivor': ['Plan-level note.'] },
       },
       pricing: {
         currency: 'COP',
         plans: {
-          '2d1n_mining': { individual: 550000, couple: 1000000 },
-          '3d2n_rural': { individual: 750000, couple: 1400000 },
+          'core_2d1n_chivor': { individual: 550000, couple: 1000000 },
+          'prime_2d1n_chivor': { individual: 750000, couple: 1400000 },
         },
         addons: {
-          apiary_cattle: { label: 'Apicultura', pp: 55000, plans: ['2d1n_mining'] },
-          horseback_riding: { label: 'Cabalgata', pp: 120000, plans: ['2d1n_mining', '3d2n_rural'] },
+          apiary_cattle: { label: 'Apicultura', pp: 55000, plans: ['core_2d1n_chivor'] },
+          horseback_riding: { label: 'Cabalgata', pp: 120000, plans: ['core_2d1n_chivor', 'prime_2d1n_chivor'] },
           private_transport: { label: 'Transporte privado', price: 1700000, max: 4 },
         },
         rules: ['Rule one.'],
@@ -50,12 +50,12 @@ const unifiedPayload = {
     emerald_mining_tour: {
       clarifications: ['Real emerald mines, not coal.'],
       plans: {
-        '2d1n_mining': {
+        'core_2d1n_chivor': {
           pricing: { individual: 550000, couple: 1000000 },
           clarifications: ['Plan-level note.'],
           addons: ['apiary_cattle', 'horseback_riding'],
         },
-        '3d2n_rural': {
+        'prime_2d1n_chivor': {
           pricing: { individual: 750000, couple: 1400000 },
           clarifications: [],
           addons: ['horseback_riding'],
@@ -94,13 +94,13 @@ const sitesPayload = {
           media: { gallery: [] },
           availability: AVAILABILITY,
           plans: {
-            '2d1n_mining': {
+            'core_2d1n_chivor': {
               pricing: { individual: 550000, couple: 1000000 },
               clarifications: ['Plan-level note.'],
               addons: ['apiary_cattle', 'horseback_riding'],
               media: { planImages: [] },
             },
-            '3d2n_rural': {
+            'prime_2d1n_chivor': {
               pricing: { individual: 750000, couple: 1400000 },
               clarifications: [],
               addons: ['horseback_riding'],
@@ -125,14 +125,14 @@ const completeSitesPayload = {
           ...sitesPayload.experiences.emerald_mining_tour.sites[DEFAULT_SITE_ID],
           shortDescription: 'Real emerald mining experience.',
           plans: {
-            '2d1n_mining': {
-              ...sitesPayload.experiences.emerald_mining_tour.sites[DEFAULT_SITE_ID].plans['2d1n_mining'],
+            'core_2d1n_chivor': {
+              ...sitesPayload.experiences.emerald_mining_tour.sites[DEFAULT_SITE_ID].plans['core_2d1n_chivor'],
               name: 'Mining plan',
               duration: '2D/1N',
               shortDescription: 'Two-day mining experience.',
             },
-            '3d2n_rural': {
-              ...sitesPayload.experiences.emerald_mining_tour.sites[DEFAULT_SITE_ID].plans['3d2n_rural'],
+            'prime_2d1n_chivor': {
+              ...sitesPayload.experiences.emerald_mining_tour.sites[DEFAULT_SITE_ID].plans['prime_2d1n_chivor'],
               name: 'Rural plan',
               duration: '3D/2N',
               shortDescription: 'Three-day rural experience.',
@@ -206,7 +206,7 @@ const twoSitesPayload = {
           media: { gallery: [] },
           availability: AVAILABILITY,
           plans: {
-            '2d1n_mining': {
+            'core_2d1n_chivor': {
               name: 'Plan Chivor',
               duration: '2D/1N',
               shortDescription: 'Mining in Chivor.',
@@ -228,7 +228,7 @@ const twoSitesPayload = {
           media: { gallery: [] },
           availability: AVAILABILITY,
           plans: {
-            '2d1n_gems': {
+            'prime_2d1n_chivor': {
               name: 'Plan Coscuez',
               duration: '2D/1N',
               shortDescription: 'Mining in Coscuez.',
@@ -277,14 +277,14 @@ describe('dynamic payload shape migration', () => {
                 name: 'Chivor',
                 location: 'Boyacá',
                 plans: {
-                  '2d1n_mining': {
-                    ...sitesPayload.experiences.emerald_mining_tour.sites.chivor.plans['2d1n_mining'],
+                  'core_2d1n_chivor': {
+                    ...sitesPayload.experiences.emerald_mining_tour.sites.chivor.plans['core_2d1n_chivor'],
                     name: '2D/1N Mining',
                     duration: '2D/1N',
                     keywords: ['mina', 'esmeralda'],
                     status: 'active' as const,
                   },
-                  '3d2n_rural': sitesPayload.experiences.emerald_mining_tour.sites.chivor.plans['3d2n_rural'],
+                  'prime_2d1n_chivor': sitesPayload.experiences.emerald_mining_tour.sites.chivor.plans['prime_2d1n_chivor'],
                 },
               },
             },
@@ -295,7 +295,7 @@ describe('dynamic payload shape migration', () => {
       expect(parsed.name).toBe('Emerald Mining Tour');
       expect(parsed.mineDetails?.notes).toBe('No specific mine guaranteed.');
       expect(parsed.sites.chivor.name).toBe('Chivor');
-      expect(parsed.sites.chivor.plans['2d1n_mining'].keywords).toEqual(['mina', 'esmeralda']);
+      expect(parsed.sites.chivor.plans['core_2d1n_chivor'].keywords).toEqual(['mina', 'esmeralda']);
       // legacy remains valid without narrative
       expect(() => dynamicDataSchema.parse(legacyPayload)).not.toThrow();
       expect(dynamicDataSchema.parse(legacyPayload).experiences.emerald_mining_tour.name).toBeUndefined();
@@ -522,18 +522,18 @@ describe('dynamic payload shape migration', () => {
     it('wraps legacy and v9 unified into the default site', () => {
       const parsed = dynamicDataSchema.parse(legacyPayload).experiences.emerald_mining_tour;
       const site = parsed.sites[DEFAULT_SITE_ID];
-      expect(Object.keys(site.plans).sort()).toEqual(['2d1n_mining', '3d2n_rural']);
-      expect(site.plans['2d1n_mining'].pricing).toEqual({ individual: 550000, couple: 1000000 });
+      expect(Object.keys(site.plans).sort()).toEqual(['core_2d1n_chivor', 'prime_2d1n_chivor']);
+      expect(site.plans['core_2d1n_chivor'].pricing).toEqual({ individual: 550000, couple: 1000000 });
       expect(parsed.clarifications).toEqual(['Real emerald mines, not coal.']);
-      expect(site.plans['2d1n_mining'].clarifications).toEqual(['Plan-level note.']);
-      expect(site.plans['3d2n_rural'].clarifications).toEqual([]);
+      expect(site.plans['core_2d1n_chivor'].clarifications).toEqual(['Plan-level note.']);
+      expect(site.plans['prime_2d1n_chivor'].clarifications).toEqual([]);
     });
 
     it('inverts addon scoping onto the plans that list them', () => {
       const parsed = dynamicDataSchema.parse(legacyPayload).experiences.emerald_mining_tour;
       const site = parsed.sites[DEFAULT_SITE_ID];
-      expect(site.plans['2d1n_mining'].addons).toEqual(['apiary_cattle', 'horseback_riding']);
-      expect(site.plans['3d2n_rural'].addons).toEqual(['horseback_riding']);
+      expect(site.plans['core_2d1n_chivor'].addons).toEqual(['apiary_cattle', 'horseback_riding']);
+      expect(site.plans['prime_2d1n_chivor'].addons).toEqual(['horseback_riding']);
     });
 
     it('produces identical internal data from all three shapes', async () => {
@@ -568,7 +568,7 @@ describe('dynamic payload shape migration', () => {
     it('carries addon prices through the transform for all three shapes', async () => {
       const apiary = (data: InternalDynamicData) =>
         data.experiences.emerald_mining_tour.pricing.items
-          .find(item => item.id === 'apiary_cattle' && item.planId === '2d1n_mining');
+          .find(item => item.id === 'apiary_cattle' && item.planId === 'core_2d1n_chivor');
 
       expect(apiary(await loadInternal(legacyPayload))?.pricePerPerson).toBe(55000);
       vi.restoreAllMocks();
@@ -596,8 +596,8 @@ describe('dynamic payload shape migration', () => {
 
       expect(chivorHorseback?.pricePerPerson).toBe(120000);
       expect(coscuezHorseback?.pricePerPerson).toBe(90000);
-      expect(chivorHorseback?.planId).toBe('2d1n_mining');
-      expect(coscuezHorseback?.planId).toBe('2d1n_gems');
+      expect(chivorHorseback?.planId).toBe('core_2d1n_chivor');
+      expect(coscuezHorseback?.planId).toBe('prime_2d1n_chivor');
 
       // Coscuez's plan never sees a Chivor-priced addon and vice versa.
       expect(items.filter(i => i.id === 'horseback_riding')).toHaveLength(2);
@@ -629,8 +629,8 @@ describe('dynamic payload shape migration', () => {
       expect(datos).toContain(`SITE ${DEFAULT_SITE_ID}:`);
       expect(datos).toContain('PLANS_PRICES:');
       expect(datos).toContain('ADDONS:');
-      expect(datos).toContain('apiary_cattle [plans: 2d1n_mining]');
-      expect(datos).toContain('horseback_riding [plans: 2d1n_mining, 3d2n_rural]');
+      expect(datos).toContain('apiary_cattle [plans: core_2d1n_chivor]');
+      expect(datos).toContain('horseback_riding [plans: core_2d1n_chivor, prime_2d1n_chivor]');
       expect(datos).toContain('private_transport [site-wide]');
       expect(datos).toContain('PRICING_RULES: Rule one.');
     });
@@ -687,14 +687,17 @@ describe('dynamic payload shape migration', () => {
           },
         },
       });
-      const datos = renderBusinessData(skills, 'C02');
-      const chivorBlock = datos.slice(datos.indexOf('SITE chivor:'), datos.indexOf('SITE coscuez:'));
-      const coscuezBlock = datos.slice(datos.indexOf('SITE coscuez:'));
-
-      expect(chivorBlock).toContain('valueHook: Chivor hook.');
-      expect(chivorBlock).not.toContain('Coscuez hook.');
-      expect(coscuezBlock).toContain('valueHook: Coscuez hook.');
-      expect(coscuezBlock).not.toContain('Chivor hook.');
+      const pending = renderBusinessData(skills, 'C02');
+      expect(pending).not.toContain('ENTRY_SEGMENT C02');
+      for (const [site, other] of [['chivor', 'coscuez'], ['coscuez', 'chivor']]) {
+        const datos = renderBusinessData(skills, 'C02', site);
+        const label = site === 'chivor' ? 'Chivor' : 'Coscuez';
+        const otherLabel = other === 'chivor' ? 'Chivor' : 'Coscuez';
+        expect(datos).toContain(`valueHook: ${label} hook.`);
+        expect(datos).not.toContain(`${otherLabel} hook.`);
+        const selectedBlock = datos.slice(datos.indexOf(`SITE ${site}:`)).split(/\nSITE /)[0];
+        expect(selectedBlock).toContain(`valueHook: ${label} hook.`);
+      }
     });
 
     it('points RUNTIME at the segment only when DATOS actually rendered it', async () => {
@@ -742,8 +745,8 @@ describe('dynamic payload shape migration', () => {
       const chivorBlock = datos.slice(datos.indexOf('SITE chivor:'), datos.indexOf('SITE coscuez:'));
       const coscuezBlock = datos.slice(datos.indexOf('SITE coscuez:'));
 
-      expect(chivorBlock).toContain('horseback_riding [plans: 2d1n_mining] (Cabalgata Chivor): $120.000 pp');
-      expect(coscuezBlock).toContain('horseback_riding [plans: 2d1n_gems] (Cabalgata Coscuez): $90.000 pp');
+      expect(chivorBlock).toContain('horseback_riding [plans: core_2d1n_chivor] (Cabalgata Chivor): $120.000 pp');
+      expect(coscuezBlock).toContain('horseback_riding [plans: prime_2d1n_chivor] (Cabalgata Coscuez): $90.000 pp');
       // Chivor's block never contains Coscuez's price and vice versa.
       expect(chivorBlock).not.toContain('$90.000');
       expect(coscuezBlock).not.toContain('$120.000');
@@ -769,7 +772,7 @@ describe('dynamic payload shape migration', () => {
       expect(exp).toBeDefined();
       expect(exp!.shortDescription).toBe('');
       expect(exp!.route.localAccess).toBe('');
-      expect(exp!.plans.map(p => p.id).sort()).toEqual(['2d1n_gems', '2d1n_mining']);
+      expect(exp!.plans.map(p => p.id).sort()).toEqual(['core_2d1n_chivor', 'prime_2d1n_chivor']);
       expect(exp!.plans.every(p => p.siteId === 'chivor' || p.siteId === 'coscuez')).toBe(true);
     });
 
@@ -801,9 +804,9 @@ describe('dynamic payload shape migration', () => {
       const skills = await loadIntoSkills(payload);
       const experience = getActiveExperience(skills);
 
-      expect(getFutureAvailableDatesForPlan(skills, experience, '2d1n_mining').map(date => date.date))
+      expect(getFutureAvailableDatesForPlan(skills, experience, 'core_2d1n_chivor').map(date => date.date))
         .toEqual(['2099-01-10']);
-      expect(getFutureAvailableDatesForPlan(skills, experience, '2d1n_gems').map(date => date.date))
+      expect(getFutureAvailableDatesForPlan(skills, experience, 'prime_2d1n_chivor').map(date => date.date))
         .toEqual(['2099-02-20']);
       expect(getFutureAvailableDatesForPlan(skills, experience)).toEqual([]);
     });
@@ -833,7 +836,7 @@ describe('dynamic payload shape migration', () => {
               coscuez: {
                 ...twoSitesPayload.experiences.emerald_mining_tour.sites.coscuez,
                 plans: {
-                  '2d1n_mining': twoSitesPayload.experiences.emerald_mining_tour.sites.coscuez.plans['2d1n_gems'],
+                  'core_2d1n_chivor': twoSitesPayload.experiences.emerald_mining_tour.sites.chivor.plans['core_2d1n_chivor'],
                 },
               },
             },

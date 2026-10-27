@@ -99,6 +99,28 @@ function checkAddonReferences(experiences: ValidatedExperiences): string[] {
   return failures;
 }
 
+/**
+ * A destination switch carries the stored plan to the same `tier` at the new site
+ * (`getEquivalentPlan`). With 2+ sites, every active plan needs a tier and a tier must
+ * be unique per site, or a switch silently clears the customer's plan.
+ */
+function checkPlanTiers(experiences: ValidatedExperiences): string[] {
+  const failures: string[] = [];
+  for (const [expId, exp] of Object.entries(experiences)) {
+    if (Object.keys(exp.sites).length < 2) continue;
+    for (const [siteId, site] of Object.entries(exp.sites)) {
+      const seen = new Set<string>();
+      for (const [planId, plan] of Object.entries(site.plans)) {
+        if (plan.status === 'inactive') continue;
+        if (!plan.tier) failures.push(`   ${expId}.${siteId}.${planId}: multi-site plan has no "tier"`);
+        else if (seen.has(plan.tier)) failures.push(`   ${expId}.${siteId}.${planId}: tier "${plan.tier}" repeats in this site`);
+        else seen.add(plan.tier);
+      }
+    }
+  }
+  return failures;
+}
+
 try {
   const raw = readFileSync(filePath, 'utf-8');
   const parsed = JSON.parse(raw);
@@ -149,6 +171,14 @@ try {
     process.exit(1);
   }
 
+  const tierFailures = checkPlanTiers(validated.experiences);
+  if (tierFailures.length > 0) {
+    console.error('Dynamic skill file is INVALID');
+    console.error('multi-site catalogs need one unique "tier" per active plan per site:\n');
+    console.error(tierFailures.join('\n'));
+    process.exit(1);
+  }
+
   console.log('Dynamic skill file is VALID');
   console.log(`   Experiences: ${expCount}`);
   console.log(`   Sites: ${siteCount}`);
@@ -159,6 +189,7 @@ try {
   console.log('   pricing.rules: no group arithmetic prose');
   console.log('   addon references: every plan addon resolves within its own site');
   console.log('   entry segments: campaign copy constraints satisfied');
+  console.log('   plan tiers: unique per site on multi-site experiences');
   process.exit(0);
 } catch (err) {
   console.error('Dynamic skill file is INVALID');
