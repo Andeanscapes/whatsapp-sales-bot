@@ -859,6 +859,12 @@ Commands registered in `telegram-bot.ts` include:
 - `/send`, `/chat`, `/end`, `/retryflow`, `/returnbot`, `/stopbot`.
 - `/stopall` (alias of `/stopbot`).
 - `/booking`, `/block`, `/delete`, `/pause`, `/resume`, `/version`, `/help`, `/metaleads`.
+- `/resetme` (owner-only): wipes `OWNER_PERSONAL_WHATSAPP_NUMBER` across every customer table so
+  the owner can re-test as a new lead. `/delete` wipes the same tables but refuses while a
+  payment reservation is `pending`.
+- `/plans <sitio>`, `/dates [sitio]`, `/images <tema> [sitio]`: seller catalog views. They read
+  the full validated feed via `getOperatorCatalog()` (paused sites included, labelled
+  `PAUSADO`) and never feed the customer prompt or replies.
 - (Removed with follow-up feature: `/stopfollow`, `/startfollow`, `/grantconsent`, `/followups`, `/stoptemplate`, `/starttemplate`, `/skiptemplate`.)
 
 Owner-only commands use `lead-routing.ts` access checks.

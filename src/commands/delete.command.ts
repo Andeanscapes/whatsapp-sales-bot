@@ -19,6 +19,12 @@ export async function deleteHandler(ctx: CommandContext): Promise<string> {
     if (assignment.assignedAgentChat !== String(ctx.chatId)) return bridgeMessages.leadAssignedToOther;
   }
 
+  // A pending payment is in flight: wiping it would orphan the Mercado Pago
+  // approval webhook. /resetme (owner's own number) is the only unconditional wipe.
+  if (ctx.repos.paymentReservation.getPendingByCustomerPhone(phone)) {
+    return bridgeMessages.deletePendingPayment(phone);
+  }
+
   const deleted = ctx.repos.customerData.deleteCustomer(phone);
   return bridgeMessages.deleteDone({ phone, ...deleted });
 }

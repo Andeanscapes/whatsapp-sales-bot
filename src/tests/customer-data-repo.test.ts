@@ -21,6 +21,25 @@ function seedCustomer(phone: string, messageId: string): void {
   repos.aiUsage.recordUsage({ phone, model: 'deepseek', promptTokens: 100, completionTokens: 50, cachedTokens: 0, estimatedCost: 0.001, purpose: 'reply', success: true });
   repos.ownerAlert.insert(phone, 'telegram', 90, 'hot', 'body');
   repos.mediaSend.recordSend(phone, 'media-1');
+  repos.outboundMedia.record({
+    customer_phone: phone,
+    media_url: 'https://cdn.andeanscapes.com/x.jpg',
+    media_id: 'media-1',
+    carried_reply: 0,
+    flow: 'reply',
+    sent_at: new Date().toISOString(),
+  });
+  repos.paymentReservation.createPending({
+    externalReference: `ref-${phone}`,
+    customerPhone: phone,
+    expectedAmountCop: 100000,
+    planId: 'core_2d1n_chivor',
+    date: '2026-12-01',
+    people: 2,
+    transportNeed: null,
+    depositPercent: 50,
+    availabilityConfirmedAt: new Date().toISOString(),
+  });
   repos.bridgeSession.open(`chat-${phone}`, phone);
   repos.followupConsent.grantConsent(phone, 'test');
   repos.followupConsentGrant.record({
@@ -56,6 +75,8 @@ describe('CustomerDataRepository.deleteCustomer', () => {
       aiUsage: 1,
       ownerAlerts: 1,
       mediaSends: 1,
+      outboundMedia: 1,
+      paymentReservations: 1,
       bridgeSessions: 1,
       followupConsent: 1,
       followupConsentGrants: 1,
@@ -65,6 +86,7 @@ describe('CustomerDataRepository.deleteCustomer', () => {
     });
 
     expect(repos.conversation.getByPhone(phone)).toBeUndefined();
+    expect(repos.outboundMedia.listByPhone(phone)).toEqual([]);
     expect(repos.dedupe.isProcessed('wamid.AAA')).toBe(false);
     expect(repos.bridgeSession.getByCustomer(phone)).toBeNull();
     expect(repos.followupConsentGrant.listByPhone(phone)).toEqual([]);
@@ -92,6 +114,8 @@ describe('CustomerDataRepository.deleteCustomer', () => {
       aiUsage: 0,
       ownerAlerts: 0,
       mediaSends: 0,
+      outboundMedia: 0,
+      paymentReservations: 0,
       bridgeSessions: 0,
       followupConsent: 0,
       followupConsentGrants: 0,
