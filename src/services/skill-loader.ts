@@ -4,7 +4,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import type { DynamicDataService, InternalDynamicData, InternalDynamicMedia, InternalExperienceData } from './dynamic-data-service.js';
 import { PRICING_NOT_AVAILABLE, AVAILABILITY_NOT_AVAILABLE, transformDynamicData } from './dynamic-data-service.js';
-import { assertDynamicCatalogReady, dynamicDataSchema, planCalculationSchema, siteSelectionSchema } from './dynamic-data-schema.js';
+import { assertDynamicCatalogReady, dynamicDataSchema, planCalculationSchema, siteSelectionSchema, type DynamicData } from './dynamic-data-schema.js';
 import { existsSync } from 'fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -656,6 +656,19 @@ export function setDynamicService(service: DynamicDataService | null): void {
 
 export function getDynamicService(): DynamicDataService | null {
   return cachedService;
+}
+
+/**
+ * Full catalog incl. paused sites, for operator Telegram views only. Live service
+ * payload when configured (null until the first successful fetch); the offline CI
+ * file only when no service is configured (tests/local). Never a fallback for a
+ * configured-but-down CDN, which would hide the outage.
+ */
+export function getOperatorCatalog(): DynamicData | null {
+  if (cachedService) return cachedService.getRawData();
+  const path = resolveOfflineCatalogPath();
+  if (!path) return null;
+  return dynamicDataSchema.parse(JSON.parse(readFileSync(path, 'utf-8')));
 }
 
 /**

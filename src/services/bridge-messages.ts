@@ -22,6 +22,33 @@ export const bridgeMessages = {
   leadUsage: 'Uso: /lead <telefono>',
   bookingUsage: 'Uso: /booking <telefono>',
   deleteUsage: 'Uso: /delete <telefono>',
+  deletePendingPayment: (phone: string): string =>
+    `${phone} tiene un pago pendiente. No se borra para no perder la reserva. Usa /resetme solo para tu propio numero.`,
+  resetmeMissingNumber: 'OWNER_PERSONAL_WHATSAPP_NUMBER no es valido.',
+  // Operator catalog views (/plans, /dates, /images). Callers escape dynamic values.
+  operatorCatalogUnavailable: 'Catalogo no disponible todavia. Reintenta en unos segundos.',
+  operatorCatalogStale: 'Aviso: no se pudo actualizar el catalogo; los datos pueden estar desactualizados.',
+  plansUsage: 'Uso: /plans <sitio>',
+  datesUsage: 'Uso: /dates [sitio]',
+  imagesUsage: 'Uso: /images <tema> [sitio]',
+  operatorSitesList: (names: string): string => `Sitios: ${names}`,
+  operatorPausedTag: '(PAUSADO)',
+  operatorSiteUnknown: (query: string, names: string): string => `Sitio "${query}" no existe. Sitios: ${names}`,
+  operatorPlansTitle: (site: string): string => `Planes de ${site}`,
+  operatorPlanIndividual: (price: string): string => `Individual: ${price}`,
+  operatorPlanCouple: (price: string): string => `Pareja: ${price}`,
+  operatorNoPrice: 'sin precio',
+  operatorPlanInactive: 'Plan INACTIVO',
+  operatorSitePaused: 'Sitio PAUSADO',
+  operatorNoCard: (plan: string): string => `${plan}: sin tarjeta`,
+  operatorDatesTitle: (site: string): string => `Fechas de ${site}`,
+  operatorDateStatus: { available: 'disponible', limited: 'pocos cupos' } as Record<string, string>,
+  operatorDateSlots: (slots: number): string => `${slots} cupos`,
+  operatorMoreDates: (count: number): string => `... y ${count} mas`,
+  operatorNoDates: (name: string): string => `${name}: sin fechas disponibles.`,
+  operatorNoThemes: 'sin temas',
+  operatorNoPhotos: (theme: string): string => `Sin fotos de "${theme}".`,
+  operatorPhotoLimit: (shown: number, total: number): string => `Mostrando ${shown} de ${total} fotos.`,
   deleteDone: (params: {
     phone: string;
     conversations: number;
@@ -30,6 +57,8 @@ export const bridgeMessages = {
     aiUsage: number;
     ownerAlerts: number;
     mediaSends: number;
+    outboundMedia: number;
+    paymentReservations: number;
     bridgeSessions: number;
   }): string =>
     [
@@ -40,6 +69,8 @@ export const bridgeMessages = {
       `ai usage: ${params.aiUsage}`,
       `owner alerts: ${params.ownerAlerts}`,
       `media sends: ${params.mediaSends}`,
+      `outbound media: ${params.outboundMedia}`,
+      `payment reservations: ${params.paymentReservations}`,
       `bridge sessions: ${params.bridgeSessions}`,
     ].join('\n'),
   alreadyBooked: (sinceDay: string): string => `Ya estaba confirmado desde ${sinceDay}.`,

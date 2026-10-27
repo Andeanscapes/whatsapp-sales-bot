@@ -231,6 +231,36 @@ describe('telegram dispatcher authorization', () => {
     expect(repos.conversation.getByPhone(CUSTOMER)).toBeTruthy();
   });
 
+  it('wipes the owner number on /resetme from the owner chat', async () => {
+    const previousOwnerNumber = env.OWNER_PERSONAL_WHATSAPP_NUMBER;
+    env.OWNER_PERSONAL_WHATSAPP_NUMBER = '573009990001';
+    try {
+      repos.conversation.upsert('573009990001', { first_seen_at: new Date().toISOString() });
+      repos.conversation.upsert(CUSTOMER, { first_seen_at: new Date().toISOString() });
+
+      await processUpdate(update(333, '/resetme'), repos);
+
+      expect(repos.conversation.getByPhone('573009990001')).toBeUndefined();
+      expect(repos.conversation.getByPhone(CUSTOMER)).toBeTruthy();
+    } finally {
+      env.OWNER_PERSONAL_WHATSAPP_NUMBER = previousOwnerNumber;
+    }
+  });
+
+  it('blocks /resetme from an allowlisted non-owner chat without deleting data', async () => {
+    const previousOwnerNumber = env.OWNER_PERSONAL_WHATSAPP_NUMBER;
+    env.OWNER_PERSONAL_WHATSAPP_NUMBER = '573009990001';
+    try {
+      repos.conversation.upsert('573009990001', { first_seen_at: new Date().toISOString() });
+
+      await processUpdate(update(111, '/resetme'), repos);
+
+      expect(repos.conversation.getByPhone('573009990001')).toBeTruthy();
+    } finally {
+      env.OWNER_PERSONAL_WHATSAPP_NUMBER = previousOwnerNumber;
+    }
+  });
+
 
   it('runs /send without a secret for the owning bridge line', async () => {
     repos.message.addMessage({

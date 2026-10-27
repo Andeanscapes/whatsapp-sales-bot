@@ -752,6 +752,8 @@ export interface CustomerDataRepository {
     aiUsage: number;
     ownerAlerts: number;
     mediaSends: number;
+    outboundMedia: number;
+    paymentReservations: number;
     bridgeSessions: number;
     followupConsent: number;
     followupConsentGrants: number;
