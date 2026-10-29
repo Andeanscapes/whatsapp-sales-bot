@@ -115,6 +115,44 @@ describe('skills-prompt-assembly', () => {
     expect(prompt).toContain('TRANSPORTE PRIVADO (por que cuesta lo que cuesta)');
   });
 
+  it('QUOTE LOCK without a chosen day names published dates to pick from', () => {
+    const lockLine = (collectedFields: Record<string, unknown>): string =>
+      /QUOTE LOCK:[^\n]*/.exec(assembleSystemPrompt({ skills: loadSkills(), lang: 'es', collectedFields }))?.[0] ?? '';
+    const noDay = lockLine({ personas: 2, plan: 'prime_2d1n_chivor' });
+    expect(noDay).toMatch(/Sin dia elegido: termina nombrando estas fechas publicadas en 1 linea \(\d{1,2} de [a-z]+/);
+    expect(noDay).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+    expect(noDay).toContain('Para 2 personas');
+    const december = lockLine({ personas: 2, plan: 'prime_2d1n_chivor', fecha: 'diciembre' });
+    const offered = /\(([^)]+)\) y pregunta/.exec(december)?.[1].split(', ') ?? [];
+    expect(offered.length).toBeGreaterThan(0);
+    for (const date of offered) expect(date).toMatch(/^\d{1,2} de diciembre$/);
+    expect(lockLine({ personas: 1, plan: 'core_2d1n_chivor' })).toContain('Para 1 persona,');
+    const retarget = /QUOTE LOCK:[^\n]*/.exec(assembleSystemPrompt({ skills: loadSkills(), lang: 'es', entryMarker: { code: 'R01', temperature: 'retargeting' }, collectedFields: { personas: 1, plan: 'prime_2d1n_chivor' } }))?.[0] ?? '';
+    expect(retarget).not.toContain('Sin dia elegido');
+    const english = /QUOTE LOCK:[^\n]*/.exec(assembleSystemPrompt({ skills: loadSkills(), lang: 'en', collectedFields: { personas: 2, plan: 'prime_2d1n_chivor' } }))?.[0] ?? '';
+    expect(english).toMatch(/\((?:January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2}/);
+  });
+
+  it('cues a repeated review pause not to resend the price, only when the summary was already sent', () => {
+    const base = { skills: loadSkills(), lang: 'es', priceGiven: true, collectedFields: { plan: 'core_2d1n_chivor', personas: 2 } };
+    expect(runtimeSection(assembleSystemPrompt({ ...base, pauseSummaryAlreadySent: true }))).toContain('PAUSA CON RESUMEN YA ENVIADO');
+    expect(runtimeSection(assembleSystemPrompt(base))).not.toContain('PAUSA CON RESUMEN YA ENVIADO');
+    expect(runtimeSection(assembleSystemPrompt({ ...base, priceGiven: false, pauseSummaryAlreadySent: true }))).not.toContain('PAUSA CON RESUMEN YA ENVIADO');
+  });
+
+  it('tells the model dogs may enter the Chivor mine with the group, on every plan', () => {
+    const skills = loadSkills();
+    const prompt = assembleSystemPrompt({ skills, lang: 'es', collectedFields: { plan: 'core_2d1n_chivor', personas: 2, mascota: 'yes' } });
+    expect(prompt).toMatch(/perros pueden entrar a la mina con el grupo/i);
+    expect(prompt).toMatch(/pets allowed: .*Chivor.*perros pueden entrar a la mina/i);
+    const chivorPlans = getActiveExperience(skills).plans.filter(plan => plan.siteId === 'chivor');
+    expect(chivorPlans.length).toBeGreaterThan(0);
+    for (const plan of chivorPlans) {
+      expect(plan.shortDescription, plan.id).toMatch(/perros pueden entrar a la mina/i);
+    }
+    expect(prompt).not.toMatch(/la mascota no (?:entra|ingresa)|no (?:entran|ingresan) a la mina/i);
+  });
+
   it.each([
     { plan: 'prime_2d1n_coscuez' },
     { personas: 2 },
@@ -760,6 +798,48 @@ describe('skills-prompt-assembly', () => {
         [...referents.keys()].map(packId => [packId, { role: 'test', sourceLabel: 'Private Source' }]),
       ),
     })).toThrow(/version/);
+  });
+
+  it('renders the REGRESO cue and drops CONTINUACION on a return turn', () => {
+    const prompt = assembleSystemPrompt({
+      skills: withLivePricing(loadSkills()),
+      lang: 'es',
+      collectedFields: { personas: 2, plan: 'core_2d1n_chivor' },
+      returning: 'hace 3 días · plan=core_2d1n_chivor · frenos=transporte',
+    });
+
+    expect(prompt).toContain('REGRESO: hace 3 días');
+    expect(prompt).toContain('LO QUE YA SABEMOS DE ESTE CLIENTE');
+    expect(prompt).not.toContain('CONTINUACION:');
+  });
+
+  it('keeps both the reopen compliance cue and REGRESO on a return after opt-out', () => {
+    const prompt = assembleSystemPrompt({
+      skills: withLivePricing(loadSkills()),
+      lang: 'es',
+      returning: 'hace 5 días · sin plan guardado',
+      followupReopenedThisTurn: true,
+    });
+
+    expect(prompt).toContain('REGRESO: hace 5 días');
+    expect(prompt).toContain('CONVERSACION REACTIVADA POR EL CLIENTE');
+  });
+
+  it('renders REGRESO without an ad code', () => {
+    const prompt = assembleSystemPrompt({ skills: withLivePricing(loadSkills()), lang: 'es', returning: 'hace 4 días · sin plan guardado' });
+
+    expect(prompt).toContain('REGRESO: hace 4 días');
+  });
+
+  it('keeps CONTINUACION on a same-session turn without REGRESO', () => {
+    const prompt = assembleSystemPrompt({
+      skills: withLivePricing(loadSkills()),
+      lang: 'es',
+      collectedFields: { personas: 2, plan: 'core_2d1n_chivor' },
+    });
+
+    expect(prompt).toContain('CONTINUACION:');
+    expect(prompt).not.toContain('REGRESO: hace');
   });
 
   it('renders campaign strategy without exposing referent names', () => {

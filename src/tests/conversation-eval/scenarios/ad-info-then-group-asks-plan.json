@@ -1,19 +1,19 @@
 {
   "id": "ad-info-then-group-asks-plan",
-  "source": "history: 106 info+date openings; 97 pareja replies. Diagnosis-first funnel: group → diagnosis → plan recommendation. C02 diagnosis copy from entrySegments feed. Turn 3 answers BOTH diagnosis axes on purpose: `diagnosis-question-turn2` and `reflects-diagnosis-turn3` both accept either a transport question (vehiculo/traslado/ruta) or a scope one (alcance/completo/esencial), but a turn-3 reply of only \"Traslado local\" is a non-sequitur when the model picked the scope axis. On that path the diagnosis is unanswered, so §8 correctly forbids a plan and `plan-recommendation-turn3` must receive a compliant reply. Keep both axes answered so the plan is genuinely due whichever question the model asked.",
+  "source": "history: 106 info+date openings; 97 pareja replies. Diagnosis-first funnel: group → diagnosis → plan recommendation. C02 diagnosis copy from entrySegments feed. Turn 3 answers BOTH diagnosis axes on purpose: `diagnosis-question-turn2` and `reflects-diagnosis-turn3` both accept either a transport question (vehiculo/traslado/ruta) or a scope one (alcance/completo/esencial), but a turn-3 reply of only \"Traslado local\" is a non-sequitur when the model picked the scope axis. On that path the diagnosis is unanswered, so §8 correctly forbids a plan and `plan-recommendation-turn3` must receive a compliant reply. Keep both axes answered so the plan is genuinely due whichever question the model asked. | 2026-10-28: C02 diagnosis is the plan-options question since cffe48c.",
   "tags": ["opening", "qualification", "diagnosis", "live"],
   "lang": "es",
   "liveRuns": 1,
   "minLiveScore": 80,
   "criteria": [
-    { "id": "diagnosis-question-turn2", "rule": "reply_must_match", "patterns": ["veh[ií]culo|traslado|ruta|preparad|alcance|complet[ao]|esencial|objetivo|qu[eé] busc"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "diagnosis-question-turn2", "rule": "reply_must_match", "patterns": ["BASIC[\\s\\S]{0,120}CORE[\\s\\S]{0,120}PRIME|veh[ií]culo|traslado|ruta|preparad|alcance|complet[ao]|esencial|objetivo|qu[eé] busc"], "turn": 2, "weight": 2, "critical": true },
     { "id": "no-intensity-framing-turn2", "rule": "reply_must_not_match", "patterns": ["intens|tranquil|relaj|calma"], "turn": 2, "weight": 2, "critical": true },
     { "id": "no-plan-offer-turn2", "rule": "reply_must_not_match", "patterns": ["2\\s*d[ií]as|3\\s*d[ií]as|2\\s*noche|3\\s*noche|plan de|plan corto|plan largo"], "turn": 2, "weight": 2, "critical": true },
     { "id": "no-price-before-diagnosis", "rule": "price_after_min_fields", "minFields": 2, "weight": 2, "critical": true },
     { "id": "one-question-turn2", "rule": "max_question_marks", "max": 1, "turn": 2, "weight": 1 },
     { "id": "no-reask-group", "rule": "known_field_not_reasked", "field": "people", "suppliedTurn": 2, "weight": 1, "critical": true },
     { "id": "plan-recommendation-turn3", "rule": "reply_must_match", "patterns": ["plan|d[ií]as|noche|recomiend|\\bCORE\\b|\\bPRIME\\b"], "turn": 3, "weight": 2, "critical": true },
-    { "id": "reflects-diagnosis-turn3", "rule": "reply_must_match", "patterns": ["traslado|veh[ií]culo|ruta|alcance|complet[ao]|esencial|acceso|4x4|c[oó]mod|local|movam|llevan"], "turn": 3, "weight": 1, "critical": false }
+    { "id": "reflects-diagnosis-turn3", "rule": "reply_must_match", "patterns": ["traslado|veh[ií]culo|ruta|alcance|complet[ao]|esencial|acceso|4x4|c[oó]mod|local|movam|llevan|PRIME|dos minas|lo tiene todo"], "turn": 3, "weight": 1, "critical": false }
   ],
   "turns": [
     { "user": "C02 - Hola, quiero información y fechas", "mockReply": "Hola. ¿Serían para ti solo, en pareja o en grupo?", "expect": { "shouldSendReply": true } },

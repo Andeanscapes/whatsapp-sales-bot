@@ -47,10 +47,13 @@ vi.mock('../services/contextual-media.js', () => ({
 
 import {
   hasFollowupPermission,
+  isTemplateSendHour,
+  nextTemplateSendAt,
   runConsentAskCycle,
   runFollowupCycle,
   runRecurringCycle,
 } from '../services/followup-service.js';
+import { getBogotaCalendarDate } from '../services/colombia-calendar.js';
 import { WhatsAppSendError } from '../services/whatsapp-client.js';
 import { env } from '../config/env.js';
 import { llmClient } from '../services/response-engine.js';
@@ -92,6 +95,46 @@ beforeEach(() => {
   // Individual tests override these with their own spies.
   vi.spyOn(env, 'FOLLOWUP_DEV_MINUTES', 'get').mockReturnValue(0);
   vi.spyOn(env, 'FOLLOWUP_DEV_ALLOWLIST_PHONES', 'get').mockReturnValue('');
+  // Pin the Bogota send window open: the suite must not depend on the hour it runs.
+  vi.spyOn(env, 'FOLLOWUP_TEMPLATE_SEND_START_HOUR_BOGOTA', 'get').mockReturnValue(0);
+  vi.spyOn(env, 'FOLLOWUP_TEMPLATE_SEND_END_HOUR_BOGOTA', 'get').mockReturnValue(24);
+});
+
+describe('followup scheduler — Bogota template send window', () => {
+  it('holds a due one-shot template outside the window and sends it inside', async () => {
+    seedEligibleLead();
+    const { hour } = getBogotaCalendarDate(new Date());
+    vi.spyOn(env, 'FOLLOWUP_TEMPLATE_SEND_START_HOUR_BOGOTA', 'get').mockReturnValue((hour + 1) % 24);
+    vi.spyOn(env, 'FOLLOWUP_TEMPLATE_SEND_END_HOUR_BOGOTA', 'get').mockReturnValue(((hour + 1) % 24) + 1);
+    await runFollowupCycle(repos);
+    expect(mockSendTemplate).not.toHaveBeenCalled();
+
+    vi.spyOn(env, 'FOLLOWUP_TEMPLATE_SEND_START_HOUR_BOGOTA', 'get').mockReturnValue(hour);
+    vi.spyOn(env, 'FOLLOWUP_TEMPLATE_SEND_END_HOUR_BOGOTA', 'get').mockReturnValue(hour + 1);
+    await runFollowupCycle(repos);
+    expect(mockSendTemplate).toHaveBeenCalledTimes(1);
+  });
+
+  it('honours the window edges in Bogota time', () => {
+    vi.spyOn(env, 'FOLLOWUP_TEMPLATE_SEND_START_HOUR_BOGOTA', 'get').mockReturnValue(9);
+    vi.spyOn(env, 'FOLLOWUP_TEMPLATE_SEND_END_HOUR_BOGOTA', 'get').mockReturnValue(20);
+    expect(isTemplateSendHour(new Date('2026-10-27T05:03:00Z'))).toBe(false); // 00:03, the live batch
+    expect(isTemplateSendHour(new Date('2026-10-27T13:59:00Z'))).toBe(false); // 08:59
+    expect(isTemplateSendHour(new Date('2026-10-27T14:00:00Z'))).toBe(true); // 09:00
+    expect(isTemplateSendHour(new Date('2026-10-28T00:59:00Z'))).toBe(true); // 19:59
+    expect(isTemplateSendHour(new Date('2026-10-28T01:00:00Z'))).toBe(false); // 20:00
+  });
+
+  it('projects a due-outside-window template to the next opening', () => {
+    vi.spyOn(env, 'FOLLOWUP_TEMPLATE_SEND_START_HOUR_BOGOTA', 'get').mockReturnValue(9);
+    vi.spyOn(env, 'FOLLOWUP_TEMPLATE_SEND_END_HOUR_BOGOTA', 'get').mockReturnValue(20);
+    const inside = new Date('2026-10-27T18:30:00Z'); // 13:30
+    expect(nextTemplateSendAt(inside)).toEqual(inside);
+    // 23:00 Bogota on the 27th -> 09:00 Bogota on the 28th
+    expect(nextTemplateSendAt(new Date('2026-10-28T04:00:00Z')).toISOString()).toBe('2026-10-28T14:00:00.000Z');
+    // 06:00 Bogota -> 09:00 the same day
+    expect(nextTemplateSendAt(new Date('2026-10-27T11:00:00Z')).toISOString()).toBe('2026-10-27T14:00:00.000Z');
+  });
 });
 
 afterEach(() => {

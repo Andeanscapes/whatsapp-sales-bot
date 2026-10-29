@@ -148,6 +148,13 @@ describe('conversation criteria', () => {
     expect(evaluateScenario(input, [turn('Hola', 'Tenemos opciones desde $550,000 COP, pero el total es $1,000,000.')]).hardFail).toBe(true);
   });
 
+  it('counts a traslado answer as transport given, never a traslado question', () => {
+    const input = scenario([{ id: 'price', rule: 'price_after_min_fields', minFields: 2, weight: 1, critical: true }]);
+    const quote = 'Para 2 personas queda en $1,700,000 COP.';
+    expect(evaluateScenario(input, [turn('Pareja', 'ok'), turn('La más completa, y con traslado local', quote)]).hardFail).toBe(false);
+    expect(evaluateScenario(input, [turn('Pareja', 'ok'), turn('¿hay traslado?', quote)]).hardFail).toBe(true);
+  });
+
   it('counts every real media output flag', () => {
     const input = scenario([{ id: 'media', rule: 'output_count_at_most', output: 'media', expected: 0, weight: 1, critical: true }]);
     const image = turn('foto', 'ok');

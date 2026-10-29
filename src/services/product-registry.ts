@@ -71,6 +71,17 @@ export function getSiteSelection(exp: ActiveExperience): ActiveExperience['siteS
   return exp.siteSelection;
 }
 
+/**
+ * The current plan a stored id refers to. A current id maps to itself, a paused plan
+ * maps to itself (its site decides, see `isPlanPaused`), and a retired id maps to the
+ * plan that lists it in `legacyPlanIds`. Null when nothing matches.
+ */
+export function resolveCurrentPlanId(exp: ActiveExperience, planId: string | null | undefined): string | null {
+  if (!planId) return null;
+  if (getPlans(exp).some(plan => plan.id === planId) || isPlanPaused(exp, planId)) return planId;
+  return getPlans(exp).find(plan => plan.legacyPlanIds?.includes(planId))?.id ?? null;
+}
+
 export function getEquivalentPlan(exp: ActiveExperience, planId: string, siteId: string): string | null {
   const tier = getPlans(exp).find(plan => plan.id === planId)?.tier
     ?? getUnavailableSites(exp).find(site => site.planIds.includes(planId))?.planTiers[planId];

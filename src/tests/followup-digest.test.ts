@@ -69,6 +69,8 @@ describe('followup digest', () => {
     stub('FOLLOWUP_DEV_RECURRING_MIN_SILENCE_SECONDS', 0);
     stub('FOLLOWUP_HOURS_AFTER_INBOUND', 24);
     stub('FOLLOWUP_CONSENT_HOURS_AFTER_INBOUND', 23);
+    stub('FOLLOWUP_TEMPLATE_SEND_START_HOUR_BOGOTA', 0);
+    stub('FOLLOWUP_TEMPLATE_SEND_END_HOUR_BOGOTA', 24);
   });
 
   afterEach(() => {
@@ -108,6 +110,21 @@ describe('followup digest', () => {
       expect(oneShot[0].phone).toBe(PHONE);
       expect(oneShot[0].overdue).toBe(false);
       expect(oneShot[0].dueAt.toISOString()).toBe(new Date(NOW.getTime() + 4 * 3_600_000).toISOString());
+    });
+
+    it('reports a one-shot due outside the send window at the next opening, like the sender', () => {
+      stub('FOLLOWUP_TEMPLATE_SEND_START_HOUR_BOGOTA', 9);
+      stub('FOLLOWUP_TEMPLATE_SEND_END_HOUR_BOGOTA', 20);
+      // Due 23:00 Bogota today (NOW is 09:00): the sender holds it until 09:00 tomorrow.
+      seedQualifiedLead(db, PHONE, new Date(NOW.getTime() - 10 * 3_600_000));
+      repos.followupConsent.grantConsent(PHONE, 'operator');
+
+      const today = buildFollowupDigest(repos, bogotaDayWindow(NOW), NOW).scheduled.filter(item => item.path === 'one_shot');
+      expect(today).toEqual([]);
+      const tomorrowRef = new Date(NOW.getTime() + 24 * 3_600_000);
+      const tomorrow = buildFollowupDigest(repos, bogotaDayWindow(tomorrowRef), NOW).scheduled.filter(item => item.path === 'one_shot');
+      expect(tomorrow).toHaveLength(1);
+      expect(tomorrow[0].dueAt.toISOString()).toBe('2026-03-11T14:00:00.000Z');
     });
 
     it('omits a one-shot with no operator grant', () => {

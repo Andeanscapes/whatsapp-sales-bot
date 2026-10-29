@@ -22,6 +22,17 @@ describe('checkBudget', () => {
     expect(result.reason).toBe('ai_disabled');
   });
 
+  it('counts only reply calls toward the per-customer daily limit', () => {
+    const phone = '573007710904';
+    const base = { phone, model: 'm', promptTokens: 1, completionTokens: 1, cachedTokens: 0, estimatedCost: 0, success: true };
+    repos.aiUsage.recordUsage({ ...base, purpose: 'reply' });
+    repos.aiUsage.recordUsage({ ...base, purpose: 'lead_analysis' });
+    repos.aiUsage.recordUsage({ ...base, purpose: 'follow_up' });
+    const todayStart = new Date().toISOString().split('T')[0];
+    expect(repos.aiUsage.countCustomerDailyReplies(phone, todayStart)).toBe(1);
+    expect(repos.aiUsage.countCustomerDaily(phone, todayStart)).toBe(3);
+  });
+
   it('returns result with correct shape', () => {
     const result = checkBudget(repos, '573001112233');
     expect(typeof result.aiAllowed).toBe('boolean');
