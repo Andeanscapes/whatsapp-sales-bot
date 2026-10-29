@@ -1,6 +1,6 @@
 {
   "id": "entry-funnel-H01",
-  "source": "funnel campaign marker",
+  "source": "funnel campaign marker | 2026-10-28: the plan-options question also qualifies (cffe48c).",
   "tags": ["marker", "live"],
   "lang": "es",
   "liveRuns": 2,
@@ -8,7 +8,7 @@
   "criteria": [
     { "id": "marker-hidden", "rule": "reply_must_not_match", "patterns": ["H01|marcador|codigo de campana"], "turn": 1, "weight": 2, "critical": true },
     { "id": "no-brand-restart", "rule": "reply_must_not_match", "patterns": ["soy .{0,30}cofundador|somos Andean Scapes|te presento Andean Scapes"], "turn": 1, "weight": 2, "critical": true },
-    { "id": "qualifies-lead", "rule": "reply_must_match", "patterns": ["(?:^|[¿.!?\\n])[^¿.!?\\n]*(?:pareja|sol[oa]s?\\b|grupo|cu[aá]nt[oa]s|personas|tiempo|intensidad|ritmo|naturaleza|actividades)[^¿.!?\\n]*\\?"], "turn": 1, "weight": 1 },
+    { "id": "qualifies-lead", "rule": "reply_must_match", "patterns": ["(?:^|[¿.!?\\n])[^¿.!?\\n]*(?:pareja|sol[oa]s?\\b|grupo|cu[aá]nt[oa]s|personas|tiempo|intensidad|ritmo|naturaleza|actividades|BASIC|CORE|PRIME|encaja)[^¿.!?\\n]*\\?"], "turn": 1, "weight": 1 },
     { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 1, "weight": 2, "critical": true }
   ],
   "turns": [

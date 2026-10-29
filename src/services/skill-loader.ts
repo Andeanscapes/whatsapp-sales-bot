@@ -88,6 +88,7 @@ const experienceSchema = z.object({
    plans: z.array(z.object({
      id: z.string(),
      tier: z.string().min(1).optional(),
+     legacyPlanIds: z.array(z.string().min(1)).optional(),
      depositPercentage: z.number().min(0).max(100).optional(),
      siteId: z.string().optional(),
      name: z.string(),
@@ -357,7 +358,6 @@ const langFallbackSchema = z.object({
   itineraryReply: z.string(),
   dynamicDataUnavailable: z.string(),
   experienceInactive: z.string(),
-  planUnavailable: z.string(),
   pastDateReply: z.string(),
   systemErrorRetry: z.string(),
   largeGroupReview: z.string(),
@@ -448,6 +448,7 @@ function experienceFromDynamic(expId: string, dyn: InternalExperienceData): Expe
   const plans = dyn.plans.map(plan => ({
     id: plan.id,
     tier: plan.tier,
+    legacyPlanIds: plan.legacyPlanIds,
     depositPercentage: plan.depositPercentage,
     siteId: plan.siteId,
     name: plan.name ?? plan.id,

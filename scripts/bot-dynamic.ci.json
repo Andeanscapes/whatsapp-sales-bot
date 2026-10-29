@@ -1,6 +1,6 @@
 {
-  "v": 19,
-  "updated": "2026-10-12T12:07:17Z",
+  "v": 20,
+  "updated": "2026-10-28T22:25:20Z",
   "referentAttribution": {
     "profileId": "andean-scapes-co",
     "version": 1,
@@ -658,7 +658,7 @@
               "depositPercentage": 30,
               "name": "BASIC — Pasadia 1 Dia",
               "duration": "1D/0N",
-              "shortDescription": "Pasadia minero en Chivor: 1 mina guiada + caminata al mirador del Pulpito, con desayuno y almuerzo tipo fiambre. En total ~9h de experiencia; el tiempo subterraneo es solo una parte y varia. Llegas sabado 9:00 am y regresas el mismo dia en la tarde. Sin alojamiento.",
+              "shortDescription": "Pasadia minero en Chivor: 1 mina guiada + caminata al mirador del Pulpito, con desayuno y almuerzo tipo fiambre. En total ~9h de experiencia; el tiempo subterraneo es solo una parte y varia. Llegas sabado 9:00 am y regresas el mismo dia en la tarde. Sin alojamiento. Pet-friendly: los perros pueden entrar a la mina con el grupo.",
               "benefits": "La forma de conocer la mina sin noche de alojamiento.",
               "keywords": [
                 "basic",
@@ -713,9 +713,12 @@
                 ]
               },
               "tier": "core",
+              "legacyPlanIds": [
+                "2d1n_mining"
+              ],
               "name": "CORE — 2 Dias / 1 Noche",
               "duration": "2D/1N",
-              "shortDescription": "La experiencia esencial con noche: 1 mina guiada + caminata al mirador del Pulpito, 2 dias / 1 noche con alojamiento en Hacienda El Recuerdo. En total ~11.5h de experiencia. Inicio sabado 9:00 am, regreso domingo despues del mediodia. Pet-friendly.",
+              "shortDescription": "La experiencia esencial con noche: 1 mina guiada + caminata al mirador del Pulpito, 2 dias / 1 noche con alojamiento en Hacienda El Recuerdo. En total ~11.5h de experiencia. Inicio sabado 9:00 am, regreso domingo despues del mediodia. Pet-friendly: los perros pueden entrar a la mina con el grupo.",
               "benefits": "Aventura minera real en lo esencial. Se puede hacer la mina el dia de llegada (llegando temprano) o a la manana siguiente.",
               "keywords": [
                 "core",
@@ -769,9 +772,12 @@
                 ]
               },
               "tier": "prime",
+              "legacyPlanIds": [
+                "3d2n_rural"
+              ],
               "name": "PRIME — 2 Dias / 1 Noche",
               "duration": "2D/1N",
-              "shortDescription": "La experiencia mas completa: 2 minas guiadas + cabalgata a la segunda mina, 2 dias / 1 noche con alojamiento en Hacienda El Recuerdo. En total ~14h de experiencia; la jornada mas larga. Inicio sabado 8:00 am, regreso domingo despues del mediodia. Pet-friendly. Apicultura disponible como addon.",
+              "shortDescription": "La experiencia mas completa: 2 minas guiadas + cabalgata a la segunda mina, 2 dias / 1 noche con alojamiento en Hacienda El Recuerdo. En total ~14h de experiencia; la jornada mas larga. Inicio sabado 8:00 am, regreso domingo despues del mediodia. Pet-friendly: los perros pueden entrar a la mina con el grupo. Apicultura disponible como addon.",
               "benefits": "Para quien quiere vivirlo todo: dos minas y cabalgata.",
               "keywords": [
                 "prime",
@@ -834,7 +840,7 @@
               "label": "4x4 / Off-Road Adventure",
               "description": "Usuario entusiasta de 4x4 y off-road.",
               "valueHook": "La ruta a Chivor es todo un reto 4x4: carretera destapada, ferry en Macanal y acceso a la mina por caminos que solo vehículos preparados disfrutan.",
-              "diagnosisQuestion": "¿Traen su 4x4 para vivir la ruta completa, o prefieren llegar con su vehículo y que el equipo los mueva en nuestro 4x4 local?",
+              "diagnosisQuestion": "¿Qué les encaja más para la ruta 4x4: BASIC pasadía sin noche, CORE con una mina y noche, o PRIME con dos minas y cabalgata?",
               "planMatch": "2D/1N con énfasis en ruta desafiante. Si vienen en vehículo propio, confirmamos compatibilidad.",
               "contextualMediaTypes": [
                 "car",
@@ -845,7 +851,7 @@
               "label": "Moto / Bike Adventure",
               "description": "Usuario interesado en rutas en motocicleta.",
               "valueHook": "Por la Región del Guavio son unos 35 km de vía rural desde Ubalá hasta la Hacienda; esa ruta solo aplica para moto o 4x4. Conviene validar el estado de las vías antes de viajar.",
-              "diagnosisQuestion": "¿Vienen en moto para la ruta completa, o prefieren llegar por Chivor y que nos movamos en vehículo a la mina?",
+              "diagnosisQuestion": "¿Qué les encaja más para la ruta en moto: BASIC pasadía sin noche, CORE con una mina y noche, o PRIME con dos minas y cabalgata?",
               "planMatch": "2D/1N diseñado para moto riders. Confirmamos que traen equipamiento adecuado.",
               "contextualMediaTypes": [
                 "bike",
@@ -856,7 +862,7 @@
               "label": "Kids / Family Mining Education",
               "description": "Familia con niños interesada en experiencia educativa y minería.",
               "valueHook": "Los niños aman las minas (¡Minecraft es real aquí!). Tenemos guías especializados en niños, comidas adaptadas y actividades como apicultura que los encantarán.",
-              "diagnosisQuestion": "¿Qué edades tienen los niños?",
+              "diagnosisQuestion": "¿Qué edades tienen los niños? Según eso les digo si encaja BASIC pasadía sin noche, CORE con una mina y noche, o PRIME con dos minas y cabalgata.",
               "planMatch": "2D/1N con enfoque family-friendly, CORE o PRIME según edades. Ajustamos ritmo y comidas según necesidades.",
               "contextualMediaTypes": [
                 "kids",
@@ -877,7 +883,7 @@
               "label": "Hot Lead - 4x4",
               "description": "Lead con alto intent desde funnel, interesado en ruta 4x4.",
               "valueHook": "",
-              "diagnosisQuestion": "¿Traen su 4x4 para vivir la ruta, o prefieren llevar su auto normal y que el equipo los mueva en nuestro 4x4 local?",
+              "diagnosisQuestion": "¿Qué les encaja más para la ruta 4x4: BASIC pasadía sin noche, CORE con una mina y noche, o PRIME con dos minas y cabalgata?",
               "planMatch": "2D/1N con énfasis en ruta 4x4. Confirmamos transporte y fechas.",
               "contextualMediaTypes": [
                 "car",
@@ -888,7 +894,7 @@
               "label": "Hot Lead - Moto",
               "description": "Lead con alto intent desde funnel, interesado en ruta moto.",
               "valueHook": "",
-              "diagnosisQuestion": "¿Vienen en moto para la ruta completa, o prefieren llegar por Chivor y que nos movamos en vehículo?",
+              "diagnosisQuestion": "¿Qué les encaja más para la ruta en moto: BASIC pasadía sin noche, CORE con una mina y noche, o PRIME con dos minas y cabalgata?",
               "planMatch": "2D/1N diseñado para moto riders. Confirmamos equipamiento y fechas.",
               "contextualMediaTypes": [
                 "bike",
@@ -899,7 +905,7 @@
               "label": "Hot Lead - Kids",
               "description": "Lead con alto intent desde funnel, interesado en experiencia para niños.",
               "valueHook": "",
-              "diagnosisQuestion": "¿Qué edades traen?",
+              "diagnosisQuestion": "¿Qué edades traen? Según eso les digo si encaja BASIC pasadía sin noche, CORE con una mina y noche, o PRIME con dos minas y cabalgata.",
               "planMatch": "2D/1N family-friendly, CORE o PRIME según edades. Ajustamos según preferencias.",
               "contextualMediaTypes": [
                 "kids",
@@ -984,8 +990,8 @@
               "Validar antes de viajar: punto de encuentro, inicio segun plan y margen de salida, ferry o represa, vehiculo y parqueadero, regreso del bus y condiciones operativas. No garantizar seguridad absoluta ni afirmar una verificacion de hoy sin confirmacion."
             ]
           },
-          "shortDescription": "Aventura Minera en Hacienda El Recuerdo, Chivor (Boyaca). Elige BASIC (pasadia de un dia, sin noche), CORE (1 mina + caminata, 2 dias / 1 noche) o PRIME (2 minas + cabalgata, 2 dias / 1 noche). Experiencia inmersiva de aventura real — no es un plan turistico convencional. Mina con lodo y agua, actividades rurales, comunidad local. Pet-friendly.",
-          "fullDescription": "Para que lo tengas claro: esta NO es una experiencia de descanso con piscina. Los planes CORE y PRIME son aventuras reales de 2 dias y 1 noche con caminatas, esfuerzo fisico, terrenos rurales, lodo y humedad dentro de la mina (CORE) o dos minas (PRIME). El ultimo tramo de via es en carretera terciaria (destapada). Si vienes en carro propio, debe estar preparado para via sin pavimentar. No es un plan para quien busca un tour facil de pocas horas — es para quienes quieren vivir algo genuino al lado de la comunidad esmeraldera. Elige segun lo que quieras vivir: BASIC es el pasadia (1 mina + caminata, mismo dia), CORE la experiencia esencial con noche (1 mina + caminata) y PRIME la mas completa (2 minas + cabalgata, con noche). Somos pet-friendly. Edad minima: 5 anios. Ideal para personas que les gusta caminar y las aventuras. La Hacienda El Recuerdo es una finca dedicada a la ganaderia y apicultura, con ambiente rural comodo para descansar. Tiene WiFi para trabajar remotamente si se requiere. La distancia desde Bogota hace necesario el hospedaje. Para mina el dia de llegada, BASIC y CORE inician a las 9:00 am y PRIME a las 8:00 am. La salida debe ajustarse al plan y a las 5-6 horas orientativas de viaje; PRIME tiene referencia de salida 3:00 am, con confirmacion del margen necesario. Para llegada en la tarde y mina al dia siguiente, se recomienda estar fuera de Bogota al mediodia o antes, previa coordinacion del itinerario. La experiencia minera en CORE dura ~2.5h y en PRIME ~5h; en ambos termina en la tarde, por eso se incluye alojamiento con 4 comidas. Menu local estandar, se tienen en cuenta restricciones alimentarias. Para vehiculo propio, la opcion mas segura y cercana es llegar por Chivor. Si el cliente tiene carro que no es 4x4, debe llegar a Chivor pueblo, dejarlo en un lugar seguro y nosotros lo transportamos a las minas en vehiculo 4x4 (~45 min). La ruta por Ubala solo aplica para moto o carro 4x4; desde Ubala hasta la Hacienda son ~35 km por via rural. Si el cliente viaja en bus publico, debe comprarlo directamente por su cuenta en la terminal que corresponda segun su ciudad de origen (Bogota, Tunja u otra). El costo del bus NO se suma al precio final del plan; solo se orienta al cliente y se validan horarios para cumplir el itinerario. Si se necesita transporte privado 4x4 desde Bogota, tiene costo adicional de $1.700.000 COP para hasta 4 personas.",
+          "shortDescription": "Aventura Minera en Hacienda El Recuerdo, Chivor (Boyaca). Elige BASIC (pasadia de un dia, sin noche), CORE (1 mina + caminata, 2 dias / 1 noche) o PRIME (2 minas + cabalgata, 2 dias / 1 noche). Experiencia inmersiva de aventura real — no es un plan turistico convencional. Mina con lodo y agua, actividades rurales, comunidad local. Pet-friendly: en Chivor los perros pueden entrar a la mina con el grupo.",
+          "fullDescription": "Para que lo tengas claro: esta NO es una experiencia de descanso con piscina. Los planes CORE y PRIME son aventuras reales de 2 dias y 1 noche con caminatas, esfuerzo fisico, terrenos rurales, lodo y humedad dentro de la mina (CORE) o dos minas (PRIME). El ultimo tramo de via es en carretera terciaria (destapada). Si vienes en carro propio, debe estar preparado para via sin pavimentar. No es un plan para quien busca un tour facil de pocas horas — es para quienes quieren vivir algo genuino al lado de la comunidad esmeraldera. Elige segun lo que quieras vivir: BASIC es el pasadia (1 mina + caminata, mismo dia), CORE la experiencia esencial con noche (1 mina + caminata) y PRIME la mas completa (2 minas + cabalgata, con noche). Somos pet-friendly: en Chivor, en todos los planes, los perros pueden acompanar al grupo dentro de la mina. Edad minima: 5 anios. Ideal para personas que les gusta caminar y las aventuras. La Hacienda El Recuerdo es una finca dedicada a la ganaderia y apicultura, con ambiente rural comodo para descansar. Tiene WiFi para trabajar remotamente si se requiere. La distancia desde Bogota hace necesario el hospedaje. Para mina el dia de llegada, BASIC y CORE inician a las 9:00 am y PRIME a las 8:00 am. La salida debe ajustarse al plan y a las 5-6 horas orientativas de viaje; PRIME tiene referencia de salida 3:00 am, con confirmacion del margen necesario. Para llegada en la tarde y mina al dia siguiente, se recomienda estar fuera de Bogota al mediodia o antes, previa coordinacion del itinerario. La experiencia minera en CORE dura ~2.5h y en PRIME ~5h; en ambos termina en la tarde, por eso se incluye alojamiento con 4 comidas. Menu local estandar, se tienen en cuenta restricciones alimentarias. Para vehiculo propio, la opcion mas segura y cercana es llegar por Chivor. Si el cliente tiene carro que no es 4x4, debe llegar a Chivor pueblo, dejarlo en un lugar seguro y nosotros lo transportamos a las minas en vehiculo 4x4 (~45 min). La ruta por Ubala solo aplica para moto o carro 4x4; desde Ubala hasta la Hacienda son ~35 km por via rural. Si el cliente viaja en bus publico, debe comprarlo directamente por su cuenta en la terminal que corresponda segun su ciudad de origen (Bogota, Tunja u otra). El costo del bus NO se suma al precio final del plan; solo se orienta al cliente y se validan horarios para cumplir el itinerario. Si se necesita transporte privado 4x4 desde Bogota, tiene costo adicional de $1.700.000 COP para hasta 4 personas.",
           "included": [
             "CORE y PRIME: 1 noche de alojamiento en Hacienda El Recuerdo (BASIC es pasadia, sin noche)",
             "CORE y PRIME: habitacion privada con cama doble y bano privado",
@@ -1044,7 +1050,7 @@
               "Edad minima: 5 anios. Grupo de niños menores requiere validacion previa.",
               "Personas con condiciones cardiovasculares o fobias graves deben consultar antes. La actividad requiere esfuerzo fisico moderado (CORE) a alto (PRIME).",
               "No es recomendable para embarazadas avanzadas.",
-              "Las mascotas deben estar vacunadas y controladas; la Hacienda es pet-friendly."
+              "Pet-friendly en todos los planes de Chivor: los perros pueden entrar a la mina con el grupo y hacer la jornada minera con ustedes, ademas de quedarse en la Hacienda. Deben estar vacunados y controlados."
             ]
           },
           "climateInfo": {
@@ -1725,7 +1731,7 @@
       },
       "petPolicy": {
         "allowed": true,
-        "notes": "Somos pet-friendly. Consultar con el equipo para coordinar detalles."
+        "notes": "Somos pet-friendly. En Chivor, en todos los planes, los perros pueden entrar a la mina con el grupo. Deben estar vacunados y controlados. Consultar con el equipo para coordinar detalles."
       },
       "cancellationPolicy": {
         "maxReschedules": 2,

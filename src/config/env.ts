@@ -76,6 +76,7 @@ export const envSchema = z.object({
 
   DAILY_AI_BUDGET_USD: z.coerce.number().positive().catch(2.00),
   MONTHLY_AI_BUDGET_USD: z.coerce.number().positive().catch(30.00),
+  // Counts `reply` calls only (incl. corrective retries); analyzer/follow-up calls are capped globally.
   MAX_AI_CALLS_PER_CUSTOMER_PER_DAY: z.coerce.number().int().positive().catch(50),
   MAX_AI_CALLS_GLOBAL_PER_DAY: z.coerce.number().int().positive().catch(1500),
   AI_CACHE_TTL_SECONDS: z.coerce.number().catch(604800),
@@ -189,6 +190,14 @@ export const envSchema = z.object({
   FOLLOWUP_RECURRING_MIN_SILENCE_HOURS: z.coerce.number().int().min(1).catch(72),
   /** Dev-only: seconds instead of hours for the silence floor. */
   FOLLOWUP_DEV_RECURRING_MIN_SILENCE_SECONDS: z.coerce.number().int().nonnegative().catch(0),
+  /**
+   * Bogota-time window [start, end) for the one-shot and recurring TEMPLATE sends. A
+   * due template outside it waits for the next tick inside it. Live 2026-10-27: 15
+   * templates shipped at 00:03 Bogota and none was answered. The consent ask is not
+   * gated: it must land inside Meta's 24h window. 0/24 disables the gate.
+   */
+  FOLLOWUP_TEMPLATE_SEND_START_HOUR_BOGOTA: z.coerce.number().int().min(0).max(23).catch(9),
+  FOLLOWUP_TEMPLATE_SEND_END_HOUR_BOGOTA: z.coerce.number().int().min(1).max(24).catch(20),
 
   /**
    * Operator-only daily digest of scheduled and already-sent follow-ups. Reads
@@ -207,7 +216,24 @@ export const envSchema = z.object({
    * Rejected in production, where it would fire on every deploy.
    */
   FOLLOWUP_DIGEST_DEV_FORCE: boolSchema.default(false),
+
+  /**
+   * Silence after which a new customer inbound counts as a RETURN (prompt context
+   * only; never gates an outbound). Kept just under the recurring template floor
+   * (72h) so every reply to a recurring template is treated as a return.
+   */
+  RETURNING_GAP_HOURS: z.coerce.number().int().min(1).catch(71),
+  /** Dev-only: seconds instead of hours for the return gap. Rejected in production. */
+  RETURNING_DEV_GAP_SECONDS: z.coerce.number().int().nonnegative().catch(0),
 }).superRefine((value, ctx) => {
+  // An empty or inverted window silently stops every template; refuse it in any env.
+  if (value.FOLLOWUP_TEMPLATE_SEND_START_HOUR_BOGOTA >= value.FOLLOWUP_TEMPLATE_SEND_END_HOUR_BOGOTA) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'FOLLOWUP_TEMPLATE_SEND_START_HOUR_BOGOTA must be lower than FOLLOWUP_TEMPLATE_SEND_END_HOUR_BOGOTA (use 0/24 to disable the window)',
+      path: ['FOLLOWUP_TEMPLATE_SEND_START_HOUR_BOGOTA'],
+    });
+  }
   if (value.NODE_ENV !== 'production') return;
   for (const key of PRODUCTION_SECRET_KEYS) {
     if (/^(change-me|test)$/i.test(value[key])) {
@@ -242,6 +268,9 @@ export const envSchema = z.object({
   if (value.FOLLOWUP_DIGEST_DEV_FORCE) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'FOLLOWUP_DIGEST_DEV_FORCE must be false in production', path: ['FOLLOWUP_DIGEST_DEV_FORCE'] });
   }
+  if (value.RETURNING_DEV_GAP_SECONDS > 0) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'RETURNING_DEV_GAP_SECONDS must be 0 in production', path: ['RETURNING_DEV_GAP_SECONDS'] });
+  }
   // A recurring send with no approved template name would fail at Meta on every tick.
   if (value.FOLLOWUP_RECURRING_ENABLED && value.FOLLOWUP_RECURRING_TEMPLATE_NAME.trim() === '') {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'FOLLOWUP_RECURRING_TEMPLATE_NAME is required when FOLLOWUP_RECURRING_ENABLED=true', path: ['FOLLOWUP_RECURRING_TEMPLATE_NAME'] });
@@ -249,6 +278,12 @@ export const envSchema = z.object({
 });
 
 export const env = envSchema.parse(process.env);
+
+/** Silence after which a new inbound is a RETURN. Dev override is sub-hour for testing. */
+export function returningGapMs(): number {
+  if (env.RETURNING_DEV_GAP_SECONDS > 0) return env.RETURNING_DEV_GAP_SECONDS * 1_000;
+  return env.RETURNING_GAP_HOURS * 3_600_000;
+}
 
 /**
  * Both template paths can now be unlocked by the SAME customer "sí": the one-shot

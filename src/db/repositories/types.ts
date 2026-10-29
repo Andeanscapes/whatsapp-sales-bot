@@ -106,6 +106,8 @@ export interface ConversationRepository {
   getCollectedPlan(phone: string): string | null;
   clearCollectedPlan(phone: string): void;
   resetExperienceSalesState(phone: string): void;
+  /** Clears plan, quote and phase only; keeps mode, assignment and handoff (who holds the lead). */
+  clearRetiredPlan(phone: string): void;
   clearCollectedTransport(phone: string): void;
   getLanguage(phone: string): 'es' | 'en' | null;
   getSalesPhase(phone: string): string | null;
@@ -446,7 +448,13 @@ export interface MessageRepository {
   getLastInboundBodies(phone: string, limit?: number): { body: string | null }[];
   getLastInboundBody(phone: string): string | null;
   getLastInboundAt(phone: string): string | null;
+  /** Newest inbound before the current turn. `currentStored` = the current inbound is already persisted. */
+  getPreviousInboundAt(phone: string, currentStored: boolean): string | null;
+  /** Like getRecentMessages but keeps template rows, for the operator replay only. */
+  getReplayMessages(phone: string, limit?: number): RecentMessage[];
   getLastMessageDirection(phone: string): 'inbound' | 'outbound' | null;
+  /** Direction of the row before the newest one (the newest is the current, already-stored inbound). */
+  getPreviousMessageDirection(phone: string): 'inbound' | 'outbound' | null;
   countOutboundSince(phone: string, sinceIso: string, messageType?: 'text' | 'image'): number;
   /**
    * Inbound timestamps at or after `sinceIso` for a set of customers, oldest first
@@ -522,6 +530,8 @@ export interface AiUsageRepository {
   getDailyCost(todayStart: string): number;
   getMonthlyCost(monthStart: string): number;
   countCustomerDaily(phone: string, todayStart: string): number;
+  /** Reply calls only: analyzer and follow-up calls must not exhaust a live lead's turn budget. */
+  countCustomerDailyReplies(phone: string, todayStart: string): number;
   countGlobalDaily(todayStart: string): number;
   recordUsage(input: AiUsageRecordInput): void;
   getUsageByPurpose(phone: string, sinceIso: string, untilIso: string | null): AiUsageBreakdown;
@@ -657,6 +667,9 @@ export interface ConversationRow {
   lead_pain: LeadPain | null;
   lead_pain_detail: string | null;
   lead_pain_detected_at: string | null;
+  last_entry_marker: string | null;
+  last_entry_marker_at: string | null;
+  last_blockers: string | null;
   converted_at: string | null;
   sales_phase: string | null;
   lead_intent: string | null;
@@ -838,8 +851,18 @@ export interface DayConversationSummary {
   aiCompletionTokens: number;
   aiCalls: number;
   aiUsageBreakdown: AiUsageBreakdown;
-  followUps: [];
+  followUps: DayFollowUpSummary[];
   messages: DayMessage[];
+}
+
+/** One automated outbound (one-shot or consent ask) with whether the customer replied within 72h. */
+export interface DayFollowUpSummary {
+  kind: string;
+  status: string;
+  at: string;
+  whatsappMessageId: string | null;
+  replied: boolean;
+  repliedAt: string | null;
 }
 
 export interface PeriodActivityTotals {

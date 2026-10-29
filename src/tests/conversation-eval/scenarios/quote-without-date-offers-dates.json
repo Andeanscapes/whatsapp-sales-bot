@@ -1,0 +1,85 @@
+{
+  "id": "quote-without-date-offers-dates",
+  "source": "customer replay 2026-10-28 (leads 7309, 1261): after the total the bot asked '¿Tienen alguna fecha en mente?' or upsold PRIME instead of naming published dates; both leads went silent",
+  "tags": [
+    "pricing",
+    "live"
+  ],
+  "lang": "es",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "solo-core-total",
+      "rule": "reply_must_match",
+      "patterns": [
+        "620[.,]000"
+      ],
+      "turn": 2,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "solo-names-published-dates",
+      "rule": "reply_must_match",
+      "patterns": [
+        "\\b\\d{1,2}\\b[^.?!\\n]{0,40}(?:octubre|noviembre|diciembre|enero)|(?:octubre|noviembre|diciembre|enero)[^.?!\\n]{0,25}\\b\\d{1,2}\\b"
+      ],
+      "turn": 2,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "solo-no-dead-end-or-upsell",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "te suena|les suena|alguna fecha en mente|fecha en mente\\s*\\?|quieres que te cuente|cabalgata|dos minas"
+      ],
+      "turn": 2,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "solo-one-question",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "solo-no-deposit-yet",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "anticipo|25 ?%|nequi|transferencia"
+      ],
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "C03 ¡Hola! Quiero saber de qué se trata la experiencia minera.",
+      "replay": true,
+      "mockReply": "La experiencia es una aventura real al lado de mineros y comunidad local en la región esmeraldera de Chivor. ¿Vienen en moto para la ruta completa, o prefieren llegar por Chivor y que nos movamos en vehículo a la mina?",
+      "seedQualification": {
+        "people": 1,
+        "plan": "core_2d1n_chivor",
+        "transport": "own"
+      }
+    },
+    {
+      "user": "Voy solo en moto. El de una noche que precio tiene",
+      "mockReply": "Para 1 persona, CORE queda en $620.000 COP, con una mina guiada, noche en la Hacienda y 4 comidas. Las próximas salidas son el 14 y el 28 de noviembre. ¿Cuál te sirve?",
+      "expect": {
+        "shouldSendReply": true
+      },
+      "seedQualification": {
+        "people": 1,
+        "plan": "core_2d1n_chivor",
+        "transport": "own"
+      }
+    }
+  ]
+}

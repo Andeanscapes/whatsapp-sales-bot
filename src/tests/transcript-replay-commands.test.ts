@@ -140,6 +140,22 @@ describe('/lead replay', () => {
     expect(footer).toContain('1 📷 sin url');
   });
 
+  it('shows an approved template as a labelled row', async () => {
+    repos.message.addMessage({
+      customer_phone: PHONE,
+      direction: 'outbound',
+      message_type: 'template',
+      body: '[template:tour_followup_nodate_v1]',
+      created_at: '2026-10-25T10:00:00.000Z',
+    });
+    const { blocks, emit } = collector();
+
+    await leadHandler({ repos, args: [PHONE], chatId: OWNER_CHAT, emit });
+
+    const texts = blocks.filter(b => b.kind === 'text').map(b => (b as { text: string }).text);
+    expect(texts).toContain('🤖 [plantilla tour_followup_nodate_v1]');
+  });
+
   it('keeps a caption next to the glyph when the row has one', async () => {
     repos.message.addMessage({
       customer_phone: PHONE,

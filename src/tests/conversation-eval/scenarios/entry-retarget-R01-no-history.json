@@ -1,13 +1,13 @@
 {
   "id": "entry-retarget-R01-no-history",
-  "source": "retargeting marker from a phone without local history",
+  "source": "retargeting marker from a phone without local history | 2026-10-28: the customer says \"ya consulté antes\"; echoing \"de nuevo\" is not a fake-memory claim. liveRuns 2 (was a coin flip at 1).",
   "tags": ["marker", "live"],
   "lang": "es",
-  "liveRuns": 1,
+  "liveRuns": 2,
   "minLiveScore": 80,
   "criteria": [
     { "id": "marker-hidden", "rule": "reply_must_not_match", "patterns": ["R01|marcador|codigo de campana"], "turn": 1, "weight": 2, "critical": true },
-    { "id": "no-fake-history", "rule": "reply_must_not_match", "patterns": ["como hablamos|retomemos|de nuevo|la vez pasada|ya me habias"], "turn": 1, "weight": 2, "critical": true },
+    { "id": "no-fake-history", "rule": "reply_must_not_match", "patterns": ["como hablamos|retomemos|la vez pasada|ya me habias|lo que hablamos|quedamos en"], "turn": 1, "weight": 2, "critical": true },
     { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 1, "weight": 2, "critical": true }
   ],
   "turns": [

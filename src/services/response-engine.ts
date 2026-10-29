@@ -1,7 +1,7 @@
 import { getSkills, refreshSkills, isDynamicDataFresh, type Skills, type FallbackReplies } from './skill-loader.js';
 import { logger } from '../config/logger.js';
 import { logSystemError } from './error-logger.js';
-import { env } from '../config/env.js';
+import { env, returningGapMs } from '../config/env.js';
 import { containsMediaMarkerSyntax, parseMediaMarker, resolveMediaThemes } from './media-marker.js';
 import { scoreMessage, computeHybridScore, computeAnalyzerFallbackScore, type LlmLeadInput } from './lead-scoring.js';
 import { checkTimeWindow } from './time-window-policy.js';
@@ -13,7 +13,7 @@ import { DeepSeekLlmClient } from './llm/deepseek-llm-client.js';
 import { runLeadAnalysis } from './lead-analysis-runner.js';
 import type { LlmTurn } from './llm/llm-client.js';
 import type { MergedQualification, OutboundDateAction, ProcessMessageInput, ProcessMessageOutput } from './types.js';
-import { getActiveExperience, getSiteCommonQuestions, getFutureAvailableDatesForPlan, getGalleryImages, getPlans, hasPublicPaymentFacts, isPlanPaused, isPricingAvailable, getPublicPaymentFactsForPlan, hasMultipleExperiences, getExperiences, scopeSkillsToExperience, getDynamicPlanImages, getSiteFallbackGalleryTheme, scopeGalleryToPlan } from './product-registry.js';
+import { getActiveExperience, getSiteCommonQuestions, getFutureAvailableDatesForPlan, getGalleryImages, getPlans, hasPublicPaymentFacts, isPlanPaused, isPricingAvailable, getPublicPaymentFactsForPlan, hasMultipleExperiences, getExperiences, scopeSkillsToExperience, getDynamicPlanImages, getSiteFallbackGalleryTheme, scopeGalleryToPlan, resolveCurrentPlanId } from './product-registry.js';
 import type { ActiveExperience, PublicPaymentFacts } from './product-registry.js';
 import { calculatePerPersonEquivalent, calculatePriceQuote, findQuotedAlternative, getQuoteFingerprint, isQuoteFingerprintStale, quoteFingerprintPlanId, listCheaperPlanQuotes, formatCop, type TransportNeed } from './pricing-calculator.js';
 import {
@@ -47,6 +47,7 @@ import {
   containsInternalEntryMarker,
   isReEngagementMessage,
   isReviewPause,
+  isNoReplyNeededPause,
   getLastAssistantQuestion,
   detectsReservationIntent,
   detectsAvailabilityConfirmRequest,
@@ -129,6 +130,82 @@ function formatEntryPriorContext(conversation: ConversationRow): string {
 function hasQualifiedRetargetingContext(conversation: ConversationRow | null | undefined): boolean {
   return conversation?.collected_plan != null && conversation.collected_people != null;
 }
+
+/** Bogota calendar day (fixed UTC-5, same convention as the digest). */
+function bogotaTodayIso(): string {
+  return new Date(Date.now() - 5 * 3_600_000).toISOString().slice(0, 10);
+}
+
+/**
+ * Past stored date. The canonical columns hold the parsed date for text like
+ * "5 de enero de 2020"; an ISO `collected_date` is the fallback. With no day, the
+ * whole month must be over.
+ */
+function isStoredDatePast(conversation: ConversationRow): boolean {
+  const today = bogotaTodayIso();
+  const { collected_date_canon_year: year, collected_date_canon_month: month, collected_date_canon_day: day } = conversation;
+  if (year != null && month != null) {
+    const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+    if (day == null) return monthKey < today.slice(0, 7);
+    return `${monthKey}-${String(day).padStart(2, '0')}` < today;
+  }
+  const iso = conversation.collected_date;
+  return !!iso && /^\d{4}-\d{2}-\d{2}$/.test(iso) && iso < today;
+}
+
+/**
+ * Previous conversation of a returning customer, for the REGRESO cue. Only our own
+ * text and catalog-derived categories go in; the customer's raw words never do.
+ */
+function formatReturningContext(
+  repos: ProcessMessageInput['repos'],
+  customerPhone: string,
+  conversation: ConversationRow,
+  facts: { silenceMs: number; planId: string | null; planRetired: boolean },
+): string {
+  const lastOutbound = repos.message.getLastOutboundBody(customerPhone) ?? '';
+  const lastQuestion = lastOutbound.startsWith('[template:')
+    ? 'último contacto nuestro: plantilla de seguimiento'
+    : formatLastQuestion(repos.message.getLastOutboundTextBody(customerPhone));
+  const fields = [
+    formatSilence(facts.silenceMs),
+    facts.planRetired ? 'plan anterior retirado (ofrece las opciones actuales)' : facts.planId ? `plan=${facts.planId}` : 'sin plan guardado',
+    conversation.collected_people != null ? `personas=${conversation.collected_people}` : null,
+    conversation.collected_transport_need ? `transporte=${conversation.collected_transport_need}` : null,
+    conversation.collected_date ? `fecha=${conversation.collected_date}${isStoredDatePast(conversation) ? ' (ya pasó)' : ''}` : null,
+    conversation.price_given_at ? 'precio ya entregado antes del silencio' : null,
+    conversation.sales_phase ? `fase=${conversation.sales_phase}` : null,
+    conversation.lead_pain ? `bloqueo=${conversation.lead_pain}` : null,
+    lastQuestion,
+  ].filter((field): field is string => field !== null);
+  return fields.join(' · ');
+}
+
+function formatSilence(silenceMs: number): string {
+  const hours = Math.max(1, Math.floor(silenceMs / 3_600_000));
+  if (hours < 24) return `hace ${hours} ${hours === 1 ? 'hora' : 'horas'}`;
+  const days = Math.floor(hours / 24);
+  return `hace ${days} ${days === 1 ? 'día' : 'días'}`;
+}
+
+/**
+ * Our last text as a short excerpt. It may be an operator or payment-command message,
+ * so anything that could carry payment data (numbers, links) never reaches the prompt.
+ */
+function formatLastQuestion(body: string | null): string | null {
+  const excerpt = (body ?? '').replace(/\s+/g, ' ').trim().slice(0, 120);
+  if (!excerpt || containsPaymentDetailLeak(excerpt) || /\d{7,}|https?:\/\/|wa\.me/i.test(excerpt)) return null;
+  return `última pregunta nuestra: "${excerpt.replace(/"/g, "'")}"`;
+}
+
+/** Analyzer blockers derive from customer text: short, single-line, no markers or quotes. */
+function sanitizeBlockers(blockers: readonly string[]): string[] {
+  return blockers
+    .map(blocker => blocker.replace(/\[\[|\]\]|["\n\r]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40))
+    .filter(Boolean)
+    .slice(0, 5);
+}
+
 
 /**
  * Marks lead as waiting on human validation. Bot keeps replying (payment facts,
@@ -637,7 +714,11 @@ function selectedDateFromAvailabilityReply(
   skills: Skills,
   planId?: string | null,
 ): string | null {
-  if (!lastAssistantQuestion || !/^(?:s[ií]|sip|si claro|claro|dale|listo|perfecto|de una|por supuesto)(?:\b|$|[\s,!.])/i.test(message.trim())) return null;
+  // An affirmative, or a short day-only answer ("28", "el 28", "28 está bien") to our own
+  // date list. The day must still be one we offered (checked below).
+  const affirmative = /^(?:s[ií]|sip|si claro|claro|dale|listo|perfecto|de una|por supuesto)(?:\b|$|[\s,!.])/i.test(message.trim());
+  const bareDayAnswer = /^(?:el\s+)?(?:[1-9]|[12]\d|3[01])(?:\s+(?:est[aá] bien|me sirve|nos sirve|perfecto|porfa|por favor|entonces))?[\s.!]*$/i.test(normalizeForKeywordMatch(message).trim());
+  if (!lastAssistantQuestion || (!affirmative && !bareDayAnswer)) return null;
   if (!/(?:fecha|fin de semana|les sirve|te sirve|available|date|weekend)/i.test(lastAssistantQuestion)) return null;
 
   const assistantNorm = normalizeForKeywordMatch(lastAssistantQuestion);
@@ -805,11 +886,21 @@ export function buildHandedOffReply(repos: ProcessMessageInput['repos'], custome
 }
 
 export async function processMessage(input: ProcessMessageInput): Promise<ProcessMessageOutput> {
-  const output = await processMessageCore(input);
-  return withConversationState(input.repos, input.customerPhone, output);
+  const turn: ReturningTurn = { retiredPlanUnmapped: false };
+  const output = withConversationState(input.repos, input.customerPhone, await processMessageCore(input, turn));
+  // The owner is told when a retired plan had no successor. The reply itself is the model's.
+  if (turn.retiredPlanUnmapped && !output.ownerAlertType) {
+    return { ...output, shouldAlertOwner: true, ownerAlertType: 'dynamic_pricing_unavailable' };
+  }
+  return output;
 }
 
-async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMessageOutput> {
+/** Per-turn facts the engine must report to the wrapper (owner alert, not reply copy). */
+interface ReturningTurn {
+  retiredPlanUnmapped: boolean;
+}
+
+async function processMessageCore(input: ProcessMessageInput, turn: ReturningTurn): Promise<ProcessMessageOutput> {
   const { repos, customerPhone, message, messageId, storeInbound = true, consentAcceptedThisTurn = false, consentDeclinedThisTurn = false } = input;
   let followupReopenedThisTurn = input.followupReopenedThisTurn ?? false;
 
@@ -859,6 +950,30 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
       entry_marker_at: new Date().toISOString(),
     });
   }
+
+  // Newest ad code on this inbound (attribution + report). The stored first marker keeps
+  // driving the segment and the retargeting rules.
+  const newestMarker = findEntryMarker(message, []);
+  if (newestMarker) {
+    repos.conversation.upsert(customerPhone, {
+      last_entry_marker: newestMarker.code,
+      last_entry_marker_at: new Date().toISOString(),
+    });
+  }
+
+  // Silence since the customer's previous message (this one excluded). Only the prompt
+  // reads it: a return never triggers or blocks an outbound.
+  const previousInboundAt = repos.message.getPreviousInboundAt(customerPhone, !storeInbound);
+  const previousInboundMs = previousInboundAt ? Date.parse(previousInboundAt) : Number.NaN;
+  const silenceMs = Number.isNaN(previousInboundMs) ? Number.NaN : Date.now() - previousInboundMs;
+  // "After a bot reply": the newest row before this inbound is ours. An unanswered inbound
+  // left in the thread is a gap in our service, not a customer return.
+  const lastDirectionBeforeTurn = storeInbound
+    ? repos.message.getLastMessageDirection(customerPhone)
+    : repos.message.getPreviousMessageDirection(customerPhone);
+  const returningGap = !Number.isNaN(silenceMs)
+    && silenceMs >= returningGapMs()
+    && lastDirectionBeforeTurn === 'outbound';
 
   if (isAdcodeNoise(message)) {
     return { reply: '', shouldSendReply: false, leadScore: 0, usedAi: false, shouldAlertOwner: false, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
@@ -1101,23 +1216,25 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     };
   }
 
-  const storedPlan = repos.conversation.getCollectedPlan(customerPhone);
+  let storedPlan = repos.conversation.getCollectedPlan(customerPhone);
   if (isPlanPaused(activeExperience, storedPlan)) repos.conversation.clearPriceQuote(customerPhone);
-  if (storedPlan && !isPlanPaused(activeExperience, storedPlan) && !getPlans(activeExperience).some(plan => plan.id === storedPlan)) {
-    repos.conversation.resetExperienceSalesState(customerPhone);
-    activateHumanFallback(repos, customerPhone);
-    return {
-      reply: skills.fallbackReplies[lang].planUnavailable,
-      shouldSendReply: true,
-      leadScore: repos.conversation.getLeadScore(customerPhone),
-      usedAi: false,
-      shouldAlertOwner: true,
-      ownerAlertType: 'dynamic_pricing_unavailable',
-      shouldSendOwnerImage: false,
-      shouldSendGalleryImages: false,
-      shouldSendImage: false,
-      priceJustGiven: false,
-    };
+  // A retired plan id is moved to its catalog successor (legacyPlanIds) or cleared, and
+  // the model answers the returning customer. No fixed copy and no handoff.
+  if (storedPlan && !isPlanPaused(activeExperience, storedPlan)
+    && !getPlans(activeExperience).some(plan => plan.id === storedPlan)) {
+    const successorPlanId = resolveCurrentPlanId(activeExperience, storedPlan);
+    repos.conversation.clearPriceQuote(customerPhone);
+    if (successorPlanId) {
+      repos.conversation.upsert(customerPhone, { collected_plan: successorPlanId });
+      logger.info({ phone: customerPhone, from: storedPlan, to: successorPlanId }, '[RETURNING] plan_remapped');
+      storedPlan = successorPlanId;
+    } else {
+      // Narrow clear: a team-held lead must stay with the team (mode and assignment kept).
+      repos.conversation.clearRetiredPlan(customerPhone);
+      turn.retiredPlanUnmapped = true;
+      logger.warn({ phone: customerPhone, plan: storedPlan }, '[RETURNING] plan_unmapped');
+      storedPlan = null;
+    }
   }
 
   const futureWindow = extractFutureMonthConstraint(message);
@@ -1250,6 +1367,12 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   const collectedFields = reconstructFromHistory(repos, customerPhone, getCollectedFields(repos, customerPhone), activeExperience);
   if (experienceSwitched && typeof contextFields.collected_plan !== 'string') delete collectedFields.plan;
   if (activeDateWindow) delete collectedFields.fecha;
+  // Keep the expired date in the historical row, never in active booking cues.
+  const activeDateRow = repos.conversation.getByPhone(customerPhone);
+  if (activeDateRow && isStoredDatePast(activeDateRow)) {
+    delete collectedFields.fecha;
+    collectedFields.dateStatus = 'asked';
+  }
   const dateSelectedThisTurn = typeof extractedDate === 'string'
     && extractedDate.trim() !== ''
     && availabilityEntryForDate(
@@ -1370,6 +1493,8 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   const consentAnswerTurn = consentAcceptedThisTurn
     || consentDeclinedThisTurn
     || pendingConsentDecision !== 'ambiguous';
+  // A permission answer is not a return: it keeps the consent-turn rules.
+  const returningTurn = returningGap && !consentAnswerTurn;
 
   // The permission ask is not a sales question: on a permission-answer turn it must
   // not seed reservation/gallery/date inference from the previous assistant turn.
@@ -1433,7 +1558,7 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
 
   let isReEngagement = false;
   if (softClosedAt) {
-    if (hasSafetyOverride || isReEngagementMessage(message, entryMarker?.temperature) || galleryRequestedForReopen) {
+    if (hasSafetyOverride || isReEngagementMessage(message, entryMarker?.temperature, returningTurn) || galleryRequestedForReopen) {
       isReEngagement = true;
       repos.conversation.clearSoftClosed(customerPhone);
     } else {
@@ -1504,6 +1629,11 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
       repos.conversation.setLeadIntent(customerPhone, 'ready_to_book');
     }
     activateHumanFallback(repos, customerPhone);
+    if (!preLimitReservationIntent && isNoReplyNeededPause(message)) {
+      // Courtesy/deliberation has nothing to answer; the fallback would promise a
+      // follow-up nobody owns. Stay silent and let the team pick it up.
+      return { reply: '', shouldSendReply: false, leadScore: fallbackScore, usedAi: false, shouldAlertOwner: true, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
+    }
     return {
       reply: skills.fallbackReplies[lang].aiBudgetExhausted,
       shouldSendReply: true,
@@ -1537,13 +1667,28 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
   const salesPhase = repos.conversation.getSalesPhase(customerPhone);
   const safeCollected = sanitizeCollectedFields(collectedFields, skills.fallbackReplies[lang].internalDatePending);
   if (activeDateWindow) safeCollected.datePreference = activeDateWindow;
-  const priorContext = entryMarker?.temperature === 'retargeting'
-    ? isNewConversation || !hasQualifiedRetargetingContext(storedConversation)
-      ? 'sin historial local; no inventes familiaridad ni conversaciones anteriores'
-      : storedConversation
-        ? formatEntryPriorContext(storedConversation)
-        : 'sin historial local; no inventes familiaridad ni conversaciones anteriores'
+  // Preserve what we knew before this inbound; only plan-lifecycle changes belong here.
+  const returningRow = returningTurn && storedConversation ? {
+    ...storedConversation,
+    collected_plan: resolveCurrentPlanId(activeExperience, storedConversation.collected_plan),
+    ...(turn.retiredPlanUnmapped ? { price_given_at: null, sales_phase: null } : {}),
+  } : undefined;
+  const returningContext = returningRow
+    ? formatReturningContext(repos, customerPhone, returningRow, {
+      silenceMs,
+      planId: returningRow.collected_plan,
+      planRetired: turn.retiredPlanUnmapped,
+    })
     : null;
+  const priorContext = returningContext
+    ? null
+    : entryMarker?.temperature === 'retargeting'
+      ? isNewConversation || !hasQualifiedRetargetingContext(storedConversation)
+        ? 'sin historial local; no inventes familiaridad ni conversaciones anteriores'
+        : storedConversation
+          ? formatEntryPriorContext(storedConversation)
+          : 'sin historial local; no inventes familiaridad ni conversaciones anteriores'
+      : null;
   const knownPain = repos.conversation.getLeadPain(customerPhone);
   const explicitCloseCtaConfirmation = isExplicitCloseCtaConfirmation(message, lastAssistantQuestion);
   const closeCtaAcceptedThisTurn = repos.conversation.getPriceGivenAt(customerPhone) != null
@@ -1612,6 +1757,16 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
       ? detectRequestedGalleryThemes(planGallerySkills, previousCustomerMessage, resolvedExperienceId, galleryPreferredSiteId, activePlanId)
       : [];
   const galleryImagesRemaining = remainingGalleryImageBudget(repos, customerPhone);
+  // §T7 "una sola vez": the quote and the summary of THIS plan are already visible. A
+  // pause that also picks/switches a plan or asks a price still gets its quote.
+  const isPauseSummaryAlreadySent = (): boolean => {
+    if (!isReviewPause(message) || planSelectedThisTurn || planChosenThisTurn || isPriceQuestion(message)) return false;
+    const people = typeof safeCollected.personas === 'number' ? safeCollected.personas : null;
+    if (!activePlanId || !people) return false;
+    const pricedReplies = recentMessages.filter(m => m.role === 'assistant' && replyMentionsPrice(m.content)).slice(-2);
+    return pricedReplies.length === 2
+      && pricedReplies.every(m => detectQuotedPlan(m.content, activeExperience, people, conversationSiteId) === activePlanId);
+  };
   const promptInput = {
     skills: planGallerySkills,
     lang,
@@ -1620,9 +1775,13 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     customerContext: extractCustomerContext(message),
     selectedExperienceId: resolvedExperienceId,
     entryMarker,
+    entryOpeningTurn: isNewConversation,
     priorContext,
+    returning: returningContext,
     leadPain: knownPain,
-    priceGiven: repos.conversation.getPriceGivenAt(customerPhone) != null,
+    // A returning customer asking the price gets a fresh QUOTE LOCK: the old quote is days
+    // old and the PRECIO YA ENTREGADO cue would forbid the total they just asked for.
+    priceGiven: repos.conversation.getPriceGivenAt(customerPhone) != null && !(returningTurn && isPriceQuestion(message)),
     latestCustomerMessage: message,
     dateSelectedThisTurn,
     planSelectedThisTurn,
@@ -1639,6 +1798,7 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     photoSiteCorrection,
     priceObjectionThisTurn,
     transportObjectionThisTurn,
+    pauseSummaryAlreadySent: isPauseSummaryAlreadySent(),
   };
   const systemPrompt = buildSystemPrompt(promptInput);
   const llmHistory = recentMessages.map(m => ({ role: m.role, content: m.content }));
@@ -1762,6 +1922,12 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
 
   const updatedCollected = reconstructFromHistory(repos, customerPhone, getCollectedFields(repos, customerPhone), activeExperience);
   if (activeDateWindow) delete updatedCollected.fecha;
+  const updatedDateRow = repos.conversation.getByPhone(customerPhone);
+  if (updatedDateRow && isStoredDatePast(updatedDateRow)) {
+    delete updatedCollected.fecha;
+    updatedCollected.dateStatus = 'asked';
+    llmTurn.collected_fields.date = null;
+  }
   let merged = buildMergedQualification(updatedCollected, llmTurn);
   // ── LLM-powered lead analysis (separate scoring call) ───────────────────
   // Gated behind the budget guard: the analyzer is a second DeepSeek call, so
@@ -1784,6 +1950,10 @@ async function processMessageCore(input: ProcessMessageInput): Promise<ProcessMe
     lang,
   });
 
+  if (analysis && !consentAnswerTurn) {
+    const nextBlockers = JSON.stringify(sanitizeBlockers(analysis.blockers));
+    if (nextBlockers !== storedConversation?.last_blockers) repos.conversation.upsert(customerPhone, { last_blockers: nextBlockers });
+  }
   let llmLeadInput: LlmLeadInput;
   if (analysis) {
     llmLeadInput = {

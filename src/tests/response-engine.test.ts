@@ -250,6 +250,76 @@ describe('processMessage', () => {
     expect(prompt).not.toContain('sin historial local');
   });
 
+  describe('bare day answer to our own date list', () => {
+    const answer = async (phone: string, message: string): Promise<string> => {
+      repos.conversation.upsert(phone, { language: 'es', collected_people: 2, collected_plan: 'core_2d1n_chivor' });
+      repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'text', body: '¿Qué fechas tienen en noviembre?', created_at: new Date(Date.now() - 120_000).toISOString() });
+      repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: 'En noviembre tenemos salidas publicadas el 14 y el 28 de noviembre. ¿Cuál les sirve?', created_at: new Date(Date.now() - 60_000).toISOString() });
+      mockLlmComplete.mockReset();
+      mockLlmComplete.mockResolvedValueOnce(fromOld({ response: { reply: 'El 28 entonces. ¿Qué te parece?' } }));
+      vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+      vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+      await processMessage({ repos, customerPhone: phone, message });
+      return mockLlmComplete.mock.calls[0]?.[0].systemPrompt ?? '';
+    };
+
+    it.each([['573007710931', '28 está bien'], ['573007710932', 'el 28'], ['573007710933', '28']])('treats "%s" as choosing the offered day (T3a)', async (phone, message) => {
+      const prompt = await answer(phone, message);
+      expect(prompt).toContain('ESTADO DE TURNO: T3a');
+      expect(String(repos.conversation.getByPhone(phone)?.collected_date ?? '')).toMatch(/28/);
+    });
+
+    it('does not pick a day we did not offer', async () => {
+      const prompt = await answer('573007710934', '15');
+      expect(prompt).not.toContain('ESTADO DE TURNO: T3a');
+    });
+  });
+
+  describe('PAUSA CON RESUMEN YA ENVIADO cue', () => {
+    const quoteText = (planId: string): string => {
+      const quote = calculatePriceQuote(getActiveExperience(getSkills()), { planId, people: 2 });
+      if (!quote) throw new Error(`no quote for ${planId}`);
+      return `$${formatCop(quote.planTotal)} COP`;
+    };
+    const runPause = async (phone: string, priced: string[], message: string): Promise<string> => {
+      repos.conversation.upsert(phone, { language: 'es', collected_people: 2, collected_plan: 'core_2d1n_chivor', price_given_at: new Date().toISOString() });
+      priced.forEach((body, i) => {
+        repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'ok', created_at: new Date(Date.now() - 300_000 + i * 2_000).toISOString() });
+        repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body, created_at: new Date(Date.now() - 299_000 + i * 2_000).toISOString() });
+      });
+      mockLlmComplete.mockReset();
+      mockLlmComplete.mockResolvedValueOnce(fromOld({ response: { reply: 'Con calma, aquí seguimos.' } }));
+      vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+      vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+      await processMessage({ repos, customerPhone: phone, message });
+      const prompt = mockLlmComplete.mock.calls[0]?.[0].systemPrompt ?? '';
+      return prompt.slice(prompt.lastIndexOf('\nRUNTIME:'));
+    };
+
+    it('fires on a second consult pause after the quote and summary of the stored plan', async () => {
+      const core = quoteText('core_2d1n_chivor');
+      const runtime = await runPause('573007710921', [`CORE para 2 personas queda en ${core}.`, `Resumen: CORE, 2 personas, ${core}.`], 'Lo hablo con mi pareja y le aviso');
+      expect(runtime).toContain('PAUSA CON RESUMEN YA ENVIADO');
+    });
+
+    it('does not fire with a single quote (first pause still sends the summary)', async () => {
+      const runtime = await runPause('573007710922', [`CORE para 2 personas queda en ${quoteText('core_2d1n_chivor')}.`], 'Lo hablo con mi pareja y le aviso');
+      expect(runtime).not.toContain('PAUSA CON RESUMEN YA ENVIADO');
+    });
+
+    it('does not fire when the pause also chooses another plan', async () => {
+      const core = quoteText('core_2d1n_chivor');
+      const runtime = await runPause('573007710923', [`CORE queda en ${core}.`, `Resumen: CORE, ${core}.`], 'lo hablo con mi pareja, quiero el prime');
+      expect(runtime).not.toContain('PAUSA CON RESUMEN YA ENVIADO');
+    });
+
+    it('does not fire when the earlier prices quoted a different plan', async () => {
+      const prime = quoteText('prime_2d1n_chivor');
+      const runtime = await runPause('573007710924', [`PRIME queda en ${prime}.`, `Resumen: PRIME, ${prime}.`], 'Lo hablo con mi pareja y le aviso');
+      expect(runtime).not.toContain('PAUSA CON RESUMEN YA ENVIADO');
+    });
+  });
+
   it('passes emojis from our own past replies so the model rotates', async () => {
     const phone = '573009991198';
     repos.message.addMessage({
@@ -1219,6 +1289,41 @@ describe('processMessage', () => {
       expect(repos.conversation.getHandedOffAt(phone)).toBeTruthy();
       expect(repos.conversation.getMode(phone)).toBe('bridge_active');
     });
+  });
+
+  it('stays silent and alerts owner when budget is blocked on a courtesy/deliberation turn', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: false, reason: 'customer_daily_limit' });
+    try {
+      await withBridgeRouting(async () => {
+        for (const [i, message] of ['Listo. Gracias. Aún estamos discutiendo.', 'Lo hablo con mi pareja y le aviso.'].entries()) {
+          const phone = `57300771090${i + 1}`;
+          const result = await processMessage({ repos, customerPhone: phone, message });
+          expect(result.shouldSendReply).toBe(false);
+          expect(result.reply).toBe('');
+          expect(result.shouldAlertOwner).toBe(true);
+          expect(repos.conversation.getHandedOffAt(phone)).toBeTruthy();
+        }
+      });
+    } finally {
+      vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    }
+  });
+
+  it('keeps the budget fallback when a blocked turn still asks something', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: false, reason: 'customer_daily_limit' });
+    try {
+      await withBridgeRouting(async () => {
+        for (const [i, message] of ['Listo, gracias. En la mina tbm puede entrar?', 'lo hablo con mi pareja pero me interesa noviembre'].entries()) {
+          const result = await processMessage({ repos, customerPhone: `57300771091${i}`, message });
+          expect(result.shouldSendReply).toBe(true);
+          expect(result.reply).toBe(getSkills().fallbackReplies.es.aiBudgetExhausted);
+        }
+      });
+    } finally {
+      vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    }
   });
 
   it('soft closes, stores inbound message, and lowers score on decline', async () => {
@@ -4871,16 +4976,19 @@ describe('processMessage — dynamic data guard', () => {
     }
   });
 
-  it('hands off and clears a plan removed from the dynamic catalog', async () => {
+  it('clears a retired plan with no successor, keeps the lead open and alerts the owner', async () => {
     const phone = '573001990097';
-    repos.conversation.upsert(phone, { collected_plan: 'removed_plan' });
+    repos.conversation.upsert(phone, { collected_plan: 'removed_plan', collected_people: 2 });
 
     const result = await processMessage({ repos, customerPhone: phone, message: 'Quiero seguir con ese plan' });
 
-    expect(result.usedAi).toBe(false);
-    expect(result.reply).toBe(getSkills().fallbackReplies.es.planUnavailable);
     expect(repos.conversation.getCollectedPlan(phone)).toBeNull();
+    expect(repos.conversation.getByPhone(phone)?.handed_off_at ?? null).toBeNull();
+    expect(repos.conversation.getByPhone(phone)?.collected_people).toBe(2);
+    expect(result.shouldAlertOwner).toBe(true);
+    expect(result.ownerAlertType).toBe('dynamic_pricing_unavailable');
   });
+
 
 
 

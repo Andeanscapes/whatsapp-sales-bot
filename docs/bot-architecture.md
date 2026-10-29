@@ -438,13 +438,19 @@ startup in production.
   opened, so it fires on the next tick; hiding it would make the digest look empty
   while sends happen, and a bare `HH:MM` would read as today.
 - **"Answered" is derived, not stored, and bounded by the next send.** No table
-  records a reply against a send (`getDayActivity` still returns
-  `followUpsReplied: 0` hardcoded), so a send counts as answered when an inbound
+  records a reply against a send, so the digest counts a send as answered when an inbound
   landed after it and *before the next send to that customer*. Testing the latest
   inbound instead marked every send of the day as answered off one reply, so the
   count was not a reply rate. For consent asks the recorded subscription status is
   also reported — that is what the classifier actually decided, so an ambiguous
   reply does not read as acceptance.
+
+The JSON activity report reads the one-shot and subscription event ledgers. Its
+`followUps` entries expose status, send time and the first `repliedAt` within 72h.
+Replies and conversions are bounded by the report's exclusive `untilIso` cutoff;
+handoff/booking attribution requires the event to occur at or after that reply.
+SQLite and ISO timestamps are normalized in SQL. This report's 72h metric is
+separate from the digest's next-send-bounded metric.
 - **Both derivations are batched.** `listInboundSince` and `listStatuses` are one
   chunked read each over the whole set; the per-row `getLastInboundAt` / `getByPhone`
   calls they replaced were N+1 over an unbounded ledger window.

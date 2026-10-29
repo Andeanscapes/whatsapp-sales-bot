@@ -1,0 +1,77 @@
+{
+  "id": "couple-prime-quote-offers-dates",
+  "source": "customer replay 2026-10-27 (lead 7309): PRIME couple got the total and '¿Tienen alguna fecha en mente?'; no reply until a consent ask the next day",
+  "tags": [
+    "pricing",
+    "live"
+  ],
+  "lang": "es",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "prime-total",
+      "rule": "reply_must_match",
+      "patterns": [
+        "1[.,]700[.,]000"
+      ],
+      "turn": 3,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "prime-names-published-dates",
+      "rule": "reply_must_match",
+      "patterns": [
+        "\\b\\d{1,2}\\b[^.?!\\n]{0,40}(?:octubre|noviembre|diciembre|enero)|(?:octubre|noviembre|diciembre|enero)[^.?!\\n]{0,25}\\b\\d{1,2}\\b"
+      ],
+      "turn": 3,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "prime-no-dead-end",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "te suena|les suena|alguna fecha en mente|fecha en mente\\s*\\?"
+      ],
+      "turn": 3,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "prime-one-question",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 3,
+      "weight": 2,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "C01 ¡Hola! Quiero saber de qué se trata la experiencia minera.",
+      "replay": true,
+      "mockReply": "Es una inmersión real en la zona esmeraldera: mina con guías locales, noche en hacienda y desconexión total 🌿\n\n¿Qué les encaja más: BASIC pasadía sin noche, CORE con una mina y noche, o PRIME con dos minas y cabalgata?"
+    },
+    {
+      "user": "Prime",
+      "replay": true,
+      "mockReply": "Buena elección: PRIME es la más completa, dos minas y cabalgata incluida, con noche en la Hacienda El Recuerdo.\n\n¿Cuántas personas viajan?",
+      "seedQualification": {
+        "plan": "prime_2d1n_chivor"
+      }
+    },
+    {
+      "user": "2",
+      "mockReply": "Para 2 personas, PRIME queda en $1.700.000 COP (unos $850.000 por persona). Las próximas salidas son el 14 y el 28 de noviembre. ¿Cuál les sirve?",
+      "expect": {
+        "shouldSendReply": true
+      },
+      "seedQualification": {
+        "people": 2,
+        "plan": "prime_2d1n_chivor"
+      }
+    }
+  ]
+}

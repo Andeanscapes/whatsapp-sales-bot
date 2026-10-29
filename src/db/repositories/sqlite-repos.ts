@@ -29,6 +29,7 @@ import type {
   TranscriptRecord,
   TranscriptTurn,
   DayActivityResult,
+  DayFollowUpSummary,
   DayConversationSummary,
   DayMessage,
   LeadPain,
@@ -58,6 +59,10 @@ import type {
 import { env } from '../../config/env.js';
 import { canonicalizeDateText } from '../../services/date-canonicalizer.js';
 
+/** Statuses Meta may have accepted: counted as sent in the report (uncertain included). */
+const FOLLOW_UP_SENT_STATUSES: ReadonlySet<string> = new Set(['sent', 'accepted', 'delivered', 'uncertain']);
+const FOLLOW_UP_REPLY_WINDOW_HOURS = 72;
+
 const ALLOWED_CONVERSATION_COLUMNS = new Set([
   'language', 'lead_score', 'last_seen_at', 'opt_out_at', 'handed_off_at',
   'collected_name', 'collected_date', 'collected_date_window', 'date_status', 'collected_people',
@@ -71,6 +76,7 @@ const ALLOWED_CONVERSATION_COLUMNS = new Set([
   'assigned_line_id', 'assigned_agent_chat', 'conversation_mode',
   'converted_at', 'gallery_nudged_at',
   'lead_pain', 'lead_pain_detail', 'lead_pain_detected_at',
+  'last_entry_marker', 'last_entry_marker_at', 'last_blockers',
   'selected_experience_id',
   // Direct writes are mainly a test/migration seam; production code derives
   // these from collected_date via canonicalDateColumns() in this file.
@@ -484,6 +490,14 @@ export class SqliteConversationRepo implements ConversationRepository {
     return fields;
   }
 
+  clearRetiredPlan(phone: string): void {
+    this.db.prepare(
+      `UPDATE conversations
+       SET collected_plan = NULL, price_given_at = NULL, quote_fingerprint = NULL, sales_phase = NULL
+       WHERE customer_phone = ?`
+    ).run(phone);
+  }
+
   resetExperienceSalesState(phone: string): void {
     this.db.prepare(
       `UPDATE conversations
@@ -861,6 +875,33 @@ export class SqliteMessageRepo implements MessageRepository {
     return rows;
   }
 
+  getPreviousInboundAt(phone: string, currentStored: boolean): string | null {
+    const row = this.db.prepare(
+      "SELECT created_at FROM messages WHERE customer_phone = ? AND direction = 'inbound' ORDER BY created_at DESC, id DESC LIMIT 1 OFFSET ?"
+    ).get(phone, currentStored ? 1 : 0) as { created_at: string } | undefined;
+    return row?.created_at ?? null;
+  }
+
+  getReplayMessages(phone: string, limit: number = 12): RecentMessage[] {
+    const rows = this.db.prepare(
+      'SELECT direction, body, message_type, created_at, media_id FROM messages WHERE customer_phone = ? ORDER BY created_at DESC, id DESC LIMIT ?'
+    ).all(phone, limit) as { direction: string; body: string | null; message_type: string | null; created_at: string; media_id: string | null }[];
+    return rows.reverse().map(r => ({
+      role: r.direction === 'inbound' ? 'user' as const : 'assistant' as const,
+      content: r.body ?? '',
+      messageType: r.message_type ?? undefined,
+      createdAt: r.created_at,
+      mediaId: r.media_id ?? undefined,
+    }));
+  }
+
+  getPreviousMessageDirection(phone: string): 'inbound' | 'outbound' | null {
+    const row = this.db.prepare(
+      "SELECT direction FROM messages WHERE customer_phone = ? ORDER BY created_at DESC, id DESC LIMIT 1 OFFSET 1"
+    ).get(phone) as { direction: 'inbound' | 'outbound' } | undefined;
+    return row?.direction ?? null;
+  }
+
   getLastMessageDirection(phone: string): 'inbound' | 'outbound' | null {
     const row = this.db.prepare(
       "SELECT direction FROM messages WHERE customer_phone = ? ORDER BY created_at DESC, id DESC LIMIT 1"
@@ -1010,6 +1051,13 @@ export class SqliteAiUsageRepo implements AiUsageRepository {
   countCustomerDaily(phone: string, todayStart: string): number {
     const row = this.db.prepare(
       "SELECT COUNT(*) as cnt FROM ai_usage WHERE customer_phone = ? AND created_at >= ?"
+    ).get(phone, todayStart) as { cnt: number };
+    return row.cnt;
+  }
+
+  countCustomerDailyReplies(phone: string, todayStart: string): number {
+    const row = this.db.prepare(
+      "SELECT COUNT(*) as cnt FROM ai_usage WHERE customer_phone = ? AND created_at >= ? AND COALESCE(purpose, 'reply') = 'reply'"
     ).get(phone, todayStart) as { cnt: number };
     return row.cnt;
   }
@@ -1807,7 +1855,29 @@ export class SqliteTranscriptRepo implements TranscriptRepository {
     let totalOutbound = 0;
     let totalAiCost = 0;
 
+    let followUpsSent = 0;
+    let followUpsReplied = 0;
+    let followUpHandoffs = 0;
+    let followUpBookings = 0;
+
+    const followUpsByPhone = this.followUpsByPhone(sinceIso, untilIso);
     const conversations: DayConversationSummary[] = activeConvs.map(conv => {
+      const followUps = followUpsByPhone.get(conv.customer_phone) ?? [];
+      for (const followUp of followUps) {
+        if (FOLLOW_UP_SENT_STATUSES.has(followUp.status)) followUpsSent += 1;
+      }
+      const repliedSends = followUps.filter(followUp => followUp.replied && FOLLOW_UP_SENT_STATUSES.has(followUp.status));
+      followUpsReplied += repliedSends.length;
+      // Attributed only when the handoff/booking happened after a replied follow-up.
+      const happenedAfterReply = (stamp: string | null): boolean => {
+        if (!stamp) return false;
+        const eventAt = Date.parse(stamp.endsWith('Z') ? stamp : `${stamp.replace(' ', 'T')}Z`);
+        return (untilIso === null || eventAt < Date.parse(untilIso))
+          && repliedSends.some(send => send.repliedAt !== null && eventAt >= Date.parse(send.repliedAt));
+      };
+      if (happenedAfterReply(conv.handed_off_at)) followUpHandoffs += 1;
+      if (happenedAfterReply(conv.converted_at)) followUpBookings += 1;
+
       const msgRows = messagesStmt.all(
         conv.customer_phone, sinceIso, untilIso, untilIso,
       ) as TranscriptMessageRow[];
@@ -1854,7 +1924,7 @@ export class SqliteTranscriptRepo implements TranscriptRepository {
         aiCompletionTokens: conv.ai_completion_tokens,
         aiCalls: conv.ai_calls,
         aiUsageBreakdown: this.computeBreakdownForPhone(conv.customer_phone, sinceIso, untilIso),
-        followUps: [],
+        followUps,
         messages,
       };
     });
@@ -1868,13 +1938,59 @@ export class SqliteTranscriptRepo implements TranscriptRepository {
         totalInbound,
         totalOutbound,
         totalAiCostUsd: Math.round(totalAiCost * 10000) / 10000,
-        followUpsSent: 0,
-        followUpsReplied: 0,
-        followUpHandoffs: 0,
-        followUpBookings: 0,
+        followUpsSent,
+        followUpsReplied,
+        followUpHandoffs,
+        followUpBookings,
       },
       conversations,
     };
+  }
+
+  /**
+   * Automated outbound rows for every customer inside the report window, keyed by phone.
+   * Follow-up tables store `datetime('now')` (space, no Z) while messages store ISO, so
+   * every comparison goes through `datetime()`; string comparison mixes the formats.
+   * `replied` = the customer wrote again within 72h after the send.
+   */
+  private followUpsByPhone(sinceIso: string, untilIso: string | null): Map<string, DayFollowUpSummary[]> {
+    const rows = this.db.prepare(`
+      WITH sends AS (
+        SELECT customer_phone, 'one_shot' AS kind, status,
+               COALESCE(sent_at, failed_at, claimed_at) AS at, whatsapp_message_id
+        FROM followup_events
+        UNION ALL
+        SELECT customer_phone, event_kind AS kind, status,
+               COALESCE(delivered_at, accepted_at, failed_at, scheduled_for) AS at, whatsapp_message_id
+        FROM followup_subscription_events
+      )
+      SELECT s.customer_phone, s.kind, s.status,
+             strftime('%Y-%m-%dT%H:%M:%SZ', s.at) AS at,
+             s.whatsapp_message_id,
+             (
+               SELECT strftime('%Y-%m-%dT%H:%M:%fZ', m.created_at) FROM messages m
+               WHERE m.customer_phone = s.customer_phone
+                 AND m.direction = 'inbound'
+                 AND datetime(m.created_at) > datetime(s.at)
+                  AND datetime(m.created_at) <= datetime(s.at, '+${FOLLOW_UP_REPLY_WINDOW_HOURS} hours')
+                  AND (@until IS NULL OR datetime(m.created_at) < datetime(@until))
+                ORDER BY datetime(m.created_at), m.id LIMIT 1
+              ) AS replied_at
+      FROM sends s
+      WHERE s.at IS NOT NULL
+        AND datetime(s.at) >= datetime(@since)
+        AND (@until IS NULL OR datetime(s.at) < datetime(@until))
+      ORDER BY datetime(s.at) ASC
+    `).all({ since: sinceIso, until: untilIso }) as Array<{
+      customer_phone: string; kind: string; status: string; at: string; whatsapp_message_id: string | null; replied_at: string | null;
+    }>;
+    const byPhone = new Map<string, DayFollowUpSummary[]>();
+    for (const row of rows) {
+      const list = byPhone.get(row.customer_phone) ?? [];
+      list.push({ kind: row.kind, status: row.status, at: row.at, whatsappMessageId: row.whatsapp_message_id, replied: row.replied_at !== null, repliedAt: row.replied_at });
+      byPhone.set(row.customer_phone, list);
+    }
+    return byPhone;
   }
 
   private computeBreakdownForPhone(phone: string, sinceIso: string, untilIso: string | null): AiUsageBreakdown {

@@ -1,6 +1,6 @@
 {
   "id": "destination-first-plan-without-site",
-  "source": "second site: a plan chosen without naming a destination must ask which destination before quoting",
+  "source": "second site: a plan chosen without naming a destination must ask which destination before quoting | 2026-10-28: reopenPausedSites, Coscuez is paused live.",
   "tags": [
     "qualification",
     "live"
@@ -8,6 +8,7 @@
   "lang": "es",
   "liveRuns": 2,
   "minLiveScore": 80,
+  "seedSystem": { "reopenPausedSites": true },
   "criteria": [
     {
       "id": "asks-destination",

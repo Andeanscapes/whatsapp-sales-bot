@@ -7,6 +7,7 @@ import {
   FREE_FORM_WINDOW_MS,
   consentThresholdMs,
   devAllowlist,
+  nextTemplateSendAt,
   parseStoredTimestamp,
   recurringDueBeforeIso,
   recurringMinSilenceMs,
@@ -153,7 +154,9 @@ function projectOneShot(repos: Repositories, span: ProjectionSpan, allowlist: st
     if (!isAllowlisted(candidate.customer_phone, allowlist)) continue;
     const anchorMs = parseStoredTimestamp(candidate.anchor_at);
     if (Number.isNaN(anchorMs)) continue;
-    const dueAt = new Date(anchorMs + thresholdMs);
+    // Same Bogota send window as the sender: a template due at 23:00 ships at 09:00.
+    const dueAt = nextTemplateSendAt(new Date(anchorMs + thresholdMs));
+    if (dueAt.getTime() >= span.endMs) continue;
     scheduled.push({
       phone: candidate.customer_phone,
       path: 'one_shot',
@@ -226,7 +229,8 @@ function projectRecurring(repos: Repositories, span: ProjectionSpan, allowlist: 
   const scheduled: ScheduledFollowup[] = [];
   for (const candidate of candidates) {
     if (!isAllowlisted(candidate.customer_phone, allowlist)) continue;
-    const dueAt = recurringNextDueAt(candidate.last_send_at, candidate.sends_so_far);
+    const cadenceDueAt = recurringNextDueAt(candidate.last_send_at, candidate.sends_so_far);
+    const dueAt = cadenceDueAt ? nextTemplateSendAt(cadenceDueAt) : null;
     if (!dueAt || dueAt.getTime() >= span.endMs) continue;
 
     scheduled.push({

@@ -59,6 +59,12 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
     The three switches are **independent**. Never alias them: each authorises a
     different outbound. Dev overrides (`FOLLOWUP_DEV_*`) fail startup in production.
 
+    **Both template paths wait for a Bogota send window** (`isTemplateSendHour`,
+    `FOLLOWUP_TEMPLATE_SEND_START/END_HOUR_BOGOTA`, default 9–20). It only delays a
+    send that is already due; it never makes one due. Live 2026-10-27: 15 templates
+    shipped at 00:03 Bogota, zero replies. The consent ask is deliberately NOT gated:
+    it must land inside Meta's 24h window.
+
     Consent lifecycle lives in `followup_subscriptions`
     (`unasked → pending → active | declined`, any state `→ revoked`); per-stage
     dispatch in `followup_subscription_events`.
@@ -518,6 +524,22 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
     with "Comando no reconocido" instead of being relayed. Never register a name with a
     character the parser rejects; widening the parser is not a substitute for the relay
     guard.
+
+14. **Returning customers are read by the prompt only, on any ad code.** A new
+    inbound after `RETURNING_GAP_HOURS` (default 71h, just under the 72h recurring floor;
+    dev `RETURNING_DEV_GAP_SECONDS`, rejected in production), whose previous row was ours,
+    gets the `REGRESO:` runtime cue built from the previous conversation. A price question
+    on that turn gets a fresh QUOTE LOCK (the old quote does not block it). The cue never triggers,
+    blocks or times an outbound; the follow-up paths never read it. A permission answer
+    (`consentAnswerTurn`) is never a return. The cue carries our own text and catalog
+    categories, never the customer's raw words. `REGRESO:` replaces `CONTINUACION:` on that
+    turn. The first ad code stays in `entry_marker`; the newest is `last_entry_marker`
+    (attribution and report only).
+    **Retired plan ids move, they do not hand off.** A stored id missing from the catalog
+    resolves through `legacyPlanIds` (`resolveCurrentPlanId`) to its successor, or is cleared
+    with the model answering. No fixed copy, no handoff. The clear (`clearRetiredPlan`) keeps
+    mode and assignment: a team-held lead never drops back to the bot. Templates resolve the same way and
+    fall back to the experience name, never to a retired plan's card.
 
 ### Multi-Agent Guardrails
 
