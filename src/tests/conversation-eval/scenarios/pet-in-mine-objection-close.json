@@ -1,0 +1,31 @@
+{
+  "id": "pet-in-mine-objection-close",
+  "source": "customer replay 2026-10-28: hot moto couple asked if the dog could enter the mine; the bot said no (wrong: in Chivor dogs join the group inside the mine on every plan) and ended with '¿Les sirve así?' instead of advancing to a date",
+  "tags": ["objection", "live"],
+  "lang": "es",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "seedConversation": { "phase": "pricing", "priceGiven": true, "qualification": { "people": 2, "plan": "core_2d1n_chivor", "transport": "own" } },
+  "seedQualification": { "people": 2, "plan": "core_2d1n_chivor", "transport": "own" },
+  "criteria": [
+    { "id": "pet-welcome", "rule": "reply_must_match", "patterns": ["pet.?friendly|bienvenid|pueden (?:ir|venir|llevar)|s[ií],? (?:la|el|su|tu)|s[ií] puede"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "pet-advances-close", "rule": "reply_must_match", "patterns": ["fecha|noviembre|diciembre|\\bmes\\b|fin de semana|reserv|apart"], "turn": 2, "weight": 2 },
+    { "id": "mine-allows-dog", "rule": "reply_must_match", "patterns": ["(?<![\\wáéíóúñ])(?:s[ií]|puede|pueden|entra|entran|acompa[ñn]\\w*|con ustedes|con el grupo)(?![\\wáéíóúñ])[^.?!]{0,80}\\bmina|\\bmina[^.?!]{0,80}(?<![\\wáéíóúñ])(?:s[ií]|puede|pueden|entra|entran|acompa[ñn]\\w*|con ustedes|con el grupo)(?![\\wáéíóúñ])"], "turn": 3, "weight": 3, "critical": true },
+    { "id": "mine-no-false-denial", "rule": "reply_must_not_match", "patterns": ["\\bno (?:entra|entran|ingresa|ingresan|puede|pueden|se permite|est[aá] permitid)\\b|a la mina no\\b|en la mina no\\b|se queda(?:r[aá])? (?:tranquil[oa] )?en la hacienda|no apta para mascotas"], "turn": 3, "weight": 3, "critical": true },
+    { "id": "mine-no-invented-gear", "rule": "reply_must_not_match", "patterns": ["casco para (?:el|la) (?:perro|mascota)|chaleco|arn[eé]s|correa obligatoria|seguro (?:para|de) (?:la )?mascota|costo adicional|cobro"], "turn": 3, "weight": 2, "critical": true },
+    { "id": "mine-advances-close", "rule": "reply_must_match", "patterns": ["fecha|noviembre|diciembre|\\bmes\\b|fin de semana|reserv|apart"], "turn": 3, "weight": 2, "critical": true },
+    { "id": "mine-no-empty-validation", "rule": "reply_must_not_match", "patterns": ["(?:les|te) sirve as[ií]\\s*\\?|queda claro\\s*\\?"], "turn": 3, "weight": 2, "critical": true },
+    { "id": "mine-one-question", "rule": "max_question_marks", "max": 1, "turn": 3, "weight": 2, "critical": true },
+    { "id": "mine-no-price-repeat", "rule": "reply_must_not_match", "patterns": ["\\$|COP|\\d{3}[.,]\\d{3}"], "turn": 3, "weight": 1 },
+    { "id": "deliberation-no-price", "rule": "reply_must_not_match", "patterns": ["\\$|COP|\\d{3}[.,]\\d{3}"], "turn": 4, "weight": 3, "critical": true },
+    { "id": "deliberation-no-fallback", "rule": "reply_must_not_match", "patterns": ["respuesta tan precisa|d[eé]jame revisarlo"], "turn": 4, "weight": 3, "critical": true },
+    { "id": "deliberation-no-pressure", "rule": "reply_must_not_match", "patterns": ["[úu]ltimos? cupos|reserva ya|se va a acabar|instagram|https?://"], "turn": 4, "weight": 2, "critical": true },
+    { "id": "deliberation-short", "rule": "reply_length_at_most", "expected": 220, "turn": 4, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "Hola, somos 2 en moto, cuanto vale el CORE en Chivor?", "replay": true, "mockReply": "Para 2 personas, CORE queda en $950.000 COP, con alojamiento, 4 comidas y la mina guiada incluida.\n\n¿Les sirve alguna de las fechas de noviembre?", "expect": { "shouldSendReply": true } },
+    { "user": "Una duda. Es pet friendly? vamos con nuestro perro", "mockReply": "Sí, somos pet-friendly y su perro es bienvenido 🐕 Debe ir vacunado y controlado.\n\n¿Les reviso las fechas de noviembre?", "expect": { "shouldSendReply": true } },
+    { "user": "En la mina tbm puede entrar?", "mockReply": "Sí, en Chivor el perro puede entrar a la mina con ustedes y hacer la jornada minera con el grupo, vacunado y controlado.\n\n¿Qué fecha de noviembre les queda mejor?", "expect": { "shouldSendReply": true } },
+    { "user": "Listo. Gracias. Aún estamos discutiendo.", "mockReply": "Tranquilos, sin afán. Aquí seguimos cuando lo decidan.", "expect": { "shouldSendReply": true } }
+  ]
+}

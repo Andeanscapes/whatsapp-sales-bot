@@ -8,11 +8,11 @@ import { daysInMonth, getBogotaCalendarDate } from './colombia-calendar.js';
   * date qualification storage (source of truth stays `collected_date`).
  */
 
-const MONTHS_ES = [
+export const MONTHS_ES = [
   'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
   'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
 ];
-const MONTHS_EN = [
+export const MONTHS_EN = [
   'january', 'february', 'march', 'april', 'may', 'june',
   'july', 'august', 'september', 'october', 'november', 'december',
 ];

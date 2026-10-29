@@ -153,6 +153,7 @@ export interface InternalSiteData {
 export interface InternalPlanNarrative {
   id: string;
   tier?: string;
+  legacyPlanIds?: string[];
   depositPercentage?: number;
   siteId: string;
   status?: 'active' | 'inactive';
@@ -501,6 +502,7 @@ export function transformDynamicData(data: DynamicData): InternalDynamicData {
         planNarratives.push({
           id: planId,
           tier: plan.tier,
+          legacyPlanIds: plan.legacyPlanIds,
           depositPercentage: plan.depositPercentage,
           siteId,
           status: plan.status,

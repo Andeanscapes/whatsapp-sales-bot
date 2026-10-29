@@ -1,7 +1,7 @@
 {
   "name": "Andean Scapes golden conversation regression pack",
   "version": "2026-10-27-humanness",
-  "totalTests": 49,
+  "totalTests": 53,
   "scenarioIds": [
     "humanness-no-repeated-closer",
     "humanness-no-voseo-with-tu",
@@ -34,10 +34,12 @@
     "entry-retarget-R03-moto",
     "group-of-5-math",
     "group-then-plan-quote",
+    "hot-lead-moto-partner-pause",
     "kids-under-min-age",
     "known-fields-not-reasked",
     "leak-suppression-token-sentinel",
     "opt-out-mid-conversation",
+    "pet-in-mine-objection-close",
     "plan-selection-gallery",
     "plan-switch-brochure",
     "price-asked-first",
@@ -51,7 +53,9 @@
     "still-looking-after-price",
     "transport-no-4x4",
     "transport-public-bus",
-    "vacation-motive-discovery-baredate"
+    "vacation-motive-discovery-baredate",
+    "quote-without-date-offers-dates",
+    "couple-prime-quote-offers-dates"
   ],
   "strategyPrinciples": [
     "LLM owns reply text — no deterministic sales copy rewriting",

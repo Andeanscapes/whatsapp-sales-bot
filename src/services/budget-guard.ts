@@ -23,7 +23,7 @@ export function checkBudget(repos: Repositories, customerPhone: string): BudgetR
     return { aiAllowed: false, reason: 'monthly_budget_exceeded' };
   }
 
-  const customerCalls = repos.aiUsage.countCustomerDaily(customerPhone, todayStart);
+  const customerCalls = repos.aiUsage.countCustomerDailyReplies(customerPhone, todayStart);
   if (customerCalls >= env.MAX_AI_CALLS_PER_CUSTOMER_PER_DAY) {
     return { aiAllowed: false, reason: 'customer_daily_limit' };
   }

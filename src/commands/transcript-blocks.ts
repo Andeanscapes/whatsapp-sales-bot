@@ -83,6 +83,9 @@ async function blocksForItem(item: ConversationReplayItem): Promise<OutputBlock[
   }
 
   if (!item.text) return [];
+  // Approved templates are stored as `[template:<name>]`; show them as such to the operator.
+  const template = item.messageType === 'template' ? /^\[template:([^\]]+)\]$/.exec(item.text) : null;
+  if (template) return [{ kind: 'text', text: `${prefix} [plantilla ${template[1]}]` }];
   return chunkText(`${prefix} ${item.text}`).map(text => ({ kind: 'text', text }) as OutputBlock);
 }
 

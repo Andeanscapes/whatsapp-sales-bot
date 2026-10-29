@@ -1,6 +1,6 @@
 {
   "id": "date-pick-price-then-close-T3b",
-  "source": "live: C03 2026-08-12 — couple→price-skipped→date→quote→close",
+  "source": "live: C03 2026-08-12 — couple→price-skipped→date→quote→close | 2026-10-28: day 14 -> 28 Nov; 14 Nov is no longer published live. Replayed date-offer turn added: without it a bare \"28\" never resolves as a date pick, the T3a cue never fires and the model is left to the skill text alone (flaky).",
   "tags": ["closing", "live", "price-before-close"],
   "lang": "es",
   "liveRuns": 1,
@@ -13,25 +13,31 @@
   },
   "seedQualification": { "people": 2, "plan": "core_2d1n_chivor" },
   "criteria": [
-    { "id": "t3a-exact-quote", "rule": "group_quote_integrity", "people": 2, "planId": "core_2d1n_chivor", "expectedTotal": 1000000, "turn": 1, "weight": 3, "critical": true },
-    { "id": "t3a-no-anticipo", "rule": "reply_must_not_match", "patterns": ["anticipo|depósito|Nequi|Mercado Pago"], "turn": 1, "weight": 3, "critical": true },
-    { "id": "t3a-no-validation-promise", "rule": "reply_must_not_match", "patterns": ["valido|validar|primero|equipo"], "turn": 1, "weight": 2, "critical": true },
-    { "id": "t3a-soft-question", "rule": "reply_must_match", "patterns": ["qu[eé] te parece|te interesa|suena|cuadra|encaja|te sirve|les sirve"], "turn": 1, "weight": 2, "critical": true },
-    { "id": "t3b-anticipo-on-price-confirm", "rule": "reply_must_match", "patterns": ["anticipo|depósito|15%|Nequi|Mercado Pago|validar disponibilidad"], "turn": 2, "weight": 3, "critical": true },
-    { "id": "t3b-no-double-quote", "rule": "reply_must_not_match", "patterns": ["1.000.000|1000000|total exacto"], "turn": 2, "weight": 2 }
+    { "id": "t3a-exact-quote", "rule": "group_quote_integrity", "people": 2, "planId": "core_2d1n_chivor", "expectedTotal": 1000000, "turn": 2, "weight": 3, "critical": true },
+    { "id": "t3a-no-anticipo", "rule": "reply_must_not_match", "patterns": ["anticipo|depósito|Nequi|Mercado Pago"], "turn": 2, "weight": 3, "critical": true },
+    { "id": "t3a-no-validation-promise", "rule": "reply_must_not_match", "patterns": ["valido|validar|primero|equipo"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "t3a-soft-question", "rule": "reply_must_match", "patterns": ["qu[eé] te parece|te interesa|suena|cuadra|encaja|te sirve|les sirve"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "t3b-anticipo-on-price-confirm", "rule": "reply_must_match", "patterns": ["anticipo|depósito|15%|Nequi|Mercado Pago|validar disponibilidad"], "turn": 3, "weight": 3, "critical": true },
+    { "id": "t3b-no-double-quote", "rule": "reply_must_not_match", "patterns": ["1.000.000|1000000|total exacto"], "turn": 3, "weight": 2 }
   ],
   "turns": [
     {
-      "user": "14 está bien",
-      "mockReply": "Perfecto, el 14 de noviembre entonces. Para 2 personas, el plan queda en $1.000.000 COP. ¿Qué te parece?",
+      "user": "¿Qué fechas tienen en noviembre?",
+      "replay": true,
+      "mockReply": "En noviembre tenemos salidas publicadas el 21 y el 28. ¿Cuál les sirve?",
+      "expect": { "shouldSendReply": true }
+    },
+    {
+      "user": "28 está bien",
+      "mockReply": "Perfecto, el 28 de noviembre entonces. Para 2 personas, el plan queda en $1.000.000 COP. ¿Qué te parece?",
       "expect": { "shouldSendReply": true },
-      "seedQualification": { "people": 2, "plan": "core_2d1n_chivor", "date": "14 de noviembre" }
+      "seedQualification": { "people": 2, "plan": "core_2d1n_chivor" }
     },
     {
       "user": "Si",
-      "mockReply": "Listo, el 14 de noviembre para 2. El anticipo es del 15% por Nequi o Mercado Pago. Primero valido disponibilidad con el equipo y en cuanto confirmen te comparto el detalle del anticipo. ¿La iniciamos?",
+      "mockReply": "Listo, el 28 de noviembre para 2. El anticipo es del 15% por Nequi o Mercado Pago. Primero valido disponibilidad con el equipo y en cuanto confirmen te comparto el detalle del anticipo. ¿La iniciamos?",
       "expect": { "shouldSendReply": true },
-      "seedQualification": { "people": 2, "plan": "core_2d1n_chivor", "date": "14 de noviembre" }
+      "seedQualification": { "people": 2, "plan": "core_2d1n_chivor", "date": "28 de noviembre" }
     }
   ]
 }

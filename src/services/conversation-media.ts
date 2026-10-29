@@ -103,7 +103,7 @@ export function getConversationReplay(
   phone: string,
   limit: number = 20,
 ): ConversationReplayItem[] {
-  const messages = repos.message.getRecentMessages(phone, limit);
+  const messages = repos.message.getReplayMessages(phone, limit);
   // Ledger rows come newest-first; work chronologically to match the messages.
   const media = repos.outboundMedia.listByPhone(phone, limit * 3).slice().reverse();
 

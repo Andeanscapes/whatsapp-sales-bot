@@ -1,0 +1,30 @@
+{
+  "id": "hot-lead-moto-partner-pause",
+  "source": "customer replay 2026-10-28: hot moto couple (score 89) on CORE Chivor; after logistics the bot asked '¿Les sirve así?' instead of a date, repeated the price on every pause, and the last turn got the budget fallback",
+  "tags": ["objection", "live"],
+  "lang": "es",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "seedConversation": { "phase": "pricing", "priceGiven": true, "qualification": { "people": 2, "plan": "core_2d1n_chivor", "transport": "own" } },
+  "seedQualification": { "people": 2, "plan": "core_2d1n_chivor", "transport": "own" },
+  "criteria": [
+    { "id": "logistics-then-advance", "rule": "reply_must_match", "patterns": ["fecha|noviembre|diciembre|\\bmes\\b|fin de semana|reserv|apart"], "turn": 4, "weight": 3, "critical": true },
+    { "id": "no-empty-validation-question", "rule": "reply_must_not_match", "patterns": ["les sirve as[ií]\\s*\\?|te sirve as[ií]\\s*\\?|queda claro\\s*\\?"], "turn": 4, "weight": 2, "critical": true },
+    { "id": "one-question-logistics", "rule": "max_question_marks", "max": 1, "turn": 4, "weight": 2, "critical": true },
+    { "id": "pause-no-price-repeat", "rule": "reply_must_not_match", "patterns": ["\\$|COP|\\d{3}[.,]\\d{3}"], "turn": 5, "weight": 3, "critical": true },
+    { "id": "pause-no-question", "rule": "max_question_marks", "max": 0, "turn": 5, "weight": 2, "critical": true },
+    { "id": "pause-no-links-or-pressure", "rule": "reply_must_not_match", "patterns": ["instagram|https?://|wa\\.me|[úu]ltimos? cupos|reserva ya|se va a acabar"], "turn": 5, "weight": 2, "critical": true },
+    { "id": "deliberation-no-price", "rule": "reply_must_not_match", "patterns": ["\\$|COP|\\d{3}[.,]\\d{3}"], "turn": 6, "weight": 3, "critical": true },
+    { "id": "deliberation-no-fallback", "rule": "reply_must_not_match", "patterns": ["respuesta tan precisa|d[eé]jame revisarlo"], "turn": 6, "weight": 3, "critical": true },
+    { "id": "deliberation-short", "rule": "reply_length_at_most", "expected": 220, "turn": 6, "weight": 1 },
+    { "id": "deliberation-one-question", "rule": "max_question_marks", "max": 1, "turn": 6, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "Hola, vi lo de la rodada en moto. Somos 2, cuanto vale el CORE?", "replay": true, "mockReply": "Para 2 personas, CORE queda en $950.000 COP, con alojamiento, 4 comidas y la mina guiada incluida.\n\n¿Les sirve alguna de las fechas de noviembre?", "expect": { "shouldSendReply": true } },
+    { "user": "Tienes detalles de la ruta y vias? es para saber si vamos en las dos motos o mejor solo en la himalayan", "replay": true, "mockReply": "En moto sí pueden ir por la ruta de Ubalá, que es la alterna: son unos 35 km de vía rural desde Ubalá hasta la Hacienda. Es destapada y de montaña, así que la Himalayan va más cómoda que una moto de calle.\n\nPara dos motos, el equipo confirma el estado de la vía para su fecha antes de salir.\n\n¿Quieres que les deje el resumen de CORE para que lo hablen?", "expect": { "shouldSendReply": true } },
+    { "user": "Si.", "replay": true, "mockReply": "CORE para 2 personas: $950.000 COP, 2 días / 1 noche en la Hacienda, 1 mina guiada, caminata al mirador, 4 comidas y transporte 4x4 local.\n\nCuando lo hablen, me escriben y validamos la fecha.", "expect": { "shouldSendReply": true } },
+    { "user": "Es que una moto es una Classic y la chica es nueva manejando, mejor en 1 sola moto. En relacion a las comidas como funciona?", "mockReply": "Con una sola moto van más tranquilos: la Himalayan aguanta el destapado. CORE incluye 4 comidas por persona con menú local, y se tienen en cuenta restricciones alimentarias.\n\n¿Les reviso las fechas de noviembre?", "expect": { "shouldSendReply": true } },
+    { "user": "Si, creo mejor con solo 1 entonces. Hablo con mi pareja y le aviso.", "mockReply": "Listo, con una moto es la decisión más tranquila. Lo hablan con calma y aquí seguimos.", "expect": { "shouldSendReply": true } },
+    { "user": "Listo. Gracias. Aún estamos discutiendo.", "mockReply": "Tranquilos, sin afán. ¿Quieren que les revise fechas cuando lo decidan?", "expect": { "shouldSendReply": true } }
+  ]
+}

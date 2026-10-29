@@ -106,7 +106,7 @@ Media forwarding: inbound WhatsApp images, voice notes, and videos are forwarded
 |-------|---------|--------|
 | Daily AI budget | $2.00 | `DAILY_AI_BUDGET_USD` |
 | Monthly AI budget | $30.00 | `MONTHLY_AI_BUDGET_USD` |
-| AI calls/customer/day | 30 | `MAX_AI_CALLS_PER_CUSTOMER_PER_DAY` |
+| AI reply calls/customer/day (analyzer and follow-up calls excluded; bounded by the global cap and USD budgets) | 50 | `MAX_AI_CALLS_PER_CUSTOMER_PER_DAY` |
 | AI calls global/day | 1500 | `MAX_AI_CALLS_GLOBAL_PER_DAY` |
 | Reply output tokens | 800 | `DEEPSEEK_MAX_OUTPUT_TOKENS` |
 | Conversation history | 12,000 chars | `DEEPSEEK_HISTORY_MAX_CHARS` |

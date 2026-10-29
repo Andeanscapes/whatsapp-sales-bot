@@ -14,6 +14,8 @@ const GROUP_QUOTE_AMOUNT_PATTERN =
 const DATE_GIVEN_PATTERN = /\b(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|january|february|march|april|may|june|july|august|september|october|november|december|mañana|manana|tomorrow|fin de semana|weekend|s[aá]bado|domingo|\d{1,2}[/-]\d{1,2})\b/i;
 const PEOPLE_GIVEN_PATTERN = /(?:somos|ser[ií]amos?|para|grupo de)\s+\d+|\d+\s*(?:persona|people|pax)|\b(?:pareja|solo|sola|couple|alone|mi hijo y yo|my son and i)\b/i;
 const TRANSPORT_GIVEN_PATTERN = /\b(?:carro|moto|transporte propio|veh[ií]culo|4x4|desde bogot[aá]|bus|transport|motorcycle)\b/i;
+// "con traslado local" answers the transport question; "¿hay traslado?" asks it.
+const TRANSPORT_ANSWER_PATTERN = /\b(?:con|sin)\s+traslado\b|\btraslado\s+local\b/i;
 const NAME_GIVEN_PATTERN = /(?:me llamo|mi nombre es|hola soy|hello i'?m|my name is)\s+\S+|^\s*[a-záéíóúñ]{2,}(?:\s+[a-záéíóúñ]{2,})?\s*(?:,\s*(?:from|traveling)|$)/i;
 const FIELD_ASK_PATTERNS = {
   name: /\b(c[óo]mo te llamas|cu[aá]l (es )?tu nombre|what'?s your name|what is your name|con qui[eé]n tengo)\b/i,
@@ -66,7 +68,7 @@ function fieldsBefore(turns: TurnRecord[], until: number): number {
     if (givesName(turns, i)) fields.add('name');
     if (PEOPLE_GIVEN_PATTERN.test(text)) fields.add('people');
     if (DATE_GIVEN_PATTERN.test(text)) fields.add('date');
-    if (TRANSPORT_GIVEN_PATTERN.test(text)) fields.add('transport');
+    if (TRANSPORT_GIVEN_PATTERN.test(text) || (!text.includes('?') && TRANSPORT_ANSWER_PATTERN.test(text))) fields.add('transport');
   }
   return fields.size;
 }
