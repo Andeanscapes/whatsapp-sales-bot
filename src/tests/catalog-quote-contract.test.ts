@@ -49,14 +49,31 @@ describe('catalog quote contract', () => {
     expect(selectedPrompt).not.toContain('OPCIONES DE PLAN ESTE TURNO:');
   });
 
-  it.each(['C02', 'H02'])('lets campaign segment %s own its diagnosis instead of listing plan options', code => {
+  it.each(['C02', 'H02'])('lets campaign segment %s own its diagnosis on the opening turn', code => {
     const prompt = assembleSystemPrompt({
       skills: loadSkills(),
       collectedFields: { personas: 2, site: 'chivor' },
       entryMarker: { code, temperature: code.startsWith('C') ? 'cold' : 'funnel' },
+      entryOpeningTurn: true,
     });
     expect(prompt).toContain(`ENTRY_SEGMENT ${code}`);
     expect(prompt).not.toContain('OPCIONES DE PLAN ESTE TURNO:');
+  });
+
+  // Live 2026-10-28: after the C03 moto question the bot offered only "esencial / más
+  // completa", hiding the day plan; "la básica" then stored the day plan while the
+  // customer meant the essential overnight one.
+  it.each(['C02', 'C03', 'C04', 'H02'])('lists every Chivor plan for segment %s once its opening question is answered', code => {
+    const prompt = assembleSystemPrompt({
+      skills: loadSkills(),
+      collectedFields: { personas: 2, site: 'chivor' },
+      entryMarker: { code, temperature: code.startsWith('C') ? 'cold' : 'funnel' },
+      entryOpeningTurn: false,
+    });
+    const options = prompt.match(/OPCIONES DE PLAN ESTE TURNO:[^\n]*/)?.[0] ?? '';
+    expect(options).toContain('BASIC');
+    expect(options).toContain('CORE');
+    expect(options).toContain('PRIME');
   });
 
   it('omits the per-person equivalent while transport is pending confirmation', () => {

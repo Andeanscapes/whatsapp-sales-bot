@@ -197,10 +197,16 @@ export function containsInternalEntryMarker(text: string): boolean {
     || /\b(?:codigo|código|marcador|campaña|entrada|vienes de)\s*:?[ ]*[CHR]\d{2}\b/i.test(text);
 }
 
-export function isReEngagementMessage(text: string, entryTemperature?: 'cold' | 'funnel' | 'retargeting'): boolean {
+export function isReEngagementMessage(
+  text: string,
+  entryTemperature?: 'cold' | 'funnel' | 'retargeting',
+  returningAfterGap = false,
+): boolean {
   const norm = normalizeText(text);
   const raw = text.trim();
-  if (entryTemperature === 'cold' && /^[CHR]\d{2}\b/.test(raw)) return false;
+  // A stored cold marker vetoes a bare ad code, but a customer back after a long silence
+  // is a return, and a soft-closed lead must hear back.
+  if (entryTemperature === 'cold' && !returningAfterGap && /^[CHR]\d{2}\b/.test(raw)) return false;
   if (/^\s*[?¿]+\s*$/.test(raw)) return true;
   return /\b(despu[eé]s de pensar|lo pens[eé]|volv[ií]|bueno|me interesa|own|cu[aá]l es|cont[aá]me|de nuevo|cambiaste|reconsider|lo habl[eé]|lo consult[eé]|ya decid[ií]|estoy listo|listo|aqu[ií] estoy|estoy de vuelta|retomo|retomamos|seguimos|continuamos|dale|vamos|hag[aá]moslo|s[ií] quiero|me convenc[ií]|mejor dicho|i'?m back|i'?m ready|let'?s go|i decided|i talked about it|i consulted|i'?m in|i want to|let'?s continue|following up|touching base|checking in|after thinking|changed my mind|reconsidered|actually yes|actually i do|you know what|on second thought)\b/i.test(norm)
     || /\b(hola|hello|hi|buenas|hey|saludos|buen dia|buenos dias|buenas tardes|buenas noches|good morning|good afternoon|good evening|cuanto es|cuanto vale|cuanto cuesta|precio|how much|price|cual es el precio|cual es el valor|cual es el costo)\b/i.test(norm);
@@ -218,6 +224,31 @@ export function isPartnerConsultPause(text: string): boolean {
 export function isReviewPause(text: string): boolean {
   return isPartnerConsultPause(text)
     || /\b(?:dejame|déjame)\s+(?:revisar|validar|confirmar)\b[\s\S]{0,80}\b(?:semana|grupo|familia|hij[oa]s?|children|kids)\b/i.test(text);
+}
+
+const ACK_WORD = '(?:ok(?:ay|i)?|okey|listo|gracias|muchas gracias|mil gracias|dale|vale|perfecto|entendido|super|genial|bueno|claro|de acuerdo|thanks|thank you|great|got it|sounds good)';
+const ACK_ONLY = new RegExp(`^${ACK_WORD}(?:\\s+${ACK_WORD})*$`);
+// Closed phrases only: a free-word tail would let "estamos viendo noviembre" or
+// "hablo con mi pareja, el perro puede ir" pass as content-free and get no reply.
+const LATER = String.raw`(?:\s+(?:luego|despues|mas tarde|pronto|manana|cualquier cosa))?`;
+const DELIBERATION = new RegExp([
+  String.raw`^(?:(?:aun|todavia|ya)\s+)?(?:lo\s+)?(?:estamos|seguimos|sigo|estoy)\s+(?:discutiendo|pensando|decidiendo|viendo|mirando|hablando|cuadrando|revisando|evaluando)(?:lo)?(?:\s+(?:aun|todavia|con calma|entre nosotros))?$`,
+  String.raw`^(?:(?:y|ya)\s+)?(?:te|le|les)\s+(?:aviso|confirmo|cuento|escribo)${LATER}$`,
+  String.raw`^(?:lo\s+)?(?:voy a|vamos a|tengo que|tenemos que)?\s*(?:hablo|hablar|hablarlo|consulto|consultar|consultarlo|comento|comentar|comentarlo|pienso|pensar|pensarlo|valido|validar|validarlo)(?:lo)?\s+con\s+(?:mi|mis|la|el|los|las)\s+[a-z]+(?:\s+y\s+(?:te|le|les)\s+(?:aviso|confirmo|cuento|escribo)${LATER})?$`,
+  String.raw`^(?:still\s+)?(?:thinking|discussing|deciding)(?:\s+(?:about it|it over))?$`,
+  String.raw`^(?:i ll|we ll|ill|well)\s+(?:let you know|(?:talk|check|discuss)(?:\s+it)?\s+with\s+my\s+[a-z]+)$`,
+].join('|'));
+
+/**
+ * Courtesy or deliberation with nothing to answer ("Listo. Gracias. Aún estamos
+ * discutiendo."). Used only when AI is unavailable: such a turn must not receive the
+ * budget fallback, which promises a follow-up nobody owns. Every clause must be a
+ * known courtesy/deliberation phrase; any other content keeps the fallback.
+ */
+export function isNoReplyNeededPause(text: string): boolean {
+  if (/[?¿]/.test(text)) return false;
+  const parts = text.split(/[.!,;\n]+/).map(normalizeText).filter(Boolean);
+  return parts.length > 0 && parts.every(part => ACK_ONLY.test(part) || DELIBERATION.test(part));
 }
 
 export function detectsAvailabilityConfirmRequest(text: string): boolean {

@@ -1,6 +1,6 @@
 {
   "id": "entry-funnel-H02-car",
-  "source": "funnel campaign marker (4x4 variant)",
+  "source": "funnel campaign marker (4x4 variant) | 2026-10-28: H02 diagnosis is the plan-options question since cffe48c; route mention is a nicety.",
   "tags": ["marker", "live"],
   "lang": "es",
   "liveRuns": 1,
@@ -8,11 +8,11 @@
   "criteria": [
     { "id": "marker-hidden", "rule": "reply_must_not_match", "patterns": ["H02|marcador|codigo de campana"], "turn": 1, "weight": 2, "critical": true },
     { "id": "no-brand-restart", "rule": "reply_must_not_match", "patterns": ["soy .{0,30}cofundador|somos Andean Scapes|te presento Andean Scapes"], "turn": 1, "weight": 2, "critical": true },
-    { "id": "vehicle-specific", "rule": "reply_must_match", "patterns": ["4x4|vehiculo|vehiculo propio|tu auto"], "turn": 1, "weight": 2, "critical": true },
-    { "id": "route-context", "rule": "reply_must_match", "patterns": ["ruta|camino|destapada"], "turn": 1, "weight": 1 },
+    { "id": "diagnosis-plans-or-vehicle", "rule": "reply_must_match", "patterns": ["BASIC[\\s\\S]{0,120}CORE[\\s\\S]{0,120}PRIME|4x4|veh[ií]culo|tu auto"], "turn": 1, "weight": 2, "critical": true },
+    { "id": "route-context", "rule": "reply_must_match", "patterns": ["ruta|camino|destapada|4x4|veh[ií]culo"], "turn": 1, "weight": 1 },
     { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 1, "weight": 2, "critical": true }
   ],
   "turns": [
-    { "user": "H02 - Hola, quiero conocer la experiencia en Chivor 💚", "mockReply": "Excelente. La ruta a Chivor es un reto 4x4: carretera destapada y caminos que preparan bien las suspensiones. ¿Traen su 4x4 para vivir la ruta completa, o llevan un auto normal?", "expect": { "shouldSendReply": true } }
+    { "user": "H02 - Hola, quiero conocer la experiencia en Chivor 💚", "mockReply": "En Chivor entras a minas reales de esmeralda con mineros de la zona, con la ruta 4x4 como parte del viaje. ¿Qué les encaja más para la ruta 4x4: BASIC pasadía sin noche, CORE con una mina y noche, o PRIME con dos minas y cabalgata?", "expect": { "shouldSendReply": true } }
   ]
 }

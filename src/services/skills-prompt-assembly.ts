@@ -7,6 +7,7 @@ import type { CustomerContext } from './customer-context.js';
 import {
   getExperiences,
   getFutureAvailableDates,
+  getFutureAvailableDatesForPlan,
   getGalleryImages,
   getPaymentInfo,
   getPlans,
@@ -25,6 +26,7 @@ import {
 import { getEntrySalesComposition, renderReferentStrategies } from './sales-composition.js';
 import { findPlanBrochureImage, PLAN_BROCHURE_THEME } from './media-service.js';
 import { isConcreteDayDate } from './qualification-engine.js';
+import { MONTHS_EN, MONTHS_ES } from './date-canonicalizer.js';
 // Single source for both control tokens: the prompt and the validator must never
 // disagree about the exact strings.
 import { CONSENT_ASK_MARKER, CONSENT_ASK_TURN_EVENT } from './followup-consent.js';
@@ -312,6 +314,27 @@ function renderFlatPricing(blocks: string[], exp: ActiveExperience): void {
   }
 }
 
+/**
+ * Published dates for the quote close: the month the customer named, else the next
+ * three departures. Data only; the model writes the sentence.
+ */
+function datesToOfferAfterQuote(skills: Skills, exp: ActiveExperience, planId: string, knownDate: unknown, lang: string): string[] {
+  const dates = getFutureAvailableDatesForPlan(skills, exp, planId).map(entry => entry.date);
+  // Month name only: the year is resolved by the published dates themselves.
+  const lower = typeof knownDate === 'string' ? knownDate.toLowerCase() : '';
+  const named = lower ? Math.max(MONTHS_ES.findIndex(month => lower.includes(month)), MONTHS_EN.findIndex(month => lower.includes(month))) : -1;
+  const month = String(named + 1).padStart(2, '0');
+  const inMonth = named >= 0 ? dates.filter(date => date.slice(5, 7) === month) : [];
+  // Human day + month in the customer's language: an ISO date in the cue is copied verbatim.
+  return (inMonth.length > 0 ? inMonth : dates).slice(0, 3).map(date => {
+    const day = Number(date.slice(8, 10));
+    const monthIndex = Number(date.slice(5, 7)) - 1;
+    return lang === 'en'
+      ? `${MONTHS_EN[monthIndex].charAt(0).toUpperCase()}${MONTHS_EN[monthIndex].slice(1)} ${day}`
+      : `${day} de ${MONTHS_ES[monthIndex]}`;
+  });
+}
+
 function renderFlatAvailability(blocks: string[], exp: ActiveExperience): void {
   if (!isAvailabilityAvailable(exp)) {
     blocks.push('AVAILABILITY: NO DISPONIBLE — el equipo confirma');
@@ -551,6 +574,10 @@ export interface AssembleSystemPromptInput {
   selectedExperienceId?: string | null;
   entryMarker?: EntryMarker | null;
   priorContext?: string | null;
+  /** First inbound of the conversation: only here does a campaign segment own the plan question. */
+  entryOpeningTurn?: boolean;
+  /** REGRESO cue: previous conversation of a customer returning after a long silence. */
+  returning?: string | null;
   leadPain?: LeadPain | null;
   /** True when the customer already saw a plan total earlier in this conversation. */
   priceGiven?: boolean;
@@ -611,10 +638,12 @@ export interface AssembleSystemPromptInput {
   priceObjectionThisTurn?: boolean;
   /** The price objection names the transport; set by the engine (isTransportObjectionMessage). */
   transportObjectionThisTurn?: boolean;
+  /** Review pause whose shareable summary (price included) is already in history (§T7 "una sola vez"). */
+  pauseSummaryAlreadySent?: boolean;
 }
 
 export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
-   const { skills, lang, collectedFields, salesPhase, customerContext, selectedExperienceId, entryMarker, priorContext, leadPain, priceGiven, latestCustomerMessage, dateSelectedThisTurn, planSelectedThisTurn, closeCtaAcceptedThisTurn, reservationRequestedThisTurn, proactiveMode, consentAskRetryInstruction, reaskAfterOptOut, consentAcceptedThisTurn, followupReopenedThisTurn, usedEmojis, galleryShown, galleryRequestThemes, galleryImagesRemaining, galleryRetryInstruction, advanceQuestionRetryInstruction, brochurePlanId, otherSitePhotoRequest, photoSiteCorrection, priceObjectionThisTurn, transportObjectionThisTurn } = input;
+   const { skills, lang, collectedFields, salesPhase, customerContext, selectedExperienceId, entryMarker, priorContext, entryOpeningTurn, returning, leadPain, priceGiven, latestCustomerMessage, dateSelectedThisTurn, planSelectedThisTurn, closeCtaAcceptedThisTurn, reservationRequestedThisTurn, proactiveMode, consentAskRetryInstruction, reaskAfterOptOut, consentAcceptedThisTurn, followupReopenedThisTurn, usedEmojis, galleryShown, galleryRequestThemes, galleryImagesRemaining, galleryRetryInstruction, advanceQuestionRetryInstruction, brochurePlanId, otherSitePhotoRequest, photoSiteCorrection, priceObjectionThisTurn, transportObjectionThisTurn, pauseSummaryAlreadySent } = input;
 
   const personality = substituteTokens(readPrompt('seller-personality.skill.md'));
   // entry-strategy must precede cold-info-handler: the first-turn handler reads the
@@ -675,6 +704,11 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
     if (priorContext) runtime.push(`CONTEXTO PREVIO: ${priorContext}`);
   }
 
+  if (returning) {
+    // State only; the method lives in whatsapp-sales.skill.md §REGRESO.
+    runtime.push(`REGRESO: ${returning}. Aplica §REGRESO de whatsapp-sales.`);
+  }
+
   // State only. The plan-sticky rule itself lives in whatsapp-sales.skill.md
   // ("Plan sticky"), per the skills-v2 rule that methodology stays in the MD skills.
   const knownPlan = pausedPlan ? undefined : collectedFields?.plan;
@@ -697,7 +731,7 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
     }
     if (fieldLines.length > 0) {
       runtime.push('LO QUE YA SABEMOS DE ESTE CLIENTE (NO vuelvas a preguntar esto):\n' + fieldLines.join('\n'));
-      if (populatedCount >= 2) {
+      if (populatedCount >= 2 && !returning) {
         runtime.push(
           'CONTINUACION: Esta conversacion ya esta avanzada. NO te presentes de nuevo ni empieces desde cero. Sigue desde donde quedaste usando los datos de arriba.',
         );
@@ -792,6 +826,9 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
           ? 'PRECIO YA ENTREGADO: no repitas el total ni $ ni COP, y no cotices otro plan. Este turno cierra (T3b), no vuelve a ofrecer fechas.'
           : 'PRECIO YA ENTREGADO: no repitas $ ni COP del plan salvo que el cliente pida otra cotización. Fechas/motivo → solo fechas + 1 pregunta.',
       );
+      if (pauseSummaryAlreadySent && !t3bCloseTurn) {
+        runtime.push('PAUSA CON RESUMEN YA ENVIADO: el plan y el precio ya están en tus mensajes anteriores. Aplica §T7 "una sola vez": valida la decisión en una frase, sin precio, sin $ ni COP y sin repetir el resumen.');
+      }
     }
   }
   if (priceBeforeCloseTurn) {
@@ -833,8 +870,10 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
   if (typeof knownPeople === 'number' && !lockedPlanId && activePlans.length > 1) {
     runtime.push('PRICE GATE ACTIVO: ya conoces el grupo, pero falta elegir plan. No escribas precios ni totales de planes; pregunta por el plan o la duracion. Si pregunta solo por transporte, responde su precio del CATALOGO por separado, sin sumarlo a un plan no elegido.');
     const sitePlans = activePlans.filter(plan => plan.siteId === selectedSiteId);
-    // A campaign segment owns its diagnosis question; its catalog copy decides whether to list plans.
-    if (!sitePending && !pausedPlan && !entrySegment && !proactiveMode && !consentAcceptedThisTurn
+    // A campaign segment owns only its opening question. Once answered, a 3+ plan site
+    // names every plan: the binary esencial/completa hid the day plan and "básica"
+    // then matched it while the customer meant the essential overnight plan.
+    if (!sitePending && !pausedPlan && !(entrySegment && entryOpeningTurn) && !proactiveMode && !consentAcceptedThisTurn
       && !otherSitePhotoRequest && entryMarker?.temperature !== 'retargeting' && sitePlans.length > 2) {
       runtime.push(`OPCIONES DE PLAN ESTE TURNO: ${sitePlans.map(plan => `${plan.name} (${plan.duration})`).join(' | ')}. Presenta todas estas opciones por nombre y una diferencia breve de CATALOGO, sin precios. No reduzcas la eleccion a esencial/completa. Una sola pregunta para elegir.`);
     }
@@ -864,8 +903,18 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
       const transportNote = quote.requiresTransportConfirmation
         ? ' Transporte adicional pendiente de confirmacion; no inventes ese valor.'
         : '';
+      // Live 2026-10-28: "total + ¿Tienen alguna fecha en mente?" left two quoted leads
+      // with nothing concrete to answer. Without a chosen day the close names dates.
+      // A retarget or return turn diagnoses the blocker first (referent.h): pushing a
+      // quote close there made the model price the opener (live R01-with-history 0/2).
+      // `returning` is the REGRESO cue (returning-lead feature); without it only the marker gates.
+      const diagnosisTurn = entryMarker?.temperature === 'retargeting' || !!returning;
+      const offerDates = hasConcreteDate || diagnosisTurn ? [] : datesToOfferAfterQuote(skills, activeExperience, lockedPlanId, knownDate, lang ?? 'es');
+      const noDayClose = offerDates.length > 0
+        ? ` Sin dia elegido: termina nombrando estas fechas publicadas en 1 linea (${offerDates.join(', ')}) y pregunta cual les sirve. Prohibido cerrar con "alguna fecha en mente", "que mes", "te suena" u ofrecer otro plan que no pidio.`
+        : '';
       runtime.push(
-        `QUOTE LOCK: escribe "Para ${quote.people} personas, el plan queda en ${formatMoney(amount, quote.currency)} ${quote.currency}". Copia esas personas y ese total; no recalcules ni redondees otra cifra.${quote.requiresTransportConfirmation ? '' : perPersonQuoteCue(amount, quote.people, quote.currency)}${transportNote} Este turno entrega ese total; no lo pospongas para despues de preguntar fecha o mes.`,
+        `QUOTE LOCK: escribe "Para ${quote.people} ${quote.people === 1 ? 'persona' : 'personas'}, el plan queda en ${formatMoney(amount, quote.currency)} ${quote.currency}". Copia esas personas y ese total; no recalcules ni redondees otra cifra.${quote.requiresTransportConfirmation ? '' : perPersonQuoteCue(amount, quote.people, quote.currency)}${transportNote} Este turno entrega ese total; no lo pospongas para despues de preguntar fecha o mes.${noDayClose}`,
       );
     }
   }

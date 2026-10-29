@@ -8,7 +8,7 @@ import type {
 } from '../db/repositories/index.js';
 import { sendTemplate, sendImageUrlWithId, sendTextWithId, MAX_IMAGE_CAPTION_CHARS, WhatsAppSendError } from './whatsapp-client.js';
 import { getSkills } from './skill-loader.js';
-import { findActiveExperience, getActiveExperience, getDynamicPlanImages, getOwnerImage, getPlans, isPlanPaused, scopeGalleryToPlan, type ActiveExperience } from './product-registry.js';
+import { findActiveExperience, getActiveExperience, getDynamicPlanImages, getOwnerImage, getPlans, isPlanPaused, resolveCurrentPlanId, scopeGalleryToPlan, type ActiveExperience } from './product-registry.js';
 import { resolveSiteContext } from './qualification-engine.js';
 import { selectThemedImage } from './contextual-media.js';
 import { followupGalleryMediaId, recordImageSend } from './media-service.js';
@@ -18,6 +18,7 @@ import { llmClient } from './response-engine.js';
 import { addMonthsClamped, consentCycleKey, CONSENT_ASK_TURN_EVENT, parseStoredTimestamp, recurringCycleKey, validateConsentAsk } from './followup-consent.js';
 import { checkBudget } from './budget-guard.js';
 import { estimateDeepSeekCost } from './deepseek-cost.js';
+import { bogotaLocalToUtcIso, getBogotaCalendarDate } from './colombia-calendar.js';
 import { notifyOwnerOnce } from './owner-notice.js';
 
 /**
@@ -155,9 +156,10 @@ function buildTemplatePayload(
     ? findActiveExperience(skills, candidate.selected_experience_id)
     : getActiveExperience(skills);
   if (!experience) return null;
-  const plan = candidate.collected_plan
-    ? getPlans(experience).find(entry => entry.id === candidate.collected_plan)
-    : undefined;
+  // A retired stored id resolves to its catalog successor; with none, the template names the
+  // experience and carries no plan card, so an old plan's image can never ship.
+  const planId = resolveCurrentPlanId(experience, candidate.collected_plan);
+  const plan = planId ? getPlans(experience).find(entry => entry.id === planId) : undefined;
 
   const bodyParam = plan?.name ?? experience.name;
   if (!bodyParam) return null;
@@ -165,12 +167,12 @@ function buildTemplatePayload(
   if (header === 'none') return { bodyParams: [bodyParam] };
 
   const themed = selectThemedImage(
-    scopeGalleryToPlan(skills, candidate.collected_plan),
+    scopeGalleryToPlan(skills, planId),
     repos,
     candidate.customer_phone,
     env.FOLLOWUP_TEMPLATE_IMAGE_TYPE,
     experience.id,
-    followupSiteId(repos, candidate.customer_phone, experience, candidate.collected_plan),
+    followupSiteId(repos, candidate.customer_phone, experience, planId),
   );
   const planImage = plan
     ? getDynamicPlanImages(skills).find(image =>
@@ -308,8 +310,32 @@ async function processCandidate(repos: Repositories, candidate: FollowupCandidat
   }
 }
 
+/**
+ * Templates are marketing: they wait for a reasonable Bogota hour. Only delays a
+ * send that is already due; never creates one. The consent ask is not gated.
+ */
+export function isTemplateSendHour(now: Date = new Date()): boolean {
+  const { hour } = getBogotaCalendarDate(now);
+  return hour >= env.FOLLOWUP_TEMPLATE_SEND_START_HOUR_BOGOTA && hour < env.FOLLOWUP_TEMPLATE_SEND_END_HOUR_BOGOTA;
+}
+
+/**
+ * When a template due at `dueAt` actually ships: `dueAt` itself inside the window,
+ * else the next window opening. The digest reads this so it reports what the sender
+ * does; the sender gates on the same `isTemplateSendHour`.
+ */
+export function nextTemplateSendAt(dueAt: Date): Date {
+  if (isTemplateSendHour(dueAt)) return dueAt;
+  const local = getBogotaCalendarDate(dueAt);
+  const opensToday = new Date(bogotaLocalToUtcIso(local, env.FOLLOWUP_TEMPLATE_SEND_START_HOUR_BOGOTA, 0));
+  return opensToday.getTime() > dueAt.getTime()
+    ? opensToday
+    : new Date(opensToday.getTime() + 24 * 3_600_000);
+}
+
 export async function runFollowupCycle(repos: Repositories): Promise<void> {
   if (!env.ALLOW_FOLLOWUP_TEMPLATE) return;
+  if (!isTemplateSendHour()) return;
 
   const silentSinceIso = new Date(Date.now() - silenceThresholdHours() * 60 * 60 * 1000).toISOString();
   const allowlist = devAllowlist();
@@ -954,6 +980,7 @@ async function processRecurring(repos: Repositories, candidate: RecurringCandida
 
 export async function runRecurringCycle(repos: Repositories): Promise<void> {
   if (!env.FOLLOWUP_RECURRING_ENABLED) return;
+  if (!isTemplateSendHour()) return;
 
   let candidates: RecurringCandidateRow[];
   try {

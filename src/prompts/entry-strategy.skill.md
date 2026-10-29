@@ -28,7 +28,8 @@ la ruta del CATALOGO sin asumir vehículo propio. Una contradicción explícita 
 
 **`valueHook`: usa hechos, no lemas.** Conserva su pregunta de bloqueo en tu voz.
 En retargeting con historial, reemplaza la intro genérica por grupo+plan reales
-(RETARGET OVERRIDE en whatsapp-sales), manteniendo esa pregunta.
+(RETARGET OVERRIDE en whatsapp-sales), manteniendo esa pregunta. Con la línea
+`REGRESO:` en RUNTIME, el contexto de REGRESO manda sobre el segmento (ver whatsapp-sales §REGRESO).
 
 Si `valueHook` o `diagnosisQuestion` trae pregunta, usa esa y ninguna otra.
 

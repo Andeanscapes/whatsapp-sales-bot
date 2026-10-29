@@ -45,6 +45,9 @@ export function migrate(db: Database.Database): void {
   addColumnIfMissing(db, 'conversations', 'lead_pain', 'TEXT');
   addColumnIfMissing(db, 'conversations', 'lead_pain_detail', 'TEXT');
   addColumnIfMissing(db, 'conversations', 'lead_pain_detected_at', 'TEXT');
+  addColumnIfMissing(db, 'conversations', 'last_entry_marker', 'TEXT');
+  addColumnIfMissing(db, 'conversations', 'last_entry_marker_at', 'TEXT');
+  addColumnIfMissing(db, 'conversations', 'last_blockers', 'TEXT');
   addColumnIfMissing(db, 'conversations', 'selected_experience_id', 'TEXT');
   addColumnIfMissing(db, 'conversations', 'ad_referral_json', 'TEXT');
   addColumnIfMissing(db, 'conversations', 'entry_marker', 'TEXT');

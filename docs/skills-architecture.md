@@ -95,6 +95,7 @@ These functions in `response-engine.ts` are allowed to run before or after the L
 - Large group (>maxGroupSizePerDate) → escalate
 - Payment methods question in human_pending mode → public facts reply
 - Soft-close message detection → IG soft-close. Exception: after a quote, a cost objection without an explicit decline reaches the LLM with an `OBJECION DE PRECIO` RUNTIME cue listing only catalog-priced cheaper plans (another site only when cheaper than the active site's cheapest plan). The cue is state, never copy.
+  - A repeated consult pause (`isReviewPause`) gets the `PAUSA CON RESUMEN YA ENVIADO` RUNTIME cue (no price, no summary; §T7 "una sola vez") only when the last two priced bot messages both quote the stored plan, and the inbound neither chooses/switches a plan nor asks a price. Not a pre-LLM intercept: the model still writes the reply.
 - Child suitability boundary
 - Price-depends-on-group regex
 - Rate limits → limit reply or silence
@@ -254,6 +255,24 @@ catalog holds the Coscuez placeholders, it cannot be mirrored.
 4. `description` is internal targeting metadata and is never rendered — safe for notes.
 5. Retiring a segment: delete the key. Leads already tagged with it fall back to the
    generic first-contact path (no `SEGMENT_DETECTED` is emitted).
+
+## Returning customers and retired plans
+
+Return detection is independent of campaign markers: a customer inbound after
+`RETURNING_GAP_HOURS` (default 71h), whose preceding row is outbound, gets `REGRESO:`.
+`RETURNING_DEV_GAP_SECONDS` accelerates development and is rejected in production.
+Permission-answer turns are excluded. The cue never changes outbound scheduling.
+
+REGRESO uses the pre-turn conversation snapshot, adjusted only for catalog plan
+migration, so new group/date answers are not presented as remembered history.
+Free-text analyzer blockers are stored for diagnostics but never enter this cue;
+only the validated `lead_pain` category does. Payment-bearing outbound excerpts
+are omitted. Expired dates stay historical and are excluded from active booking
+qualification and close cues. A returning price question gets a fresh QUOTE LOCK.
+
+Catalog `legacyPlanIds` resolve retired ids through `product-registry.ts`; duplicate
+aliases and aliases shadowing current ids are rejected by runtime schema validation.
+An unmapped plan is cleared without changing conversation mode or team assignment.
 
 ## Prompt size budget
 

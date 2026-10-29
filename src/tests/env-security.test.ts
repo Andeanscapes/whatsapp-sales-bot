@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { env, envSchema, warnOnDuplicateFollowupTemplates } from '../config/env.js';
+import { env, envSchema, returningGapMs, warnOnDuplicateFollowupTemplates } from '../config/env.js';
 
 const productionEnv = {
   NODE_ENV: 'production',
@@ -20,6 +20,11 @@ describe('production environment security', () => {
     expect(envSchema.safeParse(productionEnv).success).toBe(true);
   });
 
+  it.each([['20', '9'], ['9', '9']])('rejects an empty or inverted template send window: start=%s end=%s', (start, end) => {
+    expect(envSchema.safeParse({ ...productionEnv, FOLLOWUP_TEMPLATE_SEND_START_HOUR_BOGOTA: start, FOLLOWUP_TEMPLATE_SEND_END_HOUR_BOGOTA: end }).success).toBe(false);
+    expect(envSchema.safeParse({ ...productionEnv, FOLLOWUP_TEMPLATE_SEND_START_HOUR_BOGOTA: '0', FOLLOWUP_TEMPLATE_SEND_END_HOUR_BOGOTA: '24' }).success).toBe(true);
+  });
+
   it('rejects placeholder production credentials', () => {
     expect(envSchema.safeParse({ ...productionEnv, WHATSAPP_VERIFY_TOKEN: 'change-me' }).success).toBe(false);
   });
@@ -37,6 +42,7 @@ describe('production environment security', () => {
     ['FOLLOWUP_DEV_RECURRING_SECONDS', '45'],
     ['FOLLOWUP_DEV_RECURRING_MIN_SILENCE_SECONDS', '120'],
     ['FOLLOWUP_DEV_ALLOWLIST_PHONES', '573000000001'],
+    ['RETURNING_DEV_GAP_SECONDS', '110'],
   ])('rejects dev-only follow-up accelerator %s in production', (key, value) => {
     expect(envSchema.safeParse({ ...productionEnv, [key]: value }).success).toBe(false);
   });
@@ -108,6 +114,33 @@ describe('follow-up switches stay independent', () => {
 
   it('defaults the recurring cap to 12 sends', () => {
     expect(envSchema.parse(productionEnv).FOLLOWUP_MAX_RECURRING_SENDS).toBe(12);
+  });
+});
+
+describe('returning-gap timing', () => {
+  const devEnv = { ...productionEnv, NODE_ENV: 'development', PUBLIC_BASE_URL: 'http://127.0.0.1:3000' };
+
+  it('defaults the return gap to 71 hours, under the 72h recurring floor', () => {
+    expect(envSchema.parse(devEnv).RETURNING_GAP_HOURS).toBe(71);
+  });
+
+  it('accepts the dev override outside production and rejects it in production', () => {
+    expect(envSchema.safeParse({ ...devEnv, RETURNING_DEV_GAP_SECONDS: '110' }).success).toBe(true);
+    expect(envSchema.safeParse({ ...productionEnv, RETURNING_DEV_GAP_SECONDS: '110' }).success).toBe(false);
+  });
+
+  it('uses the seconds override when set, hours otherwise', () => {
+    const hours = env.RETURNING_GAP_HOURS;
+    const seconds = env.RETURNING_DEV_GAP_SECONDS;
+    try {
+      env.RETURNING_DEV_GAP_SECONDS = 110;
+      expect(returningGapMs()).toBe(110_000);
+      env.RETURNING_DEV_GAP_SECONDS = 0;
+      expect(returningGapMs()).toBe(hours * 3_600_000);
+    } finally {
+      env.RETURNING_GAP_HOURS = hours;
+      env.RETURNING_DEV_GAP_SECONDS = seconds;
+    }
   });
 });
 

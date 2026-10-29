@@ -165,6 +165,11 @@ const planItineraryDaySchema = z.object({
 /** Shared optional plan narrative fields (sites-native plans only). */
 const v11PlanNarrativeSchema = z.object({
   tier: z.string().min(1).optional(),
+  /**
+   * Plan ids this plan replaces (renamed or retired). A customer stored on an old id
+   * is moved to this plan instead of being handed off. Unique across the experience.
+   */
+  legacyPlanIds: z.array(z.string().min(1)).optional(),
   /** Plan-specific anticipo; omitted = the experience-wide deposit (`payments.deposit`). */
   depositPercentage: z.number().min(0).max(100).optional(),
   name: z.string().min(1).optional(),
@@ -681,9 +686,19 @@ const dynamicDataBaseSchema = z.object({
   // Until conversations persist a selected site, plan ids must identify one
   // site unambiguously. This prevents quote/extraction from crossing locations.
   for (const [experienceId, experience] of Object.entries(data.experiences)) {
+    const currentPlanIds = new Set(Object.values(experience.sites).flatMap(site => Object.keys(site.plans)));
+    const legacyOwners = new Set<string>();
     const planSites = new Map<string, string>();
     for (const [siteId, site] of Object.entries(experience.sites)) {
       for (const [planId, plan] of Object.entries(site.plans)) {
+        for (const legacyId of plan.legacyPlanIds ?? []) {
+          if (currentPlanIds.has(legacyId) || legacyOwners.has(legacyId)) ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['experiences', experienceId, 'sites', siteId, 'plans', planId, 'legacyPlanIds'],
+            message: `Legacy plan id ${legacyId} must be unique and must not shadow a current plan`,
+          });
+          legacyOwners.add(legacyId);
+        }
         for (const field of ['addons', 'includedAddonIds'] as const) {
           for (const addonId of plan[field] ?? []) {
             if (!site.addons[addonId]) ctx.addIssue({
