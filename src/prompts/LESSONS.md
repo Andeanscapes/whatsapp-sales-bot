@@ -688,3 +688,12 @@ context: Opt-out phrasing is compliance-sensitive. Keep the rule owner-visible: 
 - Guard gap: `validate:prompt` let both through. New guard `policy day count` (`\d+ días antes`). The destination guard ended in `\b`, which never matches after an accented letter without the `u` flag, so "Bogotá", "Ubalá" and "Boyacá" followed by a space were never caught; now a negative lookahead. Added Bogotá, Coscuez, Borbur. Verified red on the old text, green on the fix.
 - Metrics: gates green, test:ci 2552/2552, eval 282/282; live 2 runs: partner-pause-reschedule-offer, hot-lead-moto-partner-pause, consult-with-partner, date-pick-price-then-close-T3b, quote-recommends-date-soft-cta all 100.
 - Second review: two more literals from this series. Plan names in the FASE 3 two-plan example (now `[PLAN_A] y [PLAN_B]`) and a "4x4 local" arrival claim in §PERMISO-SEGUIMIENTO that is false for Coscuez (now "the arrival alternative the site's CATALOGO gives"). New guard `catalogPlanNameGuards`: plan short names come from the CDN payloads, because `andean-scapes.skill.json` is brand-only and `registryGuards` never saw a plan name. Verified red on the old text. `hot-lead-moto-partner-pause` restored to its original one-line formatting so the approved change is a 1-number diff. Gates green; two-plan-narrow-quotes-both and hot-lead-moto-partner-pause 100 (ES/EN, 2 runs); measure:consent 100%.
+
+## 2026-11-02 — Release 2.2.0 CI: stale October scenario and EN "how do I book"
+
+- CI (llm eval, EN compare) failed on two drops > 8: `buying-signal-payment-facts` 100 -> 75 and `pet-in-mine-objection-close` 100 -> 89.
+- `pet-in-mine-objection-close`: variance. 4/4 on the release and 4/4 on master with the CI fixture.
+- `buying-signal-payment-facts`: calendar drift. It asked to book "for October"; the CI fixture's October dates (24, 31) are now past, so the model correctly offered November and dropped the deposit line (5/5 fail). Moved to January (fixture: 9, 23), ES + EN; criteria unchanged.
+- After the move EN still failed ~1 in 2: "how do I book for January?" listed the dates and dropped the deposit and methods. T8 now states the rule holds in any language, and FASE 3 "Fecha y cierre" defers to T8 on a booking question. EN 10/10, ES 4/4.
+- CI-equivalent run (no CDN URL): ES 98, EN 98; both compare steps exit 0.
+- Note: `baselines/master-llm-bot.json` (ES) has no scenarios, so the ES compare only checks the average floor. Refresh it from a real `--runs 2` artifact.
