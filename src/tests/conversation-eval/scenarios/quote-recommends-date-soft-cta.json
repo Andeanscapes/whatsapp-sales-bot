@@ -1,0 +1,91 @@
+{
+  "id": "quote-recommends-date-soft-cta",
+  "source": "2026-11-01 export pattern: quote closed with \"alguna fecha en mente?\" and no date recommended; QUOTE LOCK now recommends one published date and asks a soft booking question",
+  "lang": "es",
+  "tags": [
+    "objection",
+    "live"
+  ],
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "seedConversation": {
+    "phase": "pricing",
+    "priceGiven": true,
+    "qualification": {
+      "people": 2,
+      "plan": "core_2d1n_chivor"
+    }
+  },
+  "seedQualification": {
+    "people": 2,
+    "plan": "core_2d1n_chivor"
+  },
+  "criteria": [
+    {
+      "id": "recommends-published-date",
+      "rule": "reply_must_match",
+      "patterns": [
+        "21 de noviembre|28 de noviembre|5 de diciembre|noviembre|diciembre"
+      ],
+      "turn": 1,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "soft-booking-cta",
+      "rule": "reply_must_match",
+      "patterns": [
+        "revisemos|validemos|cupo|reserva|apart|te sirve|les sirve|les cuadra"
+      ],
+      "turn": 1,
+      "weight": 2
+    },
+    {
+      "id": "no-open-date-question",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "alguna fecha en mente|qu[eé] mes|te suena|les suena"
+      ],
+      "turn": 1,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 1,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "no-invented-date",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "14 de (?:noviembre|diciembre|enero)|15 de (?:noviembre|diciembre)"
+      ],
+      "turn": 1,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "no-links-or-pressure",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "instagram|https?://|wa\\.me|[úu]ltimos? cupos|reserva ya|se va a acabar"
+      ],
+      "weight": 2,
+      "critical": true,
+      "turn": 1
+    }
+  ],
+  "turns": [
+    {
+      "user": "Y cual fecha me recomiendas para el CORE?",
+      "mockReply": "Para 2 personas el CORE tiene salida publicada el 21 de noviembre y el 28 de noviembre. ¿Quieres que revisemos el cupo del 21?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

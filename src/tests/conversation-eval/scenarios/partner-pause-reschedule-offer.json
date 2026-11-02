@@ -1,0 +1,98 @@
+{
+  "id": "partner-pause-reschedule-offer",
+  "source": "owner plan 2026-11-01: 6 partner pauses last week, 0 recovered. First pause must carry the summary, the free reschedule window and one support question, never \"cuando lo hablen, me escriben\".",
+  "tags": [
+    "objection",
+    "live"
+  ],
+  "lang": "es",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "seedConversation": {
+    "phase": "pricing",
+    "priceGiven": true,
+    "qualification": {
+      "people": 2,
+      "plan": "core_2d1n_chivor"
+    }
+  },
+  "seedQualification": {
+    "people": 2,
+    "plan": "core_2d1n_chivor"
+  },
+  "criteria": [
+    {
+      "id": "summary-named",
+      "rule": "reply_must_match",
+      "patterns": [
+        "CORE|resumen|pareja|personas|plan"
+      ],
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "reschedule-line",
+      "rule": "reply_must_match",
+      "patterns": [
+        "reprogram|cambiar la fecha|cambio de fecha|reagend|7 d[ií]as|sin costo"
+      ],
+      "turn": 2,
+      "weight": 2
+    },
+    {
+      "id": "no-cuando-me-escriben",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "cuando (?:lo |los )?(?:hablen|revisen|decidan|tengan)[^.?!]{0,30}me (?:escriben|avisan|cuentan|dicen)|cuando quieran me escriben|me escriben cuando"
+      ],
+      "turn": 2,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "no-links-or-pressure",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "instagram|https?://|wa\\.me|[úu]ltimos? cupos|reserva ya|se va a acabar"
+      ],
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "no-price-repeat",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "\\$\\s?\\d|COP|\\d{3}[.,]\\d{3}"
+      ],
+      "turn": 2,
+      "weight": 1
+    }
+  ],
+  "turns": [
+    {
+      "user": "Hola, somos 2, cuanto vale el CORE?",
+      "replay": true,
+      "mockReply": "Para 2 personas, CORE queda en *$950.000 COP*, con noche en la Hacienda y una mina guiada incluida.\n\n¿Qué fecha les sirve?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Lo voy a consultar con mi pareja",
+      "mockReply": "Claro. Les dejo el resumen: CORE para 2 personas, en Chivor, con noche en la Hacienda. Si necesitan cambiar la fecha, se puede reprogramar sin costo hasta 7 días antes. ¿Les sirve que les mande fotos para verlo juntos?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

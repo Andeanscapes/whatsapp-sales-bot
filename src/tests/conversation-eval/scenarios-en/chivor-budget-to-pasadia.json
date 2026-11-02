@@ -1,0 +1,21 @@
+{
+  "id": "chivor-budget-to-pasadia",
+  "source": "EN twin of chivor-budget-to-pasadia (customer replay: PRIME quote, budget objection, CORE comparison, then a request for a day trip)",
+  "tags": ["objection", "plan"],
+  "lang": "en",
+  "criteria": [
+    { "id": "offers-day-trip", "rule": "reply_must_match", "patterns": ["BASIC|day[\\s-]trip"], "turn": 5, "critical": true },
+    { "id": "does-not-deny-day-trip", "rule": "reply_must_not_match", "patterns": ["only.{0,35}2[\\s-]days?|(?:don'?t|do not) (?:have|offer|run|do).{0,20}day[\\s-]trips?"], "turn": 5, "critical": true },
+    { "id": "day-trip-pair-price", "rule": "reply_must_match", "patterns": ["740[., ]000"], "turn": 6, "critical": true },
+    { "id": "basic-card", "rule": "output_flag_equals", "flag": "mediaPlanId", "expected": "basic_1d_chivor", "turn": 6, "critical": true },
+    { "id": "no-internal-marker", "rule": "reply_must_not_match", "patterns": ["\\[\\[\\s*FOTOS"], "turn": 6, "critical": true }
+  ],
+  "turns": [
+    { "user": "Hi, we are 2 people and we want the PRIME in Chivor, how much is it?", "mockReply": "PRIME includes two mines, horseback riding and four meals. For two people it comes to $1,700,000 COP. Do you have a date in mind?", "expect": { "priceJustGiven": true, "mediaPlanId": "prime_2d1n_chivor" } },
+    { "user": "I don't know, it's over our budget", "mockReply": "CORE includes one mine, a hike, lodging and four meals; for two it comes to $950,000 COP. Would you like to compare what each one covers?", "expect": { "shouldSendReply": true } },
+    { "user": "yes", "mockReply": "CORE has one mine and the hike; PRIME adds a second mine and horseback riding. Which scope suits you better?", "expect": { "shouldSendReply": true } },
+    { "user": "we're still thinking about it", "mockReply": "We can look at an option that fits you better. Are you looking to reduce the budget or the length of the trip?", "expect": { "shouldSendReply": true } },
+    { "user": "ok and do you have any day trip?", "mockReply": "Yes, BASIC is the day trip: one mine, a hike, breakfast and lunch, with no overnight stay. Does coming back the same day work for you?", "expect": { "shouldSendReply": true } },
+    { "user": "yes I want the BASIC day trip for the two of us, how much is it?", "mockReply": "BASIC for two people comes to $740,000 COP, without lodging. What date do you have in mind?", "expect": { "shouldSendReply": true, "priceJustGiven": true, "mediaPlanId": "basic_1d_chivor" } }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "site-switch-bare-yes-photos",
+  "source": "EN twin of site-switch-bare-yes-photos (regression 2026-10-14: a bare yes to 'Are you interested in Chivor...?' left the Coscuez plan stored, so Chivor lodging photos resolved to nothing and the fallback was sent)",
+  "tags": ["gallery", "plan", "multisite"],
+  "lang": "en",
+  "criteria": [
+    { "id": "photos-after-site-switch", "rule": "output_flag_equals", "flag": "shouldSendGalleryImages", "expected": true, "turn": 4, "weight": 2, "critical": true },
+    { "id": "marker-hidden", "rule": "reply_must_not_match", "patterns": ["\\[\\[\\s*FOTOS"], "turn": 4, "weight": 2, "critical": true },
+    { "id": "no-validation-fallback", "rule": "reply_must_not_match", "patterns": ["Let me double-check|Dejame validar"], "turn": 4, "weight": 2, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 4, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "Hi, we're 2 people and we're interested in the PRIME in Coscuez", "mockReply": "Great choice for the two of you. What date do you have in mind?", "expect": { "shouldSendReply": true } },
+    { "user": "Hey, quick question, what is the Chivor plan like?", "mockReply": "Chivor is the other emerald region, with lodging at a hacienda.\n\nAre you interested in Chivor for the same group of 2?", "expect": { "shouldSendReply": true, "shouldSendGalleryImages": false } },
+    { "user": "Yes", "mockReply": "Perfect, in Chivor the PRIME adds horseback riding to the second mine. What date do you have in mind?", "expect": { "shouldSendReply": true } },
+    { "user": "Do you have photos of the lodging in Chivor?", "mockReply": "Sure, this is the lodging at the hacienda. What date do you have in mind?\n[[FOTOS:hotel]]", "expect": { "shouldSendReply": true, "shouldSendGalleryImages": true } }
+  ]
+}

@@ -503,6 +503,45 @@ describe('validateConsentAsk', () => {
   it('rejects a stub too short to be a real message', () => {
     expect(validateConsentAsk(`¿Si? ${CONSENT_ASK_MARKER}`).reason).toBe('too_short');
   });
+
+  it.each([
+    'Si no quieres más mensajes, responde NO. ¿Te puedo escribir más adelante?',
+    'Puedes dejar de recibir esto cuando quieras. ¿Te escribo más adelante?',
+    'Si prefieres no seguir, dime. ¿Te puedo escribir después?',
+    'Respondes BAJA y no te escribimos más. ¿Te escribo luego?',
+    'Dime si paro los mensajes. ¿Te puedo escribir más adelante?',
+    'Si no querés más mensajes avisame. ¿Te puedo escribir más adelante?',
+    'Si ya no te interesa, dime. ¿Te puedo escribir más adelante?',
+    'Reply STOP anytime. Can I message you later about new dates?',
+    'You can unsubscribe whenever you like. Can I message you later?',
+    "If you'd rather not hear from us, just say so. Can I message you later?",
+    'If you’d rather not hear from us, just say so. Can I message you later?',
+    'If you don’t want to hear from us, tell me. Can I message you later?',
+    'Reply “STOP” anytime. Can I message you later about new dates?',
+    'Responde “NO” si prefieres. ¿Te puedo escribir más adelante?',
+    'Responde BAJA, te saco de la lista. ¿Te puedo escribir más adelante?',
+    'Responde STOP, se acaban los mensajes. ¿Te puedo escribir más adelante?',
+    'Responde "NO" te escribo después. ¿Te puedo escribir más adelante?',
+  ])('rejects a draft that offers the customer an exit: %s', draft => {
+    expect(validateConsentAsk(`${draft} ${CONSENT_ASK_MARKER}`).reason).toBe('opt_out_offer');
+  });
+
+  it.each([
+    'Respondes cuando puedas, no hay afán. ¿Te puedo escribir más adelante por aquí?',
+    'Te respondemos lo que sea, no te preocupes. ¿Te puedo escribir más adelante?',
+    'Si no quieres perderte la temporada, te aviso. ¿Te puedo escribir más adelante?',
+    'The ferry is a quick stop on the way to Chivor. Can I message you later about new dates?',
+    'Responde no más cuando puedas. ¿Te puedo escribir más adelante por aquí?',
+    'Responde no te preocupes por la fecha. ¿Te puedo escribir más adelante?',
+    'Te escribo solo si hay algo nuevo, no más mensajes que eso. ¿Te parece si te escribo más adelante?',
+  ])('accepts ordinary copy that only resembles an exit: %s', draft => {
+    expect(validateConsentAsk(`${draft} ${CONSENT_ASK_MARKER}`).ok).toBe(true);
+  });
+
+  it('accepts a motives statement with no question mark plus one permission question', () => {
+    const ask = `Tal vez te frena la fecha, el valor o cómo llegar; si es algo de eso, cuéntanos. ¿Te puedo escribir más adelante por aquí? ${CONSENT_ASK_MARKER}`;
+    expect(validateConsentAsk(ask).ok).toBe(true);
+  });
 });
 
 describe('recurringCycleKey', () => {

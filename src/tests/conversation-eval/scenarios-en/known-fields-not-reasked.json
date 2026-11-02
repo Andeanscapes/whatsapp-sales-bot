@@ -1,0 +1,18 @@
+{
+  "id": "known-fields-not-reasked",
+  "source": "EN twin of known-fields-not-reasked (history: 8 observed group re-asks)",
+  "tags": ["qualification"],
+  "lang": "en",
+  "criteria": [
+    { "id": "people-not-reasked", "rule": "known_field_not_reasked", "field": "people", "suppliedTurn": 1, "weight": 2, "critical": true },
+    { "id": "date-not-reasked", "rule": "known_field_not_reasked", "field": "date", "suppliedTurn": 2, "weight": 2, "critical": true },
+    { "id": "transport-not-reasked", "rule": "known_field_not_reasked", "field": "transport", "suppliedTurn": 3, "weight": 2, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 4, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "A couple", "mockReply": "Perfect for the two of you. What date do you have in mind?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2 } },
+    { "user": "In October", "mockReply": "October can work. Are you coming in your own car or do you need transport?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2, "date": "October" } },
+    { "user": "Our own car", "mockReply": "Great, with your own car we'll work out the most convenient route. Which plan are you interested in?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2, "date": "October", "transport": "own" } },
+    { "user": "The CORE", "mockReply": "Good choice. I'll share the plan price and then we'll confirm the exact date.", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2, "date": "October", "transport": "own", "plan": "core_2d1n_chivor" } }
+  ]
+}

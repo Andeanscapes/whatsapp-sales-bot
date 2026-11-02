@@ -14,8 +14,8 @@
     {
       "id": "shareable-summary",
       "trigger": "cliente va a consultar con otros",
-      "do": "Incluye solo grupo, plan, precio total, anticipo y fecha si ya están confirmados.",
-      "never": "Incluir enlaces, fotos, detalles extras, términos no confirmados o datos del equipo."
+      "do": "Incluye solo grupo, plan y fecha si ya están confirmados, sin repetir el total ya dado; si el cliente va a consultarlo, añade la reprogramación según DATOS y una pregunta de apoyo (ofrecer fotos o preguntar qué pesa más).",
+      "never": "Incluir enlaces, fotos dentro del resumen, detalles extras, términos no confirmados o datos del equipo."
     },
     {
       "id": "low-pressure-tone",

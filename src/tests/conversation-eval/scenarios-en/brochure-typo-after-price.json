@@ -1,0 +1,17 @@
+{
+  "id": "brochure-typo-after-price",
+  "source": "EN twin of brochure-typo-after-price (regression: misspelled brochure request for the other plan ('brosure of the most complete one') after both prices must ship that plan's card, not a fallback)",
+  "tags": ["gallery", "plan"],
+  "lang": "en",
+  "criteria": [
+    { "id": "card-on-misspelled-request", "rule": "output_flag_equals", "flag": "shouldSendGalleryImages", "expected": true, "turn": 4, "weight": 2, "critical": true },
+    { "id": "marker-hidden", "rule": "reply_must_not_match", "patterns": ["\\[\\[\\s*FOTOS"], "turn": 4, "weight": 2, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 4, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "hi, we are a couple and we want to visit Chivor", "mockReply": "Great! Are you more drawn to the essential experience or the most complete one?", "expect": { "shouldSendReply": true, "shouldSendGalleryImages": false } },
+    { "user": "yes the essential one, how much is it ?", "mockReply": "CORE for the two of you comes to $950,000. Does that work to move ahead with a date?", "expect": { "shouldSendReply": true, "priceJustGiven": true } },
+    { "user": "and how much is the other one ?", "mockReply": "PRIME for the two of you comes to $1,700,000. It adds a second mine and the horseback ride. Which one do you prefer?", "expect": { "shouldSendReply": true, "priceJustGiven": true } },
+    { "user": "do you have a brosure of the most complete one ?", "mockReply": "Sure, here it is. What date do you have in mind?\n[[FOTOS:plan]]", "expect": { "shouldSendReply": true, "shouldSendGalleryImages": true } }
+  ]
+}

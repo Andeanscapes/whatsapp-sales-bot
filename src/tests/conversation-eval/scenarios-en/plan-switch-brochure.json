@@ -1,0 +1,16 @@
+{
+  "id": "plan-switch-brochure",
+  "source": "EN twin of plan-switch-brochure (regression: switching plan then 'brochure' must ship the new plan card; Chivor has three plans, so the switch names the plan)",
+  "tags": ["gallery", "plan"],
+  "lang": "en",
+  "criteria": [
+    { "id": "card-on-brochure-request", "rule": "output_flag_equals", "flag": "shouldSendGalleryImages", "expected": true, "turn": 3, "weight": 2, "critical": true },
+    { "id": "marker-hidden", "rule": "reply_must_not_match", "patterns": ["\\[\\[\\s*FOTOS"], "turn": 3, "weight": 2, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 3, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "Hi, we're 2 people interested in the CORE plan in Chivor", "mockReply": "Good choice for the two of you. What date do you have in mind?", "expect": { "shouldSendReply": true } },
+    { "user": "actually the premium one, the most complete", "mockReply": "The most complete one adds a second mine and the horseback ride. What date do you have in mind?", "expect": { "shouldSendReply": true, "shouldSendGalleryImages": false } },
+    { "user": "Do you have a brochure?", "mockReply": "Sure, here's the plan sheet. What date do you have in mind?\n[[FOTOS:plan]]", "expect": { "shouldSendReply": true, "shouldSendGalleryImages": true } }
+  ]
+}

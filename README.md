@@ -157,8 +157,9 @@ is honoured even for booked leads.
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint over `src/` |
 | `npm test` | Vitest unit suite |
-| `npm run eval:conversations` | Deterministic conversation-eval pack (31 scenarios) |
-| `npm run eval:conversations:llm-bot` | Live LLM conversation-eval (20 `live` scenarios, ~$0.37) |
+| `npm run eval:conversations` | Deterministic conversation-eval pack (53 scenarios + 53 English twins) |
+| `npm run eval:conversations:llm-bot` | Live LLM conversation-eval, Spanish (36 `live` scenarios) |
+| `npm run eval:conversations:llm-bot -- --lang en` | Live LLM conversation-eval, English twins (36 `live`; CI runs both packs) |
 | `npm run simulate -- "<text>"` | Offline response engine test |
 | `npm run validate:skills` | Validate all JSON skill files |
 | `npm run validate:prompt` | Validate system prompt (no commercial literals in skill MD) |

@@ -1,0 +1,18 @@
+{
+  "id": "plan-selection-gallery",
+  "source": "EN twin of plan-selection-gallery (regression: first concrete plan choice should demonstrate with gallery)",
+  "tags": ["gallery", "live"],
+  "lang": "en",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    { "id": "gallery-on-plan-choice", "rule": "output_flag_equals", "flag": "shouldSendGalleryImages", "expected": true, "turn": 2, "weight": 2, "critical": true },
+    { "id": "marker-hidden", "rule": "reply_must_not_match", "patterns": ["\\[\\[\\s*FOTOS|FOTOS\\s*:|\\bmarker\\b"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 2, "weight": 1, "critical": true },
+    { "id": "no-gallery-announcement", "rule": "reply_must_not_match", "patterns": ["i'?m (?:sharing|sending)|i'?ll (?:share|send)|here (?:are|they are|you go)|sending you"], "turn": 2, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "We're a couple and we're interested in Chivor", "mockReply": "Awesome! Are you looking for an intense adventure or something calmer and more rural?", "replay": true, "expect": { "shouldSendReply": true, "shouldSendGalleryImages": false }, "seedQualification": { "people": 2 } },
+    { "user": "The CORE plan", "mockReply": "It's a real, authentic mining experience. For 2 people it comes to $1,200,000 COP. Which month would you like to travel?\n[[FOTOS:mine]]", "expect": { "shouldSendReply": true, "shouldSendGalleryImages": true, "priceJustGiven": true } }
+  ]
+}

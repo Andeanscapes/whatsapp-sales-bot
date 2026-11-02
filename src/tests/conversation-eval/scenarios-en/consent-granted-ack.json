@@ -1,0 +1,18 @@
+{
+  "id": "consent-granted-ack",
+  "source": "EN twin of consent-granted-ack (2026-10-09 production audit)",
+  "tags": ["consent", "compliance", "live"],
+  "lang": "en",
+  "seedConversation": { "followupStatus": "pending" },
+  "liveRuns": 1,
+  "minLiveScore": 100,
+  "turns": [
+    { "user": "Thanks for the information", "mockReply": "Can I message you when there's news?", "replay": true },
+    { "user": "Yes please", "mockReply": "Great, I'll let you know when there's news.", "consentAnswer": "affirm", "expect": { "shouldSendReply": true, "usedAi": true, "shouldAlertOwner": false } }
+  ],
+  "criteria": [
+    { "id": "permission-acknowledged", "rule": "reply_must_match", "patterns": ["let you know|keep you (?:posted|updated)|message you|write to you|text you|contact|reach out|in touch"], "turn": 2, "critical": true },
+    { "id": "ack-not-booking", "rule": "reply_must_not_match", "patterns": ["deposit|price|\\bpay|book|reserv|\\$"], "turn": 2, "critical": true },
+    { "id": "ack-no-owner-alert", "rule": "output_flag_equals", "flag": "shouldAlertOwner", "expected": false, "turn": 2, "critical": true }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "id": "c01-opener-price-anchor",
+  "tags": [
+    "marker",
+    "live"
+  ],
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 1,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "short-opener",
+      "rule": "reply_length_at_most",
+      "expected": 400,
+      "turn": 1,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "no-links",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "instagram|https?://|wa\\.me"
+      ],
+      "turn": 1,
+      "weight": 2,
+      "critical": true
+    }
+  ],
+  "source": "owner plan 2026-11-01: C01 first reply is a 3-plan menu with no price; about half the leads went silent after it. Price anchor on the first reply was tried in prompt wording (2026-11-01) and did not move the live model (0/4); deferred to catalog copy.",
+  "lang": "es",
+  "turns": [
+    {
+      "user": "C01 Hola, quiero el plan en la mina de esmeraldas de Chivor.",
+      "expect": {
+        "shouldSendReply": true
+      },
+      "mockReply": "Hola, soy Heinner. En Chivor se entra a minas reales con guías de la zona. CORE queda desde $475.000 por persona para 2.\n\n¿Qué les encaja más: BASIC, CORE o PRIME?"
+    }
+  ]
+}

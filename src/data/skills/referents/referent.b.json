@@ -26,7 +26,7 @@
     {
       "id": "value-not-pitch",
       "trigger": "cliente pide información",
-      "do": "Entrega el dato exacto pedido y una conexión breve a su contexto mencionado.",
+      "do": "Entrega el dato exacto pedido, una conexión breve a su contexto y, si el cliente lo pidió, lo que no incluye el precio. Si duda de un precio o pregunta algo sensible al precio, responde con un hecho de DATOS.",
       "never": "Adjuntar catálogo, enviar enlaces o agregar hechos no pedidos."
     }
   ]
