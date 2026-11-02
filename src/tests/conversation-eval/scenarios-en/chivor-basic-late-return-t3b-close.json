@@ -1,0 +1,34 @@
+{
+  "id": "chivor-basic-late-return-t3b-close",
+  "source": "EN twin of chivor-basic-late-return-t3b-close (review 2026-10-26: a late-return question on a reservation turn must not displace the T3b close with an upgrade pitch)",
+  "tags": ["closing", "objection", "live"],
+  "lang": "en",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "seedConversation": {
+    "phase": "pricing",
+    "priceGiven": false,
+    "qualification": { "people": 2, "plan": "basic_1d_chivor" }
+  },
+  "seedQualification": { "people": 2, "plan": "basic_1d_chivor" },
+  "criteria": [
+    { "id": "t3a-exact-quote", "rule": "group_quote_integrity", "people": 2, "planId": "basic_1d_chivor", "expectedTotal": 740000, "turn": 1, "critical": true },
+    { "id": "t3b-close-kept", "rule": "reply_must_match", "patterns": ["deposit|reserv|booking|availability|your name|whose name|transport"], "turn": 2, "critical": true },
+    { "id": "no-upgrade-on-close", "rule": "reply_must_not_match", "patterns": ["\\bCORE\\b|\\bPRIME\\b"], "turn": 2, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 2, "critical": true }
+  ],
+  "turns": [
+    {
+      "user": "November 14th works for us",
+      "mockReply": "Perfect, November 14th. For 2 people, the plan comes to $740,000 COP, about $370,000 COP per person. How does that sound?",
+      "expect": { "shouldSendReply": true },
+      "seedQualification": { "people": 2, "plan": "basic_1d_chivor", "date": "November 14" }
+    },
+    {
+      "user": "great, how do we book? and does it finish very late?",
+      "mockReply": "The return is the same day in the afternoon; the team confirms the exact time. To book November 14th for 2, the deposit is 30% and I'll first check availability with the team. Whose name should we put the booking under?",
+      "expect": { "shouldSendReply": true },
+      "seedQualification": { "people": 2, "plan": "basic_1d_chivor", "date": "November 14" }
+    }
+  ]
+}

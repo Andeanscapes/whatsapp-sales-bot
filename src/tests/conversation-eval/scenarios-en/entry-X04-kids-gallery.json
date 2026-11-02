@@ -1,0 +1,83 @@
+{
+  "id": "entry-X04-kids-gallery",
+  "source": "EN twin of entry-X04-kids-gallery (regression: X04 family segment with requested photographic evidence; turn 1 names the destination so the kids gallery is only owed once the lead is at Chivor)",
+  "tags": [
+    "marker",
+    "gallery",
+    "live"
+  ],
+  "lang": "en",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "no-entry-gallery",
+      "rule": "output_flag_equals",
+      "flag": "shouldSendGalleryImages",
+      "expected": false,
+      "turn": 1,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "requested-kids-gallery",
+      "rule": "output_flag_equals",
+      "flag": "shouldSendGalleryImages",
+      "expected": true,
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "short-opening",
+      "rule": "reply_length_at_most",
+      "expected": 400,
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "one-question-entry",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 1,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "one-question-gallery",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 2,
+      "weight": 1,
+      "critical": true
+    },
+    {
+      "id": "no-gallery-announcement",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "i'?m sending|i'?ll send|let me (?:send|share)|here (?:they )?are|sharing (?:some|a few|the)"
+      ],
+      "turn": 2,
+      "weight": 1
+    }
+  ],
+  "turns": [
+    {
+      "user": "C04 - Hi, I'd like to visit the mine in Chivor with my kids, can you help?",
+      "mockReply": "It's a real mining adventure to enjoy as a family. How old are the kids?",
+      "expect": {
+        "shouldSendReply": true,
+        "shouldSendGalleryImages": false
+      }
+    },
+    {
+      "user": "Do you have photos of kids visiting the mine?",
+      "mockReply": "This is how families experience it. How old are the kids?\n[[FOTOS:kids]]",
+      "expect": {
+        "shouldSendReply": true,
+        "shouldSendGalleryImages": true
+      }
+    }
+  ]
+}

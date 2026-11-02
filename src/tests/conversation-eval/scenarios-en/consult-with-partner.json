@@ -1,0 +1,19 @@
+{
+  "id": "consult-with-partner",
+  "source": "EN twin of consult-with-partner (history: 40 consult/think turns)",
+  "tags": ["objection", "live"],
+  "lang": "en",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "seedConversation": { "phase": "pricing", "priceGiven": true, "qualification": { "people": 2, "plan": "core_2d1n_chivor" } },
+  "seedQualification": { "people": 2, "plan": "core_2d1n_chivor" },
+  "criteria": [
+    { "id": "shareable-summary", "rule": "reply_must_match", "patterns": ["summary|plan|couple|price|value|CORE|PRIME|BASIC|people"], "turn": 1, "weight": 2, "critical": true },
+    { "id": "no-links", "rule": "reply_must_not_match", "patterns": ["instagram|instagram.com|https?://|wa\\.me"], "turn": 1, "weight": 2, "critical": true },
+    { "id": "no-pressure", "rule": "reply_must_not_match", "patterns": ["last spots|limited spots|book now|pay now|about to sell out"], "turn": 1, "weight": 1, "critical": true },
+    { "id": "plan-sticky", "rule": "reply_must_not_match", "patterns": ["3[- ]day|3d2n|another plan"], "turn": 1, "weight": 1, "critical": true }
+  ],
+  "turns": [
+    { "user": "I'm going to talk it over with my partner. I want to think about it.", "mockReply": "Of course. Here's a short summary of the plan for 2 people and the price we already reviewed. Once you've talked it over, we'll check the exact availability with the team.", "expect": { "shouldSendReply": true } }
+  ]
+}

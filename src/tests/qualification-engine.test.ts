@@ -833,6 +833,27 @@ describe('resolveLanguage — stability', () => {
     expect(lang).toBe('en');
   });
 
+  it('detects en for an English greeting that also says "info"', () => {
+    const lang = resolveLanguage(repos, PHONE, 'Hello. Can I have info ?');
+    expect(lang).toBe('en');
+  });
+
+  it('detects en for short English openers that say "info"', () => {
+    expect(resolveLanguage(repos, PHONE, 'Hi, info')).toBe('en');
+    expect(resolveLanguage(repos, PHONE, 'I want info')).toBe('en');
+  });
+
+  it('keeps es for Spanglish messages', () => {
+    expect(resolveLanguage(repos, PHONE, 'Me envias el link please')).toBe('es');
+    expect(resolveLanguage(repos, PHONE, 'Me interesa el trip')).toBe('es');
+    expect(resolveLanguage(repos, PHONE, 'Hola, can you send me info del plan?')).toBe('es');
+    expect(resolveLanguage(repos, PHONE, 'Me regalas info')).toBe('es');
+  });
+
+  it('reads a Spanish greeting over an English sentence as en', () => {
+    expect(resolveLanguage(repos, PHONE, 'Hola, can I have info?')).toBe('en');
+  });
+
   it('detects es for new conversation', () => {
     const lang = resolveLanguage(repos, PHONE, 'Hola, cuanto vale?');
     expect(lang).toBe('es');

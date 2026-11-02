@@ -10,7 +10,7 @@ import { applyScenarioSeeds, createRunContext, defaultMockResult, runTurn, type 
 import { runLifecycleScenario } from './lifecycle-runner.js';
 import { evaluateScenario } from './evaluate-scenario.js';
 import { buildReport, printReport, writeReport } from './report.js';
-import type { ScenarioResult } from './schema.js';
+import type { Scenario, ScenarioResult } from './schema.js';
 import { loadScenarios } from './scenario-loader.js';
 import { validateTurnExpectations } from './turn-expectations.js';
 
@@ -36,6 +36,95 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const scenariosDir = join(__dirname, 'scenarios');
 
 beforeAll(() => loadSkills());
+
+type RunContext = ReturnType<typeof createRunContext>;
+type ActiveExperience = ReturnType<typeof getActiveExperience>;
+
+async function runMockedScenario(
+  scenario: Scenario,
+  phoneSuffix: number,
+  extraChecks?: (ctx: RunContext, experience: ActiveExperience) => void,
+  results?: ScenarioResult[],
+): Promise<void> {
+  mockLlmComplete.mockReset();
+  mockAnalyzeLead.mockReset();
+  mockAnalyzeLead.mockImplementation(async input => {
+    const analysis = scenario.turns.find(turn => turn.user === input.latestMessage)?.mockAnalysis;
+    return analysis ? {
+      ...analysis,
+      buyingSignals: [],
+      blockers: [],
+      rationale: 'conversation eval fixture',
+      promptTokens: 10,
+      completionTokens: 10,
+    } : null;
+  });
+  mockLlmComplete.mockImplementation(async input => {
+    const turn = scenario.turns.find(candidate => candidate.user === input.message);
+    return turn ? defaultMockResult(turn.mockReply) : null;
+  });
+
+  const ctx = createRunContext({ phoneSuffix });
+  const experience = getActiveExperience(getSkills());
+  const originalPricingItems = experience.pricing.items;
+  const originalPricingRules = experience.pricing.botRules;
+  if (scenario.mockPricing) {
+    experience.pricing.items = [
+      { id: `${scenario.mockPricing.planId}_individual`, planId: scenario.mockPricing.planId, label: 'Individual', pricePerPerson: scenario.mockPricing.individual, publiclyShow: true },
+      { id: `${scenario.mockPricing.planId}_couple`, planId: scenario.mockPricing.planId, label: 'Pareja', couplePrice: scenario.mockPricing.couple, publiclyShow: true },
+      ...(scenario.mockPricing.privateTransport
+        ? [{ id: 'private_transport', kind: 'addon' as const, label: 'Private transport', couplePrice: scenario.mockPricing.privateTransport, publiclyShow: true }]
+        : []),
+    ];
+    experience.pricing.botRules = experience.pricing.botRules.filter(rule => rule !== PRICING_NOT_AVAILABLE);
+  }
+  let restoreSeeds = (): void => undefined;
+  try {
+    restoreSeeds = applyScenarioSeeds(ctx, scenario);
+    if (scenario.runner === 'lifecycle') {
+      ctx.turns.push(...runLifecycleScenario(ctx, scenario));
+    } else {
+      for (let turnIndex = 0; turnIndex < scenario.turns.length; turnIndex++) {
+        ctx.turns.push(await runTurn(ctx, scenario.turns[turnIndex], turnIndex + 1));
+        const consentAnswer = scenario.turns[turnIndex].consentAnswer;
+        if (consentAnswer === 'affirm' || consentAnswer === 'decline') {
+          expect(ctx.repos.followupSubscription.getByPhone(ctx.customerPhone)?.status)
+            .toBe(consentAnswer === 'affirm' ? 'active' : 'declined');
+        }
+      }
+    }
+
+    extraChecks?.(ctx, experience);
+    expect(validateTurnExpectations(scenario, ctx.turns)).toEqual([]);
+
+    const evaluation = evaluateScenario(scenario, ctx.turns);
+    results?.push({
+      id: scenario.id,
+      score: evaluation.score,
+      hardFail: evaluation.hardFail,
+      notes: evaluation.notes,
+      criteria: evaluation.criteria,
+      turnResults: ctx.turns.map(turn => ({
+        user: turn.user,
+        reply: turn.reply,
+        leadScore: turn.processOutput.leadScore,
+        shouldAlertOwner: turn.processOutput.shouldAlertOwner,
+        shouldSendImage: turn.processOutput.shouldSendImage,
+      })),
+    });
+
+    expect(evaluation.hardFail, evaluation.notes.join('; ')).toBe(false);
+    expect(evaluation.score, scenario.id).toBe(100);
+  } finally {
+    try {
+      restoreSeeds();
+    } finally {
+      experience.pricing.items = originalPricingItems;
+      experience.pricing.botRules = originalPricingRules;
+      ctx.destroy();
+    }
+  }
+}
 
 describe('Conversation Quality Eval V2', () => {
   const scenarios = loadScenarios(scenariosDir);
@@ -133,54 +222,7 @@ describe('Conversation Quality Eval V2', () => {
   for (let index = 0; index < scenarios.length; index++) {
     const scenario = scenarios[index];
     it(`${scenario.id} (${scenario.turns.length} turns)`, async () => {
-      mockLlmComplete.mockReset();
-      mockAnalyzeLead.mockReset();
-      mockAnalyzeLead.mockImplementation(async input => {
-        const analysis = scenario.turns.find(turn => turn.user === input.latestMessage)?.mockAnalysis;
-        return analysis ? {
-          ...analysis,
-          buyingSignals: [],
-          blockers: [],
-          rationale: 'conversation eval fixture',
-          promptTokens: 10,
-          completionTokens: 10,
-        } : null;
-      });
-      mockLlmComplete.mockImplementation(async input => {
-        const turn = scenario.turns.find(candidate => candidate.user === input.message);
-        return turn ? defaultMockResult(turn.mockReply) : null;
-      });
-
-      const ctx = createRunContext({ phoneSuffix: index });
-      const experience = getActiveExperience(getSkills());
-      const originalPricingItems = experience.pricing.items;
-      const originalPricingRules = experience.pricing.botRules;
-      if (scenario.mockPricing) {
-        experience.pricing.items = [
-          { id: `${scenario.mockPricing.planId}_individual`, planId: scenario.mockPricing.planId, label: 'Individual', pricePerPerson: scenario.mockPricing.individual, publiclyShow: true },
-          { id: `${scenario.mockPricing.planId}_couple`, planId: scenario.mockPricing.planId, label: 'Pareja', couplePrice: scenario.mockPricing.couple, publiclyShow: true },
-          ...(scenario.mockPricing.privateTransport
-            ? [{ id: 'private_transport', kind: 'addon' as const, label: 'Private transport', couplePrice: scenario.mockPricing.privateTransport, publiclyShow: true }]
-            : []),
-        ];
-        experience.pricing.botRules = experience.pricing.botRules.filter(rule => rule !== PRICING_NOT_AVAILABLE);
-      }
-      let restoreSeeds = (): void => undefined;
-      try {
-        restoreSeeds = applyScenarioSeeds(ctx, scenario);
-        if (scenario.runner === 'lifecycle') {
-          ctx.turns.push(...runLifecycleScenario(ctx, scenario));
-        } else {
-          for (let turnIndex = 0; turnIndex < scenario.turns.length; turnIndex++) {
-            ctx.turns.push(await runTurn(ctx, scenario.turns[turnIndex], turnIndex + 1));
-            const consentAnswer = scenario.turns[turnIndex].consentAnswer;
-            if (consentAnswer === 'affirm' || consentAnswer === 'decline') {
-              expect(ctx.repos.followupSubscription.getByPhone(ctx.customerPhone)?.status)
-                .toBe(consentAnswer === 'affirm' ? 'active' : 'declined');
-            }
-          }
-        }
-
+      await runMockedScenario(scenario, index, (ctx, experience) => {
         if (scenario.id === 'entry-funnel-H02-car') {
           const segment = getEntrySegment(getSkills(), experience.id, 'H02', 'chivor');
           expect(segment).not.toBeNull();
@@ -198,35 +240,7 @@ describe('Conversation Quality Eval V2', () => {
           expect(ctx.repos.conversation.getPriceGivenAt(ctx.customerPhone)).not.toBeNull();
           expect(ctx.turns[2]?.processOutput.quotedPlanId).toBe('prime_2d1n_chivor');
         }
-        expect(validateTurnExpectations(scenario, ctx.turns)).toEqual([]);
-
-        const evaluation = evaluateScenario(scenario, ctx.turns);
-        results.push({
-          id: scenario.id,
-          score: evaluation.score,
-          hardFail: evaluation.hardFail,
-          notes: evaluation.notes,
-          criteria: evaluation.criteria,
-          turnResults: ctx.turns.map(turn => ({
-            user: turn.user,
-            reply: turn.reply,
-            leadScore: turn.processOutput.leadScore,
-            shouldAlertOwner: turn.processOutput.shouldAlertOwner,
-            shouldSendImage: turn.processOutput.shouldSendImage,
-          })),
-        });
-
-        expect(evaluation.hardFail, evaluation.notes.join('; ')).toBe(false);
-        expect(evaluation.score, scenario.id).toBe(100);
-      } finally {
-        try {
-          restoreSeeds();
-        } finally {
-          experience.pricing.items = originalPricingItems;
-          experience.pricing.botRules = originalPricingRules;
-          ctx.destroy();
-        }
-      }
+      }, results);
     });
   }
 
@@ -240,4 +254,19 @@ describe('Conversation Quality Eval V2', () => {
     expect(effectiveHardFails, `Hard fails (excluding pre-existing): ${effectiveHardFails}`).toBe(0);
     expect(effectiveAvg, `Average (excluding pre-existing) ${effectiveAvg} < 100`).toBe(100);
   });
+});
+
+// Curated English twins of the live Spanish subset. Mocked and free, and kept out of
+// conversation-eval.json so the Spanish baseline and its average stay unchanged.
+const englishScenariosDir = join(__dirname, 'scenarios-en');
+
+describe('Curated English conversation pack (mocked)', () => {
+  const englishScenarios = loadScenarios(englishScenariosDir);
+
+  it.each(englishScenarios.map((scenario, index) => [scenario.id, scenario, index] as const))(
+    '%s passes with English mock replies',
+    async (_id, scenario, index) => {
+      await runMockedScenario(scenario, 600 + index);
+    },
+  );
 });

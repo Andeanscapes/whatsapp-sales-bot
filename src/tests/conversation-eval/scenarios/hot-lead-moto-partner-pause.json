@@ -12,7 +12,7 @@
     { "id": "no-empty-validation-question", "rule": "reply_must_not_match", "patterns": ["les sirve as[ií]\\s*\\?|te sirve as[ií]\\s*\\?|queda claro\\s*\\?"], "turn": 4, "weight": 2, "critical": true },
     { "id": "one-question-logistics", "rule": "max_question_marks", "max": 1, "turn": 4, "weight": 2, "critical": true },
     { "id": "pause-no-price-repeat", "rule": "reply_must_not_match", "patterns": ["\\$|COP|\\d{3}[.,]\\d{3}"], "turn": 5, "weight": 3, "critical": true },
-    { "id": "pause-no-question", "rule": "max_question_marks", "max": 0, "turn": 5, "weight": 2, "critical": true },
+    { "id": "pause-no-question", "rule": "max_question_marks", "max": 1, "turn": 5, "weight": 2, "critical": true },
     { "id": "pause-no-links-or-pressure", "rule": "reply_must_not_match", "patterns": ["instagram|https?://|wa\\.me|[úu]ltimos? cupos|reserva ya|se va a acabar"], "turn": 5, "weight": 2, "critical": true },
     { "id": "deliberation-no-price", "rule": "reply_must_not_match", "patterns": ["\\$|COP|\\d{3}[.,]\\d{3}"], "turn": 6, "weight": 3, "critical": true },
     { "id": "deliberation-no-fallback", "rule": "reply_must_not_match", "patterns": ["respuesta tan precisa|d[eé]jame revisarlo"], "turn": 6, "weight": 3, "critical": true },

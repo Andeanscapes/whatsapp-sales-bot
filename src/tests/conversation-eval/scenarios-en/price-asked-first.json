@@ -1,0 +1,16 @@
+{
+  "id": "price-asked-first",
+  "source": "EN twin of price-asked-first (history: 11 price objections/early asks)",
+  "tags": ["opening", "qualification"],
+  "lang": "en",
+  "criteria": [
+    { "id": "no-invented-price", "rule": "reply_must_not_match", "patterns": ["\\$?550[.,]?000|\\$?1000000|\\$?1700000"], "turn": 1, "weight": 2, "critical": true },
+    { "id": "advance-question", "rule": "reply_must_match", "patterns": ["\\?"], "turn": 1, "weight": 1 },
+    { "id": "no-brochure", "rule": "reply_must_not_match", "patterns": ["includ(?:es|ing|e).{0,80}(lodging|meals)"], "turn": 1, "weight": 1 },
+    { "id": "no-emoji-on-price-open", "rule": "max_emojis", "max": 0, "turn": 1, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "How much is it?", "mockReply": "To give you the right price I need to identify the plan first. Are you interested in the 2-day CORE or the PRIME?", "expect": { "shouldSendReply": true } },
+    { "user": "The 2-day one", "mockReply": "Perfect. How many people would be traveling?", "expect": { "shouldSendReply": true } }
+  ]
+}

@@ -1,0 +1,68 @@
+{
+  "id": "two-plan-narrow-quotes-both",
+  "source": "2026-11-01 export pattern: lead narrowed to CORE and PRIME, bot asked one more question instead of quoting both",
+  "lang": "es",
+  "tags": [
+    "objection",
+    "live"
+  ],
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "seedConversation": {
+    "phase": "discovery",
+    "qualification": {
+      "people": 2
+    }
+  },
+  "seedQualification": {
+    "people": 2
+  },
+  "criteria": [
+    {
+      "id": "both-totals",
+      "rule": "reply_must_match",
+      "patterns": [
+        "950[.,]000[\\s\\S]{0,200}1[.,]700[.,]000|1[.,]700[.,]000[\\s\\S]{0,200}950[.,]000"
+      ],
+      "turn": 1,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 1,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "no-third-plan-price",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "740[.,]000|BASIC[^.]{0,40}\\$"
+      ],
+      "turn": 1,
+      "weight": 1
+    },
+    {
+      "id": "no-links-or-pressure",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "instagram|https?://|wa\\.me|[úu]ltimos? cupos|reserva ya|se va a acabar"
+      ],
+      "weight": 2,
+      "critical": true,
+      "turn": 1
+    }
+  ],
+  "turns": [
+    {
+      "user": "Core y prime, cuanto vale cada uno para 2?",
+      "mockReply": "Para 2 personas, CORE queda en *$950.000 COP* y PRIME en *$1.700.000 COP*. ¿Cuál les llama más?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

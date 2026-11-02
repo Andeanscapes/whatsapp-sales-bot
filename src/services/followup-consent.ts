@@ -421,6 +421,39 @@ export function isDuplicateConsentEcho(
   return elapsed >= 0 && elapsed <= graceSeconds * 1_000;
 }
 
+const CONTACT_EXIT = String.raw`(?:mas\s+mensajes|recibir(?:\s+mas)?\s+(?:mensajes|avisos|novedades)|que\s+(?:te|les)\s+(?:escriba|escribamos|sigamos\s+escribiendo))`;
+/**
+ * Phrases that offer the customer a way out of future contact. Rejected, never
+ * repaired: the engine must not write copy, so a draft that offers an exit is discarded.
+ * Matched against `optOutText()`. Every branch names the exit itself, so ordinary copy
+ * ("respondes cuando puedas, no hay afan", "si no quieres perderte la temporada",
+ * "responde no mas cuando puedas", "a quick stop") still passes: a false rejection
+ * burns one of the three attempts.
+ */
+const OPT_OUT_OFFER_PATTERN = new RegExp([
+  String.raw`\bdejar\s+de\s+recibir\b`,
+  String.raw`\bdar(?:te|se|les)?\s+de\s+baja\b`,
+  String.raw`\bsi\s+(?:ya\s+)?no\s+(?:quieres|queres|deseas|quieren|prefieres|preferis)\s+${CONTACT_EXIT}`,
+  String.raw`\bsi\s+(?:prefieres|preferis|prefieren)\s+no\s+(?:seguir|recibir|que)\b`,
+  String.raw`\bsi\s+ya\s+no\s+(?:te|les)\s+interesa\b`,
+  String.raw`\bno\s+mas\s+mensajes\b(?!\s+(?:que|de)\b)`,
+  String.raw`\b(?:responde|respondes|responda|respondenos|escribe|escribes|escribenos|envia)\s+(?:con\s+)?["']?(?:no(?!\s+(?:mas|te|se|hay|pasa)\b)|baja|stop|salir)["']?(?:\s|$)`,
+  String.raw`\bno\s+(?:te|les)\s+(?:escribo|escribimos|volvemos\s+a\s+escribir)\s+mas\b`,
+  String.raw`\bdime\s+si\s+(?:paro|prefieres\s+no|dejo\s+de)\b`,
+  String.raw`\b(?:unsubscribe|opt\s+out|opt-out)\b`,
+  String.raw`\b(?:reply|text|send)\s+["']?stop\b`,
+  String.raw`\bif\s+you(?:'d|\s+would)?\s+(?:rather\s+not|prefer\s+not\s+to|don'?t\s+want\s+to)\s+(?:hear|receive|get)\b`,
+].join('|'));
+
+/**
+ * `normalize()` folds only ASCII punctuation, and drafts often carry curly quotes
+ * ("If you’d rather not", "Reply “STOP”"). Folded here only: the shared `normalize()`
+ * also feeds the yes/no classifier, which must not change.
+ */
+function optOutText(text: string): string {
+  return normalize(text.replace(/[’‘]/g, "'").replace(/[“”«»]/g, '"'));
+}
+
 export interface ConsentAskValidation {
   ok: boolean;
   /** Marker-stripped text, present only when `ok` is true. */
@@ -574,6 +607,9 @@ export function validateConsentAsk(reply: string): ConsentAskValidation {
   if (text.includes('[[')) return { ok: false, reason: 'residual_marker' };
   // The turn signal is no longer bracketed, so the check above cannot catch it.
   if (INTERNAL_ECHO_PATTERN.test(text)) return { ok: false, reason: 'internal_echo' };
+  // Sales policy: the ask never offers an exit from future contact. A refusal is
+  // only honoured when the customer writes it unprompted (opt-out path).
+  if (OPT_OUT_OFFER_PATTERN.test(optOutText(text))) return { ok: false, reason: 'opt_out_offer' };
 
   // The marker stays the contract. Accepting a markerless draft is a bounded
   // fallback for prompt variance, and only when the draft's own question is an

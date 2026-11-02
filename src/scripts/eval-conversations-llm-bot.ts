@@ -13,7 +13,18 @@ import { loadScenarios, partitionLiveScenarios } from '../tests/conversation-eva
 import { validateTurnExpectations } from '../tests/conversation-eval/turn-expectations.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const scenariosDir = join(__dirname, '..', 'tests', 'conversation-eval', 'scenarios');
+const conversationEvalDir = join(__dirname, '..', 'tests', 'conversation-eval');
+const LANGUAGE_PACKS = {
+  es: { scenariosDir: join(conversationEvalDir, 'scenarios'), reportFile: 'conversation-eval-llm-bot.json' },
+  en: { scenariosDir: join(conversationEvalDir, 'scenarios-en'), reportFile: 'conversation-eval-llm-bot-en.json' },
+} as const;
+type EvalLanguage = keyof typeof LANGUAGE_PACKS;
+
+function evalLanguage(): EvalLanguage {
+  const value = option('--lang') ?? 'es';
+  if (value !== 'es' && value !== 'en') throw new Error(`--lang must be es or en, got ${value}`);
+  return value;
+}
 
 function progressLabel(current: number, total: number): string {
   const percent = Math.round((current / Math.max(1, total)) * 100);
@@ -63,7 +74,10 @@ async function main(): Promise<void> {
   const requestedRuns = Number(option('--runs') ?? 1);
   if (!Number.isInteger(requestedRuns) || requestedRuns < 1 || requestedRuns > 5) throw new Error('--runs must be an integer from 1 to 5');
 
-  const allScenarios = loadScenarios(scenariosDir);
+  const language = evalLanguage();
+  const pack = LANGUAGE_PACKS[language];
+  console.log(`[LLM_BOT_EVAL] language=${language} scenarios=${pack.scenariosDir}`);
+  const allScenarios = loadScenarios(pack.scenariosDir);
   if (allScenarios.length === 0) {
     console.log('[LLM_BOT_EVAL] no scenarios registered — nothing to run');
     process.exit(0);
@@ -163,7 +177,7 @@ async function main(): Promise<void> {
 
   const report = buildReport('live', results, totalCostUsd);
   printReport(report);
-  const path = writeReport(report, 'conversation-eval-llm-bot.json');
+  const path = writeReport(report, pack.reportFile);
   if (report.suite.hardFails > 0) throw new Error(`Conversation eval hard failures: ${report.suite.hardFails}`);
   const minScore = Number(process.env.MIN_CONVERSATION_SCORE ?? 70);
   if (report.suite.average < minScore) throw new Error(`Conversation eval average ${report.suite.average} below ${minScore}`);

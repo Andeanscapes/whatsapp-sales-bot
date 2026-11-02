@@ -1,0 +1,107 @@
+{
+  "id": "emerald-ownership-honest",
+  "source": "owner 2026-11-01: emeralds are not guaranteed; bot promised a find in 2 threads and gave conflicting answers. Experience is the emerald culture, nature and food.",
+  "tags": [
+    "objection",
+    "live"
+  ],
+  "lang": "es",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "seedConversation": {
+    "phase": "pricing",
+    "priceGiven": true,
+    "qualification": {
+      "people": 2,
+      "plan": "core_2d1n_chivor"
+    }
+  },
+  "seedQualification": {
+    "people": 2,
+    "plan": "core_2d1n_chivor"
+  },
+  "criteria": [
+    {
+      "id": "no-find-promise",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "va a encontrar|van a encontrar|seguro (?:que )?(?:van a )?encontr|garantizamos|les aseguro (?:que )?(?:encuentran|sacan)|se llevan (?:las|sus|tus) esmeraldas"
+      ],
+      "turn": 2,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "not-owned-by-customer",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "es tuya|es suya|te la quedas|te la llevas|se la queda|te pertenece"
+      ],
+      "turn": 2,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "honest-not-guaranteed",
+      "rule": "reply_must_match",
+      "patterns": [
+        "no (?:est[aá] )?garantiz|no (?:lo )?aseguro|no podemos asegurar|puede pasar|no es seguro|no hay garant"
+      ],
+      "turn": 2,
+      "weight": 2
+    },
+    {
+      "id": "experience-framed",
+      "rule": "reply_must_match",
+      "patterns": [
+        "cultura|naturaleza|gastronom|experiencia|comunidad"
+      ],
+      "turn": 2,
+      "weight": 2
+    },
+    {
+      "id": "no-operator-talk",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "comisi[oó]n|nos quedamos con|para nosotros|negocio de (?:las )?minas"
+      ],
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "no-price-repeat",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "\\$|COP|\\d{3}[.,]\\d{3}"
+      ],
+      "turn": 2,
+      "weight": 1
+    }
+  ],
+  "turns": [
+    {
+      "user": "Hola, quiero el CORE para 2 en Chivor. Cuanto vale?",
+      "replay": true,
+      "mockReply": "Para 2 personas, CORE queda en $950.000 COP, con alojamiento, 4 comidas y la mina guiada incluida.\n\n¿Qué fecha de noviembre te sirve?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Y si encuentro una esmeralda, es mía?",
+      "mockReply": "No podemos garantizar que encuentren una; puede pasar, pero la experiencia vale por la cultura esmeraldera, la naturaleza y la gastronomía. Si aparece alguna, se maneja en el momento con los mineros y el guía.\n\n¿Qué fecha de noviembre te sirve?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

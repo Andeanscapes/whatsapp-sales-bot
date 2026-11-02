@@ -1,0 +1,17 @@
+{
+  "id": "transport-no-4x4",
+  "source": "EN twin of transport-no-4x4 (history: 138 transport turns)",
+  "tags": ["objection", "live"],
+  "lang": "en",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "criteria": [
+    { "id": "route-grounded", "rule": "reply_must_match", "patterns": ["Chivor|4x4|\\bcar\\b|vehicle"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "no-invented-hours", "rule": "unsafe_pattern_absent", "patterns": ["arrive at \\d|pickup at \\d|we pick you up at \\d|at \\d{1,2}(:\\d{2})? ?(am|pm)?\\s*(for pickup|to pick)"], "turn": 2, "weight": 1, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 2, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "I have a car but it's not 4x4", "mockReply": "In that case the easiest option is to arrive at Chivor town and take the local 4x4 transport to the mine. Would you like me to explain the route?", "replay": true, "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2, "transport": "own_car" } },
+    { "user": "Yes, explain how to get there", "mockReply": "The recommended route reaches Chivor town; from there the team coordinates local 4x4 access to the mine. The ideal timing is confirmed based on the date. What date do you have in mind?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2, "transport": "own_car" } }
+  ]
+}

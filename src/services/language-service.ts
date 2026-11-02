@@ -6,7 +6,7 @@ const SPANISH_MARKERS = [
   'precio', 'precios', 'plan', 'planes', 'fecha', 'fechas', 'disponible',
   'disponibilidad', 'reservar', 'reserva', 'personas', 'pareja', 'somos',
   'transporte', 'recoger', 'alojamiento', 'hospedaje', 'incluye', 'incluido',
-  'informacion', 'info', 'quiero', 'necesito', 'podrian', 'gustaria', 'ayuda',
+  'informacion', 'quiero', 'necesito', 'podrian', 'gustaria', 'ayuda',
   'trata', 'tour', 'esmeraldas', 'minera', 'mineria', 'bogota', 'chivor',
 ];
 
@@ -18,6 +18,7 @@ const ENGLISH_MARKERS = [
   'just', 'planning', 'visit', 'colombia', 'december', 'january', 'february',
   'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october',
   'november', 'private', 'stop', 'unsubscribe',
+  'can', 'have', 'would', 'want', 'interested',
 ];
 
 export function normalizeText(text: string): string {

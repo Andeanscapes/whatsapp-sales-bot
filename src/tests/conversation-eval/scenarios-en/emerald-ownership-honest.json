@@ -1,0 +1,107 @@
+{
+  "id": "emerald-ownership-honest",
+  "source": "EN twin of emerald-ownership-honest",
+  "tags": [
+    "objection",
+    "live"
+  ],
+  "lang": "en",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "seedConversation": {
+    "phase": "pricing",
+    "priceGiven": true,
+    "qualification": {
+      "people": 2,
+      "plan": "core_2d1n_chivor"
+    }
+  },
+  "seedQualification": {
+    "people": 2,
+    "plan": "core_2d1n_chivor"
+  },
+  "criteria": [
+    {
+      "id": "no-find-promise",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "(?<!(?:guarantee|guaranteed|promise|sure) )you(?:'ll| will) (?:definitely |surely )?(?:find|get)|(?:definitely|surely|for sure) (?:find|get)|we guarantee (?:you|that)|you (?:keep|take) (?:them|the emeralds)"
+      ],
+      "turn": 2,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "not-owned-by-customer",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "it['’]s yours|it is yours|keep (?:it|them)|you can keep|take (?:it|them) home"
+      ],
+      "turn": 2,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "honest-not-guaranteed",
+      "rule": "reply_must_match",
+      "patterns": [
+        "not guarantee|can(?:'t|not) (?:guarantee|promise)|no guarantee|not (?:promise|certain|sure)|can happen|may happen|isn.t guaranteed|is not guaranteed"
+      ],
+      "turn": 2,
+      "weight": 2
+    },
+    {
+      "id": "experience-framed",
+      "rule": "reply_must_match",
+      "patterns": [
+        "culture|nature|food|experience|community|thrill"
+      ],
+      "turn": 2,
+      "weight": 2
+    },
+    {
+      "id": "no-operator-talk",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "commission|we keep|for us|business of the mines"
+      ],
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "no-price-repeat",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "\\$|\\bCOP\\b|\\d{3}[.,]\\d{3}"
+      ],
+      "turn": 2,
+      "weight": 1
+    }
+  ],
+  "turns": [
+    {
+      "user": "Hi, I want the CORE for 2 in Chivor. How much?",
+      "replay": true,
+      "mockReply": "For 2 people, CORE comes to $950,000 COP, with lodging, 4 meals and the guided mine tour included.\n\nWhich November date works for you?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "If I find an emerald, is it mine?",
+      "mockReply": "Finding one is not guaranteed; it can happen, but the experience is about the emerald culture, the nature and the food. If something turns up, it is handled on the spot with the miners and the guide.\n\nWhich November date works for you?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}
