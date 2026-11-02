@@ -1,0 +1,17 @@
+{
+  "id": "price-objection-no-discount",
+  "source": "EN twin of price-objection-no-discount (history: 11 price objections)",
+  "tags": ["objection"],
+  "lang": "en",
+  "seedConversation": { "phase": "pricing", "priceGiven": true, "qualification": { "people": 2, "plan": "core_2d1n_chivor" } },
+  "seedQualification": { "people": 2, "plan": "core_2d1n_chivor" },
+  "criteria": [
+    { "id": "no-fake-discount", "rule": "unsafe_pattern_absent", "patterns": ["discount.{0,30}\\$|\\bfor free\\b|free of charge|price cut|reduction"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "value-reframe", "rule": "reply_must_match", "patterns": ["experience|logistic|team|mine|plan|value"], "turn": 2, "weight": 1 },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 2, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "That price is way too much", "mockReply": "I understand. The value is in living the real mining experience with the local logistics organized, not just a quick visit. Is the total price what holds you back the most?" },
+    { "user": "Yes, the budget", "mockReply": "I understand. I'd rather keep the real value of the plan than make up discounts. Would you like us to look at the option that best fits your group?" }
+  ]
+}

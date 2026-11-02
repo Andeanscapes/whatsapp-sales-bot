@@ -22,14 +22,14 @@ const FIELD_ASK_PATTERNS = {
   // A bare `serían` also matches price copy ("para 5 personas serían $2.250.000"),
   // so it must stay bound to a group question, not float free.
   people: /\b(cu[aá]ntas personas|how many people|para cu[aá]ntos|ser[ií]an\s+(?:cu[aá]nt|para\s+cu[aá]nt)|vienes?\s*solo|is the experience for you alone)\b/i,
-  date: /\b(tienen .{0,30} fecha|(?:alguna|cual|qué|que|c[uú]al) fecha|fecha en mente|para cu[aá]ndo|fecha preferida|en mente.*fecha)\b/i,
-  transport: /\b(?:llegar[ií]an|llegan|llegar)\s+(?:por su cuenta|en carro|en moto)|(?:necesitan|necesitas).{0,20}(?:transporte|transport)\b/i,
-  transportNeed: /\b(?:llegar[ií]an|llegan|llegar)\s+(?:por su cuenta|en carro|en moto)|(?:necesitan|necesitas).{0,20}(?:transporte|transport)\b/i,
+  date: /\b(tienen .{0,30} fecha|(?:alguna|cual|qué|que|c[uú]al) fecha|fecha en mente|para cu[aá]ndo|fecha preferida|en mente.*fecha|(?:what|which) (?:date|day|month)|dates? in mind|preferred date|have (?:a|any) dates?|when would you like)\b/i,
+  transport: /\b(?:llegar[ií]an|llegan|llegar)\s+(?:por su cuenta|en carro|en moto)|(?:necesitan|necesitas).{0,20}(?:transporte|transport)\b|\bneed (?:transport|transportation|a ride|pickup)\b|\bhow (?:are|will|would) you (?:be )?(?:getting|arriving|coming)\b/i,
+  transportNeed: /\b(?:llegar[ií]an|llegan|llegar)\s+(?:por su cuenta|en carro|en moto)|(?:necesitan|necesitas).{0,20}(?:transporte|transport)\b|\bneed (?:transport|transportation|a ride|pickup)\b|\bhow (?:are|will|would) you (?:be )?(?:getting|arriving|coming)\b/i,
   plan: /\b(?:qu[eé] plan|cu[aá]l plan|which plan)\b/i,
 };
 const BIG_GROUP_PATTERN = /\b(\d{2,})\s*(?:personas|people|pax)\b|\b(?:m[ií]nimo|aprox\.?|aproximadamente|mas de|m[aá]s de|al menos)\s*(\d{2,})\b/i;
-const BIG_GROUP_DATE_PATTERN = /\b(validar.*(?:fecha|disponibilidad|cupo)|con cuidado|grupo grande|cuidadosamente|revisar.*(?:fecha|disponibilidad|cupo))\b/i;
-const BIG_GROUP_PRICE_PATTERN = /\b(revis.*precio|referencial|validamos.*valor|precio.*cantidad|valor.*segun.*cantidad|precio.*revisable|ajustar.*precio|precio.*referencia)\b/i;
+const BIG_GROUP_DATE_PATTERN = /\b(validar.*(?:fecha|disponibilidad|cupo)|con cuidado|grupo grande|cuidadosamente|revisar.*(?:fecha|disponibilidad|cupo)|(?:validat|check|confirm|review)\w*[^.?!\n]{0,40}(?:dates?|availability|capacity|space)|(?:large|big) group)\b/i;
+const BIG_GROUP_PRICE_PATTERN = /\b(revis.*precio|referencial|validamos.*valor|precio.*cantidad|valor.*segun.*cantidad|precio.*revisable|ajustar.*precio|precio.*referencia|(?:review|adjust|validat|confirm)\w*[^.?!\n]{0,40}(?:price|rate|cost)|(?:price|rate)[^.?!\n]{0,40}(?:size of the group|group size|number of people)|reference price)\b/i;
 const COFOUNDER_PATTERN = /(?:junto\s+(?:con|a)|\bco-?fundador(?:a)?\b[^.!?\n]{0,100}\bcon)\s+([A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑáéíóúñ0-9]*)/;
 /**
  * Local on purpose: `response-engine.ts` has the same map as a module-local const,
@@ -38,7 +38,10 @@ const COFOUNDER_PATTERN = /(?:junto\s+(?:con|a)|\bco-?fundador(?:a)?\b[^.!?\n]{0
 const MONTH_NUMBER: Record<string, number> = {
   enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6,
   julio: 7, agosto: 8, septiembre: 9, octubre: 10, noviembre: 11, diciembre: 12,
+  january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
+  july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
 };
+const EN_MONTHS = 'january|february|march|april|may|june|july|august|september|october|november|december';
 
 export interface ScenarioEvaluation {
   score: number;
@@ -204,7 +207,7 @@ function evaluateCriterion(criterion: Criterion, turns: TurnRecord[]): Criterion
     });
     const expectedTotal = quote?.planTotal ?? criterion.expectedTotal!;
 
-    const peopleCounts = [...replyText.matchAll(/\b(\d+)\s*(?:persona(?:s)?|people|pax)\b/gi)].map(match => Number(match[1]));
+    const peopleCounts = [...replyText.matchAll(/\b(\d+)\s*(?:persona(?:s)?|persons?|people|pax)\b/gi)].map(match => Number(match[1]));
     // A currency marker is required ($ prefix OR COP suffix) so plain counts like
     // "5 personas" are never read as money. Requiring BOTH produced false
     // negatives: the model routinely writes "$2.500.000" with no "COP".
@@ -245,12 +248,19 @@ function evaluateCriterion(criterion: Criterion, turns: TurnRecord[]): Criterion
         return `${Number(day)}-${Number(month)}`;
       }),
     );
-    const mentioned = [...replyText.matchAll(
-      /\b(\d{1,2})\s+de\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\b/gi,
-    )];
+    // "28 de noviembre", "November 28th", "28th of November".
+    const mentioned = [
+      ...[...replyText.matchAll(
+        /\b(\d{1,2})\s+de\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\b/gi,
+      )].map(match => ({ text: match[0], day: match[1], month: match[2] })),
+      ...[...replyText.matchAll(new RegExp(`\\b(${EN_MONTHS})\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b`, 'gi'))]
+        .map(match => ({ text: match[0], day: match[2], month: match[1] })),
+      ...[...replyText.matchAll(new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+of\\s+(${EN_MONTHS})\\b`, 'gi'))]
+        .map(match => ({ text: match[0], day: match[1], month: match[2] })),
+    ];
     const unpublished = mentioned
-      .filter(match => !publishedDayMonth.has(`${Number(match[1])}-${MONTH_NUMBER[match[2].toLowerCase()]}`))
-      .map(match => match[0]);
+      .filter(match => !publishedDayMonth.has(`${Number(match.day)}-${MONTH_NUMBER[match.month.toLowerCase()]}`))
+      .map(match => match.text);
     return criterionResult(
       criterion,
       unpublished.length === 0,

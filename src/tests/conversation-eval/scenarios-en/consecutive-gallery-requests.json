@@ -1,0 +1,43 @@
+{
+  "id": "consecutive-gallery-requests",
+  "source": "EN twin of consecutive-gallery-requests (regression 2026-08-20: second consecutive photo request delivered the text and zero photos once the close flipped needsHumanEffective. Photo counts are deliberately not asserted; shouldSendGalleryImages already covers the empty-list defect)",
+  "tags": ["marker", "gallery", "live"],
+  "lang": "en",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "seedConversation": { "priceGiven": true, "qualification": { "people": 2, "plan": "core_2d1n_chivor" } },
+  "criteria": [
+    { "id": "first-request-ships", "rule": "output_flag_equals", "flag": "shouldSendGalleryImages", "expected": true, "turn": 1, "weight": 2, "critical": true },
+    { "id": "second-request-ships", "rule": "output_flag_equals", "flag": "shouldSendGalleryImages", "expected": true, "turn": 2, "weight": 2, "critical": true },
+    { "id": "repeat-request-ships", "rule": "output_flag_equals", "flag": "shouldSendGalleryImages", "expected": true, "turn": 3, "weight": 2, "critical": true },
+    { "id": "multi-theme-request-ships", "rule": "output_flag_equals", "flag": "shouldSendGalleryImages", "expected": true, "turn": 4, "weight": 2, "critical": true },
+    { "id": "marker-hidden-first", "rule": "reply_must_not_match", "patterns": ["\\[\\[\\s*FOTOS|FOTOS\\s*:|\\bmarker\\b"], "turn": 1, "weight": 2, "critical": true },
+    { "id": "marker-hidden-second", "rule": "reply_must_not_match", "patterns": ["\\[\\[\\s*FOTOS|FOTOS\\s*:|\\bmarker\\b"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "no-announcement-first", "rule": "reply_must_not_match", "patterns": ["here (?:are|they are|you go)|i'?m sending|i'?ll send|sending you|i'?m sharing|i'?ll share"], "turn": 1, "weight": 1 },
+    { "id": "no-announcement-second", "rule": "reply_must_not_match", "patterns": ["here (?:are|they are|you go)|i'?m sending|i'?ll send|sending you|i'?m sharing|i'?ll share"], "turn": 2, "weight": 1 },
+    { "id": "one-question-first", "rule": "max_question_marks", "max": 1, "turn": 1, "weight": 1, "critical": true },
+    { "id": "one-question-second", "rule": "max_question_marks", "max": 1, "turn": 2, "weight": 1, "critical": true }
+  ],
+  "turns": [
+    {
+      "user": "Do you have photos of the mine?",
+      "mockReply": "You go down into the tunnel with a guide and full safety gear. What date do you have in mind?\n[[FOTOS:mine]]",
+      "expect": { "shouldSendReply": true, "shouldSendGalleryImages": true }
+    },
+    {
+      "user": "And photos with kids? we're bringing the little ones",
+      "mockReply": "The descent adapts to the little ones' pace without losing the experience. How old are they?\n[[FOTOS:kids]]",
+      "expect": { "shouldSendReply": true, "shouldSendGalleryImages": true }
+    },
+    {
+      "user": "Photos of the mine again, please",
+      "mockReply": "Sure, let's look at another part of the experience. Does the date work for you?\n[[FOTOS:mine]]",
+      "expect": { "shouldSendReply": true, "shouldSendGalleryImages": true }
+    },
+    {
+      "user": "And show me the lodging and the transport",
+      "mockReply": "This way you can check out the Hacienda and the vehicle for the route. Shall we move forward?\n[[FOTOS:hotel,car]]",
+      "expect": { "shouldSendReply": true, "shouldSendGalleryImages": true }
+    }
+  ]
+}

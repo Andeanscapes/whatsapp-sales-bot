@@ -1,0 +1,98 @@
+{
+  "id": "partner-pause-reschedule-offer",
+  "source": "EN twin of partner-pause-reschedule-offer",
+  "tags": [
+    "objection",
+    "live"
+  ],
+  "lang": "en",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "seedConversation": {
+    "phase": "pricing",
+    "priceGiven": true,
+    "qualification": {
+      "people": 2,
+      "plan": "core_2d1n_chivor"
+    }
+  },
+  "seedQualification": {
+    "people": 2,
+    "plan": "core_2d1n_chivor"
+  },
+  "criteria": [
+    {
+      "id": "summary-named",
+      "rule": "reply_must_match",
+      "patterns": [
+        "CORE|summary|partner|people|plan"
+      ],
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "reschedule-line",
+      "rule": "reply_must_match",
+      "patterns": [
+        "reschedul|change the date|date change|7 days|no cost|free of charge"
+      ],
+      "turn": 2,
+      "weight": 2
+    },
+    {
+      "id": "no-cuando-me-escriben",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "when (?:you|you two|you guys) (?:decide|talk|have)[^.?!]{0,30}(?:let me know|write me|tell me)|let me know when|you can write me when"
+      ],
+      "turn": 2,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "no-links-or-pressure",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "instagram|https?://|wa\\.me|last (?:few )?spots?|book (?:it )?now|selling out"
+      ],
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "no-price-repeat",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "\\$\\s?\\d|\\bCOP\\b|\\d{3}[.,]\\d{3}"
+      ],
+      "turn": 2,
+      "weight": 1
+    }
+  ],
+  "turns": [
+    {
+      "user": "Hi, we are 2, how much is the CORE?",
+      "replay": true,
+      "mockReply": "For 2 people, CORE comes to *$950,000 COP*, with the night at the Hacienda and one guided mine included.\n\nWhich date works for you?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "We'll talk it over with my partner",
+      "mockReply": "Of course. Here is the summary: CORE for 2 people in Chivor, with the night at the Hacienda. If you need to change the date, it can be rescheduled at no cost up to 7 days before. Would it help if I sent you some photos to look at together?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

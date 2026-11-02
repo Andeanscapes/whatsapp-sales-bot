@@ -6,6 +6,7 @@ import { loadScenarios } from './scenario-loader.js';
 import { evaluateScenario } from './evaluate-scenario.js';
 import { fileURLToPath } from 'node:url';
 import type { TurnRecord } from './runner.js';
+import { detectLanguageOrNull } from '../../services/language-service.js';
 
 function scenario(runner: 'message' | 'lifecycle' = 'message', tags?: string[]) {
   return scenarioSchema.parse({
@@ -43,6 +44,23 @@ function turn(shouldSendGalleryImages: boolean): TurnRecord {
     },
   };
 }
+
+describe('English curated pack integrity', () => {
+  const spanish = loadScenarios(fileURLToPath(new URL('./scenarios', import.meta.url)));
+  const english = loadScenarios(fileURLToPath(new URL('./scenarios-en', import.meta.url)));
+
+  it.each(english.map(item => [item.id, item] as const))('%s is a live-consistent English twin', (id, item) => {
+    const twin = spanish.find(candidate => candidate.id === id);
+    expect(twin, `Spanish twin of ${id}`).toBeDefined();
+    expect(item.lang).toBe('en');
+    expect(twin!.lang).toBe('es');
+    expect(item.tags?.includes('live') ?? false).toBe(twin!.tags?.includes('live') ?? false);
+  });
+
+  it.each(english.map(item => [item.id, item] as const))('%s opens in English so the bot replies in English', (_id, item) => {
+    expect(detectLanguageOrNull(item.turns[0].user)).toBe('en');
+  });
+});
 
 describe('conversation eval integrity', () => {
   it.each([

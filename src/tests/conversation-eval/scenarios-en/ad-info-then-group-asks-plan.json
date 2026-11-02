@@ -1,0 +1,23 @@
+{
+  "id": "ad-info-then-group-asks-plan",
+  "source": "EN twin of ad-info-then-group-asks-plan (history: info+date openings and couple replies; diagnosis-first funnel: group -> diagnosis -> plan recommendation; turn 3 answers both diagnosis axes so the plan is due whichever question the model asked)",
+  "tags": ["opening", "qualification", "diagnosis", "live"],
+  "lang": "en",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "criteria": [
+    { "id": "diagnosis-question-turn2", "rule": "reply_must_match", "patterns": ["BASIC[\\s\\S]{0,120}CORE[\\s\\S]{0,120}PRIME|vehicle|transfer|route|prepared|scope|complete|essential|goal|looking for"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "no-intensity-framing-turn2", "rule": "reply_must_not_match", "patterns": ["intens|tranquil|relax|calm"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "no-plan-offer-turn2", "rule": "reply_must_not_match", "patterns": ["2[\\s-]*days?|3[\\s-]*days?|2[\\s-]*nights?|3[\\s-]*nights?|plan for|short plan|long plan"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "no-price-before-diagnosis", "rule": "price_after_min_fields", "minFields": 2, "weight": 2, "critical": true },
+    { "id": "one-question-turn2", "rule": "max_question_marks", "max": 1, "turn": 2, "weight": 1 },
+    { "id": "no-reask-group", "rule": "known_field_not_reasked", "field": "people", "suppliedTurn": 2, "weight": 1, "critical": true },
+    { "id": "plan-recommendation-turn3", "rule": "reply_must_match", "patterns": ["plan|days?|nights?|recommend|\\bCORE\\b|\\bPRIME\\b"], "turn": 3, "weight": 2, "critical": true },
+    { "id": "reflects-diagnosis-turn3", "rule": "reply_must_match", "patterns": ["transfer|vehicle|route|scope|complete|essential|access|4x4|comfort|local|get you there|take you|PRIME|two mines|has it all"], "turn": 3, "weight": 1, "critical": false }
+  ],
+  "turns": [
+    { "user": "C02 - Hi, I want information about dates and availability", "mockReply": "Hi! Would it be just you, as a couple, or in a group?", "expect": { "shouldSendReply": true } },
+    { "user": "Couple", "mockReply": "Perfect for the two of you. Are you coming in a prepared vehicle, or would you prefer the local transfer to the site?", "expect": { "shouldSendReply": true } },
+    { "user": "The most complete one, and with the local transfer", "mockReply": "With the local transfer sorted, PRIME is the most complete experience: two mines and a guided horseback ride. What date do you have in mind?", "expect": { "shouldSendReply": true } }
+  ]
+}

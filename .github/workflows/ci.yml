@@ -88,9 +88,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: llm-evaluation
-    # REAL DeepSeek eval. PRs into master only. Burns tokens.
-    # Blocking with drop-tolerance: fails only if the average drops more than
-    # MAX_SCORE_DROP vs the committed master LLM baseline, or falls below the
+    # REAL DeepSeek eval, Spanish pack (scenarios/) and English curated pack
+    # (scenarios-en/). PRs into master only. Burns tokens.
+    # Blocking with drop-tolerance: fails only if a scenario drops more than
+    # MAX_SCORE_DROP vs its committed master LLM baseline, or the average falls below the
     # low absolute floor MIN_CONVERSATION_SCORE. LLM output is non-deterministic,
     # so the gate tolerates run-to-run variance instead of a hard >=80 check.
     if: github.event_name == 'pull_request' && github.base_ref == 'master' && github.event.pull_request.head.repo.full_name == github.repository
@@ -119,12 +120,18 @@ jobs:
       - run: npm ci
       - run: npm run eval:conversations:llm-bot
         continue-on-error: true
+      - run: npm run eval:conversations:llm-bot -- --lang en
+        continue-on-error: true
       - run: npm run eval:conversations:compare -- --baseline src/tests/conversation-eval/baselines/master-llm-bot.json --current artifacts/conversation-eval-llm-bot.json --min-average $MIN_CONVERSATION_SCORE --max-drop $MAX_SCORE_DROP
+      - run: npm run eval:conversations:compare -- --baseline src/tests/conversation-eval/baselines/master-llm-bot-en.json --current artifacts/conversation-eval-llm-bot-en.json --min-average $MIN_CONVERSATION_SCORE --max-drop $MAX_SCORE_DROP
+        if: success() || failure()
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: conversation-eval-llm-report
-          path: artifacts/conversation-eval-llm-bot.json
+          path: |
+            artifacts/conversation-eval-llm-bot.json
+            artifacts/conversation-eval-llm-bot-en.json
           retention-days: 7
 
   # To compare feature branch vs develop (deterministic, local):

@@ -1,0 +1,20 @@
+{
+  "id": "coscuez-tier-word-quote-card",
+  "source": "EN twin of coscuez-tier-word-quote-card (regression 2026-10-14: the 'most complete' tier word on Coscuez stored no plan, so the price turn had no QUOTE LOCK and shipped no plan card; 'November 28' was stored month-only)",
+  "tags": ["plan", "multisite"],
+  "lang": "en",
+  "seedSystem": { "reopenPausedSites": true },
+  "criteria": [
+    { "id": "price-turn-flagged", "rule": "output_flag_equals", "flag": "priceJustGiven", "expected": true, "turn": 6, "weight": 2, "critical": true },
+    { "id": "card-plan-is-coscuez-prime", "rule": "output_flag_equals", "flag": "mediaPlanId", "expected": "prime_2d1n_coscuez", "turn": 6, "weight": 2, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 6, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "Hi", "mockReply": "Hi! We have two emerald destinations: Chivor and Coscuez. Which one appeals to you more?", "expect": { "shouldSendReply": true } },
+    { "user": "Coscuez", "mockReply": "Great, Coscuez is a real mine plus a hike to the viewpoint. Are you traveling as a couple, solo or in a group?", "expect": { "shouldSendReply": true } },
+    { "user": "Couple", "mockReply": "In Coscuez there are two ways to experience it. Are you after the essential experience, with one mine and the hike to the viewpoint, or the most complete one that adds Fura and Tena on the second day?", "expect": { "shouldSendReply": true } },
+    { "user": "Yes the most complete one", "mockReply": "Perfect. PRIME in Coscuez adds Fura and Tena on the second day. Do you have a rough date in mind?", "expect": { "shouldSendReply": true, "mediaPlanId": "prime_2d1n_coscuez" } },
+    { "user": "Not yet", "mockReply": "Got it. Our published departures are October 24 and 31, November 14 and 28, and December 12. Which month works best for you?", "expect": { "shouldSendReply": true } },
+    { "user": "November 28 sounds good", "mockReply": "November 28 it is. For 2 people, PRIME Coscuez comes to *$1,840,000*. How does that sound?", "expect": { "shouldSendReply": true, "priceJustGiven": true, "mediaPlanId": "prime_2d1n_coscuez" } }
+  ]
+}

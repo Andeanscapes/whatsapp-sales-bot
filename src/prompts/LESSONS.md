@@ -621,3 +621,79 @@ quote-dates cue.
   total instead of it being the only total (the cue may list cheaper Chivor plans);
   `entry-retarget-R01-no-history` drops "de nuevo" (echo of "ya consulté antes") and runs 2x.
 - Metrics: full live pass 96 / 4 hard fails → 100 / 0 ($0.59). Only miss: H02 non-critical route mention.
+
+## 2026-11-01 — Permission ask names blockers and never offers an exit
+
+date: 2026-11-01
+profile: andean-scapes-co@1
+symptom: The 23h permission message reached 19 quiet leads last week with 0 yes and 1 reply (a voice note). Templates reach nobody without permission, so the 23h message is the only follow-up that reaches everyone. The ask named no reason the lead stopped.
+change: §PERMISO-SEGUIMIENTO asks for 2 or 3 likely blockers (fecha, valor, cómo llegar, consultarlo) as a statement with no question mark, then the single permission question. Sales policy (owner decision): the ask never offers an exit from future contact. Enforced in the prompt (both sections and RUNTIME) and in `validateConsentAsk`, which rejects `opt_out_offer` (never repaired). The pattern runs on `normalize(text)` and every branch names the exit itself: the first draft of the regex rejected "respondes cuando puedas, no hay afán" and any English "stop", and each false rejection burns one of the three attempts. An unprompted stop request is still honoured by the opt-out path.
+metrics_before: opt_out_offer_rejected=n/a; motive_statements_in_prompt=0
+metrics_after: measure:consent deliverable 100% before and after (5 runs x 4 contexts, deepseek-v4-flash @0.2), 0 opt_out_offer rejections; drafts name context-fitting blockers (a lead with a date no longer hears "la fecha"); post-stop variant names none; test:ci 2542 pass
+context: Opt-out phrasing is compliance-sensitive. Keep the rule owner-visible: removing the exit is a sales decision, not a legal one. Colombia Ley 2300 hour limits are not yet applied (see PR2); verify with counsel before relying on a timing change.
+
+## 2026-11-01 — Close without the bridge: budget (C1 of 6)
+
+- Observed: 73 threads of last week; about 10 leads went silent after the quote, 6 paused on "lo hablo con mi pareja" with no recovery, and the owner bridged several closes by hand.
+- Change: `systemPromptMaxTokens` 40,000 → 44,000 before the behavior commits. Worst measured prompt was 38,566 with 1,434 headroom, too little for the new rules. No skill text removed in this commit.
+- Metrics: measure:prompt worst 38,566 / 44,000; projected 44,866 / 65,536 window; output 800 and history 12,000 unchanged.
+
+## 2026-11-01 — Close without the bridge: emerald policy (C2 of 6)
+
+- Observed: two leads were told "si la encuentras es tuya" and another "se maneja con los mineros". The catalog said nothing about ownership, so the model invented it.
+- Change: catalog `emeraldPolicy.notes` and one Chivor clarification say a find is not guaranteed, is handled on the spot with the miners and the guide, and is the emerald culture, nature and food. andean-scapes skill: answer in one sentence from `emeraldPolicy`; do not state ownership unless the policy says so.
+- Scenario `emerald-ownership-honest` (ES + EN, live). Criteria added: no find promise, no ownership claim (critical).
+- Caveat: live runs read the CDN feed. Catalog text reaches the live suite only after `npm run dynamic:push -- --target dev`. Before the push, EN live showed "it's yours to keep" from the old notes.
+- Full live pass C2 (--runs 1, CDN feed): ES avg 99 / 2 hard fails, EN avg 98 / 4 hard fails. Pre-branch baseline f2c0b2e in the same session: ES 98 / 2, EN 97 / 4. Hard-fail sets differ between runs (variance); none of the C2 scenarios failed.
+
+## 2026-11-01 — Close without the bridge: partner pause (C3 of 6)
+
+- Observed: 6 threads paused on "lo hablo con mi pareja" and never came back; the owner bridged the closes with the reschedule policy (free until 7 days before) and photos.
+- Change: first explicit pause = plan + group summary, one reschedule line from `reservationPolicy`, and one support question (photos to show the partner, or what matters most). The total is not repeated (the existing `pause-no-price-repeat` guard stays). Second pause unchanged: no price, no question. `referent.i` shareable-summary updated to match.
+- Test change (owner-approved): `hot-lead-moto-partner-pause` turn 5 `pause-no-question` max 0 -> 1. New scenario `partner-pause-reschedule-offer` (ES + EN).
+- Metrics: partner-pause-reschedule-offer 100/100 (ES/EN, 2 runs); hot-lead-moto-partner-pause 100 (2 runs). Full pass ES 100 / 1 hard fail (consecutive-gallery-requests), EN 98 / 4 hard fails (all in the pre-branch baseline set except entry-retarget-R03-moto, which passes 2/2 on rerun).
+
+## 2026-11-01 — Close without the bridge: quote, objections, close (C4 of 6)
+
+- Observed: quotes ended with "¿alguna fecha en mente?" or no date; two-plan leads were asked a third question instead of both totals; "lo pienso" and "está caro" got a generic answer; the price-sensitive question about kids got no lighter option.
+- Change (skill): FASE 3 quote carries what is not included (only when asked or a known extra), a recommended published date and a soft booking question; never "qué mes" or "alguna fecha en mente" (any language). Two plans with 1-2 people: quote both in one turn. Price-sensitive question: answer from DATOS and offer the lighter scope. FASE 4 "lo pienso / está caro": one question about what weighs most. T3b: one reschedule line next to the deposit. `referent.b` and `referent.g` do-fields updated to match.
+- New scenarios ES + EN: `kids-price-sensitivity-downsell`, `two-plan-narrow-quotes-both`, `quote-recommends-date-soft-cta`.
+- Test notes: the EN twin of `two-plan-narrow-quotes-both` accepts `950.000` or `950,000`. The live EN reply printed Spanish thousands separators (open point, not changed here). `kids-rule` is non-critical in the kids scenario (the turn asks for a lighter option, not the kids rule).
+- Engine finding, NOT changed (out of scope, prompt/catalog only): "Uf, es mucho para nosotros" hits the deterministic soft-close path (`isSoftCloseMessage`, response-engine.ts ~1466) and returns the Instagram farewell with a link, a deterministic reply that breaks invariant 9. Needs its own PR.
+- Metrics: full pass ES 99 / 1 hard fail (consecutive-gallery-requests, pre-existing flake), EN 99 / 3 hard fails (pre-branch baseline EN 97 / 4). New scenarios 2/2 each on rerun.
+
+## 2026-11-01 — Close without the bridge: humanness and opener (C5 of 6)
+
+- Observed: openers repeated "Buenísimo" and campaign lines near-verbatim; C01 first reply was a menu with no price.
+- Change: seller-personality varies the acknowledgment word per thread; referent.a/c do-fields ask for varied openings; entry-strategy and cold-info-handler unchanged. The price-anchor line was tried in three wordings and did not move the live model (0/4 on c01-opener-price-anchor), so it was dropped; the scenario keeps the length, one-question and no-link checks.
+- Also in this commit: T3a routing for "¿cuál me recomiendas?" (recommend a published date, not T3); T3b reschedule line only when asked; FASE 3 "dos planes nombrados" quotes both totals.
+- Metrics: c01-opener-price-anchor 100/100 (ES/EN); date-pick-price-then-close-T3b 100 on rerun (one 87 flake); two-plan-narrow-quotes-both 100/100 after the FASE 3 fix.
+
+## 2026-11-01 — Close without the bridge: permission copy (C6 of 6)
+
+- Observed: 23h permission message reached 19 quiet leads, 0 yes. Follow-up timing, switches, validator and marker unchanged.
+- Change (content only): §PERMISO-SEGUIMIENTO may name ONE real DATOS condition that resolves the likely blocker (free rescheduling up to 7 days, or the transport route). No amounts, no new dates.
+- Metrics: measure:consent 100% marker / 100% deliverable (4 contexts x 10 runs), 0 markerless fallbacks, 0 opt_out_offer rejections. Test suite conversation eval 282/282.
+
+## 2026-11-01 — Close without the bridge: final pass
+
+- Gates: typecheck, lint, validate:prompt, validate:skills, build, measure:prompt (worst 38,776 / 44,000), test:ci 2552/2552, conversation eval 282/282, measure:consent 100%.
+- Live single pass (--runs 1): ES 99 / 1 hard fail; EN 95 / 9 hard fails. Reruns of the new or touched scenarios: emerald-ownership-honest EN 87 (0 hard) and hot-lead-moto-partner-pause ES 100/3 runs. EN flakes (ad-price-date-opening, chivor-basic-late-return-t3b-close, consecutive-gallery-requests, date-pick-price-then-close-T3b, entry-retarget-R01-with-history) are variance; a live EN run also answered in Spanish once on emerald-ownership-honest, an open language-consistency issue.
+- Open: EN language drift on replayed-EN scenarios; "Uf, es mucho" Instagram soft-close (engine, invariant 9); per-person rounding and EN thousands separators; one-shot template still 0 replies (not a skill issue).
+
+## 2026-11-01 — Review fix: policy number and place name in the prompt
+
+- Review (REQUEST CHANGES): "hasta 7 días antes" was hardcoded in whatsapp-sales (3 lines) and referent.i, and "Bogotá" in the FASE 3 example. Both are catalog data (`reservationPolicy` already reaches DATOS) and broke invariant 6. T7 still listed "precio" in the summary that must not repeat it.
+- Fix: the prompt points to DATOS `reservationPolicy` with no number; the example says "el transporte va aparte"; T7 summary is plan + personas.
+- Guard gap: `validate:prompt` let both through. New guard `policy day count` (`\d+ días antes`). The destination guard ended in `\b`, which never matches after an accented letter without the `u` flag, so "Bogotá", "Ubalá" and "Boyacá" followed by a space were never caught; now a negative lookahead. Added Bogotá, Coscuez, Borbur. Verified red on the old text, green on the fix.
+- Metrics: gates green, test:ci 2552/2552, eval 282/282; live 2 runs: partner-pause-reschedule-offer, hot-lead-moto-partner-pause, consult-with-partner, date-pick-price-then-close-T3b, quote-recommends-date-soft-cta all 100.
+- Second review: two more literals from this series. Plan names in the FASE 3 two-plan example (now `[PLAN_A] y [PLAN_B]`) and a "4x4 local" arrival claim in §PERMISO-SEGUIMIENTO that is false for Coscuez (now "the arrival alternative the site's CATALOGO gives"). New guard `catalogPlanNameGuards`: plan short names come from the CDN payloads, because `andean-scapes.skill.json` is brand-only and `registryGuards` never saw a plan name. Verified red on the old text. `hot-lead-moto-partner-pause` restored to its original one-line formatting so the approved change is a 1-number diff. Gates green; two-plan-narrow-quotes-both and hot-lead-moto-partner-pause 100 (ES/EN, 2 runs); measure:consent 100%.
+
+## 2026-11-02 — Release 2.2.0 CI: stale October scenario and EN "how do I book"
+
+- CI (llm eval, EN compare) failed on two drops > 8: `buying-signal-payment-facts` 100 -> 75 and `pet-in-mine-objection-close` 100 -> 89.
+- `pet-in-mine-objection-close`: variance. 4/4 on the release and 4/4 on master with the CI fixture.
+- `buying-signal-payment-facts`: calendar drift. It asked to book "for October"; the CI fixture's October dates (24, 31) are now past, so the model correctly offered November and dropped the deposit line (5/5 fail). Moved to January (fixture: 9, 23), ES + EN; criteria unchanged.
+- After the move EN still failed ~1 in 2: "how do I book for January?" listed the dates and dropped the deposit and methods. T8 now states the rule holds in any language, and FASE 3 "Fecha y cierre" defers to T8 on a booking question. EN 10/10, ES 4/4.
+- CI-equivalent run (no CDN URL): ES 98, EN 98; both compare steps exit 0.
+- Note: `baselines/master-llm-bot.json` (ES) has no scenarios, so the ES compare only checks the average floor. Refresh it from a real `--runs 2` artifact.

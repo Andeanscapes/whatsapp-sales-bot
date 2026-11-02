@@ -918,6 +918,10 @@ describe('skills-prompt-assembly', () => {
     // invariant 10), so an invited "no" permanently kills follow-up.
     expect(section).toContain('no invites a un "no"');
     expect(section).not.toContain('te revise disponibilidad en otro mes');
+    // Sales policy (owner, 2026-11-01): the ask never offers an exit from contact,
+    // and the motives are named as statements, not questions.
+    expect(section).toContain('Nunca ofrezcas dejar de recibir mensajes');
+    expect(section).toContain('sin signos de interrogación');
   });
 
   it('keeps the post-stop variant consistent with the permission close', () => {
@@ -933,6 +937,8 @@ describe('skills-prompt-assembly', () => {
     // A post-stop lead is the most likely to decline, so the exit door that used
     // to live here must stay removed and stay explicitly banned.
     expect(section).toContain('prohibición de invitar a un "no"');
+    // The blocker statement is for an ordinary silence, not for a customer who once asked to stop.
+    expect(section).toContain('no** nombres motivos');
     expect(section).not.toContain('lo dejamos así');
   });
 
@@ -949,6 +955,10 @@ describe('skills-prompt-assembly', () => {
     // omit the mandatory marker.
     expect(reask).toContain('§PERMISO-SEGUIMIENTO');
     expect(reask).toContain('[[FOLLOWUP_CONSENT]]');
+    // Blockers are named on an ordinary silence only, never to a customer who asked to stop.
+    expect(plain).toContain('no nombres uno que ya resolvio');
+    expect(reask).toContain('No nombres motivos de no seguir');
+    expect(reask).not.toContain('no nombres uno que ya resolvio');
   });
 
   // The output contract must be the LAST thing the model reads, ending on the

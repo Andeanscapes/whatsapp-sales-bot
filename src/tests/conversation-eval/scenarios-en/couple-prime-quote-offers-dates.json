@@ -1,0 +1,40 @@
+{
+  "id": "couple-prime-quote-offers-dates",
+  "source": "EN twin of couple-prime-quote-offers-dates (customer replay 2026-10-27: PRIME couple got the total and a dead-end 'do you have a date in mind' question)",
+  "tags": ["pricing", "live"],
+  "lang": "en",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    { "id": "prime-total", "rule": "reply_must_match", "patterns": ["1[.,]700[.,]000"], "turn": 3, "weight": 3, "critical": true },
+    { "id": "prime-names-published-dates", "rule": "reply_must_match", "patterns": ["\\b(?:october|november|december|january)\\s+\\d{1,2}(?:st|nd|rd|th)?\\b(?![,\\d])|\\b\\d{1,2}(?:st|nd|rd|th)?\\s+(?:of\\s+)?(?:october|november|december|january)\\b"], "turn": 3, "weight": 3, "critical": true },
+    { "id": "prime-no-dead-end", "rule": "reply_must_not_match", "patterns": ["does that (?:date )?work|a date in mind|any date in mind|date in mind\\s*\\?"], "turn": 3, "weight": 3, "critical": true },
+    { "id": "prime-one-question", "rule": "max_question_marks", "max": 1, "turn": 3, "weight": 2, "critical": true }
+  ],
+  "turns": [
+    {
+      "user": "C01 Hi! I want to know what the emerald mine experience is about.",
+      "replay": true,
+      "mockReply": "It's a real immersion in the emerald region: a mine with local guides, a night at the hacienda and a complete disconnect 🌿\n\nWhich suits you best: BASIC day trip without a night, CORE with one mine and a night, or PRIME with two mines and horseback riding?"
+    },
+    {
+      "user": "Prime",
+      "replay": true,
+      "mockReply": "Great choice: PRIME is the most complete option, two mines and horseback riding included, with a night at Hacienda El Recuerdo.\n\nHow many people are traveling?",
+      "seedQualification": {
+        "plan": "prime_2d1n_chivor"
+      }
+    },
+    {
+      "user": "2",
+      "mockReply": "For 2 people, PRIME is $1,700,000 COP (about $850,000 per person). The next departures are November 14 and November 28. Which one works for you?",
+      "expect": {
+        "shouldSendReply": true
+      },
+      "seedQualification": {
+        "people": 2,
+        "plan": "prime_2d1n_chivor"
+      }
+    }
+  ]
+}

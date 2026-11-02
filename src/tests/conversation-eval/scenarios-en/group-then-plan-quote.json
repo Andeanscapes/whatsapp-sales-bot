@@ -1,0 +1,26 @@
+{
+  "id": "group-then-plan-quote",
+  "source": "EN twin of group-then-plan-quote (couple → all available Chivor options → plan → quote; three-option presentation supersedes the old binary diagnosis)",
+  "tags": ["qualification", "live"],
+  "lang": "en",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "mockPricing": { "planId": "core_2d1n_chivor", "individual": 650000, "couple": 1200000 },
+  "criteria": [
+    { "id": "all-options-after-group", "rule": "reply_must_match", "patterns": ["BASIC", "CORE", "PRIME"], "turn": 1, "weight": 2, "critical": true },
+    { "id": "no-intensity-framing", "rule": "reply_must_not_match", "patterns": ["intens|tranquil|relax|calm|laid[- ]back"], "turn": 1, "weight": 2, "critical": true },
+    { "id": "no-price-before-choice", "rule": "reply_must_not_match", "patterns": ["\\$|\\bCOP\\b"], "turn": 1, "weight": 2, "critical": true },
+    { "id": "plan-after-diagnosis", "rule": "reply_must_match", "patterns": ["plan|\\bdays?\\b|night"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "price-after-fields", "rule": "price_after_min_fields", "minFields": 1, "weight": 2, "critical": true },
+    { "id": "couple-total-exact", "rule": "reply_must_match", "patterns": ["1[.,]200[.,]000"], "turn": 3, "weight": 2, "critical": true },
+    { "id": "no-wrong-couple-total", "rule": "reply_must_not_match", "patterns": ["1[.,]300[.,]000|2[.,]400[.,]000"], "turn": 3, "weight": 2, "critical": true },
+    { "id": "no-reask-group", "rule": "known_field_not_reasked", "field": "people", "suppliedTurn": 1, "weight": 1, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 4, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "We're a couple", "mockReply": "We have BASIC, a day trip with no overnight; CORE, with one mine and a night; and PRIME, with two mines and horseback riding. Which one fits you best?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2 } },
+    { "user": "The CORE", "mockReply": "The CORE plan is the essential experience: one real mine and a guided hike. What date do you have in mind?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2, "plan": "core_2d1n_chivor" } },
+    { "user": "How much is it?", "mockReply": "Great choice. For the two of you it comes to $1,200,000 COP, all inclusive. What date do you have in mind?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2, "plan": "core_2d1n_chivor" } },
+    { "user": "In August, the second weekend", "mockReply": "Perfect. The next step is to check that date with the team to secure your spot. Want me to confirm it?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2, "plan": "core_2d1n_chivor", "date": "agosto" } }
+  ]
+}

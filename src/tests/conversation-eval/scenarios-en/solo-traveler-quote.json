@@ -1,0 +1,16 @@
+{
+  "id": "solo-traveler-quote",
+  "source": "EN twin of solo-traveler-quote (history: solo short replies)",
+  "tags": ["qualification"],
+  "lang": "en",
+  "mockPricing": { "planId": "core_2d1n_chivor", "individual": 500000, "couple": 900000 },
+  "criteria": [
+    { "id": "solo-quote", "rule": "group_quote_integrity", "people": 1, "planId": "core_2d1n_chivor", "expectedTotal": 500000, "turn": 2, "weight": 2, "critical": true },
+    { "id": "no-reask-group", "rule": "known_field_not_reasked", "field": "people", "suppliedTurn": 1, "weight": 1, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 2, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "Just me", "mockReply": "Perfect, for one person I recommend the active plan. What date do you have in mind?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 1 } },
+    { "user": "In October", "mockReply": "For 1 person it's $500,000 COP. Would you like me to check the published dates for October?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 1, "plan": "core_2d1n_chivor", "date": "October" } }
+  ]
+}

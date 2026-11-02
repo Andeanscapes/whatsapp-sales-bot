@@ -1,0 +1,15 @@
+{
+  "id": "big-group-12",
+  "source": "EN twin of big-group-12 (history: large group boundary)",
+  "tags": ["qualification", "safety"],
+  "lang": "en",
+  "criteria": [
+    { "id": "large-group-date-validation", "rule": "big_group_date_validation", "threshold": 8, "weight": 2, "critical": true },
+    { "id": "large-group-price-review", "rule": "big_group_price_review", "threshold": 8, "weight": 2, "critical": true },
+    { "id": "no-exact-total", "rule": "reply_must_not_match", "patterns": ["\\$[0-9.,]+ COP"], "weight": 1, "critical": true }
+  ],
+  "turns": [
+    { "user": "Hi, we are 12 people", "mockReply": "For a group of 12 the team needs to validate capacity, date and the exact price before quoting. What date do you have in mind?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 12 } },
+    { "user": "In December", "mockReply": "Perfect. We'll check availability and adjust the price to the size of the group. Do you have a specific date?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 12, "date": "December" } }
+  ]
+}

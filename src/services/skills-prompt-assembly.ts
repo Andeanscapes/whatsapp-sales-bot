@@ -913,8 +913,13 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
       const noDayClose = offerDates.length > 0
         ? ` Sin dia elegido: termina nombrando estas fechas publicadas en 1 linea (${offerDates.join(', ')}) y pregunta cual les sirve. Prohibido cerrar con "alguna fecha en mente", "que mes", "te suena" u ofrecer otro plan que no pidio.`
         : '';
+      // The quoted sentence is copied verbatim, so it must be in the customer's
+      // language: a Spanish-only sentence made English leads get Spanish quotes.
+      const quoteSentence = lang === 'en'
+        ? `For ${quote.people} ${quote.people === 1 ? 'person' : 'people'}, the plan comes to ${formatMoney(amount, quote.currency)} ${quote.currency}`
+        : `Para ${quote.people} ${quote.people === 1 ? 'persona' : 'personas'}, el plan queda en ${formatMoney(amount, quote.currency)} ${quote.currency}`;
       runtime.push(
-        `QUOTE LOCK: escribe "Para ${quote.people} ${quote.people === 1 ? 'persona' : 'personas'}, el plan queda en ${formatMoney(amount, quote.currency)} ${quote.currency}". Copia esas personas y ese total; no recalcules ni redondees otra cifra.${quote.requiresTransportConfirmation ? '' : perPersonQuoteCue(amount, quote.people, quote.currency)}${transportNote} Este turno entrega ese total; no lo pospongas para despues de preguntar fecha o mes.${noDayClose}`,
+        `QUOTE LOCK: escribe "${quoteSentence}". Copia esas personas y ese total; no recalcules ni redondees otra cifra.${quote.requiresTransportConfirmation ? '' : perPersonQuoteCue(amount, quote.people, quote.currency)}${transportNote} Este turno entrega ese total; no lo pospongas para despues de preguntar fecha o mes.${noDayClose}`,
       );
     }
   }
@@ -1018,7 +1023,10 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
         reaskAfterOptOut
           ? 'Aplica whatsapp-sales.skill.md §PERMISO-SEGUIMIENTO y ADEMAS la variante §PERMISO-SEGUIMIENTO-POST-PARADA (mismo turno proactivo, tono mas breve, sin mencionar la pausa anterior).'
           : 'Aplica únicamente whatsapp-sales.skill.md §PERMISO-SEGUIMIENTO.',
-        'Tu salida debe ser solo el breve mensaje de permiso, con exactamente una pregunta, y terminar literalmente con [[FOLLOWUP_CONSENT]].',
+        'Tu salida debe ser solo el breve mensaje de permiso, con exactamente una pregunta, y terminar literalmente con [[FOLLOWUP_CONSENT]]. Nunca ofrezcas dejar de recibir mensajes.',
+        reaskAfterOptOut
+          ? 'No nombres motivos de no seguir en este turno.'
+          : 'Los motivos de no seguir van como afirmacion sin signos de interrogacion, elegidos segun donde quedo la conversacion: no nombres uno que ya resolvio (si ya dio fecha, no digas "la fecha").',
         'Prohibido preguntar por fecha, plan, precio, personas, reserva o pago en este turno.',
       ].join(' '),
     );

@@ -5877,6 +5877,21 @@ describe('processMessage — plan reference switch and plan card', () => {
     expect(result.priceJustGiven).toBe(true);
   });
 
+  it('writes the QUOTE LOCK sentence in English for an English conversation', async () => {
+    const phone = '573009993121';
+    repos.conversation.upsert(phone, { language: 'en', collected_people: 2, collected_plan: 'core_2d1n_chivor' });
+    mockLlmComplete.mockReset();
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'For 2 people it is the CORE total. Which date works?' } }));
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+
+    await processMessage({ repos, customerPhone: phone, message: 'How much is it?' });
+
+    const prompt = mockLlmComplete.mock.calls[0]?.[0].systemPrompt ?? '';
+    expect(prompt).toMatch(/QUOTE LOCK: escribe "For 2 people, the plan comes to \$[\d.]+ COP"/);
+    expect(prompt).not.toContain('el plan queda en');
+  });
+
   it('keeps the stored site and selects the quoted card within it despite equal cross-site prices', async () => {
     const phone = '573009993121';
     seedThread(phone, 'core_2d1n_coscuez');

@@ -1,0 +1,22 @@
+{
+  "id": "entry-retarget-R03-moto",
+  "source": "EN twin of entry-retarget-R03-moto (retargeting marker, motorcycle variant)",
+  "tags": ["marker", "live"],
+  "lang": "en",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "criteria": [
+    { "id": "marker-hidden", "rule": "reply_must_not_match", "patterns": ["R03|marker|campaign code"], "turn": 3, "weight": 2, "critical": true },
+    { "id": "recalls-context", "rule": "reply_must_match", "patterns": ["motorcycle|motorbike|\\bmoto\\b|Ubal[aá]"], "turn": 3, "weight": 2, "critical": true },
+    { "id": "diagnoses-blocker", "rule": "reply_must_match", "patterns": ["what(?:'s| is| was)? (?:still )?(?:missing|holding|stopp|left)|what held|what stopped|what changed|what (?:do|would) you need|what can i (?:sort|solve|help)|what(?:'s| is) (?:still )?needed"], "turn": 3, "weight": 2, "critical": true },
+    { "id": "no-brand-restart", "rule": "reply_must_not_match", "patterns": ["i'?m .{0,30}co-?founder|we are Andean Scapes|we're Andean Scapes|let me introduce Andean Scapes"], "turn": 3, "weight": 2, "critical": true },
+    { "id": "no-price-or-banned-emoji", "rule": "reply_must_not_match", "patterns": ["\\$|\\bCOP\\b|🎉|❤️|🔥|💰"], "turn": 3, "weight": 1 },
+    { "id": "emoji-restraint", "rule": "max_emojis", "max": 1, "turn": 3, "weight": 1 },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 3, "weight": 2, "critical": true }
+  ],
+  "turns": [
+    { "user": "Hi", "mockReply": "Hi! Would you be traveling solo, as a couple, or in a group?", "replay": true, "expect": { "shouldSendReply": true } },
+    { "user": "Two of us, we're a couple; we're interested in the intense motorcycle route", "mockReply": "Perfect for two, with the motorcycle route as the priority. What date do you have in mind?", "replay": true, "expect": { "shouldSendReply": true } },
+    { "user": "R03 hi again", "mockReply": "You liked the motorcycle route last time. What held you back: dates, price, logistics, or concerns about the road?", "expect": { "shouldSendReply": true } }
+  ]
+}

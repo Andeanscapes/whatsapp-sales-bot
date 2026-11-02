@@ -1,0 +1,89 @@
+{
+  "id": "kids-price-sensitivity-downsell",
+  "source": "EN twin of kids-price-sensitivity-downsell",
+  "lang": "en",
+  "tags": [
+    "objection",
+    "live"
+  ],
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "seedConversation": {
+    "phase": "pricing",
+    "priceGiven": true,
+    "qualification": {
+      "people": 4,
+      "plan": "prime_2d1n_chivor"
+    }
+  },
+  "seedQualification": {
+    "people": 4,
+    "plan": "prime_2d1n_chivor"
+  },
+  "criteria": [
+    {
+      "id": "kids-rule",
+      "rule": "reply_must_match",
+      "patterns": [
+        "full (?:spot|place|cupo)|counts? as|no (?:child|kids|children) (?:rate|price)|each (?:person|adult|child)"
+      ],
+      "turn": 2,
+      "weight": 1,
+      "critical": false
+    },
+    {
+      "id": "lighter-option",
+      "rule": "reply_must_match",
+      "patterns": [
+        "CORE|BASIC|lighter|one mine|day trip|scope"
+      ],
+      "turn": 2,
+      "weight": 2
+    },
+    {
+      "id": "no-invented-discount",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "discount|reduced price|special price|%"
+      ],
+      "turn": 2,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "no-links-or-pressure",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "instagram|https?://|wa\\.me|last (?:few )?spots?|book (?:it )?now|selling out"
+      ],
+      "weight": 2,
+      "critical": true,
+      "turn": 2
+    }
+  ],
+  "turns": [
+    {
+      "user": "Hi, we are 4 for PRIME. Do the kids pay the same?",
+      "replay": true,
+      "mockReply": "For 4 people, PRIME comes to *$3,400,000 COP*. Each person counts as a full spot.\n\nWhich date works for you?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Our two kids are 12 and 6. Is there something lighter for us?",
+      "mockReply": "At 12 and 6 they are fine; the minimum age is 5. Each person counts as a full spot, so the total stays the same. If the budget is tight, CORE has one mine and a night at the Hacienda, with a lighter scope.\n\nWhich one suits you better?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

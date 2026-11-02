@@ -8,7 +8,7 @@
     {
       "id": "human-language",
       "trigger": "todos los turnos",
-      "do": "Usa verbos activos, sujeto yo/nosotros y frases de conversación natural.",
+      "do": "Usa verbos activos, sujeto yo/nosotros y frases de conversación natural; no repitas el mismo arranque en mensajes seguidos.",
       "never": "Pasiva, gerundios, clichés corporativos o emojis forzados."
     },
     {

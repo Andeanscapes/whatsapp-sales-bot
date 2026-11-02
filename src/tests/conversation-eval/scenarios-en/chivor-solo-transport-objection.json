@@ -1,0 +1,25 @@
+{
+  "id": "chivor-solo-transport-objection",
+  "source": "EN twin of chivor-solo-transport-objection (customer replay 2026-10-26: solo traveler from the C01 ad, asks for door-to-door transport, then objects mainly to the transport)",
+  "tags": ["objection", "transport", "live"],
+  "lang": "en",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "criteria": [
+    { "id": "transport-price-only", "rule": "reply_must_match", "patterns": ["1[., ]700[., ]000"], "turn": 3, "weight": 3, "critical": true },
+    { "id": "no-unchosen-plan-sum", "rule": "reply_must_not_match", "patterns": ["2[., ]660[., ]000|960[., ]000"], "turn": 3, "weight": 3, "critical": true },
+    { "id": "offers-realistic-arrival", "rule": "reply_must_match", "patterns": ["\\bbus\\b|own car|motorcycle|motorbike|\\bbike\\b|your (?:own )?car|own vehicle"], "turn": 5, "weight": 3, "critical": true },
+    { "id": "no-discount", "rule": "reply_must_not_match", "patterns": ["discount|reduction|\\bfor free\\b|free of charge|no charge|\\bpromo(?:tion)?\\b"], "turn": 5, "weight": 3, "critical": true },
+    { "id": "no-transport-in-total", "rule": "reply_must_not_match", "patterns": ["2[., ]660[., ]000"], "turn": 5, "weight": 2, "critical": true },
+    { "id": "keeps-plan-no-downsell", "rule": "reply_must_not_match", "patterns": ["480[., ]000|620[., ]000"], "turn": 5, "weight": 2 },
+    { "id": "prime-solo-quote", "rule": "reply_must_match", "patterns": ["960[., ]000"], "turn": 4, "weight": 2, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 5, "weight": 2, "critical": true }
+  ],
+  "turns": [
+    { "user": "C01 Hi, I want info and dates for the emerald mine adventure in Chivor", "replay": true, "mockReply": "It's a real adventure in the emerald region: a mine with local guides and a hacienda up in the mountains. How many of you will be going?" },
+    { "user": "I'm traveling alone", "replay": true, "mockReply": "Great. We have three ways to do it: BASIC is a day trip, CORE is two days with one mine and a night at the hacienda, and PRIME adds two mines and horseback riding. Which one appeals to you most?" },
+    { "user": "How much is door-to-door transport?", "mockReply": "Private 4x4 door-to-door transport from Bogotá is $1,700,000 COP round trip, for up to 4 people. Which plan interests you most?", "expect": { "shouldSendReply": true } },
+    { "user": "PRIME, how much is it for me alone?", "mockReply": "For 1 person, PRIME is $960,000 COP, with two mines, horseback riding and a night at the hacienda. Do you have a date in mind?", "expect": { "priceJustGiven": true } },
+    { "user": "This seems expensive, especially the transport", "mockReply": "I understand. The plan stays at $960,000 COP; private transport is separate, and it's expensive because it's a 4x4 with a dedicated driver, round trip. Traveling alone, most people take the public bus or their own car to Chivor town, and from there our 4x4 takes you to the mine. How would you prefer to get there?", "expect": { "shouldSendReply": true } }
+  ]
+}

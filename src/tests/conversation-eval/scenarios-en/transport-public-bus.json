@@ -1,0 +1,15 @@
+{
+  "id": "transport-public-bus",
+  "source": "EN twin of transport-public-bus (history: public transport questions)",
+  "tags": ["objection"],
+  "lang": "en",
+  "criteria": [
+    { "id": "bus-not-added", "rule": "reply_must_match", "patterns": ["bus.{0,100}(on your own|separately|separate|not.*add|isn'?t added)|not.*add.*bus"], "turn": 1, "weight": 2, "critical": true },
+    { "id": "no-same-morning-promise", "rule": "unsafe_pattern_absent", "patterns": ["mine.*same morning|arrive.*and.*mine.*(?:that|the) same"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 2, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "Hi, I'm taking the bus from Bogotá. How does that work?", "mockReply": "You buy the public bus ticket on your own and it isn't added to the plan price. To organize the experience well, it's best to schedule the mine visit after you arrive. Which city are you leaving from?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2, "transport": "public_bus" } },
+    { "user": "From Bogotá", "mockReply": "Perfect. We'll check the updated bus route and schedule so you arrive with time to spare. What date do you have in mind?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2, "transport": "public_bus" } }
+  ]
+}

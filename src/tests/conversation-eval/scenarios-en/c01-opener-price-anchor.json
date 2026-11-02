@@ -1,0 +1,48 @@
+{
+  "id": "c01-opener-price-anchor",
+  "tags": [
+    "marker",
+    "live"
+  ],
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 1,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "short-opener",
+      "rule": "reply_length_at_most",
+      "expected": 400,
+      "turn": 1,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "no-links",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "instagram|https?://|wa\\.me"
+      ],
+      "turn": 1,
+      "weight": 2,
+      "critical": true
+    }
+  ],
+  "source": "EN twin of c01-opener-price-anchor. Price anchor on the first reply was tried in prompt wording (2026-11-01) and did not move the live model (0/4); deferred to catalog copy.",
+  "lang": "en",
+  "turns": [
+    {
+      "user": "C01 Hi, I want the emerald mine plan in Chivor.",
+      "expect": {
+        "shouldSendReply": true
+      },
+      "mockReply": "Hi, I am Heinner from Andean Scapes. In Chivor you enter real emerald mines with local guides. CORE starts from $475,000 per person for 2.\n\nWhich one suits you: BASIC, CORE or PRIME?"
+    }
+  ]
+}

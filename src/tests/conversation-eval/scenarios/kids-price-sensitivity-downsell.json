@@ -1,0 +1,89 @@
+{
+  "id": "kids-price-sensitivity-downsell",
+  "source": "2026-11-01 export pattern: kids age question and \"depende del precio\" after a PRIME quote; kids are one full cupo each, no child rate published",
+  "lang": "es",
+  "tags": [
+    "objection",
+    "live"
+  ],
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "seedConversation": {
+    "phase": "pricing",
+    "priceGiven": true,
+    "qualification": {
+      "people": 4,
+      "plan": "prime_2d1n_chivor"
+    }
+  },
+  "seedQualification": {
+    "people": 4,
+    "plan": "prime_2d1n_chivor"
+  },
+  "criteria": [
+    {
+      "id": "kids-rule",
+      "rule": "reply_must_match",
+      "patterns": [
+        "cupo completo|cuenta como|no hay tarifa|tarifa infantil|cada persona|cada (?:adulto|ni[ñn]o)"
+      ],
+      "turn": 2,
+      "weight": 1,
+      "critical": false
+    },
+    {
+      "id": "lighter-option",
+      "rule": "reply_must_match",
+      "patterns": [
+        "CORE|BASIC|m[aá]s ligero|una mina|pasad[ií]a|alcance"
+      ],
+      "turn": 2,
+      "weight": 2
+    },
+    {
+      "id": "no-invented-discount",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "descuento|rebaja|precio especial|%"
+      ],
+      "turn": 2,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "no-links-or-pressure",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "instagram|https?://|wa\\.me|[úu]ltimos? cupos|reserva ya|se va a acabar"
+      ],
+      "weight": 2,
+      "critical": true,
+      "turn": 2
+    }
+  ],
+  "turns": [
+    {
+      "user": "Hola, somos 4 con PRIME. Los niños pagan igual?",
+      "replay": true,
+      "mockReply": "Para 4 personas, PRIME queda en *$3.400.000 COP*. Cada persona cuenta como cupo completo.\n\n¿Qué fecha les sirve?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Son dos niños de 12 y 6 años. Hay algo más ligero para nosotros?",
+      "mockReply": "Con 12 y 6 años están bien; la edad mínima es 5. Cada persona cuenta como cupo completo, así que el total se mantiene. Si el presupuesto aprieta, CORE tiene una mina y noche en la Hacienda, con menos alcance.\n\n¿Cuál les queda mejor?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

@@ -545,9 +545,9 @@ Dev testing: in `.env.dev` set `ALLOW_FOLLOWUP_TEMPLATE=true` with
 `FOLLOWUP_DEV_*` overrides and a non-empty allowlist FAIL startup in production.
 
 Prompt budget: `measure:prompt` gates the assembled system prompt against
-`tokenBudget.systemPromptMaxTokens` (`profile.andean-scapes-co.json`, currently 40,000;
-raised from 31,500 for the second site. Worst profile measured 2026-10-14 at ~38,760, so
-headroom is ~1,240 tokens — a third site or a large skill addition needs trimming first)
+`tokenBudget.systemPromptMaxTokens` (`profile.andean-scapes-co.json`, currently 44,000; raised from 31,500 to 40,000 for the second site and to 44,000 on 2026-11-01
+for the close-without-bridge rules. Worst profile measured 2026-11-01 at ~38,800, so headroom
+is ~5,200 tokens — a third site or a large skill addition still needs measuring first)
 **and** the projected request (prompt + history + inbound + output reserves) against
 `DEEPSEEK_CONTEXT_WINDOW_TOKENS` (65,536). The window value is empirical, not a guess:
 `deepseek-v4-flash` was probed on 2026-08-14 and accepted a 260,085-token prompt, so 65,536

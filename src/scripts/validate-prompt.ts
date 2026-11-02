@@ -1,4 +1,4 @@
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { getReferentDisplayNames, getSalesComposition, renderReferentStrategies } from '../services/sales-composition.js';
@@ -42,7 +42,10 @@ const SKILL_GUARDS: Check[] = [
   { label: 'plan duration prose (use [PLAN])', pattern: /\b\d+\s*d[ií]as?\s*\/\s*\d+\s*noche/i },
   // Destinations and campaign nouns live in the CDN feed (`entrySegments`, site
   // narrative). A segment can be retuned or retired without a prompt edit.
-  { label: 'destination literal (use [EXPERIENCIA])', pattern: /\b(?:Chivor|Ubal[aá]|Macanal|Boyac[aá])\b/i },
+  // `\b` after an accented letter never matches (no `u` flag), so "Bogotá " slipped through.
+  { label: 'destination literal (use [EXPERIENCIA])', pattern: /\b(?:Chivor|Ubal[aá]|Macanal|Boyac[aá]|Bogot[aá]|Coscuez|Borbur)(?![\wáéíóúñ])/i },
+  // Policy windows ("hasta 7 días antes") are catalog data: `reservationPolicy` reaches DATOS.
+  { label: 'policy day count (use DATOS reservationPolicy)', pattern: /\b\d+\s*d[ií]as?\s+antes\b/i },
   { label: 'campaign noun (belongs in entrySegments)', pattern: /\bMinecraft\b/i },
   // Payment method names come from DATOS `methods_enabled`; disabling one in the
   // feed must remove it from the bot's mouth, which fails if it is baked in here.
@@ -114,6 +117,41 @@ function registryGuards(): Check[] {
   }));
 }
 
+/**
+ * Plan short names ("CORE", "PRIME") live in the CDN catalog, not in
+ * `andean-scapes.skill.json` (brand-only, `experiences: []`), so `registryGuards` never
+ * saw them. Reads the same payloads as the person-name scan; the short name is the
+ * text before the first "—" of each plan name.
+ */
+function catalogPlanNameGuards(): Check[] {
+  const names = new Set<string>();
+  const payloadPaths = [
+    join(__dirname, '..', '..', 'scripts', 'bot-dynamic-dev.json'),
+    join(__dirname, '..', '..', 'scripts', 'bot-dynamic.ci.json'),
+  ];
+  for (const payloadPath of payloadPaths) {
+    if (!existsSync(payloadPath)) continue;
+    const parsed = JSON.parse(readFileSync(payloadPath, 'utf-8')) as CatalogShape;
+    for (const exp of Object.values(parsed.experiences ?? {})) {
+      for (const site of Object.values(exp.sites ?? {})) {
+        const plans = Array.isArray(site.plans) ? site.plans : Object.values(site.plans ?? {});
+        for (const plan of plans) {
+          const short = typeof plan.name === 'string' ? plan.name.split('—')[0].trim() : '';
+          if (short.length >= 3) names.add(short);
+        }
+      }
+    }
+  }
+  return [...names].map(name => ({
+    label: `catalog plan name (use [PLAN]): "${name}"`,
+    pattern: new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i'),
+  }));
+}
+
+interface CatalogPlan { name?: unknown }
+interface CatalogSite { plans?: CatalogPlan[] | Record<string, CatalogPlan> }
+interface CatalogShape { experiences?: Record<string, { sites?: Record<string, CatalogSite> }> }
+
 interface AttributionSource { sourceLabel?: unknown }
 interface AttributionShape {
   referentAttribution?: { sources?: Record<string, AttributionSource> };
@@ -180,7 +218,7 @@ function collectFailures(label: string, content: string, checks: Check[]): strin
 function main(): void {
   const failures: string[] = [];
   const personNameGuards = referentPersonNameGuards();
-  const checks = [...SKILL_GUARDS, ...TONE_GUARDS, ...registryGuards(), ...personNameGuards];
+  const checks = [...SKILL_GUARDS, ...TONE_GUARDS, ...registryGuards(), ...catalogPlanNameGuards(), ...personNameGuards];
 
   for (const file of FILES) {
     const content = readFileSync(file.path, 'utf-8');

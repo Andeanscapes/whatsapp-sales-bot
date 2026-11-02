@@ -1,0 +1,26 @@
+{
+  "id": "humanness-no-repeated-closer",
+  "source": "EN twin of humanness-no-repeated-closer (live 2026-10-27: 'ok thanks' answered twice with the same stock closers)",
+  "tags": ["humanness", "live"],
+  "lang": "en",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "seedConversation": {
+    "phase": "closing",
+    "priceGiven": true,
+    "qualification": { "people": 2, "plan": "core_2d1n_chivor", "date": "November 14" }
+  },
+  "seedQualification": { "people": 2, "plan": "core_2d1n_chivor", "date": "November 14" },
+  "criteria": [
+    { "id": "no-stock-closer", "rule": "reply_must_not_match", "patterns": ["i'?m (?:here|around|available)(?: for you)?\\b|i'?ll be (?:here|around)|let me know if (?:you need|there'?s) anything|(?:feel free|don'?t hesitate) to (?:reach out|ask|write|message)|anything else,? (?:just )?(?:let me know|ask)|(?:you'?re welcome|my pleasure)\\.?\\s*$"], "turn": 1, "weight": 3, "critical": true },
+    { "id": "short-reply", "rule": "reply_length_at_most", "expected": 300, "turn": 1, "weight": 2 },
+    { "id": "single-question", "rule": "max_question_marks", "max": 1, "turn": 1, "weight": 2 }
+  ],
+  "turns": [
+    {
+      "user": "ok thanks",
+      "mockReply": "Sure thing. As soon as the team confirms your spot for November 14, I'll message you here.",
+      "expect": { "shouldSendReply": true }
+    }
+  ]
+}

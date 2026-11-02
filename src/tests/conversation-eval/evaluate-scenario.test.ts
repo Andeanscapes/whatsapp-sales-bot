@@ -205,5 +205,15 @@ describe('conversation criteria', () => {
     it('passes a reply that names no date at all', () => {
       expect(evaluateScenario(input, [turn('hola', 'Con gusto, ¿para cuántas personas?')]).score).toBe(100);
     });
+
+    it('reads English month-day and day-of-month forms', () => {
+      const monthEn = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][Number(month) - 1];
+      expect(evaluateScenario(input, [turn('dates?', `We have ${monthEn} ${Number(day)}th.`)]).score).toBe(100);
+      expect(evaluateScenario(input, [turn('dates?', `We have the ${Number(day)}th of ${monthEn}.`)]).score).toBe(100);
+      const result = evaluateScenario(input, [turn('dates?', 'We have February 31st and the 30th of February.')]);
+      expect(result.hardFail).toBe(true);
+      expect(result.criteria[0].evidence).toContain('February 31st');
+      expect(result.criteria[0].evidence).toContain('30th of February');
+    });
   });
 });

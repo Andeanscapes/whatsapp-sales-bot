@@ -1,0 +1,31 @@
+{
+  "id": "pet-in-mine-objection-close",
+  "source": "EN twin of pet-in-mine-objection-close (customer replay 2026-10-28: moto couple asked if the dog could enter the mine; the bot wrongly said no and closed with 'does that work for you?' instead of advancing to a date)",
+  "tags": ["objection", "live"],
+  "lang": "en",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "seedConversation": { "phase": "pricing", "priceGiven": true, "qualification": { "people": 2, "plan": "core_2d1n_chivor", "transport": "own" } },
+  "seedQualification": { "people": 2, "plan": "core_2d1n_chivor", "transport": "own" },
+  "criteria": [
+    { "id": "pet-welcome", "rule": "reply_must_match", "patterns": ["pet.?friendly|welcome|(?:can|may) (?:come|join|go|bring)|is allowed|yes,? (?:your|the|he|she|it|they)\\b|yes,? (?:he|she|it) can"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "pet-advances-close", "rule": "reply_must_match", "patterns": ["\\bdates?\\b|november|december|\\bmonth\\b|weekend|\\bbook|reserv|\\bhold\\b"], "turn": 2, "weight": 2 },
+    { "id": "mine-allows-dog", "rule": "reply_must_match", "patterns": ["(?<![\\w'])(?:yes|can|may|goes|go|enters?|joins?|join|with you|with the group|allowed)(?![\\w'])[^.?!]{0,80}\\bmine\\b|\\bmine\\b[^.?!]{0,80}(?<![\\w'])(?:yes|can|may|goes|go|enters?|joins?|with you|with the group|allowed)(?![\\w'])"], "turn": 3, "weight": 3, "critical": true },
+    { "id": "mine-no-false-denial", "rule": "reply_must_not_match", "patterns": ["\\bcan(?:no|['’])t\\b|\\bcannot\\b|\\b(?:is|are|isn['’]t|aren['’]t)? ?not (?:allowed|permitted)\\b|\\b(?:isn|aren)['’]t (?:allowed|permitted)\\b|\\b(?:doesn|don)['’]t (?:go|enter|come)\\b|not (?:in|into|inside) the mine|(?:stays?|waits?|staying|waiting) (?:behind |back |calmly )?at the (?:hacienda|farm|lodge|house)|not (?:suitable|apt) for pets"], "turn": 3, "weight": 3, "critical": true },
+    { "id": "mine-no-invented-gear", "rule": "reply_must_not_match", "patterns": ["helmet for (?:the|your) (?:dog|pet)|(?:dog|pet) helmet|\\bvest\\b|harness|mandatory leash|leash is (?:mandatory|required)|pet insurance|insurance for (?:the|your) (?:dog|pet)|(?:additional|extra) (?:cost|fee|charge)|surcharge|\\bfee\\b"], "turn": 3, "weight": 2, "critical": true },
+    { "id": "mine-advances-close", "rule": "reply_must_match", "patterns": ["\\bdates?\\b|november|december|\\bmonth\\b|weekend|\\bbook|reserv|\\bhold\\b"], "turn": 3, "weight": 2, "critical": true },
+    { "id": "mine-no-empty-validation", "rule": "reply_must_not_match", "patterns": ["(?:does|would) (?:that|this) work for you\\s*\\?|(?:is that|all) clear\\s*\\?|(?:sound|sounds) good\\s*\\?|(?:ok|okay) with that\\s*\\?"], "turn": 3, "weight": 2, "critical": true },
+    { "id": "mine-one-question", "rule": "max_question_marks", "max": 1, "turn": 3, "weight": 2, "critical": true },
+    { "id": "mine-no-price-repeat", "rule": "reply_must_not_match", "patterns": ["\\$|\\bCOP\\b|\\d{3}[.,]\\d{3}"], "turn": 3, "weight": 1 },
+    { "id": "deliberation-no-price", "rule": "reply_must_not_match", "patterns": ["\\$|\\bCOP\\b|\\d{3}[.,]\\d{3}"], "turn": 4, "weight": 3, "critical": true },
+    { "id": "deliberation-no-fallback", "rule": "reply_must_not_match", "patterns": ["answer as precise|let me (?:look into|review|check) it properly"], "turn": 4, "weight": 3, "critical": true },
+    { "id": "deliberation-no-pressure", "rule": "reply_must_not_match", "patterns": ["last (?:few )?spots?|book (?:it )?now|(?:going to|will|about to) sell out|selling out|instagram|https?://"], "turn": 4, "weight": 2, "critical": true },
+    { "id": "deliberation-short", "rule": "reply_length_at_most", "expected": 220, "turn": 4, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "Hi, we're 2 on a motorcycle, how much is the CORE in Chivor?", "replay": true, "mockReply": "For 2 people, CORE comes to $950,000 COP, with lodging, 4 meals and the guided mine tour included.\n\nDo any of the November dates work for you?", "expect": { "shouldSendReply": true } },
+    { "user": "Quick question. Is it pet friendly? we're traveling with our dog", "mockReply": "Yes, we're pet-friendly and your dog is welcome 🐕 He just needs to be vaccinated and under control.\n\nShall I check the November dates for you?", "expect": { "shouldSendReply": true } },
+    { "user": "Can he go into the mine too?", "mockReply": "Yes, in Chivor your dog can go into the mine with you and do the mining day with the group, vaccinated and under control.\n\nWhich November date works best for you?", "expect": { "shouldSendReply": true } },
+    { "user": "Ok. Thanks. We're still talking it over.", "mockReply": "No rush at all. We're here whenever you two decide.", "expect": { "shouldSendReply": true } }
+  ]
+}

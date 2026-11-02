@@ -1,0 +1,18 @@
+{
+  "id": "entry-funnel-H02-car",
+  "source": "EN twin of entry-funnel-H02-car (funnel campaign marker, 4x4 variant; diagnosis is the plan-options question, route mention is a nicety)",
+  "tags": ["marker", "live"],
+  "lang": "en",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "criteria": [
+    { "id": "marker-hidden", "rule": "reply_must_not_match", "patterns": ["H02|marker|campaign code"], "turn": 1, "weight": 2, "critical": true },
+    { "id": "no-brand-restart", "rule": "reply_must_not_match", "patterns": ["i'?m .{0,30}co-?founder|we are Andean Scapes|we're Andean Scapes|let me introduce Andean Scapes"], "turn": 1, "weight": 2, "critical": true },
+    { "id": "diagnosis-plans-or-vehicle", "rule": "reply_must_match", "patterns": ["BASIC[\\s\\S]{0,120}CORE[\\s\\S]{0,120}PRIME|4x4|vehicle|your car"], "turn": 1, "weight": 2, "critical": true },
+    { "id": "route-context", "rule": "reply_must_match", "patterns": ["route|\\broad\\b|dirt|unpaved|4x4|vehicle"], "turn": 1, "weight": 1 },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 1, "weight": 2, "critical": true }
+  ],
+  "turns": [
+    { "user": "H02 - Hi, I want to know more about the experience in Chivor 💚", "mockReply": "In Chivor you go into real emerald mines with local miners, and the 4x4 route is part of the trip. Which fits you best for the 4x4 route: BASIC day trip with no overnight, CORE with one mine and a night, or PRIME with two mines and horseback riding?", "expect": { "shouldSendReply": true } }
+  ]
+}
