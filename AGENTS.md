@@ -211,6 +211,13 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
       "would you like…") are excluded because they introduce a product, not a
       request to write later. A draft still carrying any other `[[…]]` marker is
       rejected (`residual_marker`) — only the consent marker is ever stripped.
+    - **The ask never offers an exit from contact** (owner sales decision 2026-11-01).
+      A draft offering one ("si no quieres más mensajes", "responde BAJA",
+      "unsubscribe", "reply STOP") is rejected as `opt_out_offer`, never repaired.
+      Each pattern names the exit itself and runs on `normalize(text)`, so "respondes
+      cuando puedas, no hay afán" or "si no quieres perderte la temporada" still pass:
+      a false rejection burns one of the three attempts on the most-reaching ask. An
+      unprompted stop request is still honoured by the opt-out path.
     - **An exhausted consent cycle is recovered by an operator, never automatically.**
       Three failed attempts leave the cycle permanently unclaimable, so the lead is
       unreachable until a new session mints a fresh `cycle_key`. `/followupretry`
@@ -693,9 +700,35 @@ columns from the old feature remain in place and are ignored.
   `MAX_GALLERY_IMAGES_PER_SEND=3`; the default is 5, so they were green locally and
   red in CI. **A test must pin any env value it asserts on** — run this before
   pushing.
-- `npm run eval:conversations` — deterministic conversation-eval pack (49 scenarios).
-- `npm run eval:conversations:llm-bot` — live LLM quality suite (32 `live`-tagged
-  scenarios, ~$0.60 per pass, estimated; costs tokens).
+- `npm run eval:conversations` — deterministic conversation-eval pack (59 Spanish scenarios plus their 59 English twins, mocked).
+- `npm run eval:conversations:llm-bot` — live LLM quality suite, Spanish (42 `live`-tagged
+  scenarios, ~$0.60 per pass, estimated; costs tokens). Local default.
+- `npm run eval:conversations:llm-bot -- --lang en` — live LLM quality suite, English
+  pack (`scenarios-en/`, one twin per Spanish scenario: 59, 42 of them `live`; writes
+  `artifacts/conversation-eval-llm-bot-en.json`). CI runs BOTH live packs on PRs into
+  master, each compared against its own baseline (`baselines/master-llm-bot.json`,
+  `baselines/master-llm-bot-en.json`). Refresh a baseline by copying a real
+  `--runs 2` artifact, never by hand-editing scores.
+- Live replay turns persist the conversation language like a processed turn
+  (`runner.ts`); without it a bare later reply ("2") fell back to Spanish and an English
+  scenario failed for a harness reason.
+- English scenarios: each file in `scenarios-en/` has `"lang": "en"`, the same `id` as its
+  Spanish twin, the same `live` tag, and an English first customer message (the bot's
+  language detector must read it as English, which integrity tests enforce). The English
+  set runs with mocked replies in `npm run eval:conversations` (free; `npm test` excludes
+  `conversation-eval/`). Every new Spanish scenario needs its English twin in the same PR;
+  update both manifests. Plan tier words the bot uses in English ("essential", "most
+  complete") must be catalog `selectionAliases` too, like their Spanish forms.
+  English regexes are not literal translations: English prices use commas ("$620,000"),
+  so a `[^.]` span does not stop at a price the way it does in Spanish; anchor dates next
+  to the month and allow ordinals ("November 14th"). Bare words like `free` match
+  "feel free" under the `i` flag. The structural rules (`known_field_not_reasked`,
+  `no_unpublished_date`, `big_group_*`, `group_quote_integrity`) read both languages, so
+  an English twin uses the same rule as its Spanish original; extend the rule's patterns
+  rather than replacing it with an ad-hoc regex.
+  **QUOTE LOCK's verbatim sentence follows the conversation language.** It was
+  Spanish-only, so English leads were quoted in Spanish (live
+  `price-objection-downsell-coscuez` 0/2 before the fix).
 - `npm run simulate -- "text"` — offline bot test.
 - `npm run typecheck` — must pass clean.
 - `npm run lint` — must pass.

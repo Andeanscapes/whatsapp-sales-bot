@@ -139,7 +139,8 @@
             "ASISTENCIA MEDICA: se incluye una poliza de asistencia medica, normalmente gestionada con Magenta Seguros de Medellin. En eventos normales contamos con personal operativo y apoyo ante cualquier eventualidad, pero no con personal sanitario presencial. En grupos grandes y eventos especiales podemos contar con personal de enfermeria solo cuando se haya coordinado y confirmado. Un seguro de viaje integral distinto a esta asistencia no esta incluido.",
             "TIPO DE MINA: todas las minas aliadas son minas reales de esmeralda de la zona esmeraldifera. Algunas operan artesanalmente y otras tienen mayor movimiento o escala. Ninguna es mina de carbon y no existe relacion con la mineria de carbon. La mina especifica depende de disponibilidad y condiciones del dia. PRIME incluye acceso a 2 minas.",
             "REALIDAD DEL VIAJE (explicala corta y honesta, una sola vez, cuando el cliente compare planes, pregunte por BASIC, por transporte o por como llegar; es informacion para elegir bien, no alarma ni presion): Chivor queda a unos 160 km de Bogota, pero son 5-6 horas por trayecto porque el ultimo tramo es de montana y via destapada. Las minas no estan en el pueblo: desde Chivor se sube en 4x4 por via rural, y ese 4x4 local ya va incluido en todos los planes. BASIC se puede, pero es un dia muy largo: salir de Bogota de madrugada, unas 9 horas de experiencia y otras 5-6 horas de regreso el mismo dia. Por eso CORE y PRIME incluyen la noche en Hacienda El Recuerdo con cena y desayuno: se descansa, no hay que regresar el mismo dia y la jornada minera se vive sin afan.",
-            "TRANSPORTE PRIVADO (por que cuesta lo que cuesta): no es un traslado urbano. Es un vehiculo 4x4 con conductor dedicado, ida y regreso Bogota-Chivor-Bogota, con 5-6 horas por trayecto y tramo destapado; son jornadas completas de conductor y vehiculo. El valor es por vehiculo y cubre hasta 4 personas, asi que compartido entre varios baja mucho por persona. Para 1 o 2 personas lo normal es bus publico (la opcion mas economica) o carro propio o moto hasta Chivor pueblo; desde ahi nuestro 4x4 local los sube a la mina. Si el cliente objeta el transporte, separa siempre el valor del plan del transporte: el transporte es opcional y no cambia el plan elegido."
+            "TRANSPORTE PRIVADO (por que cuesta lo que cuesta): no es un traslado urbano. Es un vehiculo 4x4 con conductor dedicado, ida y regreso Bogota-Chivor-Bogota, con 5-6 horas por trayecto y tramo destapado; son jornadas completas de conductor y vehiculo. El valor es por vehiculo y cubre hasta 4 personas, asi que compartido entre varios baja mucho por persona. Para 1 o 2 personas lo normal es bus publico (la opcion mas economica) o carro propio o moto hasta Chivor pueblo; desde ahi nuestro 4x4 local los sube a la mina. Si el cliente objeta el transporte, separa siempre el valor del plan del transporte: el transporte es opcional y no cambia el plan elegido.",
+            "Las esmeraldas no se garantizan: el valor de la experiencia es la cultura esmeraldera, la naturaleza y la gastronomia, no el hallazgo. Si aparece una piedra, se acuerda en el momento con los mineros y el guia."
           ],
           "addons": {
             "apiary_cattle": {
@@ -748,7 +749,8 @@
               "status": "active",
               "selectionAliases": [
                 "core",
-                "esencial"
+                "esencial",
+                "essential"
               ],
               "includedAddonIds": []
             },
@@ -818,7 +820,8 @@
                 "premium",
                 "la de dos minas",
                 "la de cabalgata",
-                "mas completo"
+                "mas completo",
+                "most complete"
               ],
               "includedAddonIds": [
                 "horseback_riding"
@@ -1448,7 +1451,9 @@
                 "esencial",
                 "basica",
                 "basico",
-                "la de una mina"
+                "la de una mina",
+                "essential",
+                "basic"
               ],
               "includedAddonIds": []
             },
@@ -1534,7 +1539,8 @@
                 "prime borbur",
                 "mas completa",
                 "mas completo",
-                "la mas completa"
+                "la mas completa",
+                "most complete"
               ],
               "includedAddonIds": []
             }
@@ -1741,7 +1747,7 @@
       },
       "emeraldPolicy": {
         "guaranteed": false,
-        "notes": "No podemos asegurar que encuentren una esmeralda. Es parte de la emocion de la experiencia."
+        "notes": "Encontrar una esmeralda no esta garantizado: puede pasar, pero la experiencia vale por la cultura esmeraldera, la naturaleza y la gastronomia de la zona. Si se halla alguna piedra, se maneja en el momento con los mineros y el guia, que comparten lo encontrado. No prometer hallazgos ni explicar la operacion de las minas."
       }
     }
   }

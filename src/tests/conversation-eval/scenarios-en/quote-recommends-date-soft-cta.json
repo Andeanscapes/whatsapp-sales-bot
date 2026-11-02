@@ -1,0 +1,91 @@
+{
+  "id": "quote-recommends-date-soft-cta",
+  "source": "EN twin of quote-recommends-date-soft-cta",
+  "lang": "en",
+  "tags": [
+    "objection",
+    "live"
+  ],
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "seedConversation": {
+    "phase": "pricing",
+    "priceGiven": true,
+    "qualification": {
+      "people": 2,
+      "plan": "core_2d1n_chivor"
+    }
+  },
+  "seedQualification": {
+    "people": 2,
+    "plan": "core_2d1n_chivor"
+  },
+  "criteria": [
+    {
+      "id": "recommends-published-date",
+      "rule": "reply_must_match",
+      "patterns": [
+        "november 21|november 28|december 5|nov(?:ember)? |december"
+      ],
+      "turn": 1,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "soft-booking-cta",
+      "rule": "reply_must_match",
+      "patterns": [
+        "check|confirm|spot|space|book|reserve|works for you|suit"
+      ],
+      "turn": 1,
+      "weight": 2
+    },
+    {
+      "id": "no-open-date-question",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "any date in mind|which month|sound good\\s*\\?"
+      ],
+      "turn": 1,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 1,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "no-invented-date",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "november 14|december 14|january 14|november 15|december 15"
+      ],
+      "turn": 1,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "no-links-or-pressure",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "instagram|https?://|wa\\.me|last (?:few )?spots?|book (?:it )?now|selling out"
+      ],
+      "weight": 2,
+      "critical": true,
+      "turn": 1
+    }
+  ],
+  "turns": [
+    {
+      "user": "Which date do you recommend for the CORE?",
+      "mockReply": "For 2 people, CORE has published departures on November 21 and November 28. Want me to check the spot for November 21?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "id": "kids-under-min-age",
+  "source": "EN twin of kids-under-min-age (history: 60 child/family turns)",
+  "tags": ["objection", "safety"],
+  "lang": "en",
+  "criteria": [
+    { "id": "age-boundary", "rule": "reply_must_match", "patterns": ["\\bage\\b|child|\\bkids?\\b|minor|team"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "no-child-price", "rule": "reply_must_not_match", "patterns": ["(?:child|children|kid|kids)'?s? (?:rate|price|fare|ticket)|discount for (?:kids|children)|(?:kids?|child) discount"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 2, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "Hi, can I come with my 4 year old son?", "mockReply": "The experience has a minimum age and involves physical effort on rural terrain, so I need to check the age with the team before recommending it. How old is the other traveler?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2 } },
+    { "user": "He's 4 and I'm 35", "mockReply": "Because of his age and the conditions in the mine, the team needs to confirm whether it's suitable before recommending it. Would you like us to check?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 2 } }
+  ]
+}

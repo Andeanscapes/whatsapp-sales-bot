@@ -1,0 +1,50 @@
+{
+  "id": "humanness-no-voseo-with-tu",
+  "source": "EN twin of humanness-no-voseo-with-tu (live 2026-10-27: bot mixed address registers within one reply). English has no tú/vos split, so this maps to register consistency: no Spanish voseo/slang leaking into an English reply, no casual slang, and no switch to plural address with a customer writing in the singular",
+  "tags": ["humanness", "live"],
+  "lang": "en",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "seedConversation": {
+    "phase": "value",
+    "qualification": { "people": 2, "plan": "core_2d1n_chivor" }
+  },
+  "seedQualification": { "people": 2, "plan": "core_2d1n_chivor" },
+  "criteria": [
+    {
+      "id": "no-voseo",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "(?<![\\wáéíóúñ])(?:vos|tenés|querés|podés|dejás|pensás|sabés|escribís|contame|decime|mirá|parce|parcero|chévere|bacano|mija|mijo|dude|bro|gonna|wanna|ya know)(?![\\wáéíóúñ])"
+      ],
+      "turn": 1,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "no-mixed-ustedes",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "\\b(?:you guys|y'?all|you all|you two)\\b"
+      ],
+      "turn": 1,
+      "weight": 1
+    },
+    {
+      "id": "still-asks-one-thing",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 1,
+      "weight": 1
+    }
+  ],
+  "turns": [
+    {
+      "user": "You're right, I got the date wrong. So is Saturday the 31st available then?",
+      "mockReply": "Yes, Saturday October 31 is the published departure. Does that date work for you so I can check it with the team?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

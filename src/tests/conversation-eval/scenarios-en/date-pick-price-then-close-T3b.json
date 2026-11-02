@@ -1,0 +1,43 @@
+{
+  "id": "date-pick-price-then-close-T3b",
+  "source": "EN twin of date-pick-price-then-close-T3b (live: C03 2026-08-12 couple, price skipped, date, quote, close; replayed date-offer turn so a bare \"28\" resolves as a date pick and the T3a cue fires)",
+  "tags": ["closing", "live", "price-before-close"],
+  "lang": "en",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "mockPricing": { "planId": "core_2d1n_chivor", "individual": 550000, "couple": 1000000 },
+  "seedConversation": {
+    "phase": "pricing",
+    "priceGiven": false,
+    "qualification": { "people": 2, "plan": "core_2d1n_chivor" }
+  },
+  "seedQualification": { "people": 2, "plan": "core_2d1n_chivor" },
+  "criteria": [
+    { "id": "t3a-exact-quote", "rule": "group_quote_integrity", "people": 2, "planId": "core_2d1n_chivor", "expectedTotal": 1000000, "turn": 2, "weight": 3, "critical": true },
+    { "id": "t3a-no-anticipo", "rule": "reply_must_not_match", "patterns": ["deposit|down payment|Nequi|Mercado Pago"], "turn": 2, "weight": 3, "critical": true },
+    { "id": "t3a-no-validation-promise", "rule": "reply_must_not_match", "patterns": ["validat|(?:check|confirm|verify)(?:ing)? (?:the )?(?:availability|space|spots?)|\\bfirst\\b|\\bteam\\b"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "t3a-soft-question", "rule": "reply_must_match", "patterns": ["how does that sound|what do you think|sounds? good|works? for you|suit(?:s)? you|interested"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "t3b-anticipo-on-price-confirm", "rule": "reply_must_match", "patterns": ["deposit|down payment|15%|Nequi|Mercado Pago|(?:check|confirm|validate|verify)(?:ing)? availability"], "turn": 3, "weight": 3, "critical": true },
+    { "id": "t3b-no-double-quote", "rule": "reply_must_not_match", "patterns": ["1[.,]000[.,]000|exact total"], "turn": 3, "weight": 2 }
+  ],
+  "turns": [
+    {
+      "user": "What dates do you have in November?",
+      "replay": true,
+      "mockReply": "In November we have published departures on the 21st and the 28th. Which one works for you?",
+      "expect": { "shouldSendReply": true }
+    },
+    {
+      "user": "28 is fine",
+      "mockReply": "Perfect, November 28 then. For 2 people, the plan comes to $1,000,000 COP. How does that sound?",
+      "expect": { "shouldSendReply": true },
+      "seedQualification": { "people": 2, "plan": "core_2d1n_chivor" }
+    },
+    {
+      "user": "Yes",
+      "mockReply": "Great, November 28 for 2. The deposit is 15% via Nequi or Mercado Pago. I'll first check availability with the team and as soon as they confirm I'll send you the deposit details. Shall we get it started?",
+      "expect": { "shouldSendReply": true },
+      "seedQualification": { "people": 2, "plan": "core_2d1n_chivor", "date": "November 28" }
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "id": "hot-lead-moto-partner-pause",
+  "source": "EN twin of hot-lead-moto-partner-pause (customer replay: hot motorcycle couple on CORE Chivor; after logistics the bot asked an empty validation question instead of a date, repeated the price on every pause, and the last turn got the budget fallback)",
+  "tags": ["objection", "live"],
+  "lang": "en",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "seedConversation": { "phase": "pricing", "priceGiven": true, "qualification": { "people": 2, "plan": "core_2d1n_chivor", "transport": "own" } },
+  "seedQualification": { "people": 2, "plan": "core_2d1n_chivor", "transport": "own" },
+  "criteria": [
+    { "id": "logistics-then-advance", "rule": "reply_must_match", "patterns": ["\\bdates?\\b|november|december|\\bmonth\\b|weekend|\\bbook|reserv|\\bhold\\b"], "turn": 4, "weight": 3, "critical": true },
+    { "id": "no-empty-validation-question", "rule": "reply_must_not_match", "patterns": ["does that work(?: for (?:you|you both|you two))?\\s*\\?|(?:is )?that clear\\s*\\?|sounds? good\\s*\\?"], "turn": 4, "weight": 2, "critical": true },
+    { "id": "one-question-logistics", "rule": "max_question_marks", "max": 1, "turn": 4, "weight": 2, "critical": true },
+    { "id": "pause-no-price-repeat", "rule": "reply_must_not_match", "patterns": ["\\$|\\bCOP\\b|\\d{3}[.,]\\d{3}"], "turn": 5, "weight": 3, "critical": true },
+    { "id": "pause-no-question", "rule": "max_question_marks", "max": 1, "turn": 5, "weight": 2, "critical": true },
+    { "id": "pause-no-links-or-pressure", "rule": "reply_must_not_match", "patterns": ["instagram|https?://|wa\\.me|last (?:few )?spots|book now|(?:going to|about to) run out|selling out"], "turn": 5, "weight": 2, "critical": true },
+    { "id": "deliberation-no-price", "rule": "reply_must_not_match", "patterns": ["\\$|\\bCOP\\b|\\d{3}[.,]\\d{3}"], "turn": 6, "weight": 3, "critical": true },
+    { "id": "deliberation-no-fallback", "rule": "reply_must_not_match", "patterns": ["answer as precise|let me look into it"], "turn": 6, "weight": 3, "critical": true },
+    { "id": "deliberation-short", "rule": "reply_length_at_most", "expected": 220, "turn": 6, "weight": 1 },
+    { "id": "deliberation-one-question", "rule": "max_question_marks", "max": 1, "turn": 6, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "Hi, I saw the motorcycle ride post. We're 2, how much is the CORE?", "replay": true, "mockReply": "For 2 people, CORE comes to $950,000 COP, with lodging, 4 meals and the guided mine included.\n\nWould any of the November dates work for you?", "expect": { "shouldSendReply": true } },
+    { "user": "Do you have details on the route and roads? Trying to figure out if we take both bikes or just the Himalayan", "replay": true, "mockReply": "Yes, you can ride in via the Ubalá route, which is the alternate one: about 35 km of rural road from Ubalá to the Hacienda. It's unpaved mountain road, so the Himalayan will be more comfortable than a street bike.\n\nWith two bikes, the team checks the road conditions for your date before you set off.\n\nWant me to leave you a CORE summary so you can talk it over?", "expect": { "shouldSendReply": true } },
+    { "user": "Yes.", "replay": true, "mockReply": "CORE for 2 people: $950,000 COP, 2 days / 1 night at the Hacienda, 1 guided mine, a hike to the viewpoint, 4 meals and local 4x4 transport.\n\nOnce you've talked it over, message me and we'll check the date.", "expect": { "shouldSendReply": true } },
+    { "user": "Thing is, one bike is a Classic and my girlfriend is new to riding, so better on just 1 bike. How do the meals work?", "mockReply": "With one bike you'll ride more relaxed: the Himalayan handles the dirt road fine. CORE includes 4 meals per person with a local menu, and dietary restrictions are taken into account.\n\nWant me to check the November dates for you?", "expect": { "shouldSendReply": true } },
+    { "user": "Yes, I think just 1 then. I'll talk to my partner and let you know.", "mockReply": "Sounds good, one bike is the more relaxed choice. Talk it over calmly and we're here when you're ready.", "expect": { "shouldSendReply": true } },
+    { "user": "Ok. Thanks. We're still discussing it.", "mockReply": "No rush at all. Want me to check dates for you once you've decided?", "expect": { "shouldSendReply": true } }
+  ]
+}

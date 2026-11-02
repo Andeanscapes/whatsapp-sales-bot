@@ -10,6 +10,7 @@ import type { Scenario, ScenarioTurn } from './schema.js';
 import { getDynamicService, getSkills, loadSkills, setDynamicService } from '../../services/skill-loader.js';
 import { useAllSitesActive } from '../helpers/all-sites-catalog.js';
 import { getActiveExperience } from '../../services/product-registry.js';
+import { resolveLanguage } from '../../services/qualification-engine.js';
 import { DynamicDataService, PRICING_NOT_AVAILABLE } from '../../services/dynamic-data-service.js';
 import type { InternalDynamicData, InternalPaymentData } from '../../services/dynamic-data-service.js';
 import { DEFAULT_SITE_ID } from '../../services/dynamic-data-schema.js';
@@ -276,7 +277,11 @@ export async function runTurn(
 
   // Replay turns bypass LLM: store inbound and outbound directly with applied seeds.
   if (mode === 'live' && turnDef.replay) {
+    // The engine persists the conversation language on every processed turn; a
+    // replayed turn must too, or a later bare reply ("2") falls back to Spanish.
+    const language = resolveLanguage(ctx.repos, ctx.customerPhone, turnDef.user);
     ctx.repos.runInTransaction(() => {
+      ctx.repos.conversation.upsert(ctx.customerPhone, { language });
       ctx.repos.message.addMessage({
         customer_phone: ctx.customerPhone,
         direction: 'inbound',

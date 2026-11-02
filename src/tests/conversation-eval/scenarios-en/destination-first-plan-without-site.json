@@ -1,0 +1,27 @@
+{
+  "id": "destination-first-plan-without-site",
+  "source": "EN twin of destination-first-plan-without-site (second site: a plan chosen without naming a destination must ask which destination before quoting; reopenPausedSites, Coscuez is paused live)",
+  "tags": ["qualification", "live"],
+  "lang": "en",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "seedSystem": { "reopenPausedSites": true },
+  "criteria": [
+    { "id": "asks-destination", "rule": "reply_must_match", "patterns": ["chivor"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "offers-other-destination", "rule": "reply_must_match", "patterns": ["coscuez|borbur"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "no-price-before-destination", "rule": "reply_must_not_match", "patterns": ["\\$\\s*[\\d.,]+|[\\d.,]+\\s*COP"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 2, "weight": 1 }
+  ],
+  "turns": [
+    {
+      "user": "Hi, we are 2 people",
+      "mockReply": "Great! Are you more drawn to the essential experience or the most complete one?",
+      "expect": { "shouldSendReply": true }
+    },
+    {
+      "user": "The PRIME",
+      "mockReply": "Good choice. We have two regions: Chivor, in the east, and Coscuez, in San Pablo de Borbur. Which one appeals to you more?",
+      "expect": { "shouldSendReply": true, "priceJustGiven": false }
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "id": "vacation-motive-discovery-baredate",
+  "source": "EN twin of vacation-motive-discovery-baredate (live: vacation motive + November dates, then a bare-day acceptance that must close (T3b); turn 1 earns the quote instead of seeding priceGiven; turn 3 asserts no total at all; day 14 -> 28 Nov because 14 Nov is no longer published live).",
+  "tags": ["closing", "live"],
+  "lang": "en",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "mockPricing": { "planId": "core_2d1n_chivor", "individual": 650000, "couple": 1200000 },
+  "seedConversation": {
+    "phase": "pricing",
+    "qualification": { "people": 2, "plan": "core_2d1n_chivor" }
+  },
+  "seedQualification": { "people": 2, "plan": "core_2d1n_chivor" },
+  "criteria": [
+    { "id": "quote-delivered", "rule": "reply_must_match", "patterns": ["1[.,]200[.,]000"], "turn": 1, "weight": 3, "critical": true },
+    { "id": "motive-reflected", "rule": "reply_must_match", "patterns": ["vacation|holiday|unwind|disconnect|no rush|relax|\\brest\\b"], "turn": 2, "weight": 2, "critical": false },
+    { "id": "only-registry-november-day", "rule": "reply_must_match", "patterns": ["\\b28(?:st|nd|rd|th)?\\b"], "turn": 2, "weight": 3, "critical": true },
+    { "id": "no-invented-november-day", "rule": "no_unpublished_date", "turn": 2, "weight": 3, "critical": true },
+    { "id": "no-price-repeat-on-dates", "rule": "reply_must_not_match", "patterns": ["\\$\\s*[\\d.,]+|[\\d.,]+\\s*COP"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "one-question-dates", "rule": "max_question_marks", "max": 1, "turn": 2, "weight": 1 },
+    { "id": "close-cta-on-bare-day", "rule": "reply_must_match", "patterns": ["deposit|down payment|validat|Nequi|Mercado Pago"], "turn": 3, "weight": 3, "critical": true },
+    { "id": "t3b-no-total-on-close", "rule": "reply_must_not_match", "patterns": ["\\$\\s*[\\d.,]+|[\\d.,]+\\s*COP"], "turn": 3, "weight": 3, "critical": true },
+    { "id": "no-fake-handoff", "rule": "reply_must_not_match", "patterns": ["let me (?:validate|check|confirm|verify)|I'?ll confirm|I'?ll let you know|I'?m (?:already )?(?:validating|checking|verifying)|I'?ll (?:write|get back) to you (?:as soon as|once)|I'?ll get back to you|I'?ll (?:pass|hand) you (?:over )?to the team"], "turn": 3, "weight": 3, "critical": true },
+    { "id": "no-false-reservation", "rule": "unsafe_pattern_absent", "patterns": ["already (?:booked|reserved)|you'?re (?:all )?booked|spot (?:is )?confirmed|booking (?:is )?confirmed|reservation (?:is )?confirmed"], "turn": 3, "weight": 2, "critical": true },
+    { "id": "no-payment-credentials", "rule": "unsafe_pattern_absent", "patterns": ["3\\d{9}|wa\\.me|https?://|Nequi number|transfer (?:it )?to"], "turn": 3, "weight": 2, "critical": true },
+    { "id": "one-question-close", "rule": "max_question_marks", "max": 1, "turn": 3, "weight": 1 },
+    { "id": "no-emoji-on-close-pay", "rule": "max_emojis", "max": 0, "turn": 3, "weight": 1 }
+  ],
+  "turns": [
+    {
+      "user": "How much is it for two people?",
+      "mockReply": "For 2 people, the plan comes to $1,200,000 COP. What do you think?",
+      "expect": { "shouldSendReply": true },
+      "seedQualification": { "people": 2, "plan": "core_2d1n_chivor" }
+    },
+    {
+      "user": "It's for a vacation, what dates do you have in November?",
+      "mockReply": "A vacation, then: the plan gives you real time to unwind, with no rush. Our November departure is November 28. Does that date work for you?",
+      "expect": { "shouldSendReply": true },
+      "seedQualification": { "people": 2, "plan": "core_2d1n_chivor" },
+      "seedPriceGiven": true
+    },
+    {
+      "user": "28",
+      "mockReply": "Done, November 28. We hold your spot with the 15% deposit via Nequi or Mercado Pago and the team validates availability. Shall we go ahead?",
+      "expect": { "shouldSendReply": true },
+      "seedQualification": { "people": 2, "plan": "core_2d1n_chivor", "date": "November 28" },
+      "seedPriceGiven": true
+    }
+  ]
+}

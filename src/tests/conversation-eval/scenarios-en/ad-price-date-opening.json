@@ -1,0 +1,18 @@
+{
+  "id": "ad-price-date-opening",
+  "source": "EN twin of ad-price-date-opening (history: 501 price+date openings)",
+  "tags": ["opening", "live"],
+  "lang": "en",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 1, "weight": 2, "critical": true },
+    { "id": "short-opening", "rule": "reply_length_at_most", "expected": 420, "turn": 1, "weight": 1 },
+    { "id": "asks-group", "rule": "reply_must_match", "patterns": ["solo|alone|couple|group|people"], "turn": 1, "weight": 2, "critical": true },
+    { "id": "no-brochure", "rule": "reply_must_not_match", "patterns": ["includ(?:es|ing|e).{0,80}(lodging|meals)|all[- ]inclusive.{0,80}(lodging|meals)"], "turn": 1, "weight": 2 },
+    { "id": "no-false-scarcity", "rule": "reply_must_not_match", "patterns": ["limited spots|last spots|spots are filling|almost full|filling up"], "turn": 1, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "C01 - Hi, I'd like info and dates for the emerald mine adventure in Chivor", "mockReply": "Hi! I'm Test Owner, co-founder of Andean Scapes with Test Partner. To recommend the right option, is this for you alone, as a couple, or as a group?", "expect": { "shouldSendReply": true } }
+  ]
+}

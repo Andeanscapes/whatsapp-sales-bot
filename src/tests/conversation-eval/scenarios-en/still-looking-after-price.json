@@ -1,0 +1,21 @@
+{
+  "id": "still-looking-after-price",
+  "source": "EN twin of still-looking-after-price (history: 16 still-looking turns after quote)",
+  "tags": ["objection", "live"],
+  "lang": "en",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "seedConversation": { "phase": "pricing", "priceGiven": true, "qualification": { "people": 2, "plan": "core_2d1n_chivor" } },
+  "seedQualification": { "people": 2, "plan": "core_2d1n_chivor" },
+  "criteria": [
+    { "id": "no-farewell", "rule": "reply_must_not_match", "patterns": ["whenever you(?:'re| are)? ready|whenever you (?:want|like)|I'?m here|have a (?:great|good|nice) trip|good luck|best of luck"], "turn": 1, "weight": 3, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 1, "weight": 2, "critical": true },
+    { "id": "has-question", "rule": "reply_must_match", "patterns": ["\\?"], "turn": 1, "weight": 3, "critical": true },
+    { "id": "no-handback", "rule": "reply_must_not_match", "patterns": ["let me know|get back to me|write (?:to )?me|text me|message me|I'?ll be (?:here|waiting|around)|I'?ll stay tuned"], "turn": 1, "weight": 3, "critical": true },
+    { "id": "published-dates-or-next-step", "rule": "reply_must_match", "patterns": ["date|month|check|availab|august|september|october|november|december|\\?"], "turn": 1, "weight": 1, "critical": true },
+    { "id": "no-price-repeat", "rule": "reply_must_not_match", "patterns": ["\\$[0-9.,]+"], "turn": 1, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "We're still looking, no date yet", "mockReply": "Of course. I can share the published dates that might work for you, and we can check a specific one once you pick a month. Which month are you considering?", "expect": { "shouldSendReply": true } }
+  ]
+}

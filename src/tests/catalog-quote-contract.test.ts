@@ -124,7 +124,7 @@ describe('catalog quote contract', () => {
   it('preserves metadata from validated JSON through transform, registry and assembly', () => {
     const normalized = transformDynamicData(catalog()).experiences.emerald_mining_tour;
     const prime = normalized.plans?.find(plan => plan.id === 'prime_2d1n_chivor');
-    expect(prime?.selectionAliases).toEqual(['prime', 'mas completa', 'premium', 'la de dos minas', 'la de cabalgata', 'mas completo']);
+    expect(prime?.selectionAliases).toEqual(['prime', 'mas completa', 'premium', 'la de dos minas', 'la de cabalgata', 'mas completo', 'most complete']);
     expect(prime?.includedAddonIds).toEqual(['horseback_riding']);
     expect(prime?.calculation).toBe('couple_half_from_five');
     expect(normalized.pricing.items.find(item => item.id === 'horseback_riding')?.quoteMode).toBe('separate');

@@ -1,0 +1,27 @@
+{
+  "id": "entry-retarget-R01-with-history",
+  "source": "EN twin of entry-retarget-R01-with-history (retargeting marker after an earlier local conversation; destination named since the second site)",
+  "tags": ["marker", "live"],
+  "lang": "en",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    { "id": "marker-hidden", "rule": "reply_must_not_match", "patterns": ["R01|marker|campaign code"], "turn": 4, "weight": 2, "critical": true },
+    { "id": "continues-context", "rule": "reply_must_match", "patterns": ["(?:were|was)\\b.{0,40}\\b(?:solo|alone)\\b|(?:travel(?:ing|ling)?|coming|going|were) (?:solo|alone|on your own|by yourself)|just for you|for you alone"], "turn": 4, "weight": 2, "critical": true },
+    { "id": "plan-recalled", "rule": "reply_must_match", "patterns": ["PRIME|2 mines|two mines|horseback"], "turn": 4, "weight": 2, "critical": true },
+    { "id": "diagnoses-blocker", "rule": "reply_must_match", "patterns": ["what(?:'s| is| was)? (?:still )?(?:missing|holding|stopp|left)|what held|what stopped|what changed|what (?:do|would) you need|what can i (?:sort|solve|help)|what(?:'s| is) (?:still )?needed"], "turn": 4, "weight": 2, "critical": true },
+    { "id": "offers-pain-fecha", "rule": "reply_must_match", "patterns": ["\\bdates?\\b"], "turn": 4, "weight": 1 },
+    { "id": "offers-pain-logistics", "rule": "reply_must_match", "patterns": ["transport|logistics"], "turn": 4, "weight": 1 },
+    { "id": "offers-pain-safety-or-budget", "rule": "reply_must_match", "patterns": ["safety|budget|price"], "turn": 4, "weight": 1 },
+    { "id": "no-brand-restart", "rule": "reply_must_not_match", "patterns": ["i'?m .{0,30}co-?founder|we are Andean Scapes|we're Andean Scapes|let me introduce Andean Scapes"], "turn": 4, "weight": 2, "critical": true },
+    { "id": "no-brochure-or-price-repeat", "rule": "reply_must_not_match", "patterns": ["all[- ]inclusive|mine.{0,60}beekeeping|\\$|\\bCOP\\b"], "turn": 4, "weight": 2, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 4, "weight": 1 },
+    { "id": "emoji-restraint-on-retarget", "rule": "max_emojis", "max": 1, "turn": 4, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "Hi, I'm interested in Chivor", "mockReply": "Hi! Would you be traveling solo, as a couple, or in a group?", "replay": true, "expect": { "shouldSendReply": true } },
+    { "user": "Solo", "mockReply": "Perfect. Are you after a more intense pace or a calmer one with more time on site?", "replay": true, "expect": { "shouldSendReply": true } },
+    { "user": "More intense, the PRIME", "mockReply": "Excellent, the PRIME with the 2 mines and a guided horseback ride. What date do you have in mind?", "replay": true, "expect": { "shouldSendReply": true } },
+    { "user": "R01 hi", "mockReply": "You were traveling solo and liked the PRIME plan with the horseback ride. What's still missing for you: dates, transport, safety or budget?", "expect": { "shouldSendReply": true } }
+  ]
+}

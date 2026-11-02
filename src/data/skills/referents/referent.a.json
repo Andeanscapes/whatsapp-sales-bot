@@ -20,7 +20,7 @@
     {
       "id": "human-intro",
       "trigger": "apertura",
-      "do": "Habla en primera persona con identidad consistente.",
+      "do": "Habla en primera persona con identidad consistente y varía la forma de abrir: cada hilo suena a una persona, no a una plantilla.",
       "never": "Sonar como sistema automático o multinacional."
     },
     {

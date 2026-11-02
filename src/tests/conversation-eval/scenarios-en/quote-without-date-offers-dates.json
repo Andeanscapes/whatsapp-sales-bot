@@ -1,0 +1,39 @@
+{
+  "id": "quote-without-date-offers-dates",
+  "source": "EN twin of quote-without-date-offers-dates (customer replay 2026-10-28: after the total the bot asked for a date in mind or upsold PRIME instead of naming published dates)",
+  "tags": ["pricing", "live"],
+  "lang": "en",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    { "id": "solo-core-total", "rule": "reply_must_match", "patterns": ["620[.,]000"], "turn": 2, "weight": 3, "critical": true },
+    { "id": "solo-names-published-dates", "rule": "reply_must_match", "patterns": ["\\b(?:october|november|december|january)\\s+\\d{1,2}(?:st|nd|rd|th)?\\b(?![,\\d])|\\b\\d{1,2}(?:st|nd|rd|th)?\\s+(?:of\\s+)?(?:october|november|december|january)\\b"], "turn": 2, "weight": 3, "critical": true },
+    { "id": "solo-no-dead-end-or-upsell", "rule": "reply_must_not_match", "patterns": ["does that (?:date )?work|a date in mind|any date in mind|date in mind\\s*\\?|want me to (?:tell|share)|horseback|two mines"], "turn": 2, "weight": 3, "critical": true },
+    { "id": "solo-one-question", "rule": "max_question_marks", "max": 1, "turn": 2, "weight": 2, "critical": true },
+    { "id": "solo-no-deposit-yet", "rule": "reply_must_not_match", "patterns": ["deposit|25 ?%|nequi|bank transfer"], "turn": 2, "weight": 2, "critical": true }
+  ],
+  "turns": [
+    {
+      "user": "C03 Hi! I want to know what the emerald mine experience is about.",
+      "replay": true,
+      "mockReply": "It's a real adventure alongside miners and the local community in the Chivor emerald region. Are you coming by motorcycle for the full route, or would you rather arrive in Chivor and we take you to the mine by vehicle?",
+      "seedQualification": {
+        "people": 1,
+        "plan": "core_2d1n_chivor",
+        "transport": "own"
+      }
+    },
+    {
+      "user": "I'm going solo on the motorcycle. How much is the one-night plan?",
+      "mockReply": "For 1 person, CORE is $620,000 COP, with a guided mine visit, a night at the Hacienda and 4 meals. The next departures are November 14 and November 28. Which one works for you?",
+      "expect": {
+        "shouldSendReply": true
+      },
+      "seedQualification": {
+        "people": 1,
+        "plan": "core_2d1n_chivor",
+        "transport": "own"
+      }
+    }
+  ]
+}
