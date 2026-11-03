@@ -595,8 +595,13 @@ export function containsPromptLeakOrPolicyViolation(reply: string): boolean {
   }
 
   // DATOS states the free reschedule window, so "reprogramar gratis hasta 7 dias antes"
-  // is a catalog fact, not an invented giveaway. Only that clause is exempt.
-  const withoutFreeReschedule = norm.replace(FREE_RESCHEDULE, ' ');
+  // is a catalog fact, not an invented giveaway. Only that clause is exempt, matched per
+  // sentence: normalizing strips punctuation, so "reprogramar. Transporte gratis" would
+  // otherwise read as one clause.
+  const withoutFreeReschedule = reply
+    .split(/[.!?;:\n]+/)
+    .map(sentence => normalizeText(sentence).replace(FREE_RESCHEDULE, ' '))
+    .join(' ');
   if (/\bgratis\b/i.test(withoutFreeReschedule)
     && !/\b(no es|no son|no incluye|gratuito|gratuita)\b/i.test(norm)) {
     return true;

@@ -5481,6 +5481,8 @@ describe('containsPromptLeakOrPolicyViolation', () => {
     expect(containsPromptLeakOrPolicyViolation('Se puede reagendar la salida sin pagar nada, gratis hasta 7 días antes.')).toBe(false);
     expect(containsPromptLeakOrPolicyViolation('Pueden reprogramar hasta 7 días antes y la cabalgata va gratis.')).toBe(true);
     expect(containsPromptLeakOrPolicyViolation('Pueden reprogramar y la cabalgata va gratis.')).toBe(true);
+    expect(containsPromptLeakOrPolicyViolation('Se puede reprogramar. El transporte va gratis.')).toBe(true);
+    expect(containsPromptLeakOrPolicyViolation('Pueden reagendar. Cabalgata gratis.')).toBe(true);
     expect(containsPromptLeakOrPolicyViolation('Les dejo el transporte gratis.')).toBe(true);
   });
 
