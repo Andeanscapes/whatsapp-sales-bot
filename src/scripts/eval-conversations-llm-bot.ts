@@ -155,8 +155,9 @@ async function main(): Promise<void> {
         }));
         const result = buildResult(scenario, evaluation, turns, { total: 1, passed: 0 }, validateTurnExpectations(scenario, ctx.turns));
         result.runs = { total: 1, passed: result.hardFail ? 0 : 1 };
-        if (result.hardFail && !isRetry) {
-          const failedIds = result.criteria.filter(c => c.critical && !c.passed).map(c => c.id).join(', ');
+        const retryable = result.criteria.filter(c => !c.passed && (c.critical || c.weight >= 3));
+        if (retryable.length > 0 && !isRetry) {
+          const failedIds = retryable.map(c => c.id).join(', ');
           console.log(`${progress} ${scenario.id} run ${run + 1}/${runCount} hard fail (${failedIds}); retrying once`);
           retriedRun = run;
           run--;
