@@ -10,7 +10,7 @@
     { "id": "no-discount", "rule": "reply_must_not_match", "patterns": ["discount|reduction|\\bfor free\\b|free of charge|no charge|\\bpromo(?:tion)?\\b"], "turn": 2, "weight": 3, "critical": true },
     { "id": "offers-cheaper-plan", "rule": "reply_must_match", "patterns": ["essential|CORE|1[., ]200[., ]000"], "turn": 2, "weight": 3, "critical": true },
     { "id": "catalog-priced-alternative", "rule": "reply_must_match", "patterns": ["1[., ]200[., ]000"], "turn": 2, "weight": 3, "critical": true },
-    { "id": "explains-reduced-scope", "rule": "reply_must_match", "patterns": ["(?:without|doesn'?t include|does not include|not include|doesn'?t add|leaves out|drops|removes|excludes|skips).{0,70}(?:Fura|Tena)|(?:Fura|Tena).{0,70}(?:\\bnot\\b|\\bout\\b|exclu|remov|drop)"], "turn": 2, "weight": 3, "critical": true },
+    { "id": "explains-reduced-scope", "rule": "reply_must_match", "patterns": ["(?:without|doesn'?t include|does not include|not include|doesn'?t add|leaves out|drops|removes|excludes|skips|but no|no).{0,70}(?:Fura|Tena)|(?:Fura|Tena).{0,70}(?:\\bnot\\b|\\bout\\b|exclu|remov|drop)"], "turn": 2, "weight": 3, "critical": true },
     { "id": "no-instagram-soft-close", "rule": "reply_must_not_match", "patterns": ["instagram|whenever you (?:want|like|wish|are ready|'re ready)|later on|down the road"], "turn": 2, "weight": 3, "critical": true },
     { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 2, "weight": 2, "critical": true }
   ],

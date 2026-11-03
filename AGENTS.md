@@ -355,6 +355,13 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
       With no stored plan, a plan question is still the first selection. A turn where the bot merely *proposes* another plan with
       its price ships no card — the stored plan is still the old one; the card arrives
       when the customer accepts.
+      **A comparison the customer asked for ships every quoted card** (`comparedPlanIds`,
+      owner decision 2026-11-02). On a price turn after a price question whose reply
+      quotes 2+ plans' totals (`detectQuotedPlans`, same price match as `detectQuotedPlan`),
+      each quoted plan's card ships in reply order; the last one carries the reply, the
+      others go first with their feed caption, each with its own 72h claim. Objection
+      turns keep their single-alternative rule, a bot comparison nobody asked for ships
+      none, and the stored plan is unchanged.
       **A plan with no card of its own ships no card.** `selectPlanImage` once fell back
       to the feed's first card, so a Coscuez PRIME quote shipped the Chivor CORE card.
       The card is exact-match only (`findPlanBrochureImage`); the reply goes as text.

@@ -10,7 +10,7 @@
     { "id": "no-discount", "rule": "reply_must_not_match", "patterns": ["descuento|rebaja|gratis|promoci[oó]n"], "turn": 2, "weight": 3, "critical": true },
     { "id": "offers-cheaper-plan", "rule": "reply_must_match", "patterns": ["esencial|CORE|1[., ]200[., ]000"], "turn": 2, "weight": 3, "critical": true },
     { "id": "catalog-priced-alternative", "rule": "reply_must_match", "patterns": ["1[., ]200[., ]000"], "turn": 2, "weight": 3, "critical": true },
-    { "id": "explains-reduced-scope", "rule": "reply_must_match", "patterns": ["(?:sin|no incluye|no suma|no tiene|no lleva|quita|elimina|excluye).{0,70}(?:Fura|Tena)|(?:Fura|Tena).{0,70}(?:no|fuera|exclu|quita|elimina)"], "turn": 2, "weight": 3, "critical": true },
+    { "id": "explains-reduced-scope", "rule": "reply_must_match", "patterns": ["(?:sin|no incluye|no suma|no tiene|no lleva|quita|elimina|excluye|deja fuera|deja por fuera).{0,70}(?:Fura|Tena)|(?:Fura|Tena).{0,70}(?:no|fuera|exclu|quita|elimina)"], "turn": 2, "weight": 3, "critical": true },
     { "id": "no-instagram-soft-close", "rule": "reply_must_not_match", "patterns": ["instagram|cuando quieras|m[aá]s adelante"], "turn": 2, "weight": 3, "critical": true },
     { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 2, "weight": 2, "critical": true }
   ],

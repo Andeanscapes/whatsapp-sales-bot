@@ -30,11 +30,11 @@ function insertConversation(phone: string, firstSeenAt: string, leadScore: numbe
   ).run(phone, firstSeenAt, firstSeenAt, leadScore, name ?? null);
 }
 
-function insertMessage(phone: string, direction: 'inbound' | 'outbound', body: string, createdAt: string): void {
+function insertMessage(phone: string, direction: 'inbound' | 'outbound', body: string, createdAt: string, sender: 'operator' | null = null): void {
   const appVersion = direction === 'outbound' ? env.APP_VERSION : null;
   db.prepare(
-    'INSERT INTO messages (customer_phone, direction, message_type, body, created_at, app_version) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(phone, direction, 'text', body, createdAt, appVersion);
+    'INSERT INTO messages (customer_phone, direction, message_type, body, created_at, app_version, sender) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).run(phone, direction, 'text', body, createdAt, appVersion, sender);
 }
 
 function insertAiUsage(phone: string, cost: number, createdAt: string): void {
@@ -53,6 +53,26 @@ describe('getDayActivity', () => {
     const now = new Date();
     return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
   }
+
+  it('counts bot deposit requests closed without the bridge, and bridge conversations', () => {
+    insertConversation('+301', todayMidnight(), 50, 'Ana');
+    insertMessage('+301', 'inbound', 'Quiero reservar', todayH(9));
+    insertMessage('+301', 'outbound', 'Validamos el cupo; el anticipo es 25%.', todayH(9));
+    insertConversation('+302', todayMidnight(), 50, 'Beto');
+    insertMessage('+302', 'inbound', 'Cómo pago?', todayH(9));
+    insertMessage('+302', 'outbound', 'Anticipo del 25%, valido con el equipo.', todayH(9));
+    insertMessage('+302', 'outbound', 'Te escribo ya.', todayH(10), 'operator');
+    insertConversation('+303', todayMidnight(), 50, 'Cy');
+    insertMessage('+303', 'inbound', 'Hola', todayH(9));
+    insertMessage('+303', 'outbound', 'El anticipo es del 25%.', todayH(9));
+
+    const totals = repos.transcripts.getDayActivity(todayMidnight(), null).totals;
+    expect(totals.bridgeConversations).toBe(1);
+    expect(totals.botDepositConversations).toBe(2);
+    expect(totals.botDepositWithoutBridge).toBe(1);
+    const beto = repos.transcripts.getDayActivity(todayMidnight(), null).conversations.find(c => c.name === 'Beto');
+    expect(beto?.operatorMessages).toBe(1);
+  });
 
   it('returns conversations with messages in period', () => {
     insertConversation('+111', todayMidnight(), 50, 'Alice');

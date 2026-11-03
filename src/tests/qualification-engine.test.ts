@@ -828,6 +828,22 @@ describe('resolveLanguage — stability', () => {
     expect(lang).toBe('es');
   });
 
+  it('an English ad opener overrides a stored es (returning lead from a new ad)', () => {
+    repos.conversation.upsert(PHONE, { language: 'es' });
+    expect(resolveLanguage(repos, PHONE, "P410 Hi! I'd like the PRIME emerald mine trip (2D/1N) in Chivor. Dates?")).toBe('en');
+  });
+
+  it('a Spanish ad opener overrides a stored en', () => {
+    repos.conversation.upsert(PHONE, { language: 'en' });
+    expect(resolveLanguage(repos, PHONE, 'C01 Hola, quiero el plan en la mina de esmeraldas de Chivor.')).toBe('es');
+  });
+
+  it('a short or mixed ad opener keeps the stored language', () => {
+    repos.conversation.upsert(PHONE, { language: 'es' });
+    expect(resolveLanguage(repos, PHONE, 'C01 hi')).toBe('es');
+    expect(resolveLanguage(repos, PHONE, 'Hi! I want the PRIME trip, what dates?')).toBe('es');
+  });
+
   it('detects en for new conversation', () => {
     const lang = resolveLanguage(repos, PHONE, 'hello, how much is the tour?');
     expect(lang).toBe('en');

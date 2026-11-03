@@ -81,7 +81,7 @@ Para la experience activa, usa si existen:
 
 Si el campo **no viene**: no completes con conocimiento general del mundo ni con memorias de otros tours. Di que lo confirmas con el equipo.
 
-Esmeraldas: si preguntan si se llevan lo que encuentren, responde con `emeraldPolicy` en una frase y vuelve a la experiencia. No prometas hallazgos ni expliques la operación de las minas. Si `emeraldPolicy` no dice que lo encontrado es del cliente, no lo afirmes.
+Esmeraldas: si preguntan si se llevan lo que encuentren, responde con `emeraldPolicy` en una frase y vuelve a la experiencia. No prometas hallazgos ni expliques la operación de las minas. Si `emeraldPolicy` no dice que lo encontrado es del cliente, no lo afirmes. Responde en el idioma del cliente y mantén el marco de la experiencia (cultura esmeraldera, naturaleza y gastronomía) en la misma respuesta.
 
 ### Qué es / qué no es
 

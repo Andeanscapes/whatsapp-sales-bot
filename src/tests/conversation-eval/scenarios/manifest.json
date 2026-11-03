@@ -1,7 +1,7 @@
 {
   "name": "Andean Scapes golden conversation regression pack",
   "version": "2026-10-27-humanness",
-  "totalTests": 59,
+  "totalTests": 61,
   "scenarioIds": [
     "humanness-no-repeated-closer",
     "humanness-no-voseo-with-tu",
@@ -61,7 +61,9 @@
     "kids-price-sensitivity-downsell",
     "two-plan-narrow-quotes-both",
     "quote-recommends-date-soft-cta",
-    "c01-opener-price-anchor"
+    "c01-opener-price-anchor",
+    "duration-shared-by-two-plans",
+    "two-doubts-then-cupo-offer"
   ],
   "strategyPrinciples": [
     "LLM owns reply text — no deterministic sales copy rewriting",

@@ -6,7 +6,7 @@ import { countEmojis } from '../../services/reply-guard.js';
 import type { Criterion, CriterionResult, Scenario } from './schema.js';
 import type { TurnRecord } from './runner.js';
 
-const STARTING_PRICE_PATTERN = /\b(?:desde|a\s+partir\s+de|starting\s+at)\s*\$?\s*[\d.,]+(?:\s*(?:COP|USD))?/i;
+const STARTING_PRICE_PATTERN = /\b(?:desde|a\s+partir\s+de|starting\s+at)\s*\*?\s*\$?\s*\*?\s*[\d.,]+(?:\s*(?:COP|USD))?/i;
 const PRICE_AMOUNT_PATTERN = /\$\s*[\d.,]+(?:\s*(?:COP|USD))?|\b[\d.,]+\s*(?:COP|USD)\b/gi;
 /** Grouped thousands or 6+ digits carrying a currency marker: "$2.500.000" or "2500000 COP". */
 const GROUP_QUOTE_AMOUNT_PATTERN =
@@ -15,7 +15,7 @@ const DATE_GIVEN_PATTERN = /\b(?:enero|febrero|marzo|abril|mayo|junio|julio|agos
 const PEOPLE_GIVEN_PATTERN = /(?:somos|ser[ií]amos?|para|grupo de)\s+\d+|\d+\s*(?:persona|people|pax)|\b(?:pareja|solo|sola|couple|alone|mi hijo y yo|my son and i)\b/i;
 const TRANSPORT_GIVEN_PATTERN = /\b(?:carro|moto|transporte propio|veh[ií]culo|4x4|desde bogot[aá]|bus|transport|motorcycle)\b/i;
 // "con traslado local" answers the transport question; "¿hay traslado?" asks it.
-const TRANSPORT_ANSWER_PATTERN = /\b(?:con|sin)\s+traslado\b|\btraslado\s+local\b/i;
+const TRANSPORT_ANSWER_PATTERN = /\b(?:con|sin)\s+traslado\b|\btraslado\s+local\b|\b(?:with|without)\s+(?:the\s+)?(?:local\s+)?transfer\b|\blocal\s+transfer\b/i;
 const NAME_GIVEN_PATTERN = /(?:me llamo|mi nombre es|hola soy|hello i'?m|my name is)\s+\S+|^\s*[a-záéíóúñ]{2,}(?:\s+[a-záéíóúñ]{2,})?\s*(?:,\s*(?:from|traveling)|$)/i;
 const FIELD_ASK_PATTERNS = {
   name: /\b(c[óo]mo te llamas|cu[aá]l (es )?tu nombre|what'?s your name|what is your name|con qui[eé]n tengo)\b/i,

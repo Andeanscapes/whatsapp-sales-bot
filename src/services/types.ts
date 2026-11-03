@@ -76,6 +76,12 @@ export interface ProcessMessageOutput {
    * the stored plan is unchanged.
    */
   quotedPlanId?: string | null;
+  /**
+   * Price turn whose reply quotes the totals of 2+ plans after the customer asked a
+   * price ("¿qué precio tienen los dos?"): each plan's card ships, in reply order,
+   * the last one carrying the reply. Empty/absent on single-plan and objection turns.
+   */
+  comparedPlanIds?: string[];
   /** Price objection turn: only a uniquely quoted alternative may show a plan card. */
   priceObjectionThisTurn?: boolean;
   /**
