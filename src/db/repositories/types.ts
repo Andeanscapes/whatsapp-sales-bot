@@ -9,6 +9,8 @@ export interface StoredMessage {
   raw_json?: string | null;
   app_version?: string | null;
   media_id?: string;
+  /** 'operator' for messages sent by the team through the bridge; absent = bot. */
+  sender?: 'operator';
 }
 
 export interface RecentMessage {
@@ -851,6 +853,8 @@ export interface DayConversationSummary {
   aiCompletionTokens: number;
   aiCalls: number;
   aiUsageBreakdown: AiUsageBreakdown;
+  /** Messages the team sent through the bridge in this window. */
+  operatorMessages: number;
   followUps: DayFollowUpSummary[];
   messages: DayMessage[];
 }
@@ -877,6 +881,12 @@ export interface PeriodActivityTotals {
   followUpsReplied: number;
   followUpHandoffs: number;
   followUpBookings: number;
+  /** Conversations where the team sent at least one message through the bridge. */
+  bridgeConversations: number;
+  /** Conversations where the bot wrote a deposit / reservation request. */
+  botDepositConversations: number;
+  /** Bot deposit request with no team message in the window: closed without the bridge. */
+  botDepositWithoutBridge: number;
 }
 
 export interface DayActivityResult {

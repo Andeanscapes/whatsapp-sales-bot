@@ -29,6 +29,8 @@ export function migrate(db: Database.Database): void {
 
   addColumnIfMissing(db, 'messages', 'app_version', 'TEXT');
   addColumnIfMissing(db, 'messages', 'media_id', 'TEXT');
+  // 'operator' on messages the team sent through the bridge. NULL = bot, or any row written before this column.
+  addColumnIfMissing(db, 'messages', 'sender', 'TEXT');
   addColumnIfMissing(db, 'conversations', 'handed_off_at', 'TEXT');
   addColumnIfMissing(db, 'conversations', 'price_given_at', 'TEXT');
   addColumnIfMissing(db, 'conversations', 'quote_fingerprint', 'TEXT');

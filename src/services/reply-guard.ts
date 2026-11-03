@@ -93,7 +93,16 @@ export function isSoftCloseMessage(text: string): boolean {
  */
 export function isPriceObjectionMessage(text: string): boolean {
   const norm = normalizeText(text);
-  return /\b(?:caro|costoso|costosa|carisimo|expensive|too much|over budget|out of budget|cuesta mucho|se sale del presupuesto|se me va de presupuesto|fuera de presupuesto|fuera de mi presupuesto|no me alcanza|no tengo presupuesto|no me da el presupuesto|mas barato|mas barata|mas economico|mas economica|mas basico|mas basica|cheaper|planes? mas (?:sencillos?|simples?))\b/i.test(norm);
+  return /\b(?:caro|costoso|costosa|carisimo|expensive|too much|over budget|out of budget|cuesta mucho|es mucho|se sale del presupuesto|se me va de presupuesto|fuera de presupuesto|fuera de mi presupuesto|no me alcanza|no tengo presupuesto|no me da el presupuesto|mas barato|mas barata|mas economico|mas economica|mas basico|mas basica|cheaper|planes? mas (?:sencillos?|simples?))\b/i.test(norm);
+}
+
+/**
+ * "Lo voy a pensar" after a quote is deliberation, not a refusal: the LLM answers it
+ * with the §FASE 4 question. Explicit declines still soft-close (checked separately).
+ */
+export function isDeliberationMessage(text: string): boolean {
+  const norm = normalizeText(text);
+  return /\b(?:lo voy a pensar|voy a pensarlo|lo pienso|lo estoy pensando)\b/i.test(norm);
 }
 
 const TRANSPORT_WORD = '(?:transporte|traslado|4x4|puerta a puerta|conductor|chofer|transport|transfer|pickup|driver)';

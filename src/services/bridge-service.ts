@@ -64,6 +64,7 @@ export async function sendBridgeReply(repos: Repositories, customerPhone: string
       message_type: 'text',
       body: text,
       created_at: new Date().toISOString(),
+      sender: 'operator',
     });
     return { ok: true, message: bridgeMessages.sent(customerPhone) };
   } catch (err) {
@@ -111,6 +112,7 @@ export async function sendBridgeMedia(
       message_type: uploaded.kind,
       body: caption ?? '',
       created_at: new Date().toISOString(),
+      sender: 'operator',
     });
     return { ok: true, message: bridgeMessages.sent(customerPhone) };
   } catch (err) {

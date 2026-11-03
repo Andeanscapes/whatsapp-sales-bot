@@ -240,6 +240,42 @@ describe('contextual image delivery', () => {
     expect(repos.conversation.getCollectedPlan(phone)).toBe('core_2d1n_chivor');
   });
 
+  it('a comparison the customer asked for ships every quoted plan card, the last carrying the reply', async () => {
+    const phone = '573001110031';
+    const reply = 'Para 1 persona, CORE queda en $620.000 y PRIME en $960.000. ¿Con cuál te vas?';
+    processMessageMock.mockResolvedValue(baseResult({
+      reply, priceJustGiven: true, comparedPlanIds: ['core_2d1n_chivor', 'prime_2d1n_chivor'],
+    }));
+
+    await inbound(phone, 'wamid-compare-cards');
+
+    await vi.waitFor(() => expect(sendImageUrlMock).toHaveBeenCalledTimes(2));
+    const [first, second] = sendImageUrlMock.mock.calls;
+    expect(first?.[1]).toContain('/chivor/plans/core/');
+    expect(first?.[2]).not.toBe(reply);
+    expect(second?.[1]).toContain('/chivor/plans/prime/');
+    expect(second?.[2]).toBe(reply);
+    expect(sendTextMock).not.toHaveBeenCalled();
+    expect(repos.conversation.getCollectedPlan(phone)).toBeNull();
+  });
+
+  it('a comparison skips a card already sent in the last 72h and still carries the reply', async () => {
+    const phone = '573001110032';
+    const reply = 'Para 1 persona, CORE queda en $620.000 y PRIME en $960.000. ¿Con cuál te vas?';
+    const core = getDynamicPlanImages(loadSkills()).find(image => image.planId === 'core_2d1n_chivor');
+    expect(core).toBeDefined();
+    repos.mediaSend.recordSend(phone, core!.id);
+    processMessageMock.mockResolvedValue(baseResult({
+      reply, priceJustGiven: true, comparedPlanIds: ['core_2d1n_chivor', 'prime_2d1n_chivor'],
+    }));
+
+    await inbound(phone, 'wamid-compare-cards-dedupe');
+
+    await vi.waitFor(() => expect(sendImageUrlMock).toHaveBeenCalledTimes(1));
+    expect(sendImageUrlMock.mock.calls[0]?.[1]).toContain('/chivor/plans/prime/');
+    expect(sendImageUrlMock.mock.calls[0]?.[2]).toBe(reply);
+  });
+
   it('sends no stored-plan card for a price objection without a uniquely quoted alternative', async () => {
     const phone = '573001110027';
     repos.conversation.upsert(phone, { collected_plan: 'prime_2d1n_coscuez' });
