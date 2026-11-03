@@ -548,12 +548,14 @@ export function containsUnsafeReservationClaim(reply: string): boolean {
 }
 
 const RESCHEDULE_VERB = '(?:reprogram\\w*|reagend\\w*|cambi\\w* (?:de )?(?:la )?fecha|mover la fecha)';
-/** "gratis" in the same short clause as a reschedule verb, on normalized text. */
-const CLAUSE_WORD = ' (?!(?:y|e|pero|ademas|tambien|mas)\\b)\\w+';
-const FREE_RESCHEDULE = new RegExp(
-  `\\b${RESCHEDULE_VERB}(?:${CLAUSE_WORD}){0,6} gratis\\b|\\bgratis(?:${CLAUSE_WORD}){0,3} ${RESCHEDULE_VERB}`,
-  'gi',
-);
+/**
+ * The reschedule itself is what is free: "reprogramar gratis", "reprogramar la fecha
+ * es gratis", "el cambio de fecha es gratis". Only fillers may sit between verb and
+ * "gratis", never a noun, so "reprogramar ... el transporte gratis" is still a giveaway.
+ * Normalized text, per sentence (the caller splits on punctuation).
+ */
+const RESCHEDULE_FILLER = '(?: (?:la|el|su|tu|fecha|salida|tour|viaje|es|sale|queda|son|seria|totalmente|completamente|siempre))*';
+const FREE_RESCHEDULE = new RegExp(`\\b${RESCHEDULE_VERB}${RESCHEDULE_FILLER} gratis\\b`, 'g');
 
 export function containsPromptLeakOrPolicyViolation(reply: string): boolean {
   const norm = normalizeText(reply);
@@ -599,7 +601,7 @@ export function containsPromptLeakOrPolicyViolation(reply: string): boolean {
   // sentence: normalizing strips punctuation, so "reprogramar. Transporte gratis" would
   // otherwise read as one clause.
   const withoutFreeReschedule = reply
-    .split(/[.!?;:\n]+/)
+    .split(/[.!?;:,\n]+/)
     .map(sentence => normalizeText(sentence).replace(FREE_RESCHEDULE, ' '))
     .join(' ');
   if (/\bgratis\b/i.test(withoutFreeReschedule)
