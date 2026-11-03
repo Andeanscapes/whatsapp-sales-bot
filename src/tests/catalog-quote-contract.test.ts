@@ -102,7 +102,7 @@ describe('catalog quote contract', () => {
       skills: loadSkills(), collectedFields: { personas: 3, plan: 'basic_1d_chivor' },
     });
     expect(prompt).toContain('el plan queda en $1.220.000 COP');
-    expect(prompt).toContain('EQUIVALENTE POR PERSONA: $406.667 COP (aproximado por redondeo)');
+    expect(prompt).toContain('EQUIVALENTE POR PERSONA: $407.000 COP (aproximado por redondeo)');
   });
 
   it('bases the equivalent on the complete transport-inclusive total', () => {

@@ -2406,10 +2406,11 @@ describe('processMessage', () => {
     expect(result.leadScore).toBeGreaterThanOrEqual(0);
   });
 
-  it('soft closes with IG link on gracias por la info lo voy a pensar', async () => {
+  it('answers gracias por la info, lo voy a pensar after a quote with the LLM, not the IG farewell', async () => {
     mockLlmComplete.mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'Claro. ¿Qué parte quieren pensar: el valor, la fecha o el transporte?' } }));
     const phone = '573001112262';
 
     repos.conversation.upsert(phone, {
@@ -2420,11 +2421,85 @@ describe('processMessage', () => {
     });
 
     const result = await processMessage({ repos, customerPhone: phone, message: 'gracias por la info, lo voy a pensar' });
+    expect(result.reply).not.toContain('https://www.instagram.com/andean_scapes/');
+    expect(mockLlmComplete).toHaveBeenCalled();
+  });
+
+  it('an explicit decline after a quote still soft-closes with the IG link', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001112265';
+    repos.conversation.upsert(phone, {
+      collected_name: 'Sara',
+      collected_people: 2,
+      price_given_at: new Date().toISOString(),
+      lead_score: 35,
+    });
+    const result = await processMessage({ repos, customerPhone: phone, message: 'no me interesa, gracias' });
     expect(result.reply).toContain('https://www.instagram.com/andean_scapes/');
     expect(result.usedAi).toBe(false);
-
     const conv = repos.conversation.getByPhone(phone) as { soft_closed_at: string | null };
     expect(conv.soft_closed_at).toBeTruthy();
+  });
+
+  it('a C01 price anchor is not a quote: price_given_at stays null and QUOTE LOCK still runs next turn', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001112266';
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'En Chivor entras a minas reales. Desde $370.000 por persona. ¿Qué les encaja más?' } }));
+
+    await processMessage({ repos, customerPhone: phone, message: 'C01 Hola, somos 2, quiero el plan en la mina de Chivor.' });
+    const firstPrompt = mockLlmComplete.mock.calls.at(-1)?.[0].systemPrompt ?? '';
+    expect(firstPrompt).toContain('PRECIO DESDE');
+    expect(repos.conversation.getPriceGivenAt(phone)).toBeNull();
+
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'Para 2 personas, el plan queda en $950.000 COP. ¿Qué fecha les sirve?' } }));
+    await processMessage({ repos, customerPhone: phone, message: 'Core' });
+    const secondPrompt = mockLlmComplete.mock.calls.at(-1)?.[0].systemPrompt ?? '';
+    expect(secondPrompt).toContain('QUOTE LOCK');
+    expect(secondPrompt).not.toContain('PRECIO DESDE');
+  });
+
+  it('a C01 opener naming plan and group gets QUOTE LOCK, not the price anchor, and records the price', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001112267';
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'Para 2 personas, el plan queda en $950.000 COP. ¿Qué fecha les sirve?' } }));
+
+    await processMessage({ repos, customerPhone: phone, message: 'C01 Hola, somos 2 y queremos el CORE en Chivor' });
+    const prompt = mockLlmComplete.mock.calls.at(-1)?.[0].systemPrompt ?? '';
+    expect(prompt).toContain('QUOTE LOCK');
+    expect(prompt).not.toContain('PRECIO DESDE');
+    expect(repos.conversation.getPriceGivenAt(phone)).not.toBeNull();
+  });
+
+  it('a price question answered with two plan totals returns both plans for the cards; one total or no price question returns none', async () => {
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const seed = (phone: string): void => {
+      repos.conversation.upsert(phone, { collected_people: 1, collected_name: 'Leo' });
+    };
+
+    mockLlmComplete.mockReset();
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'Para 1 persona, CORE queda en $620.000 y PRIME en $960.000. ¿Con cuál te vas?' } }));
+    seed('573001112271');
+    const both = await processMessage({ repos, customerPhone: '573001112271', message: 'Que precio tienen los dos planes?' });
+    expect(both.comparedPlanIds).toEqual(['core_2d1n_chivor', 'prime_2d1n_chivor']);
+
+    mockLlmComplete.mockReset();
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'Para 1 persona, CORE queda en $620.000. ¿Qué fecha te sirve?' } }));
+    seed('573001112272');
+    const single = await processMessage({ repos, customerPhone: '573001112272', message: 'Cuanto vale el core?' });
+    expect(single.comparedPlanIds ?? []).toEqual([]);
+
+    mockLlmComplete.mockReset();
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'CORE queda en $620.000 y PRIME en $960.000. ¿Con cuál te vas?' } }));
+    seed('573001112273');
+    const unasked = await processMessage({ repos, customerPhone: '573001112273', message: 'Voy solo en moto' });
+    expect(unasked.comparedPlanIds ?? []).toEqual([]);
   });
 
   it('re-engages after soft close when user says aqui estoy de vuelta', async () => {
@@ -5624,7 +5699,7 @@ describe('logQuoteMismatch', () => {
   it('accepts the group total plus its per-person equivalent', () => {
     const exp = expWithPricing();
     expect(logQuoteMismatch(
-      'Para 3 personas son $1.550.000 COP; aproximadamente $516.667 COP por persona.',
+      'Para 3 personas son $1.550.000 COP; aproximadamente $517.000 COP por persona.',
       exp, { personas: 3, plan: '2d1n_mining' }, '573001', DEPOSIT_PERCENT,
     )).toEqual([]);
     expect(logQuoteMismatch(

@@ -423,6 +423,11 @@ interface ReplyCarryingImage {
   flow: 'price_image' | 'contextual_image';
   /** Feed caption, used only when the reply is too long to be the caption. */
   fallbackCaption: string;
+  /**
+   * Comparison turn only: the other quoted plans' cards, sent before this one with
+   * their feed caption, so the reply still arrives last under its own card.
+   */
+  leadingCards?: { url: string; mediaId: string; caption: string }[];
 }
 
 /** A price turn, or a switch to another plan after a quote, shows the plan card. */
@@ -452,6 +457,22 @@ function resolveReplyCarryingImage(
     // plain text reply instead of throwing inside the delivery path.
     const experience = findActiveExperience(skills, repos.conversation.getSelectedExperienceId(phone));
     if (!experience) return null;
+    const compared = result.comparedPlanIds ?? [];
+    if (compared.length >= 2) {
+      // Every quoted plan with a card of its own that the customer did not just get.
+      const cards = compared
+        .map(planId => selectPlanImage(getDynamicPlanImages(skills), planId, experience.id))
+        .filter((card): card is NonNullable<typeof card> => card != null && !planCardSentRecently(repos, phone, card));
+      const carrier = cards.at(-1);
+      if (!carrier) return null;
+      return {
+        url: carrier.url,
+        mediaId: carrier.id,
+        flow: 'price_image',
+        fallbackCaption: carrier.caption,
+        leadingCards: cards.slice(0, -1).map(card => ({ url: card.url, mediaId: card.id, caption: card.caption })),
+      };
+    }
     const planImage = selectPlanImage(
       getDynamicPlanImages(skills),
       result.quotedPlanId ?? repos.conversation.getCollectedPlan(phone),
@@ -830,6 +851,42 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
               logger.info({ phone: msg.from }, '[WEBHOOK] proactive gallery suppressed — plan card carries this reply');
             }
             let replyImageAttempted = false;
+            // Comparison turn: the other plans' cards go first, so the reply still lands
+            // last under its own card. Each card keeps its own 72h claim.
+            for (const card of replyImage?.leadingCards ?? []) {
+              if (isBridgeActive(repos, msg.from) || !canSendImage(repos, msg.from)) break;
+              const reservationId = reserveImageSend(repos, msg.from, card.mediaId);
+              if (reservationId == null) continue;
+              try {
+                if (!galleryDeliveryStarted && !await pacer.pace()) {
+                  releaseImageReservation(repos, reservationId);
+                  break;
+                }
+                await sendImageUrl(msg.from, card.url, card.caption);
+                galleryDeliveryStarted = true;
+                repos.message.addMessage({
+                  customer_phone: msg.from,
+                  direction: 'outbound',
+                  message_type: 'image',
+                  body: card.caption,
+                  created_at: new Date().toISOString(),
+                });
+                recordOutboundMedia(repos, {
+                  phone: msg.from,
+                  url: card.url,
+                  mediaId: card.mediaId,
+                  caption: card.caption,
+                  carriedReply: false,
+                  flow: 'price_image',
+                  turnInboundMessageId: msg.id,
+                });
+              } catch (err) {
+                const uncertain = err instanceof WhatsAppSendError && err.deliveryUncertain;
+                if (!uncertain) releaseImageReservation(repos, reservationId);
+                if (uncertain) galleryDeliveryStarted = true;
+                logSystemError('whatsapp_send', 'error', err, { phone: msg.from, flow: 'price_image_compare' });
+              }
+            }
             // `.length` counts UTF-16 units while Meta counts characters, so surrogate
             // pairs (emoji) make this guard conservative — never permissive.
             if (replyImage

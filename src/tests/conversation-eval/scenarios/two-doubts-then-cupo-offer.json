@@ -1,0 +1,104 @@
+{
+  "id": "two-doubts-then-cupo-offer",
+  "source": "plan C2: after two doubts answered with plan and price known, the bot proposes checking the cupo of a published date",
+  "tags": [
+    "objection",
+    "live"
+  ],
+  "lang": "es",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "seedConversation": {
+    "phase": "pricing",
+    "priceGiven": true,
+    "qualification": {
+      "people": 2,
+      "plan": "core_2d1n_chivor"
+    }
+  },
+  "seedQualification": {
+    "people": 2,
+    "plan": "core_2d1n_chivor"
+  },
+  "criteria": [
+    {
+      "id": "cupo-offer",
+      "rule": "reply_must_match",
+      "patterns": [
+        "cupo|reserv|validar|revis"
+      ],
+      "turn": 3,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "published-date",
+      "rule": "reply_must_match",
+      "patterns": [
+        "noviembre|diciembre|enero|21|28|14|5 de|12 de"
+      ],
+      "turn": 3,
+      "weight": 2
+    },
+    {
+      "id": "no-generic-question",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "les sirve as[ií]\\s*\\?|te queda claro\\s*\\?|qu[eé] m[aá]s les preocupa"
+      ],
+      "turn": 3,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "no-unpublished-date",
+      "rule": "no_unpublished_date",
+      "turn": 3,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 3,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "no-links",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "instagram|https?://|wa\\.me"
+      ],
+      "turn": 3,
+      "weight": 2,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Los niños pagan igual?",
+      "replay": true,
+      "mockReply": "Cada persona cuenta como cupo completo, así que el total se mantiene. ¿Qué les parece?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Y la comida incluye dieta especial?",
+      "replay": true,
+      "mockReply": "Sí, las comidas se adaptan a restricciones alimentarias si nos avisan con tiempo. ¿Les sirve?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Y el 4x4 local sale desde el pueblo?",
+      "mockReply": "Sí, el 4x4 local sube desde Chivor pueblo hasta la mina, ya incluido en el plan. ¿Revisamos el cupo del 14 de noviembre?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

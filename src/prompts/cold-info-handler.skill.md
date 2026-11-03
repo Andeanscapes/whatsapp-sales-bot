@@ -25,8 +25,9 @@ Aplica **solo al primer contacto**. Si ya hay historial o ≥2 campos conocidos,
 - No pidieron nada concreto → omite este bloque.
 
 **Bloque 3 — Una sola pregunta:**
-- Siempre cierra con **una** pregunta, y que sea por el tamaño del grupo ("¿para cuántas personas sería?").
-- Es la pregunta menos invasiva y la que más desbloquea: habilita cotizar.
+- Siempre cierra con **una** pregunta.
+- Si RUNTIME trae `SEGMENT_DETECTED` con `diagnosisQuestion` en DATOS, esa es la pregunta (vivencia y alcance).
+- Sin segmento con diagnóstico ("info" sin código de campaña): pregunta primero por lo que quieren vivir (una mina con noche, o dos minas con cabalgata, o pasadía). El tamaño del grupo va en el turno siguiente, salvo que el cliente ya lo dijo.
 
 ---
 

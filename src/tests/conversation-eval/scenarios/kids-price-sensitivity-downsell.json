@@ -28,8 +28,8 @@
         "cupo completo|cuenta como|no hay tarifa|tarifa infantil|cada persona|cada (?:adulto|ni[ñn]o)"
       ],
       "turn": 2,
-      "weight": 1,
-      "critical": false
+      "weight": 3,
+      "critical": true
     },
     {
       "id": "lighter-option",
@@ -71,15 +71,15 @@
   ],
   "turns": [
     {
-      "user": "Hola, somos 4 con PRIME. Los niños pagan igual?",
+      "user": "Hola, somos 4 con PRIME. Cuánto vale?",
       "replay": true,
-      "mockReply": "Para 4 personas, PRIME queda en *$3.400.000 COP*. Cada persona cuenta como cupo completo.\n\n¿Qué fecha les sirve?",
+      "mockReply": "Para 4 personas, PRIME queda en *$3.400.000 COP*.\n\n¿Qué fecha les sirve?",
       "expect": {
         "shouldSendReply": true
       }
     },
     {
-      "user": "Son dos niños de 12 y 6 años. Hay algo más ligero para nosotros?",
+      "user": "Son dos niños de 12 y 6 años. ¿Los niños pagan igual? ¿Hay algo más ligero?",
       "mockReply": "Con 12 y 6 años están bien; la edad mínima es 5. Cada persona cuenta como cupo completo, así que el total se mantiene. Si el presupuesto aprieta, CORE tiene una mina y noche en la Hacienda, con menos alcance.\n\n¿Cuál les queda mejor?",
       "expect": {
         "shouldSendReply": true

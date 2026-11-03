@@ -52,9 +52,34 @@ function readPrompt(name: string): string {
   return readFileSync(join(PROMPTS_DIR, name), 'utf-8');
 }
 
-function formatMoney(amount: number, currency: string): string {
-  const formatted = amount.toLocaleString('es-CO');
+/** Thousands separator follows the customer's language: "$950.000" (es) or "$950,000" (en). */
+function formatMoney(amount: number, currency: string, lang: 'es' | 'en' = 'es'): string {
+  const formatted = amount.toLocaleString(lang === 'en' ? 'en-US' : 'es-CO');
   return currency === 'COP' ? `$${formatted}` : `${formatted} ${currency}`;
+}
+
+/**
+ * Lowest per-person price the site publishes: individual, or couple ÷ 2 when only the
+ * couple price exists. Feeds the first-reply price anchor only (never a quote).
+ */
+function cheapestPerPersonPrice(exp: ActiveExperience, siteId: string): number | null {
+  const amounts = exp.pricing.items
+    .filter(item => item.kind === 'plan' && item.siteId === siteId && item.publiclyShow)
+    .map(item => item.pricePerPerson ?? (item.couplePrice != null ? item.couplePrice / 2 : null))
+    .filter((amount): amount is number => amount != null && amount > 0);
+  return amounts.length > 0 ? Math.round(Math.min(...amounts)) : null;
+}
+
+/**
+ * "2D/1N" / "2 días y 1 noche" in the customer's words, as a catalog duration key
+ * ("2d/1n"). Null when the message names no duration.
+ */
+function mentionedDuration(message: string): string | null {
+  const norm = message.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const short = /\b(\d)\s*d\s*\/\s*(\d)\s*n\b/.exec(norm);
+  if (short) return `${short[1]}d/${short[2]}n`;
+  const long = /\b(\d)\s*(?:dias?|days?)\s*(?:y|and|\/|,)?\s*(\d)\s*(?:noches?|nights?)\b/.exec(norm);
+  return long ? `${long[1]}d/${long[2]}n` : null;
 }
 
 function perPersonQuoteCue(total: number, people: number, currency: string): string {
@@ -640,10 +665,12 @@ export interface AssembleSystemPromptInput {
   transportObjectionThisTurn?: boolean;
   /** Review pause whose shareable summary (price included) is already in history (§T7 "una sola vez"). */
   pauseSummaryAlreadySent?: boolean;
+  /** First inbound turn that carries a C/H campaign marker: the first reply anchors a per-person price. */
+  entryPriceAnchor?: boolean;
 }
 
 export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
-   const { skills, lang, collectedFields, salesPhase, customerContext, selectedExperienceId, entryMarker, priorContext, entryOpeningTurn, returning, leadPain, priceGiven, latestCustomerMessage, dateSelectedThisTurn, planSelectedThisTurn, closeCtaAcceptedThisTurn, reservationRequestedThisTurn, proactiveMode, consentAskRetryInstruction, reaskAfterOptOut, consentAcceptedThisTurn, followupReopenedThisTurn, usedEmojis, galleryShown, galleryRequestThemes, galleryImagesRemaining, galleryRetryInstruction, advanceQuestionRetryInstruction, brochurePlanId, otherSitePhotoRequest, photoSiteCorrection, priceObjectionThisTurn, transportObjectionThisTurn, pauseSummaryAlreadySent } = input;
+   const { skills, lang, collectedFields, salesPhase, customerContext, selectedExperienceId, entryMarker, priorContext, entryOpeningTurn, returning, leadPain, priceGiven, latestCustomerMessage, dateSelectedThisTurn, planSelectedThisTurn, closeCtaAcceptedThisTurn, reservationRequestedThisTurn, proactiveMode, consentAskRetryInstruction, reaskAfterOptOut, consentAcceptedThisTurn, followupReopenedThisTurn, usedEmojis, galleryShown, galleryRequestThemes, galleryImagesRemaining, galleryRetryInstruction, advanceQuestionRetryInstruction, brochurePlanId, otherSitePhotoRequest, photoSiteCorrection, priceObjectionThisTurn, transportObjectionThisTurn, pauseSummaryAlreadySent, entryPriceAnchor } = input;
 
   const personality = substituteTokens(readPrompt('seller-personality.skill.md'));
   // entry-strategy must precede cold-info-handler: the first-turn handler reads the
@@ -693,6 +720,19 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
       runtime.push(
         `SEGMENT_DETECTED: ${entryMarker.code}. Usa el bloque ENTRY_SEGMENT ${entryMarker.code} de DATOS (valueHook, diagnosisQuestion, planMatch). Si el comportamiento del cliente contradice el segmento, manda el comportamiento real.`,
       );
+    }
+    // First reply to a campaign lead: one per-person anchor from the catalog. The
+    // figure is computed here, never written by the model; the model places it.
+    const anchorQuoteEligible = typeof collectedFields?.personas === 'number'
+      && (typeof collectedFields?.plan === 'string' || activePlans.length === 1);
+    const anchorPrice = entryPriceAnchor && entryMarker && entryMarker.temperature !== 'retargeting'
+      && !priceGiven && !returning && !anchorQuoteEligible && !sitePending && !pausedPlan && selectedSiteId
+      ? cheapestPerPersonPrice(activeExperience, selectedSiteId)
+      : null;
+    if (anchorPrice != null) {
+      runtime.push(lang === 'en'
+        ? `PRICE ANCHOR: include once in this reply: "starting at ${formatMoney(anchorPrice, activeExperience.pricing.currency, 'en')} per person". Do not give a total or a quote.`
+        : `PRECIO DESDE: incluye una vez en esta respuesta: "desde ${formatMoney(anchorPrice, activeExperience.pricing.currency)} por persona". No des total ni cotización.`);
     }
     // With the destination pending there is no segment, but the turn still gets the
     // destination question: without this cue it was asked next to a group question.
@@ -878,6 +918,23 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
       runtime.push(`OPCIONES DE PLAN ESTE TURNO: ${sitePlans.map(plan => `${plan.name} (${plan.duration})`).join(' | ')}. Presenta todas estas opciones por nombre y una diferencia breve de CATALOGO, sin precios. No reduzcas la eleccion a esencial/completa. Una sola pregunta para elegir.`);
     }
   }
+  // Live 2026-11-01/02: "quiero el plan 2D/1N" was answered "el 2D/1N es CORE" four
+  // times, hiding PRIME, which has the same duration. State only: the plans come from
+  // the catalog and the model writes the sentence.
+  const askedDuration = !lockedPlanId && latestCustomerMessage ? mentionedDuration(latestCustomerMessage) : null;
+  const sameDurationPlans = askedDuration && !sitePending && !pausedPlan && selectedSiteId
+    ? activePlans.filter(plan => plan.siteId === selectedSiteId
+      && plan.duration.toLowerCase().replace(/\s+/g, '') === askedDuration)
+    : [];
+  if (sameDurationPlans.length > 1 && !proactiveMode && !consentAcceptedThisTurn) {
+    // Owner 2026-11-02: also name the site's other plans (e.g. the day plan) as an
+    // alternative, so a "2D/1N" lead still learns the shorter option exists.
+    const otherPlans = activePlans.filter(plan => plan.siteId === selectedSiteId && !sameDurationPlans.includes(plan));
+    const alternative = otherPlans.length > 0
+      ? ` Obligatorio en esta misma respuesta: nombra también, en una frase corta, ${otherPlans.map(plan => `${plan.name} (${plan.duration})`).join(' | ')} como alternativa de otra duración.`
+      : '';
+    runtime.push(`DURACION COMPARTIDA: ${sameDurationPlans.map(plan => plan.name).join(' | ')} tienen la duración que nombró el cliente. No digas que esa duración es un solo plan: nómbralos todos con su diferencia del CATALOGO, sin precios si no los pidió.${alternative} Mantén una sola pregunta, la del turno.`);
+  }
   // Explicit choice only: a single-plan catalog sets lockedPlanId from "Hola" onward.
   // Close, consent, proactive and other-site turns own their question.
   if (
@@ -919,7 +976,7 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
         ? `For ${quote.people} ${quote.people === 1 ? 'person' : 'people'}, the plan comes to ${formatMoney(amount, quote.currency)} ${quote.currency}`
         : `Para ${quote.people} ${quote.people === 1 ? 'persona' : 'personas'}, el plan queda en ${formatMoney(amount, quote.currency)} ${quote.currency}`;
       runtime.push(
-        `QUOTE LOCK: escribe "${quoteSentence}". Copia esas personas y ese total; no recalcules ni redondees otra cifra.${quote.requiresTransportConfirmation ? '' : perPersonQuoteCue(amount, quote.people, quote.currency)}${transportNote} Este turno entrega ese total; no lo pospongas para despues de preguntar fecha o mes.${noDayClose}`,
+        `QUOTE LOCK: escribe "${quoteSentence}". Copia esas personas y ese total; no recalcules ni redondees otra cifra.${quote.requiresTransportConfirmation ? '' : perPersonQuoteCue(amount, quote.people, quote.currency)}${transportNote}${diagnosisTurn ? ' Turno de retorno: diagnostica el freno primero; usa este total solo si el cliente pide el precio.' : ' Este turno entrega ese total; no lo pospongas para despues de preguntar fecha o mes.'}${noDayClose}`,
       );
     }
   }

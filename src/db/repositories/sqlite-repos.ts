@@ -787,9 +787,9 @@ export class SqliteMessageRepo implements MessageRepository {
     // Centralized here to avoid threading env.APP_VERSION through every caller.
     const appVersion = msg.app_version ?? (msg.direction === 'outbound' ? env.APP_VERSION : null);
     this.db.prepare(
-      `INSERT OR IGNORE INTO messages (whatsapp_message_id, customer_phone, direction, message_type, body, created_at, raw_json, app_version, media_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(msg.whatsapp_message_id ?? null, msg.customer_phone, msg.direction, msg.message_type, msg.body ?? null, msg.created_at, msg.raw_json ?? null, appVersion, msg.media_id ?? null);
+      `INSERT OR IGNORE INTO messages (whatsapp_message_id, customer_phone, direction, message_type, body, created_at, raw_json, app_version, media_id, sender)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(msg.whatsapp_message_id ?? null, msg.customer_phone, msg.direction, msg.message_type, msg.body ?? null, msg.created_at, msg.raw_json ?? null, appVersion, msg.media_id ?? null, msg.sender ?? null);
   }
 
   getLastOutboundBody(phone: string): string | null {
@@ -1664,6 +1664,7 @@ interface TranscriptMessageRow {
   body: string | null;
   created_at: string;
   app_version: string | null;
+  sender: string | null;
 }
 
 interface TranscriptUsageRow {
@@ -1688,7 +1689,7 @@ export class SqliteTranscriptRepo implements TranscriptRepository {
     `).all() as TranscriptConversationRow[];
 
     const messagesStmt = this.db.prepare(`
-      SELECT direction, message_type, body, created_at, app_version
+      SELECT direction, message_type, body, created_at, app_version, sender
       FROM messages
       WHERE customer_phone = ?
       ORDER BY created_at ASC, id ASC
@@ -1843,7 +1844,7 @@ export class SqliteTranscriptRepo implements TranscriptRepository {
     `).all({ since: sinceIso, until: untilIso, excludedJson: JSON.stringify(excludedPhones) }) as ActiveConvRow[];
 
     const messagesStmt = this.db.prepare(`
-      SELECT direction, message_type, body, created_at, app_version
+      SELECT direction, message_type, body, created_at, app_version, sender
       FROM messages
       WHERE customer_phone = ?
         AND created_at >= ?
@@ -1859,6 +1860,9 @@ export class SqliteTranscriptRepo implements TranscriptRepository {
     let followUpsReplied = 0;
     let followUpHandoffs = 0;
     let followUpBookings = 0;
+    let bridgeConversations = 0;
+    let botDepositConversations = 0;
+    let botDepositWithoutBridge = 0;
 
     const followUpsByPhone = this.followUpsByPhone(sinceIso, untilIso);
     const conversations: DayConversationSummary[] = activeConvs.map(conv => {
@@ -1881,6 +1885,17 @@ export class SqliteTranscriptRepo implements TranscriptRepository {
       const msgRows = messagesStmt.all(
         conv.customer_phone, sinceIso, untilIso, untilIso,
       ) as TranscriptMessageRow[];
+
+      // Close metrics: a deposit request names the deposit and a booking step (cupo,
+      // reserva, validar) in the same message, so "el anticipo es 25%" alone does not count.
+      // Rows written before the `sender` column count as bot.
+      const operatorMessages = msgRows.filter(m => m.sender === 'operator').length;
+      const hasBotDeposit = msgRows.some(m => m.direction === 'outbound' && m.sender !== 'operator'
+        && /\b(?:anticipo|dep[oó]sito|deposit)\b/i.test(m.body ?? '')
+        && /\b(?:cupo|reserv\w*|valid\w*|spot|book\w*)\b/i.test(m.body ?? ''));
+      if (operatorMessages > 0) bridgeConversations += 1;
+      if (hasBotDeposit) botDepositConversations += 1;
+      if (hasBotDeposit && operatorMessages === 0) botDepositWithoutBridge += 1;
 
       const messages: DayMessage[] = msgRows.map(m => ({
         at: m.created_at,
@@ -1925,6 +1940,7 @@ export class SqliteTranscriptRepo implements TranscriptRepository {
         aiCalls: conv.ai_calls,
         aiUsageBreakdown: this.computeBreakdownForPhone(conv.customer_phone, sinceIso, untilIso),
         followUps,
+        operatorMessages,
         messages,
       };
     });
@@ -1942,6 +1958,9 @@ export class SqliteTranscriptRepo implements TranscriptRepository {
         followUpsReplied,
         followUpHandoffs,
         followUpBookings,
+        bridgeConversations,
+        botDepositConversations,
+        botDepositWithoutBridge,
       },
       conversations,
     };

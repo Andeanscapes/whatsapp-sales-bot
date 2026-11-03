@@ -59,6 +59,7 @@ function formatSummary(result: DayActivityResult, label: string, documentSent: b
     `👥 Conversaciones: ${totals.totalConversations}`,
     `📨 Mensajes: ${totals.totalMessages} (← ${totals.totalInbound} | → ${totals.totalOutbound})`,
     `💰 IA: $${totals.totalAiCostUsd.toFixed(4)}`,
+    `🤝 Con equipo por bridge: ${totals.bridgeConversations} | Depósito pedido por el bot: ${totals.botDepositConversations} (sin bridge: ${totals.botDepositWithoutBridge})`,
     '',
   ];
 

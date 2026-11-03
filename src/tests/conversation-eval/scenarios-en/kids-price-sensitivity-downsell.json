@@ -28,8 +28,8 @@
         "full (?:spot|place|cupo)|counts? as|no (?:child|kids|children) (?:rate|price)|each (?:person|adult|child)"
       ],
       "turn": 2,
-      "weight": 1,
-      "critical": false
+      "weight": 3,
+      "critical": true
     },
     {
       "id": "lighter-option",
@@ -71,15 +71,15 @@
   ],
   "turns": [
     {
-      "user": "Hi, we are 4 for PRIME. Do the kids pay the same?",
+      "user": "Hi, we are 4 for PRIME. How much is it?",
       "replay": true,
-      "mockReply": "For 4 people, PRIME comes to *$3,400,000 COP*. Each person counts as a full spot.\n\nWhich date works for you?",
+      "mockReply": "For 4 people, PRIME comes to *$3,400,000 COP*.\n\nWhich date works for you?",
       "expect": {
         "shouldSendReply": true
       }
     },
     {
-      "user": "Our two kids are 12 and 6. Is there something lighter for us?",
+      "user": "Our two kids are 12 and 6. Do the kids pay the same? Is there something lighter?",
       "mockReply": "At 12 and 6 they are fine; the minimum age is 5. Each person counts as a full spot, so the total stays the same. If the budget is tight, CORE has one mine and a night at the Hacienda, with a lighter scope.\n\nWhich one suits you better?",
       "expect": {
         "shouldSendReply": true
