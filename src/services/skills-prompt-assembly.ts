@@ -1043,7 +1043,10 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
   }
   if (galleryShown) runtime.push('GALERIA_YA_MOSTRADA: true');
   if (galleryRequestThemes && galleryRequestThemes.length > 0) {
-    runtime.push(`PEDIDO DE FOTOS ESTE TURNO: ${galleryRequestThemes.join(', ')}.`);
+    runtime.push(
+      `PEDIDO DE FOTOS ESTE TURNO: ${galleryRequestThemes.join(', ')}. `
+      + `Pedido explicito (§GALERIA), tambien si repite uno anterior y en cualquier idioma: termina literalmente con [[FOTOS:${galleryRequestThemes.join(',')}]] en su propia linea, despues de la pregunta. No anuncies el envio.`,
+    );
   }
   if (otherSitePhotoRequest) {
     runtime.push(`CLIENTE PIDIO FOTOS DE OTRO SITIO: "${otherSitePhotoRequest}". No emitas [[FOTOS:...]] en este turno. Pregunta si quiere revisar los planes y la info de ese sitio primero, y avanza en la conversacion.`);
