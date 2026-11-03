@@ -707,6 +707,13 @@ columns from the old feature remain in place and are ignored.
   `MAX_GALLERY_IMAGES_PER_SEND=3`; the default is 5, so they were green locally and
   red in CI. **A test must pin any env value it asserts on** — run this before
   pushing.
+  **The live LLM eval has the same trap.** `npm run eval:conversations:llm-bot` loads
+  `.env.dev` (`NODE_ENV=development`, `BRIDGE_FLOW`, routing, owner names, dev
+  overrides), so a local pass says nothing about the CI gate. Before trusting a live
+  result for a release, run it like CI: `env -i PATH="$PATH" HOME="$HOME"
+  ENV_FILE=/dev/null` plus the `conversation-eval-llm` job env from `ci.yml` and your
+  `DEEPSEEK_API_KEY`, and `DYNAMIC_SKILL_URL` unset. Release 2.3.0: four local passes
+  in a row, three CI failures, until the runs used the CI env.
 - `npm run eval:conversations` — deterministic conversation-eval pack (61 Spanish scenarios plus their 61 English twins, mocked).
 - `npm run eval:conversations:llm-bot` — live LLM quality suite, Spanish (44 `live`-tagged
   scenarios, ~$0.75 per pass, estimated; costs tokens). Local default.

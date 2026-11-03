@@ -273,6 +273,29 @@ describe('processMessage', () => {
       const prompt = await answer('573007710934', '15');
       expect(prompt).not.toContain('ESTADO DE TURNO: T3a');
     });
+
+    const answerEn = async (phone: string, message: string): Promise<string> => {
+      repos.conversation.upsert(phone, { language: 'en', collected_people: 2, collected_plan: 'core_2d1n_chivor' });
+      repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'What dates do you have in November?', created_at: new Date(Date.now() - 120_000).toISOString() });
+      repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: 'In November we have published departures on the 14th and the 28th. Which one works for you?', created_at: new Date(Date.now() - 60_000).toISOString() });
+      mockLlmComplete.mockReset();
+      mockLlmComplete.mockResolvedValueOnce(fromOld({ response: { reply: 'The 28th it is. How does that sound?' } }));
+      vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+      vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+      await processMessage({ repos, customerPhone: phone, message });
+      return mockLlmComplete.mock.calls[0]?.[0].systemPrompt ?? '';
+    };
+
+    it.each([['573007710941', '28 is fine'], ['573007710942', 'the 28th'], ['573007710943', '28th works for us'], ['573007710944', '28']])('treats English "%s" as choosing the offered day (T3a)', async (phone, message) => {
+      const prompt = await answerEn(phone, message);
+      expect(prompt).toContain('ESTADO DE TURNO: T3a');
+      expect(String(repos.conversation.getByPhone(phone)?.collected_date ?? '')).toMatch(/28/);
+    });
+
+    it('does not pick an English day we did not offer', async () => {
+      const prompt = await answerEn('573007710945', '15th is fine');
+      expect(prompt).not.toContain('ESTADO DE TURNO: T3a');
+    });
   });
 
   describe('PAUSA CON RESUMEN YA ENVIADO cue', () => {
