@@ -5475,6 +5475,15 @@ describe('containsPromptLeakOrPolicyViolation', () => {
     expect(containsPromptLeakOrPolicyViolation('No tenemos descuentos ahora mismo, disculpa')).toBe(false);
   });
 
+  it('allows the catalog free-reschedule window but still flags other giveaways', () => {
+    expect(containsPromptLeakOrPolicyViolation('Claro. Pueden reprogramar gratis hasta 7 días antes. ¿Qué les preocupa?')).toBe(false);
+    expect(containsPromptLeakOrPolicyViolation('El cambio de fecha es gratis si avisan 7 días antes.')).toBe(false);
+    expect(containsPromptLeakOrPolicyViolation('Se puede reagendar la salida sin pagar nada, gratis hasta 7 días antes.')).toBe(false);
+    expect(containsPromptLeakOrPolicyViolation('Pueden reprogramar hasta 7 días antes y la cabalgata va gratis.')).toBe(true);
+    expect(containsPromptLeakOrPolicyViolation('Pueden reprogramar y la cabalgata va gratis.')).toBe(true);
+    expect(containsPromptLeakOrPolicyViolation('Les dejo el transporte gratis.')).toBe(true);
+  });
+
   it('does not flag replies mentioning accounts or bank transfers', () => {
     expect(containsPromptLeakOrPolicyViolation('Cuenta de ahorros Bancolombia para el pago')).toBe(false);
     expect(containsPromptLeakOrPolicyViolation('Podrias enviar foto del comprobante a nuestra cuenta')).toBe(false);

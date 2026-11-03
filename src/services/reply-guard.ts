@@ -547,6 +547,14 @@ export function containsUnsafeReservationClaim(reply: string): boolean {
     || /(?:listo|perfecto|dale|bueno),?\s*\w+[.,]\s*me\s+(?:encanta|gusta)\s+el\s+plan\b[^.!?]{0,200}\bconfirmo\b/i.test(reply);
 }
 
+const RESCHEDULE_VERB = '(?:reprogram\\w*|reagend\\w*|cambi\\w* (?:de )?(?:la )?fecha|mover la fecha)';
+/** "gratis" in the same short clause as a reschedule verb, on normalized text. */
+const CLAUSE_WORD = ' (?!(?:y|e|pero|ademas|tambien|mas)\\b)\\w+';
+const FREE_RESCHEDULE = new RegExp(
+  `\\b${RESCHEDULE_VERB}(?:${CLAUSE_WORD}){0,6} gratis\\b|\\bgratis(?:${CLAUSE_WORD}){0,3} ${RESCHEDULE_VERB}`,
+  'gi',
+);
+
 export function containsPromptLeakOrPolicyViolation(reply: string): boolean {
   const norm = normalizeText(reply);
 
@@ -586,7 +594,10 @@ export function containsPromptLeakOrPolicyViolation(reply: string): boolean {
     return true;
   }
 
-  if (/\bgratis\b/i.test(norm)
+  // DATOS states the free reschedule window, so "reprogramar gratis hasta 7 dias antes"
+  // is a catalog fact, not an invented giveaway. Only that clause is exempt.
+  const withoutFreeReschedule = norm.replace(FREE_RESCHEDULE, ' ');
+  if (/\bgratis\b/i.test(withoutFreeReschedule)
     && !/\b(no es|no son|no incluye|gratuito|gratuita)\b/i.test(norm)) {
     return true;
   }
