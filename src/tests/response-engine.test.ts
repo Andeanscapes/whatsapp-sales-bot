@@ -5478,7 +5478,13 @@ describe('containsPromptLeakOrPolicyViolation', () => {
   it('allows the catalog free-reschedule window but still flags other giveaways', () => {
     expect(containsPromptLeakOrPolicyViolation('Claro. Pueden reprogramar gratis hasta 7 días antes. ¿Qué les preocupa?')).toBe(false);
     expect(containsPromptLeakOrPolicyViolation('El cambio de fecha es gratis si avisan 7 días antes.')).toBe(false);
-    expect(containsPromptLeakOrPolicyViolation('Se puede reagendar la salida sin pagar nada, gratis hasta 7 días antes.')).toBe(false);
+    expect(containsPromptLeakOrPolicyViolation('Reagendar la salida es gratis hasta 7 días antes.')).toBe(false);
+    expect(containsPromptLeakOrPolicyViolation('Cambiar la fecha sale gratis hasta 7 días antes.')).toBe(false);
+    expect(containsPromptLeakOrPolicyViolation('Si reprograman les damos el almuerzo gratis.')).toBe(true);
+    expect(containsPromptLeakOrPolicyViolation('Pueden reprogramar la fecha, el transporte es gratis.')).toBe(true);
+    expect(containsPromptLeakOrPolicyViolation('Gratis el transporte si reprograman.')).toBe(true);
+    expect(containsPromptLeakOrPolicyViolation('Pueden reprogramar sin costo, la cabalgata gratis.')).toBe(true);
+    expect(containsPromptLeakOrPolicyViolation('Les regalamos la cabalgata gratis al reprogramar.')).toBe(true);
     expect(containsPromptLeakOrPolicyViolation('Pueden reprogramar hasta 7 días antes y la cabalgata va gratis.')).toBe(true);
     expect(containsPromptLeakOrPolicyViolation('Pueden reprogramar y la cabalgata va gratis.')).toBe(true);
     expect(containsPromptLeakOrPolicyViolation('Se puede reprogramar. El transporte va gratis.')).toBe(true);
