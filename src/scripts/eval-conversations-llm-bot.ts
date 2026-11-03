@@ -116,14 +116,15 @@ async function main(): Promise<void> {
     const scenario = scenarios[scenarioIndex];
     const runCount = Math.max(requestedRuns, scenario.liveRuns);
     const runResults: ScenarioResult[] = [];
-    // A hard-failed run is re-run once. A real regression fails both attempts; a
+    // A hard-failed run, or one missing a weight >= 3 criterion, is re-run once (one
+    // retry per run). A real regression fails both attempts; a
     // one-off LLM miss no longer fails the release gate. The retry is in the notes.
     let retriedRun = -1;
 
     for (let run = 0; run < runCount; run++) {
       const progress = progressLabel(scenarioIndex + 1, scenarios.length);
       const isRetry = retriedRun === run;
-      console.log(`${progress} starting ${scenario.id} run ${run + 1}/${runCount}${isRetry ? ' (retry after hard fail)' : ''}`);
+      console.log(`${progress} starting ${scenario.id} run ${run + 1}/${runCount}${isRetry ? ' (retry)' : ''}`);
       const ctx = createRunContext({ phoneSuffix: scenarioIndex * 10 + run + (isRetry ? 5 : 0) });
       const experience = getActiveExperience(getSkills());
       const originalPricingItems = experience.pricing.items;
@@ -155,14 +156,15 @@ async function main(): Promise<void> {
         }));
         const result = buildResult(scenario, evaluation, turns, { total: 1, passed: 0 }, validateTurnExpectations(scenario, ctx.turns));
         result.runs = { total: 1, passed: result.hardFail ? 0 : 1 };
-        const retryable = result.criteria.filter(c => !c.passed && (c.critical || c.weight >= 3));
-        if (retryable.length > 0 && !isRetry) {
-          const failedIds = retryable.map(c => c.id).join(', ');
-          console.log(`${progress} ${scenario.id} run ${run + 1}/${runCount} hard fail (${failedIds}); retrying once`);
+        // hardFail also covers turn expectations and minLiveScore, which are not criteria.
+        const missed = result.criteria.filter(c => !c.passed && (c.critical || c.weight >= 3));
+        if ((result.hardFail || missed.length > 0) && !isRetry) {
+          const failedIds = missed.map(c => c.id).join(', ') || 'expectation/minLiveScore';
+          console.log(`${progress} ${scenario.id} run ${run + 1}/${runCount} failed (${failedIds}); retrying once`);
           retriedRun = run;
           run--;
         } else {
-          if (isRetry) result.notes = [...result.notes, `run ${run + 1} retried after a hard fail`];
+          if (isRetry) result.notes = [...result.notes, `run ${run + 1} retried after a failed run`];
           runResults.push(result);
         }
         totalCostUsd += ctx.repos.aiUsage.getDailyCost(todayStart);
