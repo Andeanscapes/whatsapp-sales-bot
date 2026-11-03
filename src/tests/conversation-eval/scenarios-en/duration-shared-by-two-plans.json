@@ -1,0 +1,82 @@
+{
+  "id": "duration-shared-by-two-plans",
+  "source": "EN twin of duration-shared-by-two-plans",
+  "tags": [
+    "entry",
+    "live"
+  ],
+  "lang": "en",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "names-both-plans",
+      "rule": "reply_must_match",
+      "patterns": [
+        "\\bCORE\\b[\\s\\S]*\\bPRIME\\b|\\bPRIME\\b[\\s\\S]*\\bCORE\\b"
+      ],
+      "turn": 1,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "no-single-plan-claim",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "(?:2\\s*days?[^.?!]{0,30}|2D/1N\\s+)\\bis\\s+(?:the\\s+)?CORE\\b|the\\s+2D/1N(?:\\s+plan)?\\s+is\\b"
+      ],
+      "turn": 1,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "mentions-shorter-option",
+      "rule": "reply_must_match",
+      "patterns": [
+        "\\bBASIC\\b|day trip|same day|no overnight|one day"
+      ],
+      "turn": 1,
+      "weight": 2
+    },
+    {
+      "id": "dates-given",
+      "rule": "reply_must_match",
+      "patterns": [
+        "november|december|january|\\bnov\\b|\\bdec\\b|\\bjan\\b"
+      ],
+      "turn": 1,
+      "weight": 2
+    },
+    {
+      "id": "no-unpublished-date",
+      "rule": "no_unpublished_date",
+      "turn": 1,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 1,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "short-opener",
+      "rule": "reply_length_at_most",
+      "expected": 400,
+      "turn": 1,
+      "weight": 1
+    }
+  ],
+  "turns": [
+    {
+      "user": "D04 Hi, I want to drive to the 2D/1N emerald mine plan in Chivor. Dates?",
+      "mockReply": "For 2 days and 1 night we have two plans: CORE, with one mine and a hike, and PRIME, with two mines and a horseback ride. If you'd rather skip the night, BASIC is the day trip. Published dates: November 14 and November 28. How many of you would be coming?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

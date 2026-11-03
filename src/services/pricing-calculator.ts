@@ -242,6 +242,8 @@ export function formatCop(amount: number): string {
 /** Display equivalent of an already computed total, never the catalog's solo rate. */
 export function calculatePerPersonEquivalent(total: number, people: number): { amount: number; approximate: boolean } | null {
   if (!Number.isFinite(total) || total < 0 || !Number.isInteger(people) || people <= 0) return null;
-  const amount = total / people;
-  return { amount: Math.round(amount), approximate: !Number.isInteger(amount) };
+  const raw = total / people;
+  // An inexact split is shown to the nearest 1,000 ("~$887.000", not "$886.667").
+  const exact = Number.isInteger(raw);
+  return { amount: exact ? raw : Math.round(raw / 1000) * 1000, approximate: !exact };
 }

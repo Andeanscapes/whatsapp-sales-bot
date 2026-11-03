@@ -279,6 +279,8 @@ const scenarioResultSchema = z.object({
     shouldSendImage: z.boolean(),
   })),
   runs: z.object({ total: z.number().int().min(1), passed: z.number().int().min(0) }).optional(),
+  /** Live runs re-run after a failed attempt; only the retry was scored. */
+  retries: z.number().int().min(1).optional(),
 });
 
 const suiteMetaSchema = z.object({

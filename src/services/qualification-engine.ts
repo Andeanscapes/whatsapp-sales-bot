@@ -1,5 +1,5 @@
 import type { Repositories } from '../db/repositories/index.js';
-import { normalizeText, detectLanguageOrNull, detectExplicitLanguageSwitch, type SupportedLanguage } from './language-service.js';
+import { normalizeText, detectLanguageOrNull, detectExplicitLanguageSwitch, detectAdOpenerLanguage, type SupportedLanguage } from './language-service.js';
 import type { FallbackReplies } from './skill-loader.js';
 import type { MergedQualification } from './types.js';
 import { getEquivalentPlan, getPlans, getSites, getUnavailableSites, type ActiveExperience } from './product-registry.js';
@@ -1050,6 +1050,11 @@ export function resolveLanguage(repos: Repositories, phone: string, message: str
   const explicit = detectExplicitLanguageSwitch(message);
   if (explicit) return explicit;
 
+  // A new ad opener in the other language outranks the stored one (live 2026-11-02:
+  // "P410 Hi! I'd like the PRIME…" from a former Spanish lead was answered in Spanish).
+  const adOpener = detectAdOpenerLanguage(message);
+  if (adOpener) return adOpener;
+
   const existing = repos.conversation.getLanguage(phone);
   if (existing) return existing;
 
@@ -1064,6 +1069,27 @@ export function extractCopAmounts(reply: string): number[] {
     .filter(amount => Number.isFinite(amount) && amount >= 100_000);
 }
 
+/**
+ * Every plan whose total for `people` appears in the reply, in the order the reply
+ * first names each total. Empty when people is unknown or no total matches.
+ */
+export function detectQuotedPlans(
+  reply: string,
+  experience: ActiveExperience,
+  people: number | null | undefined,
+  preferredSiteId?: string | null,
+): string[] {
+  if (!people || people < 1) return [];
+  const amounts = extractCopAmounts(reply);
+  if (amounts.length === 0) return [];
+  return getPlans(experience)
+    .filter(plan => !preferredSiteId || plan.siteId === preferredSiteId)
+    .map(plan => ({ id: plan.id, total: calculatePriceQuote(experience, { planId: plan.id, people })?.planTotal }))
+    .filter((entry): entry is { id: string; total: number } => entry.total != null && amounts.includes(entry.total))
+    .sort((a, b) => amounts.indexOf(a.total) - amounts.indexOf(b.total))
+    .map(entry => entry.id);
+}
+
 /** The single plan whose total for `people` appears in the reply; null when none or several do. */
 export function detectQuotedPlan(
   reply: string,
@@ -1071,15 +1097,8 @@ export function detectQuotedPlan(
   people: number | null | undefined,
   preferredSiteId?: string | null,
 ): string | null {
-  if (!people || people < 1) return null;
-  const amounts = new Set(extractCopAmounts(reply));
-  if (amounts.size === 0) return null;
-  const quoted = getPlans(experience).filter(plan => {
-    if (preferredSiteId && plan.siteId !== preferredSiteId) return false;
-    const quote = calculatePriceQuote(experience, { planId: plan.id, people });
-    return quote != null && amounts.has(quote.planTotal);
-  });
-  return quoted.length === 1 ? quoted[0].id : null;
+  const quoted = detectQuotedPlans(reply, experience, people, preferredSiteId);
+  return quoted.length === 1 ? quoted[0] : null;
 }
 
 /**

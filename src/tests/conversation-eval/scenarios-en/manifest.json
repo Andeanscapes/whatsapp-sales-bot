@@ -1,7 +1,7 @@
 {
   "name": "Andean Scapes English conversation pack (twins of the Spanish pack)",
   "version": "2026-11-01-en-curated",
-  "totalTests": 59,
+  "totalTests": 61,
   "scenarioIds": [
     "ad-info-then-group-asks-plan",
     "ad-price-date-opening",
@@ -61,6 +61,8 @@
     "kids-price-sensitivity-downsell",
     "two-plan-narrow-quotes-both",
     "quote-recommends-date-soft-cta",
-    "c01-opener-price-anchor"
+    "c01-opener-price-anchor",
+    "duration-shared-by-two-plans",
+    "two-doubts-then-cupo-offer"
   ]
 }

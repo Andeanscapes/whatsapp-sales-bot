@@ -93,7 +93,16 @@ export function isSoftCloseMessage(text: string): boolean {
  */
 export function isPriceObjectionMessage(text: string): boolean {
   const norm = normalizeText(text);
-  return /\b(?:caro|costoso|costosa|carisimo|expensive|too much|over budget|out of budget|cuesta mucho|se sale del presupuesto|se me va de presupuesto|fuera de presupuesto|fuera de mi presupuesto|no me alcanza|no tengo presupuesto|no me da el presupuesto|mas barato|mas barata|mas economico|mas economica|mas basico|mas basica|cheaper|planes? mas (?:sencillos?|simples?))\b/i.test(norm);
+  return /\b(?:caro|costoso|costosa|carisimo|expensive|too much|over budget|out of budget|cuesta mucho|es mucho|se sale del presupuesto|se me va de presupuesto|fuera de presupuesto|fuera de mi presupuesto|no me alcanza|no tengo presupuesto|no me da el presupuesto|mas barato|mas barata|mas economico|mas economica|mas basico|mas basica|cheaper|planes? mas (?:sencillos?|simples?))\b/i.test(norm);
+}
+
+/**
+ * "Lo voy a pensar" after a quote is deliberation, not a refusal: the LLM answers it
+ * with the §FASE 4 question. Explicit declines still soft-close (checked separately).
+ */
+export function isDeliberationMessage(text: string): boolean {
+  const norm = normalizeText(text);
+  return /\b(?:lo voy a pensar|voy a pensarlo|lo pienso|lo estoy pensando)\b/i.test(norm);
 }
 
 const TRANSPORT_WORD = '(?:transporte|traslado|4x4|puerta a puerta|conductor|chofer|transport|transfer|pickup|driver)';
@@ -538,6 +547,16 @@ export function containsUnsafeReservationClaim(reply: string): boolean {
     || /(?:listo|perfecto|dale|bueno),?\s*\w+[.,]\s*me\s+(?:encanta|gusta)\s+el\s+plan\b[^.!?]{0,200}\bconfirmo\b/i.test(reply);
 }
 
+const RESCHEDULE_VERB = '(?:reprogram\\w*|reagend\\w*|cambi\\w* (?:de )?(?:la )?fecha|mover la fecha)';
+/**
+ * The reschedule itself is what is free: "reprogramar gratis", "reprogramar la fecha
+ * es gratis", "el cambio de fecha es gratis". Only fillers may sit between verb and
+ * "gratis", never a noun, so "reprogramar ... el transporte gratis" is still a giveaway.
+ * Normalized text, per sentence (the caller splits on punctuation).
+ */
+const RESCHEDULE_FILLER = '(?: (?:la|el|su|tu|fecha|salida|tour|viaje|es|sale|queda|son|seria|totalmente|completamente|siempre))*';
+const FREE_RESCHEDULE = new RegExp(`\\b${RESCHEDULE_VERB}${RESCHEDULE_FILLER} gratis\\b`, 'g');
+
 export function containsPromptLeakOrPolicyViolation(reply: string): boolean {
   const norm = normalizeText(reply);
 
@@ -577,7 +596,15 @@ export function containsPromptLeakOrPolicyViolation(reply: string): boolean {
     return true;
   }
 
-  if (/\bgratis\b/i.test(norm)
+  // DATOS states the free reschedule window, so "reprogramar gratis hasta 7 dias antes"
+  // is a catalog fact, not an invented giveaway. Only that clause is exempt, matched per
+  // sentence: normalizing strips punctuation, so "reprogramar. Transporte gratis" would
+  // otherwise read as one clause.
+  const withoutFreeReschedule = reply
+    .split(/[.!?;:,\n]+/)
+    .map(sentence => normalizeText(sentence).replace(FREE_RESCHEDULE, ' '))
+    .join(' ');
+  if (/\bgratis\b/i.test(withoutFreeReschedule)
     && !/\b(no es|no son|no incluye|gratuito|gratuita)\b/i.test(norm)) {
     return true;
   }

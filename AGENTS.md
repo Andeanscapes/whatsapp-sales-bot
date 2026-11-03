@@ -355,6 +355,13 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
       With no stored plan, a plan question is still the first selection. A turn where the bot merely *proposes* another plan with
       its price ships no card — the stored plan is still the old one; the card arrives
       when the customer accepts.
+      **A comparison the customer asked for ships every quoted card** (`comparedPlanIds`,
+      owner decision 2026-11-02). On a price turn after a price question whose reply
+      quotes 2+ plans' totals (`detectQuotedPlans`, same price match as `detectQuotedPlan`),
+      each quoted plan's card ships in reply order; the last one carries the reply, the
+      others go first with their feed caption, each with its own 72h claim. Objection
+      turns keep their single-alternative rule, a bot comparison nobody asked for ships
+      none, and the stored plan is unchanged.
       **A plan with no card of its own ships no card.** `selectPlanImage` once fell back
       to the feed's first card, so a Coscuez PRIME quote shipped the Chivor CORE card.
       The card is exact-match only (`findPlanBrochureImage`); the reply goes as text.
@@ -700,15 +707,28 @@ columns from the old feature remain in place and are ignored.
   `MAX_GALLERY_IMAGES_PER_SEND=3`; the default is 5, so they were green locally and
   red in CI. **A test must pin any env value it asserts on** — run this before
   pushing.
-- `npm run eval:conversations` — deterministic conversation-eval pack (59 Spanish scenarios plus their 59 English twins, mocked).
-- `npm run eval:conversations:llm-bot` — live LLM quality suite, Spanish (42 `live`-tagged
-  scenarios, ~$0.60 per pass, estimated; costs tokens). Local default.
+  **The live LLM eval has the same trap.** `npm run eval:conversations:llm-bot` loads
+  `.env.dev` (`NODE_ENV=development`, `BRIDGE_FLOW`, routing, owner names, dev
+  overrides), so a local pass says nothing about the CI gate. Before trusting a live
+  result for a release, run it like CI: `env -i PATH="$PATH" HOME="$HOME"
+  ENV_FILE=/dev/null` plus the `conversation-eval-llm` job env from `ci.yml` and your
+  `DEEPSEEK_API_KEY`, and `DYNAMIC_SKILL_URL` unset. Release 2.3.0: four local passes
+  in a row, three CI failures, until the runs used the CI env.
+- `npm run eval:conversations` — deterministic conversation-eval pack (61 Spanish scenarios plus their 61 English twins, mocked).
+- `npm run eval:conversations:llm-bot` — live LLM quality suite, Spanish (44 `live`-tagged
+  scenarios, ~$0.75 per pass, estimated; costs tokens). Local default.
 - `npm run eval:conversations:llm-bot -- --lang en` — live LLM quality suite, English
-  pack (`scenarios-en/`, one twin per Spanish scenario: 59, 42 of them `live`; writes
+  pack (`scenarios-en/`, one twin per Spanish scenario: 61, 44 of them `live`; writes
   `artifacts/conversation-eval-llm-bot-en.json`). CI runs BOTH live packs on PRs into
   master, each compared against its own baseline (`baselines/master-llm-bot.json`,
   `baselines/master-llm-bot-en.json`). Refresh a baseline by copying a real
   `--runs 2` artifact, never by hand-editing scores.
+  A live run that hard-fails, or misses any criterion that is critical or weight >= 3,
+  is re-run once (one retry per run) and only the retry is scored (`retries` in the
+  report, printed by the compare step). With 44 live scenarios, a single LLM miss
+  failed the master gate on most runs
+  (2.3.0: `ad-info-then-group-asks-plan` 85 in CI, 5/5 locally on release and master).
+  A real regression fails both attempts. Never raise this to more than one retry.
 - Live replay turns persist the conversation language like a processed turn
   (`runner.ts`); without it a bare later reply ("2") fell back to Spanish and an English
   scenario failed for a harness reason.

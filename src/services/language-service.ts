@@ -60,13 +60,34 @@ export function detectExplicitLanguageSwitch(text: string): SupportedLanguage | 
   return null;
 }
 
-export function detectLanguageOrNull(text: string): SupportedLanguage | null {
-  const normalized = normalizeText(text);
-  const words = new Set(normalized.split(' ').filter(Boolean));
-  const spanishScore = SPANISH_MARKERS.filter(marker => words.has(marker)).length;
-  const englishScore = ENGLISH_MARKERS.filter(marker => words.has(marker)).length;
+function languageScores(text: string): { es: number; en: number } {
+  const words = new Set(normalizeText(text).split(' ').filter(Boolean));
+  return {
+    es: SPANISH_MARKERS.filter(marker => words.has(marker)).length,
+    en: ENGLISH_MARKERS.filter(marker => words.has(marker)).length,
+  };
+}
 
-  if (spanishScore > englishScore) return 'es';
-  if (englishScore > spanishScore) return 'en';
+export function detectLanguageOrNull(text: string): SupportedLanguage | null {
+  const { es, en } = languageScores(text);
+  if (es > en) return 'es';
+  if (en > es) return 'en';
+  return null;
+}
+
+/** Any leading ad code ("C01", "M03", "P410"), not only the catalog C/H/R markers. */
+const AD_CODE_OPENER = /^\s*[A-Z]{1,2}\d{2,3}\b/;
+
+/**
+ * Language of a prefilled ad opener ("P410 Hi! I'd like the PRIME trip…"), or null.
+ * Ad texts are written in one language, so 2+ markers of one language that outnumber
+ * the other are a stronger signal than a language stored from an earlier conversation.
+ * Place names ("Chivor") count as Spanish markers, hence no wider margin.
+ */
+export function detectAdOpenerLanguage(text: string): SupportedLanguage | null {
+  if (!AD_CODE_OPENER.test(text)) return null;
+  const { es, en } = languageScores(text);
+  if (en >= 2 && en > es) return 'en';
+  if (es >= 2 && es > en) return 'es';
   return null;
 }

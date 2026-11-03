@@ -1,0 +1,82 @@
+{
+  "id": "duration-shared-by-two-plans",
+  "source": "prod exports 2026-11-01/02: D04/M04 \"plan 2D/1N\" openers answered \"el 2D/1N es CORE\" 4 times, hiding PRIME (same duration)",
+  "tags": [
+    "entry",
+    "live"
+  ],
+  "lang": "es",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "names-both-plans",
+      "rule": "reply_must_match",
+      "patterns": [
+        "\\bCORE\\b[\\s\\S]*\\bPRIME\\b|\\bPRIME\\b[\\s\\S]*\\bCORE\\b"
+      ],
+      "turn": 1,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "no-single-plan-claim",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "(?:2\\s*d[ií]as[^.?!]{0,30}|2D/1N\\s+)\\bes\\s+(?:el\\s+)?CORE\\b|el\\s+(?:plan\\s+)?(?:de\\s+)?2D/1N\\s+es\\b"
+      ],
+      "turn": 1,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "mentions-shorter-option",
+      "rule": "reply_must_match",
+      "patterns": [
+        "\\bBASIC\\b|pasad[ií]a|sin noche|un d[ií]a"
+      ],
+      "turn": 1,
+      "weight": 2
+    },
+    {
+      "id": "dates-given",
+      "rule": "reply_must_match",
+      "patterns": [
+        "noviembre|diciembre|enero"
+      ],
+      "turn": 1,
+      "weight": 2
+    },
+    {
+      "id": "no-unpublished-date",
+      "rule": "no_unpublished_date",
+      "turn": 1,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 1,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "short-opener",
+      "rule": "reply_length_at_most",
+      "expected": 400,
+      "turn": 1,
+      "weight": 1
+    }
+  ],
+  "turns": [
+    {
+      "user": "D04 Hola, quiero ir en carro al plan 2D/1N en la mina de Chivor. ¿Fechas?",
+      "mockReply": "En 2 días y 1 noche tenemos dos planes: CORE, con una mina y caminata, y PRIME, con dos minas y cabalgata. Si prefieres algo sin noche, está BASIC, el pasadía. Fechas publicadas: 14 y 28 de noviembre. ¿Para cuántas personas sería?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

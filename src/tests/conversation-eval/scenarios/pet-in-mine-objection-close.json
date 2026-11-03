@@ -8,7 +8,7 @@
   "seedConversation": { "phase": "pricing", "priceGiven": true, "qualification": { "people": 2, "plan": "core_2d1n_chivor", "transport": "own" } },
   "seedQualification": { "people": 2, "plan": "core_2d1n_chivor", "transport": "own" },
   "criteria": [
-    { "id": "pet-welcome", "rule": "reply_must_match", "patterns": ["pet.?friendly|bienvenid|pueden (?:ir|venir|llevar)|s[ií],? (?:la|el|su|tu)|s[ií] puede"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "pet-welcome", "rule": "reply_must_match", "patterns": ["pet.?friendly|bienvenid|pueden (?:ir|venir|llevar|entrar)|s[ií],? (?:la|el|su|tu)|s[ií],? en\\b|s[ií] puede"], "turn": 2, "weight": 2, "critical": true },
     { "id": "pet-advances-close", "rule": "reply_must_match", "patterns": ["fecha|noviembre|diciembre|\\bmes\\b|fin de semana|reserv|apart"], "turn": 2, "weight": 2 },
     { "id": "mine-allows-dog", "rule": "reply_must_match", "patterns": ["(?<![\\wáéíóúñ])(?:s[ií]|puede|pueden|entra|entran|acompa[ñn]\\w*|con ustedes|con el grupo)(?![\\wáéíóúñ])[^.?!]{0,80}\\bmina|\\bmina[^.?!]{0,80}(?<![\\wáéíóúñ])(?:s[ií]|puede|pueden|entra|entran|acompa[ñn]\\w*|con ustedes|con el grupo)(?![\\wáéíóúñ])"], "turn": 3, "weight": 3, "critical": true },
     { "id": "mine-no-false-denial", "rule": "reply_must_not_match", "patterns": ["\\bno (?:entra|entran|ingresa|ingresan|puede|pueden|se permite|est[aá] permitid)\\b|a la mina no\\b|en la mina no\\b|se queda(?:r[aá])? (?:tranquil[oa] )?en la hacienda|no apta para mascotas"], "turn": 3, "weight": 3, "critical": true },

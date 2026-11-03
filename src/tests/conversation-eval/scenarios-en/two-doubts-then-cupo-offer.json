@@ -1,0 +1,104 @@
+{
+  "id": "two-doubts-then-cupo-offer",
+  "source": "EN twin of two-doubts-then-cupo-offer",
+  "tags": [
+    "objection",
+    "live"
+  ],
+  "lang": "en",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "seedConversation": {
+    "phase": "pricing",
+    "priceGiven": true,
+    "qualification": {
+      "people": 2,
+      "plan": "core_2d1n_chivor"
+    }
+  },
+  "seedQualification": {
+    "people": 2,
+    "plan": "core_2d1n_chivor"
+  },
+  "criteria": [
+    {
+      "id": "cupo-offer",
+      "rule": "reply_must_match",
+      "patterns": [
+        "cupo|spot|space|availability|check|confirm|book|reserve"
+      ],
+      "turn": 3,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "published-date",
+      "rule": "reply_must_match",
+      "patterns": [
+        "november|december|january|\\bnov\\b|\\bdec\\b|\\bjan\\b|21|28|14|\\b5\\b|\\b12\\b"
+      ],
+      "turn": 3,
+      "weight": 2
+    },
+    {
+      "id": "no-generic-question",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "does that work\\s*\\?|is that clear\\s*\\?|what else (?:worries|concerns) you"
+      ],
+      "turn": 3,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "no-unpublished-date",
+      "rule": "no_unpublished_date",
+      "turn": 3,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 3,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "no-links",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "instagram|https?://|wa\\.me"
+      ],
+      "turn": 3,
+      "weight": 2,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Hi, how much is it? Do the kids pay the same?",
+      "replay": true,
+      "mockReply": "Each person counts as a full spot, so the total stays the same. Does that help?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Hi, is the food adaptable for a special diet? How does that work?",
+      "replay": true,
+      "mockReply": "Yes, meals adapt to dietary restrictions if you tell us in advance. Does that work for you?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Hi, does the local 4x4 leave from the village? How long is the ride?",
+      "mockReply": "Yes, the local 4x4 goes up from Chivor village to the mine, already included in the plan. Want me to check the spot for November 14?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

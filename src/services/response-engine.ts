@@ -34,6 +34,7 @@ import {
   isDateAskQuestion,
   resolveBrochurePlanId,
   detectQuotedPlan,
+  detectQuotedPlans,
   siteNamedRecently,
   extractCopAmounts,
 } from './qualification-engine.js';
@@ -41,6 +42,7 @@ import { findPlanBrochureImage, galleryImageLimit, hasShownLlmGallery, PLAN_BROC
 import {
   isSoftCloseMessage,
   isPriceObjectionMessage,
+  isDeliberationMessage,
   isTransportObjectionMessage,
   isExplicitSalesDecline,
   isAdcodeNoise,
@@ -475,6 +477,9 @@ export function isOptOutMessage(message: string): boolean {
 
 export const llmClient = new DeepSeekLlmClient(true);
 
+/** A customer asking for dates gets them answered; the first-reply anchor is for the plain "quiero el plan" opening. */
+const ASKS_DATES = /\b(?:fechas?|dates?)\b/i;
+
 function isPriceQuestion(text: string): boolean {
   const norm = normalizeForKeywordMatch(text);
   if (/\bvale\s+la\s+pena\b/.test(norm)
@@ -714,16 +719,18 @@ function selectedDateFromAvailabilityReply(
   skills: Skills,
   planId?: string | null,
 ): string | null {
-  // An affirmative, or a short day-only answer ("28", "el 28", "28 está bien") to our own
-  // date list. The day must still be one we offered (checked below).
-  const affirmative = /^(?:s[ií]|sip|si claro|claro|dale|listo|perfecto|de una|por supuesto)(?:\b|$|[\s,!.])/i.test(message.trim());
-  const bareDayAnswer = /^(?:el\s+)?(?:[1-9]|[12]\d|3[01])(?:\s+(?:est[aá] bien|me sirve|nos sirve|perfecto|porfa|por favor|entonces))?[\s.!]*$/i.test(normalizeForKeywordMatch(message).trim());
+  // An affirmative, or a short day-only answer ("28", "el 28", "28 está bien", "the 28th",
+  // "28 is fine") to our own date list. The day must still be one we offered (checked
+  // below). English forms matter: without them an English date pick never set T3a, and
+  // the model bundled the deposit into the quote turn (live date-pick-price-then-close-T3b).
+  const affirmative = /^(?:s[ií]|sip|si claro|claro|dale|listo|perfecto|de una|por supuesto|yes|yeah|yep|sure|ok|okay|sounds good|great)(?:\b|$|[\s,!.])/i.test(message.trim());
+  const bareDayAnswer = /^(?:el\s+|the\s+)?(?:[1-9]|[12]\d|3[01])(?:st|nd|rd|th)?(?:\s+(?:est[aá] bien|me sirve|nos sirve|perfecto|porfa|por favor|entonces|is fine|is good|is perfect|works(?: for (?:us|me))?|sounds good|please|then))?[\s.!]*$/i.test(normalizeForKeywordMatch(message).trim());
   if (!lastAssistantQuestion || (!affirmative && !bareDayAnswer)) return null;
-  if (!/(?:fecha|fin de semana|les sirve|te sirve|available|date|weekend)/i.test(lastAssistantQuestion)) return null;
+  if (!/(?:fecha|fin de semana|les sirve|te sirve|salida|available|date|weekend|departure|works? for you)/i.test(lastAssistantQuestion)) return null;
 
   const assistantNorm = normalizeForKeywordMatch(lastAssistantQuestion);
   const messageNorm = normalizeForKeywordMatch(message);
-  const selectedDay = messageNorm.match(/\b(?:el\s+)?([1-9]|[12]\d|3[01])\b/)?.[1];
+  const selectedDay = messageNorm.match(/\b(?:el\s+|the\s+)?([1-9]|[12]\d|3[01])(?:st|nd|rd|th)?\b/)?.[1];
   const experience = getActiveExperience(skills);
   const candidates = getFutureAvailableDatesForPlan(skills, experience, planId).filter(entry => {
     const date = new Date(`${entry.date}T12:00:00Z`);
@@ -731,8 +738,8 @@ function selectedDateFromAvailabilityReply(
     const day = String(date.getUTCDate());
     const monthEs = normalizeForKeywordMatch(new Intl.DateTimeFormat('es-CO', { month: 'long', timeZone: 'UTC' }).format(date));
     const monthEn = normalizeForKeywordMatch(new Intl.DateTimeFormat('en-US', { month: 'long', timeZone: 'UTC' }).format(date));
-    // Only dates actually offered in the last assistant turn.
-    if (!new RegExp(`\\b${day}\\b`).test(assistantNorm)) return false;
+    // Only dates actually offered in the last assistant turn ("28" or "28th").
+    if (!new RegExp(`\\b${day}(?:st|nd|rd|th)?\\b`).test(assistantNorm)) return false;
     if (!assistantNorm.includes(monthEs) && !assistantNorm.includes(monthEn)) return false;
     if (selectedDay && day !== selectedDay) return false;
     const monthInMessage = MONTH_NAMES.find(m => messageNorm.includes(m));
@@ -1466,7 +1473,10 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     && isPriceObjectionMessage(message)
     && !isExplicitSalesDecline(message);
   const transportObjectionThisTurn = priceObjectionThisTurn && isTransportObjectionMessage(message);
-  if (!hasSafetyOverride && isSoftCloseMessage(message)) {
+  const deliberationAfterQuote = repos.conversation.getPriceGivenAt(customerPhone) != null
+    && isDeliberationMessage(message)
+    && !isExplicitSalesDecline(message);
+  if (!hasSafetyOverride && isSoftCloseMessage(message) && !deliberationAfterQuote) {
     // Price objections with qualification data are recoverable: let the LLM
     // handle them instead of hard-closing with the IG soft-close.
     const hasQualData = dbQualification.personas != null || dbQualification.fecha != null || dbQualification.nombre != null;
@@ -1767,6 +1777,16 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     return pricedReplies.length === 2
       && pricedReplies.every(m => detectQuotedPlan(m.content, activeExperience, people, conversationSiteId) === activePlanId);
   };
+  // First reply to a C/H campaign lead: a catalog "desde" anchor, which is not a quote.
+  // It must not set price_given_at, or QUOTE LOCK and the T3a total are skipped later.
+  // A turn that can already be quoted (plan + group known) gets QUOTE LOCK instead; the
+  // plan rule mirrors `lockedPlanId` in skills-prompt-assembly so both sides agree.
+  const quoteEligibleThisTurn = typeof safeCollected.personas === 'number'
+    && (typeof safeCollected.plan === 'string' || getPlans(activeExperience).length === 1);
+  const entryPriceAnchorTurn = isNewConversation && !storedMarker && !!entryMarker
+    && (entryMarker.temperature === 'cold' || entryMarker.temperature === 'funnel')
+    && !quoteEligibleThisTurn
+    && !isPriceQuestion(message) && !ASKS_DATES.test(normalizeText(message));
   const promptInput = {
     skills: planGallerySkills,
     lang,
@@ -1799,6 +1819,7 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     priceObjectionThisTurn,
     transportObjectionThisTurn,
     pauseSummaryAlreadySent: isPauseSummaryAlreadySent(),
+    entryPriceAnchor: entryPriceAnchorTurn,
   };
   const systemPrompt = buildSystemPrompt(promptInput);
   const llmHistory = recentMessages.map(m => ({ role: m.role, content: m.content }));
@@ -2026,6 +2047,12 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
   }
   const persistentUnmarkedPhotoPromise = galleryRequestThemes.length > 0
     && hasUnmarkedPhotoPromise(rawReplyText);
+  // Promise with nothing to deliver: the reply says photos are coming, no marker was
+  // emitted, and no theme resolved (e.g. no destination chosen on a multi-site
+  // catalog). Log-only, so the customer-facing reply is untouched.
+  if (galleryRequestThemes.length === 0 && isGalleryRequest(message) && hasUnmarkedPhotoPromise(rawReplyText)) {
+    logger.warn({ phone: customerPhone, replyLen: rawReplyText.length }, '[MEDIA_REQUEST] photo promise without a resolvable theme or marker');
+  }
   // Holdable date only (day-level). Month-only must not unlock deposit CTAs.
   const holdableBeforeSafety = typeof merged.fecha === 'string' && isConfirmedDate(merged.fecha);
   const paymentSafeReply = holdableBeforeSafety
@@ -2224,7 +2251,8 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
   // Mark price_given / pricePresented only when at least one booking signal exists
   // (plan/date/transport/people), so a first-turn price mention cannot unlock
   // handoff/hot-lead paths on its own.
-  const initialPriceMentioned = replyMentionsPrice(strippedReplyText);
+  // The entry "desde" anchor is not a quote (see entryPriceAnchorTurn).
+  const initialPriceMentioned = !entryPriceAnchorTurn && replyMentionsPrice(strippedReplyText);
   const msgPriceFields = extractBookingFields(message, exp);
   const priceContextSignals = [
     merged.plan, merged.fecha, merged.transporte, merged.personas,
@@ -2332,7 +2360,7 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
 
   merged = { ...merged, dateStatus: repos.conversation.getDateStatus(customerPhone) };
 
-  const finalPriceJustGiven = legalPrice && replyMentionsPrice(strippedReplyText);
+  const finalPriceJustGiven = legalPrice && !entryPriceAnchorTurn && replyMentionsPrice(strippedReplyText);
   if (finalPriceJustGiven && !prePriceRow) repos.conversation.upsert(customerPhone, { price_given_at: new Date().toISOString() });
   const outputPriceJustGiven = !needsHumanEffective && finalPriceJustGiven;
 
@@ -2369,6 +2397,14 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
       ? detectQuotedPlan(strippedReplyText, activeExperience, peopleForQuote, quoteSiteId)
       : null);
   const quotedPlanId = detectedQuotedPlan && detectedQuotedPlan !== storedPlan ? detectedQuotedPlan : null;
+  // Live 2026-11-01/02: "¿qué precio tienen los dos planes?" got both totals and no
+  // card, because the single-card rule needs exactly one quoted plan. A comparison the
+  // customer asked for shows every quoted plan's card. Objection turns keep their own
+  // rule (only an authorised alternative), and an unasked bot comparison ships none.
+  const quotedPlansThisTurn = outputPriceJustGiven && !priceObjectionThisTurn && !askedPlanQuoted && isPriceQuestion(message)
+    ? detectQuotedPlans(strippedReplyText, activeExperience, peopleForQuote, quoteSiteId)
+    : [];
+  const comparedPlanIds = quotedPlansThisTurn.length >= 2 ? quotedPlansThisTurn : [];
 
   // Plan image flag only — deepseek-llm-client plain-text mode hardcodes img=false,
   // so this stays false until structured img returns. Not a live media path today.
@@ -2435,6 +2471,7 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     priceJustGiven: outputPriceJustGiven,
     planSwitchedAfterQuote,
     quotedPlanId,
+    comparedPlanIds,
     priceObjectionThisTurn,
     galleryRequestedByCustomer,
     reservationReady: closeIntent && hasCoreBooking && pricePresented,

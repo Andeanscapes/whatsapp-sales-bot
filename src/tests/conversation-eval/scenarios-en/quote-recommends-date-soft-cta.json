@@ -60,10 +60,7 @@
     },
     {
       "id": "no-invented-date",
-      "rule": "reply_must_not_match",
-      "patterns": [
-        "november 14|december 14|january 14|november 15|december 15"
-      ],
+      "rule": "no_unpublished_date",
       "turn": 1,
       "weight": 3,
       "critical": true
@@ -82,7 +79,7 @@
   "turns": [
     {
       "user": "Which date do you recommend for the CORE?",
-      "mockReply": "For 2 people, CORE has published departures on November 21 and November 28. Want me to check the spot for November 21?",
+      "mockReply": "For 2 people, CORE has published departures on November 14 and November 28. Want me to check the spot for November 14?",
       "expect": {
         "shouldSendReply": true
       }

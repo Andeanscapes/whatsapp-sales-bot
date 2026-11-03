@@ -129,6 +129,8 @@ describe('skills-prompt-assembly', () => {
     expect(lockLine({ personas: 1, plan: 'core_2d1n_chivor' })).toContain('Para 1 persona,');
     const retarget = /QUOTE LOCK:[^\n]*/.exec(assembleSystemPrompt({ skills: loadSkills(), lang: 'es', entryMarker: { code: 'R01', temperature: 'retargeting' }, collectedFields: { personas: 1, plan: 'prime_2d1n_chivor' } }))?.[0] ?? '';
     expect(retarget).not.toContain('Sin dia elegido');
+    expect(retarget).toContain('Turno de retorno: diagnostica el freno primero');
+    expect(retarget).not.toContain('Este turno entrega ese total');
     const english = /QUOTE LOCK:[^\n]*/.exec(assembleSystemPrompt({ skills: loadSkills(), lang: 'en', collectedFields: { personas: 2, plan: 'prime_2d1n_chivor' } }))?.[0] ?? '';
     expect(english).toMatch(/\((?:January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2}/);
   });
@@ -840,6 +842,37 @@ describe('skills-prompt-assembly', () => {
 
     expect(prompt).toContain('CONTINUACION:');
     expect(prompt).not.toContain('REGRESO: hace');
+  });
+
+  it('a duration two plans share lists every plan, never "that duration is one plan"', () => {
+    const cue = (latestCustomerMessage: string, collectedFields: Record<string, unknown> = { site: 'chivor' }): string =>
+      /DURACION COMPARTIDA:[^\n]*/.exec(assembleSystemPrompt({ skills: loadSkills(), lang: 'es', collectedFields, latestCustomerMessage }))?.[0] ?? '';
+    const opener = cue('D04 Hola, quiero ir en carro al plan 2D/1N en la mina de Chivor. ¿Fechas?');
+    const [shared, alternative = ''] = opener.split('Obligatorio en esta misma respuesta');
+    expect(shared).toMatch(/\bCORE\b/);
+    expect(shared).toMatch(/\bPRIME\b/);
+    expect(shared).not.toMatch(/\bBASIC\b/);
+    expect(alternative).toMatch(/\bBASIC\b/);
+    expect(cue('Quiero algo de 2 días y 1 noche')).toMatch(/\bPRIME\b/);
+    expect(cue('quiero el pasadía 1D/0N')).toBe('');
+    expect(cue('quiero el 2D/1N', { site: 'chivor', plan: 'core_2d1n_chivor' })).toBe('');
+    expect(cue('Hola, quiero información')).toBe('');
+  });
+
+  it('first reply to a C/H campaign lead carries one catalog per-person price anchor', () => {
+    const anchorLine = (input: Parameters<typeof assembleSystemPrompt>[0]): string =>
+      /PRECIO DESDE:[^\n]*|PRICE ANCHOR:[^\n]*/.exec(assembleSystemPrompt(input))?.[0] ?? '';
+    const cold = anchorLine({ skills: loadSkills(), lang: 'es', entryMarker: { code: 'C01', temperature: 'cold' }, collectedFields: { site: 'chivor' }, entryPriceAnchor: true });
+    expect(cold).toMatch(/desde \$[\d.]+ por persona/);
+    expect(cold).not.toMatch(/\b\d{1,3}\.\d{3}\.\d{3}\b/);
+    const en = anchorLine({ skills: loadSkills(), lang: 'en', entryMarker: { code: 'H01', temperature: 'funnel' }, collectedFields: { site: 'chivor' }, entryPriceAnchor: true });
+    expect(en).toMatch(/starting at \$[\d,]+ per person/);
+    expect(anchorLine({ skills: loadSkills(), lang: 'es', entryMarker: { code: 'C01', temperature: 'cold' }, collectedFields: { site: 'chivor' } })).toBe('');
+    expect(anchorLine({ skills: loadSkills(), lang: 'es', entryMarker: { code: 'R01', temperature: 'retargeting' }, entryPriceAnchor: true })).toBe('');
+    // Quote-eligible, already priced, or returning: QUOTE LOCK / REGRESO own the turn.
+    expect(anchorLine({ skills: loadSkills(), lang: 'es', entryMarker: { code: 'C01', temperature: 'cold' }, collectedFields: { site: 'chivor', personas: 2, plan: 'core_2d1n_chivor' }, entryPriceAnchor: true })).toBe('');
+    expect(anchorLine({ skills: loadSkills(), lang: 'es', entryMarker: { code: 'C01', temperature: 'cold' }, collectedFields: { site: 'chivor' }, priceGiven: true, entryPriceAnchor: true })).toBe('');
+    expect(anchorLine({ skills: loadSkills(), lang: 'es', entryMarker: { code: 'C01', temperature: 'cold' }, collectedFields: { site: 'chivor' }, returning: 'hace 4 dias', entryPriceAnchor: true })).toBe('');
   });
 
   it('renders campaign strategy without exposing referent names', () => {

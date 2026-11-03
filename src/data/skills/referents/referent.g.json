@@ -26,7 +26,7 @@
     {
       "id": "next-action",
       "trigger": "cliente pregunta qué sigue, cómo reserva o qué hace ahora",
-      "do": "Explica una sola acción operativa: validar disponibilidad, acordar anticipo o revisar el cupo de una fecha publicada; cierra con una pregunta suave que calce con esa acción.",
+      "do": "Explica una sola acción operativa (validar disponibilidad, acordar anticipo o revisar el cupo de una fecha publicada) y cierra con una micro-decisión: una de dos fechas o un plan, nunca una pregunta abierta.",
       "never": "Cerrar con despedida abierta, listar tres opciones o dejar la pregunta abierta."
     }
   ]
