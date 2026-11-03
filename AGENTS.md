@@ -716,6 +716,10 @@ columns from the old feature remain in place and are ignored.
   master, each compared against its own baseline (`baselines/master-llm-bot.json`,
   `baselines/master-llm-bot-en.json`). Refresh a baseline by copying a real
   `--runs 2` artifact, never by hand-editing scores.
+  A hard-failed live run is re-run once and only the retry is scored (noted in the
+  report). With 44 scenarios, a single LLM miss failed the master gate on most runs
+  (2.3.0: `ad-info-then-group-asks-plan` 85 in CI, 5/5 locally on release and master).
+  A real regression fails both attempts. Never raise this to more than one retry.
 - Live replay turns persist the conversation language like a processed turn
   (`runner.ts`); without it a bare later reply ("2") fell back to Spanish and an English
   scenario failed for a harness reason.
