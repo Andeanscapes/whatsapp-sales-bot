@@ -22,6 +22,20 @@ describe('extractBookingFields — people detection', () => {
   });
 
   it.each([
+    ['There are 2 of us', 2],
+    ['two of us', 2],
+    ["We're 3", 3],
+    ['we are four people', 4],
+    ['There will be 5 of us', 5],
+  ])('detects an English group answer "%s"', (text, people) => {
+    expect(extractBookingFields(text).collected_people).toBe(people);
+  });
+
+  it('does not read "we are 2 days away" as a group', () => {
+    expect(extractBookingFields('we are 2 days away from the trip').collected_people).toBeUndefined();
+  });
+
+  it.each([
     'Somos tree personas yo y mis dos amantes',
     'somos tree',
     'tree personas',

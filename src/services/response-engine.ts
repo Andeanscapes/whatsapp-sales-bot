@@ -477,9 +477,6 @@ export function isOptOutMessage(message: string): boolean {
 
 export const llmClient = new DeepSeekLlmClient(true);
 
-/** A customer asking for dates gets them answered; the first-reply anchor is for the plain "quiero el plan" opening. */
-const ASKS_DATES = /\b(?:fechas?|dates?)\b/i;
-
 function isPriceQuestion(text: string): boolean {
   const norm = normalizeForKeywordMatch(text);
   if (/\bvale\s+la\s+pena\b/.test(norm)
@@ -1777,16 +1774,18 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     return pricedReplies.length === 2
       && pricedReplies.every(m => detectQuotedPlan(m.content, activeExperience, people, conversationSiteId) === activePlanId);
   };
-  // First reply to a C/H campaign lead: a catalog "desde" anchor, which is not a quote.
-  // It must not set price_given_at, or QUOTE LOCK and the T3a total are skipped later.
-  // A turn that can already be quoted (plan + group known) gets QUOTE LOCK instead; the
-  // plan rule mirrors `lockedPlanId` in skills-prompt-assembly so both sides agree.
-  const quoteEligibleThisTurn = typeof safeCollected.personas === 'number'
-    && (typeof safeCollected.plan === 'string' || getPlans(activeExperience).length === 1);
-  const entryPriceAnchorTurn = isNewConversation && !storedMarker && !!entryMarker
-    && (entryMarker.temperature === 'cold' || entryMarker.temperature === 'funnel')
-    && !quoteEligibleThisTurn
-    && !isPriceQuestion(message) && !ASKS_DATES.test(normalizeText(message));
+  // First reply to an ad lead (campaign code, or Meta's default text with a referral)
+  // whose group is still unknown: the opener asks the group, never a price or menu.
+  // Funnel (H) leads already know us and keep their segment opener; cold, retargeting
+  // and unmarked ad entries get the group-first opener.
+  const adEntry = (!!entryMarker && entryMarker.temperature !== 'funnel')
+    || (!entryMarker && !!storedConversation?.ad_referral_json);
+  const adOpeningTurn = isNewConversation && adEntry && typeof safeCollected.personas !== 'number';
+  // Ad leads only: a price question still unanswered in recent history (the opener
+  // defers it to the group answer) is quoted once the group is known. Other leads keep
+  // the existing price gate.
+  const pendingPriceQuestion = adEntry && repos.conversation.getPriceGivenAt(customerPhone) == null
+    && (isPriceQuestion(message) || recentMessages.some(m => m.role === 'user' && isPriceQuestion(m.content)));
   const promptInput = {
     skills: planGallerySkills,
     lang,
@@ -1819,7 +1818,8 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     priceObjectionThisTurn,
     transportObjectionThisTurn,
     pauseSummaryAlreadySent: isPauseSummaryAlreadySent(),
-    entryPriceAnchor: entryPriceAnchorTurn,
+    adOpeningTurn,
+    pendingPriceQuestion,
   };
   const systemPrompt = buildSystemPrompt(promptInput);
   const llmHistory = recentMessages.map(m => ({ role: m.role, content: m.content }));
@@ -2251,8 +2251,7 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
   // Mark price_given / pricePresented only when at least one booking signal exists
   // (plan/date/transport/people), so a first-turn price mention cannot unlock
   // handoff/hot-lead paths on its own.
-  // The entry "desde" anchor is not a quote (see entryPriceAnchorTurn).
-  const initialPriceMentioned = !entryPriceAnchorTurn && replyMentionsPrice(strippedReplyText);
+  const initialPriceMentioned = replyMentionsPrice(strippedReplyText);
   const msgPriceFields = extractBookingFields(message, exp);
   const priceContextSignals = [
     merged.plan, merged.fecha, merged.transporte, merged.personas,
@@ -2360,7 +2359,7 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
 
   merged = { ...merged, dateStatus: repos.conversation.getDateStatus(customerPhone) };
 
-  const finalPriceJustGiven = legalPrice && !entryPriceAnchorTurn && replyMentionsPrice(strippedReplyText);
+  const finalPriceJustGiven = legalPrice && replyMentionsPrice(strippedReplyText);
   if (finalPriceJustGiven && !prePriceRow) repos.conversation.upsert(customerPhone, { price_given_at: new Date().toISOString() });
   const outputPriceJustGiven = !needsHumanEffective && finalPriceJustGiven;
 

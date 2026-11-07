@@ -1,0 +1,118 @@
+{
+  "id": "ad-opener-r01-videos",
+  "source": "Export 2026-11-07: ad leads replied 32% in 2.3.0 after a price/menu opener vs 62% in 2.0.x; owner plan 2026-11-07: intro + one value line + group question, no price/menu/dates. R01 video viewers have no history: no blocker question, no fake memory.",
+  "tags": [
+    "marker",
+    "live"
+  ],
+  "lang": "es",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    },
+    {
+      "id": "short-opener",
+      "rule": "reply_length_at_most",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "expected": 400
+    },
+    {
+      "id": "marker-hidden",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\b[CHR]0\\d\\b|marcador|campaign code|codigo de campa"
+      ]
+    },
+    {
+      "id": "no-price",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\$\\s?\\d|\\bCOP\\b|\\d{3}[.,]000|\\bdesde\\s*\\*?\\$"
+      ]
+    },
+    {
+      "id": "no-plan-menu",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\bBASIC\\b|\\bCORE\\b[\\s\\S]{0,160}\\bPRIME\\b|\\bPRIME\\b[\\s\\S]{0,160}\\bCORE\\b"
+      ]
+    },
+    {
+      "id": "no-dates",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\b\\d{1,2}\\s+(?:de\\s+)?(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\\b|(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\\s+\\d{1,2}\\b"
+      ]
+    },
+    {
+      "id": "asks-group",
+      "rule": "reply_must_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "[^¿.!?\\n]*(?:sol[oa]s?\\b|pareja|grupo)[^¿.!?\\n]*\\?"
+      ]
+    },
+    {
+      "id": "owner-intro",
+      "rule": "reply_must_match",
+      "turn": 1,
+      "weight": 1,
+      "critical": false,
+      "patterns": [
+        "\\bsoy \\w+[^.?!\\n]{0,60}andean scapes"
+      ]
+    },
+    {
+      "id": "no-blocker-question",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "fren[oó]|qu[eé] te detiene|presupuesto|log[ií]stica|seguridad"
+      ]
+    },
+    {
+      "id": "no-fake-history",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "como hablamos|retomemos|la vez pasada|ya me habias|lo que hablamos|quedamos en"
+      ]
+    }
+  ],
+  "turns": [
+    {
+      "user": "R01 ¡Hola! Vi sus videos de la cultura esmeraldera y quiero saber cómo es ir a la mina 💚",
+      "mockReply": "¡Hola! Soy Heinner, cofundador de Andean Scapes con Alexandra. Qué bueno que sigues la historia: te cuento cómo es vivirla dentro de una mina real en Chivor. ¿Sería para ti solo, en pareja o para un grupo?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

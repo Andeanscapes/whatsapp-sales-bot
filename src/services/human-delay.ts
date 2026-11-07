@@ -1,11 +1,14 @@
 /**
- * Human-like message delay simulation.
- * Emulates natural response timing: ~10-40s thinking time before first message,
- * then 1-4s between messages in a burst (gallery sends, follow-ups, etc).
+ * Message pacing for one turn.
+ * The first message goes out as soon as it is ready (no artificial wait); later
+ * messages of the same turn keep a 1-4s gap so they arrive in order.
+ * Burst merging does not depend on a wait: a newer inbound queued while the reply was
+ * being generated still makes pace() return false and the older turn stops sending.
+ * Export 2026-11-07: reply rate was flat across first-reply delays (0-60s).
  */
 
-const FIRST_MIN_MS = 10_000;
-const FIRST_MAX_MS = 40_000;
+const FIRST_MIN_MS = 0;
+const FIRST_MAX_MS = 0;
 const BURST_MIN_MS = 1_000;
 const BURST_MAX_MS = 4_000;
 

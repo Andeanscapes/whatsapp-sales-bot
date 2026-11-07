@@ -672,6 +672,15 @@ export function extractBookingFields(text: string, experience?: ActiveExperience
   if (simpleNumberMatch && !fields.collected_people && !mixedAdultsAndChildren) {
     fields.collected_people = parseInt(simpleNumberMatch[1], 10);
   }
+  // English answers to the opener's group question: "there are 2 of us", "we are 3",
+  // "two of us". Without it an English group stayed unknown and no quote followed.
+  // `normalized` strips punctuation, so "we're" arrives as "we re". "we are 2" counts
+  // only when nothing but a people word follows ("we are 2 days away" is not a group).
+  const englishGroupMatch = normalized.match(/\b(\d+|two|three|four|five|six|seven|eight|nine|ten)\s+of\s+us\b|\bwe\s+(?:are|re)\s+(\d+|two|three|four|five|six|seven|eight|nine|ten)(?:\s+(?:people|persons|travell?ers|adults))?\s*$/);
+  const englishGroup = englishGroupMatch ? parseCountWord(englishGroupMatch[1] ?? englishGroupMatch[2]) : null;
+  if (englishGroup != null && englishGroup > 0 && !fields.collected_people && !mixedAdultsAndChildren) {
+    fields.collected_people = englishGroup;
+  }
 
   const couplePattern = /\b(?:couple|pareja|dos personas|2 personas|dos pilotos|mi esposo y yo|mi esposa y yo|mi novio y yo|mi novia y yo|mi pareja y yo|mi hija y yo|mi hijo y yo|mi (?:mam[aá]|madre|made) y yo|vamos dos|somos dos|somos 2|vamos 2|por ahora dos)\b/i;
   const soloPattern = /\b(?:sola|solo|voy sola|voy solo|ir[ií]a sola|ir[ií]a solo|yo sola|yo solo|una persona|1 persona|just me|only me|me alone|solo traveler)\b/i;

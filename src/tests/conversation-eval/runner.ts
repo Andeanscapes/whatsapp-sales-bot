@@ -211,6 +211,11 @@ export function applyScenarioSeeds(ctx: RunContext, scenario: Scenario): () => v
     if (seed.conversationMode) ctx.repos.conversation.setMode(ctx.customerPhone, seed.conversationMode as ConversationMode);
     if (seed.softClosed) ctx.repos.conversation.setSoftClosed(ctx.customerPhone);
     if (seed.priceGiven) ctx.repos.conversation.setPriceGiven(ctx.customerPhone);
+    if (seed.adReferral) {
+      ctx.repos.conversation.upsert(ctx.customerPhone, {
+        ad_referral_json: JSON.stringify({ headline: seed.adReferral.headline, source_type: seed.adReferral.sourceType }),
+      });
+    }
     // Seed followup subscription status: primarily for consent-path testing.
     if (seed.followupStatus) {
       ctx.repos.followupSubscription.ensureExists(ctx.customerPhone);

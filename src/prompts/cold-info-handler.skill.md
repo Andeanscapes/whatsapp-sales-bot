@@ -26,7 +26,7 @@ Aplica **solo al primer contacto**. Si ya hay historial o ≥2 campos conocidos,
 
 **Bloque 3 — Una sola pregunta:**
 - Siempre cierra con **una** pregunta.
-- Si RUNTIME trae `SEGMENT_DETECTED` con `diagnosisQuestion` en DATOS, esa es la pregunta (vivencia y alcance).
+- Si RUNTIME trae `SEGMENT_DETECTED` con `diagnosisQuestion` en DATOS, esa es la pregunta (vivencia y alcance). Excepción: con `APERTURA DE ANUNCIO` en RUNTIME manda esa línea.
 - Sin segmento con diagnóstico ("info" sin código de campaña): pregunta primero por lo que quieren vivir (una mina con noche, o dos minas con cabalgata, o pasadía). El tamaño del grupo va en el turno siguiente, salvo que el cliente ya lo dijo.
 
 ---

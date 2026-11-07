@@ -32,9 +32,29 @@
       "turn": 1,
       "weight": 2,
       "critical": true
+    },
+    {
+      "id": "no-price",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "\\$\\s?\\d|\\bCOP\\b|\\d{3}[.,]000|starting (?:at|from)|\\bfrom \\$"
+      ],
+      "turn": 1,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "asks-group",
+      "rule": "reply_must_match",
+      "patterns": [
+        "[^.!?\\n]*(?:alone|solo|by yourself|on your own|couple|partner|group)[^.!?\\n]*\\?"
+      ],
+      "turn": 1,
+      "weight": 2,
+      "critical": true
     }
   ],
-  "source": "EN twin of c01-opener-price-anchor. Price anchor on the first reply was tried in prompt wording (2026-11-01) and did not move the live model (0/4); deferred to catalog copy.",
+  "source": "EN twin of c01-opener-price-anchor. Owner plan 2026-11-07: anchor removed; the opener asks the group, no price. Id kept for baseline continuity.",
   "lang": "en",
   "turns": [
     {
@@ -42,7 +62,7 @@
       "expect": {
         "shouldSendReply": true
       },
-      "mockReply": "Hi, I am Heinner from Andean Scapes. In Chivor you enter real emerald mines with local guides. CORE starts from $475,000 per person for 2.\n\nWhich one suits you: BASIC, CORE or PRIME?"
+      "mockReply": "Hi, I'm Heinner, co-founder of Andean Scapes with Alexandra. In Chivor you go inside a real mine with local guides. To give you the exact price, would it be just you, a couple or a group?"
     }
   ]
 }
