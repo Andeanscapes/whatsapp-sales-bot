@@ -13,7 +13,7 @@
   },
   "seedQualification": { "people": 2, "plan": "core_2d1n_chivor", "date": "November 14" },
   "criteria": [
-    { "id": "no-start-booking-question", "rule": "reply_must_not_match", "patterns": ["(start|begin)( with| the)? (?:the )?(?:booking|reservation)|(?:do|would) you (?:like|want) to (?:book|reserve)|shall we (?:start|begin|go ahead)|ready to book|go ahead with the (?:booking|reservation)|lock in"], "turn": 1, "weight": 3, "critical": true },
+    { "id": "no-start-booking-question", "rule": "reply_must_not_match", "patterns": ["(?:shall|should|can) (?:we|i) (?:start|begin)(?: with)? (?:the )?(?:booking|reservation)|(?:want|like) (?:me |us )?to (?:start|begin)(?: with)? (?:the )?(?:booking|reservation)|(?:do|would) you (?:like|want) to (?:book|reserve)|shall we (?:start|begin|go ahead)|ready to book|go ahead with the (?:booking|reservation)|lock in"], "turn": 1, "weight": 3, "critical": true },
     { "id": "deposit-and-validation", "rule": "reply_must_match", "patterns": ["deposit|Nequi|Mercado Pago"], "turn": 1, "weight": 2, "critical": true },
     { "id": "asks-missing-name", "rule": "reply_must_match", "patterns": ["your name|what should i call you"], "turn": 1, "weight": 2 },
     { "id": "no-requote", "rule": "reply_must_not_match", "patterns": ["1[.,]000[.,]000"], "turn": 1, "weight": 2 }

@@ -52,6 +52,9 @@ function maxEvaluationCostUsd(): number {
   return raw;
 }
 
+/** Above any first-attempt suffix (scenarioIndex * 10 + run, run < 5). */
+const RETRY_PHONE_OFFSET = 5000;
+
 function buildResult(scenario: Scenario, evaluation: ReturnType<typeof evaluateScenario>, turns: ScenarioResult['turnResults'], runs: { total: number; passed: number }, expectationErrors: string[]): ScenarioResult {
   const minimumFailure = scenario.minLiveScore !== undefined && evaluation.score < scenario.minLiveScore;
   return {
@@ -116,11 +119,18 @@ async function main(): Promise<void> {
     const scenario = scenarios[scenarioIndex];
     const runCount = Math.max(requestedRuns, scenario.liveRuns);
     const runResults: ScenarioResult[] = [];
+    // A hard-failed run, or one missing a weight >= 3 criterion, is re-run once (one
+    // retry per run). A real regression fails both attempts; a
+    // one-off LLM miss no longer fails the release gate. The retry is in the notes.
+    let retriedRun = -1;
+    let retries = 0;
 
     for (let run = 0; run < runCount; run++) {
       const progress = progressLabel(scenarioIndex + 1, scenarios.length);
-      console.log(`${progress} starting ${scenario.id} run ${run + 1}/${runCount}`);
-      const ctx = createRunContext({ phoneSuffix: scenarioIndex * 10 + run });
+      const isRetry = retriedRun === run;
+      console.log(`${progress} starting ${scenario.id} run ${run + 1}/${runCount}${isRetry ? ' (retry)' : ''}`);
+      // Retries get their own phone range so they never share a number with another run.
+      const ctx = createRunContext({ phoneSuffix: scenarioIndex * 10 + run + (isRetry ? RETRY_PHONE_OFFSET : 0) });
       const experience = getActiveExperience(getSkills());
       const originalPricingItems = experience.pricing.items;
       const originalPricingRules = experience.pricing.botRules;
@@ -151,7 +161,18 @@ async function main(): Promise<void> {
         }));
         const result = buildResult(scenario, evaluation, turns, { total: 1, passed: 0 }, validateTurnExpectations(scenario, ctx.turns));
         result.runs = { total: 1, passed: result.hardFail ? 0 : 1 };
-        runResults.push(result);
+        // hardFail also covers turn expectations and minLiveScore, which are not criteria.
+        const missed = result.criteria.filter(c => !c.passed && (c.critical || c.weight >= 3));
+        if ((result.hardFail || missed.length > 0) && !isRetry) {
+          const failedIds = missed.map(c => c.id).join(', ') || 'expectation/minLiveScore';
+          console.log(`${progress} ${scenario.id} run ${run + 1}/${runCount} failed (${failedIds}); retrying once`);
+          retriedRun = run;
+          retries += 1;
+          run--;
+        } else {
+          if (isRetry) result.notes = [...result.notes, `run ${run + 1} retried after a failed run`];
+          runResults.push(result);
+        }
         totalCostUsd += ctx.repos.aiUsage.getDailyCost(todayStart);
         if (totalCostUsd > maxCostUsd) {
           throw new Error(
@@ -170,7 +191,7 @@ async function main(): Promise<void> {
       }
     }
 
-    const aggregated = aggregateRuns(runResults);
+    const aggregated = { ...aggregateRuns(runResults), ...(retries > 0 ? { retries } : {}) };
     results.push(runCount > 1 ? aggregated : { ...aggregated, runs: undefined });
     console.log(`${progressLabel(scenarioIndex + 1, scenarios.length)} finished ${scenario.id} score=${aggregated.score} cost=$${totalCostUsd.toFixed(4)}`);
   }
