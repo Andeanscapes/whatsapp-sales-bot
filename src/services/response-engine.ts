@@ -719,16 +719,18 @@ function selectedDateFromAvailabilityReply(
   skills: Skills,
   planId?: string | null,
 ): string | null {
-  // An affirmative, or a short day-only answer ("28", "el 28", "28 está bien") to our own
-  // date list. The day must still be one we offered (checked below).
-  const affirmative = /^(?:s[ií]|sip|si claro|claro|dale|listo|perfecto|de una|por supuesto)(?:\b|$|[\s,!.])/i.test(message.trim());
-  const bareDayAnswer = /^(?:el\s+)?(?:[1-9]|[12]\d|3[01])(?:\s+(?:est[aá] bien|me sirve|nos sirve|perfecto|porfa|por favor|entonces))?[\s.!]*$/i.test(normalizeForKeywordMatch(message).trim());
+  // An affirmative, or a short day-only answer ("28", "el 28", "28 está bien", "the 28th",
+  // "28 is fine") to our own date list. The day must still be one we offered (checked
+  // below). English forms matter: without them an English date pick never set T3a, and
+  // the model bundled the deposit into the quote turn (live date-pick-price-then-close-T3b).
+  const affirmative = /^(?:s[ií]|sip|si claro|claro|dale|listo|perfecto|de una|por supuesto|yes|yeah|yep|sure|ok|okay|sounds good|great)(?:\b|$|[\s,!.])/i.test(message.trim());
+  const bareDayAnswer = /^(?:el\s+|the\s+)?(?:[1-9]|[12]\d|3[01])(?:st|nd|rd|th)?(?:\s+(?:est[aá] bien|me sirve|nos sirve|perfecto|porfa|por favor|entonces|is fine|is good|is perfect|works(?: for (?:us|me))?|sounds good|please|then))?[\s.!]*$/i.test(normalizeForKeywordMatch(message).trim());
   if (!lastAssistantQuestion || (!affirmative && !bareDayAnswer)) return null;
-  if (!/(?:fecha|fin de semana|les sirve|te sirve|available|date|weekend)/i.test(lastAssistantQuestion)) return null;
+  if (!/(?:fecha|fin de semana|les sirve|te sirve|salida|available|date|weekend|departure|works? for you)/i.test(lastAssistantQuestion)) return null;
 
   const assistantNorm = normalizeForKeywordMatch(lastAssistantQuestion);
   const messageNorm = normalizeForKeywordMatch(message);
-  const selectedDay = messageNorm.match(/\b(?:el\s+)?([1-9]|[12]\d|3[01])\b/)?.[1];
+  const selectedDay = messageNorm.match(/\b(?:el\s+|the\s+)?([1-9]|[12]\d|3[01])(?:st|nd|rd|th)?\b/)?.[1];
   const experience = getActiveExperience(skills);
   const candidates = getFutureAvailableDatesForPlan(skills, experience, planId).filter(entry => {
     const date = new Date(`${entry.date}T12:00:00Z`);
@@ -736,8 +738,8 @@ function selectedDateFromAvailabilityReply(
     const day = String(date.getUTCDate());
     const monthEs = normalizeForKeywordMatch(new Intl.DateTimeFormat('es-CO', { month: 'long', timeZone: 'UTC' }).format(date));
     const monthEn = normalizeForKeywordMatch(new Intl.DateTimeFormat('en-US', { month: 'long', timeZone: 'UTC' }).format(date));
-    // Only dates actually offered in the last assistant turn.
-    if (!new RegExp(`\\b${day}\\b`).test(assistantNorm)) return false;
+    // Only dates actually offered in the last assistant turn ("28" or "28th").
+    if (!new RegExp(`\\b${day}(?:st|nd|rd|th)?\\b`).test(assistantNorm)) return false;
     if (!assistantNorm.includes(monthEs) && !assistantNorm.includes(monthEn)) return false;
     if (selectedDay && day !== selectedDay) return false;
     const monthInMessage = MONTH_NAMES.find(m => messageNorm.includes(m));

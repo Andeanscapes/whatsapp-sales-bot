@@ -273,6 +273,29 @@ describe('processMessage', () => {
       const prompt = await answer('573007710934', '15');
       expect(prompt).not.toContain('ESTADO DE TURNO: T3a');
     });
+
+    const answerEn = async (phone: string, message: string): Promise<string> => {
+      repos.conversation.upsert(phone, { language: 'en', collected_people: 2, collected_plan: 'core_2d1n_chivor' });
+      repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'What dates do you have in November?', created_at: new Date(Date.now() - 120_000).toISOString() });
+      repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: 'In November we have published departures on the 14th and the 28th. Which one works for you?', created_at: new Date(Date.now() - 60_000).toISOString() });
+      mockLlmComplete.mockReset();
+      mockLlmComplete.mockResolvedValueOnce(fromOld({ response: { reply: 'The 28th it is. How does that sound?' } }));
+      vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+      vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+      await processMessage({ repos, customerPhone: phone, message });
+      return mockLlmComplete.mock.calls[0]?.[0].systemPrompt ?? '';
+    };
+
+    it.each([['573007710941', '28 is fine'], ['573007710942', 'the 28th'], ['573007710943', '28th works for us'], ['573007710944', '28']])('treats English "%s" as choosing the offered day (T3a)', async (phone, message) => {
+      const prompt = await answerEn(phone, message);
+      expect(prompt).toContain('ESTADO DE TURNO: T3a');
+      expect(String(repos.conversation.getByPhone(phone)?.collected_date ?? '')).toMatch(/28/);
+    });
+
+    it('does not pick an English day we did not offer', async () => {
+      const prompt = await answerEn('573007710945', '15th is fine');
+      expect(prompt).not.toContain('ESTADO DE TURNO: T3a');
+    });
   });
 
   describe('PAUSA CON RESUMEN YA ENVIADO cue', () => {
@@ -5473,6 +5496,23 @@ describe('containsPromptLeakOrPolicyViolation', () => {
     expect(containsPromptLeakOrPolicyViolation('No ofrecemos descuentos, lo siento')).toBe(false);
     expect(containsPromptLeakOrPolicyViolation('El tour no es gratis, pero vale la pena')).toBe(false);
     expect(containsPromptLeakOrPolicyViolation('No tenemos descuentos ahora mismo, disculpa')).toBe(false);
+  });
+
+  it('allows the catalog free-reschedule window but still flags other giveaways', () => {
+    expect(containsPromptLeakOrPolicyViolation('Claro. Pueden reprogramar gratis hasta 7 días antes. ¿Qué les preocupa?')).toBe(false);
+    expect(containsPromptLeakOrPolicyViolation('El cambio de fecha es gratis si avisan 7 días antes.')).toBe(false);
+    expect(containsPromptLeakOrPolicyViolation('Reagendar la salida es gratis hasta 7 días antes.')).toBe(false);
+    expect(containsPromptLeakOrPolicyViolation('Cambiar la fecha sale gratis hasta 7 días antes.')).toBe(false);
+    expect(containsPromptLeakOrPolicyViolation('Si reprograman les damos el almuerzo gratis.')).toBe(true);
+    expect(containsPromptLeakOrPolicyViolation('Pueden reprogramar la fecha, el transporte es gratis.')).toBe(true);
+    expect(containsPromptLeakOrPolicyViolation('Gratis el transporte si reprograman.')).toBe(true);
+    expect(containsPromptLeakOrPolicyViolation('Pueden reprogramar sin costo, la cabalgata gratis.')).toBe(true);
+    expect(containsPromptLeakOrPolicyViolation('Les regalamos la cabalgata gratis al reprogramar.')).toBe(true);
+    expect(containsPromptLeakOrPolicyViolation('Pueden reprogramar hasta 7 días antes y la cabalgata va gratis.')).toBe(true);
+    expect(containsPromptLeakOrPolicyViolation('Pueden reprogramar y la cabalgata va gratis.')).toBe(true);
+    expect(containsPromptLeakOrPolicyViolation('Se puede reprogramar. El transporte va gratis.')).toBe(true);
+    expect(containsPromptLeakOrPolicyViolation('Pueden reagendar. Cabalgata gratis.')).toBe(true);
+    expect(containsPromptLeakOrPolicyViolation('Les dejo el transporte gratis.')).toBe(true);
   });
 
   it('does not flag replies mentioning accounts or bank transfers', () => {

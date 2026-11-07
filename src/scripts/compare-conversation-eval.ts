@@ -26,8 +26,9 @@ function main(): void {
   for (const id of [...new Set([...baselineMap.keys(), ...currentMap.keys()])].sort()) {
     const before = baselineMap.get(id);
     const after = currentMap.get(id);
+    const retried = after?.retries ? ` (retried ${after.retries}x)` : '';
     if (!before) {
-      console.log(`NEW     ${id} ${after!.score}`);
+      console.log(`NEW     ${id} ${after!.score}${retried}`);
       continue;
     }
     if (!after) {
@@ -35,7 +36,7 @@ function main(): void {
       continue;
     }
     const state = after.hardFail ? 'FAIL' : after.score >= before.score ? 'PASS' : 'DOWN';
-    console.log(`${state.padEnd(7)} ${id} ${before.score} -> ${after.score}`);
+    console.log(`${state.padEnd(7)} ${id} ${before.score} -> ${after.score}${retried}`);
     if (before.score - after.score > maxDrop) failed = true;
   }
 
