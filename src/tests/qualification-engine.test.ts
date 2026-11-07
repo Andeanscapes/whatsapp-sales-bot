@@ -31,8 +31,11 @@ describe('extractBookingFields — people detection', () => {
     expect(extractBookingFields(text).collected_people).toBe(people);
   });
 
-  it('does not read "we are 2 days away" as a group', () => {
-    expect(extractBookingFields('we are 2 days away from the trip').collected_people).toBeUndefined();
+  it.each([
+    'we are 2 days away from the trip',
+    '2 of us are vegetarian',
+  ])('does not read "%s" as a group', (text) => {
+    expect(extractBookingFields(text).collected_people).toBeUndefined();
   });
 
   it.each([

@@ -2525,6 +2525,11 @@ describe('processMessage', () => {
     await processMessage({ repos, customerPhone: phone, message: 'Somos 2' });
     const second = mockLlmComplete.mock.calls.at(-1)?.[0].systemPrompt ?? '';
     expect(second).toMatch(/PRECIO PEDIDO SIN PLAN:[^\n]*\$950\.000[^\n]*\$1\.700\.000/);
+    // The comparison is the quote: the price is recorded and the cue does not repeat.
+    expect(repos.conversation.getPriceGivenAt(phone)).not.toBeNull();
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'Entendido. ¿Qué fecha les sirve?' } }));
+    await processMessage({ repos, customerPhone: phone, message: 'y qué incluye?' });
+    expect(mockLlmComplete.mock.calls.at(-1)?.[0].systemPrompt ?? '').not.toContain('PRECIO PEDIDO SIN PLAN:');
   });
 
   it('an organic lead that asked the price keeps the price gate when it gives the group', async () => {

@@ -676,7 +676,8 @@ export function extractBookingFields(text: string, experience?: ActiveExperience
   // "two of us". Without it an English group stayed unknown and no quote followed.
   // `normalized` strips punctuation, so "we're" arrives as "we re". "we are 2" counts
   // only when nothing but a people word follows ("we are 2 days away" is not a group).
-  const englishGroupMatch = normalized.match(/\b(\d+|two|three|four|five|six|seven|eight|nine|ten)\s+of\s+us\b|\bwe\s+(?:are|re)\s+(\d+|two|three|four|five|six|seven|eight|nine|ten)(?:\s+(?:people|persons|travell?ers|adults))?\s*$/);
+  // Both forms must be the whole answer, so "2 of us are vegetarian" is not a headcount.
+  const englishGroupMatch = normalized.trim().match(/^(?:(?:just\s+)?(?:there\s+(?:are|will\s+be)\s+)?(\d+|two|three|four|five|six|seven|eight|nine|ten)\s+of\s+us|we\s+(?:are|re)\s+(\d+|two|three|four|five|six|seven|eight|nine|ten)(?:\s+(?:people|persons|travell?ers|adults))?)$/);
   const englishGroup = englishGroupMatch ? parseCountWord(englishGroupMatch[1] ?? englishGroupMatch[2]) : null;
   if (englishGroup != null && englishGroup > 0 && !fields.collected_people && !mixedAdultsAndChildren) {
     fields.collected_people = englishGroup;
