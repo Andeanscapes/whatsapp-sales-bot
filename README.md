@@ -240,7 +240,6 @@ All variables are listed in [.env.example](.env.example). Key required vars:
 - `OWNER_PERSONAL_WHATSAPP_NUMBER`
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` — for Telegram alerts and bridge
 - `DYNAMIC_SKILL_URL` — optional remote JSON for live pricing/availability/media
-- `MESSAGE_DELAY` — optional human-like send pacing (`true` in prod). Defaults `false`. Must be set explicitly on the host env file (gitignored `.env.prod` / `/etc/andean-whatsapp-bot.env`); schema default is off.
 
 Startup fails loudly if any required variable is missing (zod validation).
 
@@ -248,7 +247,7 @@ Never commit `.env` — it is gitignored.
 
 ## Deployment
 
-**Production env file:** `/etc/andean-whatsapp-bot.env` (mode `0600`). Include `MESSAGE_DELAY=true` there when enabling human-like pacing.
+**Production env file:** `/etc/andean-whatsapp-bot.env` (mode `0600`).
 **SQLite database:** `/var/lib/andean-whatsapp-bot/bot.sqlite`.
 
 ### Fedora (systemd)

@@ -22,83 +22,62 @@ describe('human-delay', () => {
     vi.restoreAllMocks();
   });
 
-  it('disabled → no timer scheduled, resolves immediately', async () => {
-    const pacer = createTurnPacer(Date.now(), () => false, false);
-    await expect(pacer.pace()).resolves.toBe(true);
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it('disabled still suppresses a turn superseded before send', async () => {
-    const pacer = createTurnPacer(Date.now(), () => true, false);
-    await expect(pacer.pace()).resolves.toBe(false);
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it('shouldSkip true → no timer scheduled, resolves immediately', async () => {
-    const pacer = createTurnPacer(Date.now(), () => true, true);
-    await pacer.pace();
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it('first pace sends immediately, with no artificial wait', async () => {
+  it('first pace sends immediately, with no response delay', async () => {
     vi.spyOn(Math, 'random').mockReturnValue(RANDOM_MAX);
-    const pacer = createTurnPacer(Date.now(), () => false, true);
+    const pacer = createTurnPacer(() => false);
 
     await expect(pacer.pace()).resolves.toBe(true);
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('first pace still reports a turn superseded by a newer inbound', async () => {
-    const pacer = createTurnPacer(Date.now(), () => true, true);
+  it('a turn superseded by a newer inbound sends nothing, with no timer', async () => {
+    const pacer = createTurnPacer(() => true);
     await expect(pacer.pace()).resolves.toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('burst paces use the short 1-4s window, not the first-message window', async () => {
+  it('later messages of the same turn keep the 1s lower gap', async () => {
     vi.spyOn(Math, 'random').mockReturnValue(RANDOM_MIN);
-    const pacer = createTurnPacer(Date.now(), () => false, true);
-
+    const pacer = createTurnPacer(() => false);
     await pacer.pace();
 
-    const burst = track(pacer.pace());
+    const next = track(pacer.pace());
     await vi.advanceTimersByTimeAsync(999);
-    expect(burst.settled()).toBe(false);
+    expect(next.settled()).toBe(false);
 
     await vi.advanceTimersByTimeAsync(1);
-    expect(burst.settled()).toBe(true);
+    expect(next.settled()).toBe(true);
   });
 
-  it('burst pace upper bound is 4s', async () => {
+  it('later messages of the same turn keep the 4s upper gap', async () => {
     vi.spyOn(Math, 'random').mockReturnValue(RANDOM_MAX);
-    const pacer = createTurnPacer(Date.now() - 60_000, () => false, true);
-
+    const pacer = createTurnPacer(() => false);
     await pacer.pace();
 
-    const burst = track(pacer.pace());
+    const next = track(pacer.pace());
     await vi.advanceTimersByTimeAsync(3_999);
-    expect(burst.settled()).toBe(false);
+    expect(next.settled()).toBe(false);
 
     await vi.advanceTimersByTimeAsync(1);
-    expect(burst.settled()).toBe(true);
+    expect(next.settled()).toBe(true);
   });
 
-  it('shouldSkip flipping true mid-turn skips remaining paces', async () => {
-    vi.spyOn(Math, 'random').mockReturnValue(RANDOM_MIN);
+  it('a newer inbound mid-turn skips the remaining messages, with no timer', async () => {
     let skip = false;
-    const pacer = createTurnPacer(Date.now(), () => skip, true);
-
+    const pacer = createTurnPacer(() => skip);
     await pacer.pace();
 
     skip = true;
-    await pacer.pace();
+    await expect(pacer.pace()).resolves.toBe(false);
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('returns false when a newer inbound arrives during a burst gap', async () => {
+  it('returns false when a newer inbound arrives during a gap', async () => {
     vi.spyOn(Math, 'random').mockReturnValue(RANDOM_MIN);
     let skip = false;
-    const pacer = createTurnPacer(Date.now(), () => skip, true);
-
+    const pacer = createTurnPacer(() => skip);
     await pacer.pace();
+
     const pace = pacer.pace();
     skip = true;
     await vi.advanceTimersByTimeAsync(1_000);
@@ -108,7 +87,7 @@ describe('human-delay', () => {
 
   it('skipping the first pace leaves the next pace immediate (it is still the first send)', async () => {
     let skip = true;
-    const pacer = createTurnPacer(Date.now(), () => skip, true);
+    const pacer = createTurnPacer(() => skip);
 
     await expect(pacer.pace()).resolves.toBe(false);
     skip = false;

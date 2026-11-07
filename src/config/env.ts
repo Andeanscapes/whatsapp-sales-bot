@@ -83,7 +83,6 @@ export const envSchema = z.object({
 
   SEND_IMAGES_ENABLED: boolSchema.default(true),
   MEDIA_MARKER_RETRY_ENABLED: boolSchema.default(true),
-  MESSAGE_DELAY: boolSchema.default(false),
   MAX_GALLERY_IMAGES_PER_SEND: z.coerce.number().catch(5),
   MAX_GALLERY_IMAGES_PER_CUSTOMER_PER_HOUR: z.coerce.number().int().nonnegative().catch(45),
   MAX_GALLERY_IMAGES_PER_CUSTOMER_PER_DAY: z.coerce.number().int().nonnegative().catch(150),

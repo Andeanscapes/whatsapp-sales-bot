@@ -66,17 +66,14 @@ function inboundPayload(phone: string, text: string, id: string): string {
   });
 }
 
-describe('burst merge without a first-message delay', () => {
+describe('burst merge with no response delay', () => {
   let db: Database.Database;
   let app: Awaited<ReturnType<typeof buildApp>>;
-  let previousMessageDelay: boolean;
   let previousWebhookOwnerOnly: boolean;
 
   beforeEach(async () => {
     loadSkills();
-    previousMessageDelay = env.MESSAGE_DELAY;
     previousWebhookOwnerOnly = env.WEBHOOK_OWNER_ONLY_ENABLED;
-    env.MESSAGE_DELAY = true;
     env.WEBHOOK_OWNER_ONLY_ENABLED = false;
     db = new Database(':memory:');
     migrate(db);
@@ -85,7 +82,6 @@ describe('burst merge without a first-message delay', () => {
   });
 
   afterEach(async () => {
-    env.MESSAGE_DELAY = previousMessageDelay;
     env.WEBHOOK_OWNER_ONLY_ENABLED = previousWebhookOwnerOnly;
     await app.close();
     db.close();

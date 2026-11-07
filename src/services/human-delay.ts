@@ -1,16 +1,14 @@
 /**
- * Message pacing for one turn.
- * The first message goes out as soon as it is ready (no artificial wait); later
- * messages of the same turn keep a 1-4s gap so they arrive in order.
- * Burst merging does not depend on a wait: a newer inbound queued while the reply was
- * being generated still makes pace() return false and the older turn stops sending.
+ * Message pacing for one turn. There is no response delay: the first message goes out
+ * as soon as it is ready. Later messages of the same turn (photos, then the text) keep
+ * a 1-4s gap so WhatsApp delivers them in order.
+ * Burst merging needs no wait: a newer inbound queued while the reply was being
+ * generated makes pace() return false, and the older turn stops sending.
  * Export 2026-11-07: reply rate was flat across first-reply delays (0-60s).
  */
 
-const FIRST_MIN_MS = 0;
-const FIRST_MAX_MS = 0;
-const BURST_MIN_MS = 1_000;
-const BURST_MAX_MS = 4_000;
+const GAP_MIN_MS = 1_000;
+const GAP_MAX_MS = 4_000;
 
 function randomInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -27,32 +25,19 @@ export interface TurnPacer {
 
 /**
  * Create a pacer for a single inbound turn.
- * @param startedAtMs - timestamp when the turn processing began (e.g., Date.now() at task start)
- * @param shouldSkip - callback; if true, pace() returns immediately (newer inbound already queued)
- * @param enabled - if false, pace() is a no-op
+ * @param shouldSkip - true when a newer inbound for the same phone is already queued
  */
-export function createTurnPacer(
-  startedAtMs: number,
-  shouldSkip: () => boolean,
-  enabled: boolean
-): TurnPacer {
+export function createTurnPacer(shouldSkip: () => boolean): TurnPacer {
   let isFirst = true;
 
   return {
     async pace(): Promise<boolean> {
       if (shouldSkip()) return false;
-      if (!enabled) return true;
-
       if (isFirst) {
         isFirst = false;
-        const elapsed = Date.now() - startedAtMs;
-        const targetDelay = randomInt(FIRST_MIN_MS, FIRST_MAX_MS);
-        const remaining = Math.max(0, targetDelay - elapsed);
-        if (remaining > 0) await sleep(remaining);
-      } else {
-        const burstDelay = randomInt(BURST_MIN_MS, BURST_MAX_MS);
-        await sleep(burstDelay);
+        return true;
       }
+      await sleep(randomInt(GAP_MIN_MS, GAP_MAX_MS));
       return !shouldSkip();
     },
   };

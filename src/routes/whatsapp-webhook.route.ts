@@ -546,10 +546,9 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
       const queuePosition = (pendingByPhone.get(msg.from) ?? 0) + 1;
       pendingByPhone.set(msg.from, queuePosition);
       const task = prev.then(async () => {
-        const startedAtMs = Date.now();
-        // Newer inbound queued → the customer already waited, so reply without delay.
+        // Newer inbound queued → this turn is superseded and stops sending (burst merge).
         const shouldSkip = () => (pendingByPhone.get(msg.from) ?? 0) > queuePosition;
-        const pacer = createTurnPacer(startedAtMs, shouldSkip, env.MESSAGE_DELAY);
+        const pacer = createTurnPacer(shouldSkip);
 
         try {
           const optOutRequest = msg.type === 'text' && isOptOutMessage(msg.text);

@@ -197,7 +197,7 @@ Webhook details:
 - Incoming messages are processed sequentially per phone using `processingPhones` map.
 - Duplicate WhatsApp message IDs are ignored by `processed_webhook_messages`.
 - Text, image, audio, and video can be extracted. Only text reaches bot brain. Media is forwarded only in bridge/handoff paths.
-- Optional human-like send pacing (`MESSAGE_DELAY`): when `true`, bot customer-facing sends wait via `createTurnPacer` in `human-delay.ts` — first message of a turn ~10–40s (minus LLM elapsed), later burst messages ~1–4s. Skips delay if a newer inbound for the same phone is already queued. Off by default (dev/CI/simulate); enable in prod env only. Does not delay bridge/agent/admin sends or system-error fallbacks.
+- No response delay: the first bot message of a turn is sent as soon as it is ready. `createTurnPacer` in `human-delay.ts` only keeps a ~1–4s gap between later messages of the same turn (photos, then text) so they arrive in order, and stops a turn whose phone already has a newer inbound queued (burst merge). The `MESSAGE_DELAY` flag was removed (2026-11-07). Does not apply to bridge/agent/admin sends or system-error fallbacks.
 
 ## Customer Chat Flow
 
