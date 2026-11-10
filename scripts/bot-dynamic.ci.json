@@ -842,7 +842,7 @@
             "C02": {
               "label": "4x4 / Off-Road Adventure",
               "description": "Usuario entusiasta de 4x4 y off-road.",
-              "valueHook": "La ruta a Chivor es todo un reto 4x4: carretera destapada, ferry en Macanal y acceso a la mina por caminos que solo vehículos preparados disfrutan.",
+              "valueHook": "Es un viaje en carro o 4x4 hasta Chivor para entrar a una mina real de esmeraldas con mineros locales y pasar la noche en la hacienda.",
               "diagnosisQuestion": "¿Qué les encaja más para la ruta 4x4: BASIC pasadía sin noche, CORE con una mina y noche, o PRIME con dos minas y cabalgata?",
               "planMatch": "2D/1N con énfasis en ruta desafiante. Si vienen en vehículo propio, confirmamos compatibilidad.",
               "contextualMediaTypes": [
@@ -853,7 +853,7 @@
             "C03": {
               "label": "Moto / Bike Adventure",
               "description": "Usuario interesado en rutas en motocicleta.",
-              "valueHook": "Por la Región del Guavio son unos 35 km de vía rural desde Ubalá hasta la Hacienda; esa ruta solo aplica para moto o 4x4. Conviene validar el estado de las vías antes de viajar.",
+              "valueHook": "Es una rodada en moto hasta Chivor para entrar a una mina real de esmeraldas con mineros locales y pasar la noche en la hacienda.",
               "diagnosisQuestion": "¿Qué les encaja más para la ruta en moto: BASIC pasadía sin noche, CORE con una mina y noche, o PRIME con dos minas y cabalgata?",
               "planMatch": "2D/1N diseñado para moto riders. Confirmamos que traen equipamiento adecuado.",
               "contextualMediaTypes": [
@@ -918,7 +918,7 @@
             "R01": {
               "label": "Returning - General",
               "description": "Lead que tuvo conversación previa pero no reservó.",
-              "valueHook": "Venías mirando la experiencia y tenías un plan en mente. ¿Qué te frenó la última vez: fecha, precio, logística o seguridad?",
+              "valueHook": "Qué bueno que sigues la historia. Te cuento cómo es vivirla dentro de una mina real de esmeraldas en Chivor, con mineros locales.",
               "diagnosisQuestion": "Cuando vimos la experiencia hace poco, ¿qué te frenó: disponibilidad de fecha, presupuesto, logística, o seguridad?",
               "planMatch": "El plan que ya vieron o similar. Resolver el blocker concreto.",
               "contextualMediaTypes": [
@@ -928,7 +928,7 @@
             "R02": {
               "label": "Returning - 4x4",
               "description": "Lead que tuvo conversación previa pero no reservó, interesado en ruta 4x4.",
-              "valueHook": "Venías buscando la ruta 4x4 desafiante. Resolvamos qué te frenó: ¿fue fecha, precio, logística del viaje o seguridad del vehículo?",
+              "valueHook": "Qué bueno que sigues la historia. Te cuento cómo es vivirla dentro de una mina real de esmeraldas en Chivor, con mineros locales, llegando en carro o 4x4.",
               "diagnosisQuestion": "Cuando vimos la ruta 4x4 hace poco, ¿qué te frenó: disponibilidad de fecha, presupuesto, cómo transportarte, o dudas sobre el camino?",
               "planMatch": "2D/1N 4x4. Resolver blocker. Confirmar transporte y fechas disponibles.",
               "contextualMediaTypes": [
@@ -939,7 +939,7 @@
             "R03": {
               "label": "Returning - Moto",
               "description": "Lead que tuvo conversación previa pero no reservó, interesado en ruta moto.",
-              "valueHook": "Te interesó la ruta en moto por Ubalá. ¿Qué nos pasó: fecha que no cuadraba, presupuesto, o detalles de la ruta?",
+              "valueHook": "Qué bueno que sigues la historia. Te cuento cómo es vivirla dentro de una mina real de esmeraldas en Chivor, con mineros locales, llegando en moto.",
               "diagnosisQuestion": "La ruta en moto te había gustado. ¿Qué cambió o qué nos frenó: fecha, precio, logística, o preocupación por la ruta?",
               "planMatch": "2D/1N moto. Resolver blocker. Confirmar disponibilidad y detalles técnicos.",
               "contextualMediaTypes": [
@@ -950,7 +950,7 @@
             "R04": {
               "label": "Returning - Kids",
               "description": "Lead que tuvo conversación previa pero no reservó, interesado en experiencia para niños.",
-              "valueHook": "Los niños te fascinaba la idea de la mina. ¿Qué nos pasó para no avanzar: fechas, presupuesto, logística con los niños?",
+              "valueHook": "Qué bueno que sigues la historia. Te cuento cómo es vivirla dentro de una mina real de esmeraldas en Chivor, con mineros locales.",
               "diagnosisQuestion": "Cuando miramos la experiencia para los niños, ¿qué nos frenó: fechas que no encajaban, presupuesto, preocupación por logística?",
               "planMatch": "2D/1N family-friendly. Resolver blocker. Confirmar edades de niños y necesidades.",
               "contextualMediaTypes": [

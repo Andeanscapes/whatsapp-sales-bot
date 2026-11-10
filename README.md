@@ -51,7 +51,7 @@ A remote JSON endpoint (`DYNAMIC_SKILL_URL`) is the product source of truth: exp
 - **LLM gallery** — the model emits `[[FOTOS:<theme>]]` when the customer asks for photos or first selects a concrete plan; runtime strips the marker and sends up to 5 site-scoped photos. The last one carries the unchanged reply as its caption
 - **Plan images** — sent when pricing is discussed, matched by selected plan
 - **Contextual images** — one themed photo captioning the reply, on non-price later turns
-- **Owner intro image** — structurally supported but currently disabled pending sales strategy review
+- **Greeting photo** — `media.ownerImage` carries the first reply of a new conversation as its caption when `PERSONA_GREETING_IMAGE_ENABLED=true` (persona: `BOT_PERSONA_*`)
 - **72h deduplication** — same image never sent to the same customer twice in 72 hours; an explicitly requested repeat is allowed but still claimed atomically
 - Images sourced from the dynamic JSON; no static fallback. Untyped gallery images can never be selected
 - No bot-authored copy ever wraps the photos — the caption is the model's own text
@@ -236,11 +236,12 @@ All variables are listed in [.env.example](.env.example). Key required vars:
 - `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_APP_SECRET`
 - `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_BUSINESS_ACCOUNT_ID`
 - `DEEPSEEK_API_KEY`
-- `OWNER_NAME`, `PARTNER_NAME` — interpolated into skill files and system prompt
+- `OWNER_NAME`, `PARTNER_NAME` — interpolated into skill files and system prompt; `OWNER_NAME` also drives routing and alerts
+- `BOT_PERSONA_NAME`, `BOT_PERSONA_FULL_NAME`, `BOT_PERSONA_GENDER` — optional; who the bot speaks as (default `OWNER_NAME`, male)
+- `PERSONA_GREETING_IMAGE_ENABLED` — optional; first reply of a new conversation rides on `media.ownerImage` as its caption
 - `OWNER_PERSONAL_WHATSAPP_NUMBER`
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` — for Telegram alerts and bridge
 - `DYNAMIC_SKILL_URL` — optional remote JSON for live pricing/availability/media
-- `MESSAGE_DELAY` — optional human-like send pacing (`true` in prod). Defaults `false`. Must be set explicitly on the host env file (gitignored `.env.prod` / `/etc/andean-whatsapp-bot.env`); schema default is off.
 
 Startup fails loudly if any required variable is missing (zod validation).
 
@@ -248,7 +249,7 @@ Never commit `.env` — it is gitignored.
 
 ## Deployment
 
-**Production env file:** `/etc/andean-whatsapp-bot.env` (mode `0600`). Include `MESSAGE_DELAY=true` there when enabling human-like pacing.
+**Production env file:** `/etc/andean-whatsapp-bot.env` (mode `0600`).
 **SQLite database:** `/var/lib/andean-whatsapp-bot/bot.sqlite`.
 
 ### Fedora (systemd)

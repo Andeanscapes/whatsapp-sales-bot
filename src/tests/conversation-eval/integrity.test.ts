@@ -65,15 +65,15 @@ describe('English curated pack integrity', () => {
 describe('conversation eval integrity', () => {
   it.each([
     ['¿Vienen en pareja, solos o en grupo?', true],
-    ['¿Qué les atrae más: la intensidad de la mina o un ritmo con naturaleza y actividades?', true],
-    ['¿Cuánto tiempo tienen disponible?', true],
+    ['¿La experiencia sería para ti solo, en pareja o para un grupo?', true],
+    ['¿Qué les atrae más: la intensidad de la mina o un ritmo con naturaleza y actividades?', false],
     ['La experiencia es para parejas y grupos. ¿Te cuento más?', false],
-    ['La intensidad y la naturaleza son parte de la experiencia. ¿Te cuento más?', false],
-  ])('checks H01 qualification inside its question: %s', (reply, passed) => {
+    ['Somos un grupo pequeño. ¿Te cuento más?', false],
+  ])('checks the H01 group question inside its question: %s', (reply, passed) => {
     const h01 = loadScenarios(fileURLToPath(new URL('./scenarios', import.meta.url)))
       .find(item => item.id === 'entry-funnel-H01')!;
     const record = { ...turn(false), reply };
-    expect(evaluateScenario(h01, [record]).criteria.find(item => item.id === 'qualifies-lead')?.passed)
+    expect(evaluateScenario(h01, [record]).criteria.find(item => item.id === 'asks-group')?.passed)
       .toBe(passed);
   });
   it.each([2, 4, undefined])('rejects criteria targeting replay turn %s', checkedTurn => {

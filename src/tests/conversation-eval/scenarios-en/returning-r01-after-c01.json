@@ -1,0 +1,111 @@
+{
+  "id": "returning-r01-after-c01",
+  "source": "EN twin. returning customer after a long silence (2026-11-09 export): REGRESO must win over the ad copy; name the stored case, ask the blocker, no intro, no re-asked group, no price. Came on C01, group of 4 and CORE, back on R01 78 days later.",
+  "tags": [
+    "returning",
+    "marker",
+    "live"
+  ],
+  "lang": "en",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "uses-history",
+      "rule": "reply_must_match",
+      "turn": 3,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "CORE|4 people|four|group of 4"
+      ]
+    },
+    {
+      "id": "no-segment-copy",
+      "rule": "reply_must_not_match",
+      "turn": 3,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "following the story|when we looked at the experience|real immersion in the emerald"
+      ]
+    },
+    {
+      "id": "no-intro",
+      "rule": "reply_must_not_match",
+      "turn": 3,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\bI'?m [A-Z]\\w+|\\bmy name is\\b"
+      ]
+    },
+    {
+      "id": "no-reask-group",
+      "rule": "reply_must_not_match",
+      "turn": 3,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "(?:how many (?:people|of you)|solo, as a couple|a couple or)[^?]*\\?"
+      ]
+    },
+    {
+      "id": "no-price",
+      "rule": "reply_must_not_match",
+      "turn": 3,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\$\\s?\\d|\\d{3}[.,]000|\\bCOP\\b"
+      ]
+    },
+    {
+      "id": "asks-blocker",
+      "rule": "reply_must_match",
+      "turn": 3,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "stop|\\bheld\\b|\\bhold(?:ing)?\\b|missing|get in the way|kept you|unsure|left to|blocker"
+      ]
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "turn": 3,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    }
+  ],
+  "turns": [
+    {
+      "user": "C01 - Hi, I'd like information and dates for the emerald mine adventure in Chivor 💚",
+      "mockReply": "Hi! The Chivor trip is a real emerald mine with local miners. Are you coming as a couple, solo or as a group?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "There are 4 of us",
+      "mockReply": "For 4, CORE fits best: one mine and a night at the hacienda. Shall I share the dates?",
+      "replay": true,
+      "seedQualification": {
+        "people": 4,
+        "plan": "core_2d1n_chivor"
+      },
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "R01 Hi! I saw your videos about emerald mining culture and I'd like to know what going to the mine is like 💚",
+      "gapDaysBefore": 78,
+      "mockReply": "You were looking at CORE for 4 people. What held you back: the price or the date?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

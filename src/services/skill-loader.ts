@@ -9,10 +9,41 @@ import { existsSync } from 'fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+const PERSONA_GENDER_RULES = {
+  male: 'Eres hombre y colombiano: habla de ti en masculino (cofundador, encantado, listo).',
+  female: 'Eres mujer y colombiana: habla de ti siempre en femenino (cofundadora, encantada, lista, segura), nunca en masculino. '
+    + 'Cálida y profesional: nunca coqueta ni insinuante, sin piropos ni apodos cariñosos; si el cliente coquetea, vuelve al viaje con amabilidad.',
+} as const;
+
+/**
+ * Who the bot speaks as. BOT_PERSONA_NAME empty = OWNER_NAME. The partner is the other
+ * cofounder, so a persona named PARTNER_NAME mentions OWNER_NAME as its partner.
+ * Reads process.env like substituteTokens: validate scripts run without the full env.
+ * Runtime code that needs the same setting (isForbiddenCustomerName) reads the parsed
+ * `env`; both read the same BOT_PERSONA_* variables.
+ */
+function personaTokens(): Record<string, string> {
+  const owner = process.env.OWNER_NAME ?? '{{OWNER_NAME}}';
+  const partner = process.env.PARTNER_NAME ?? '{{PARTNER_NAME}}';
+  const name = process.env.BOT_PERSONA_NAME?.trim() || owner;
+  const fullName = process.env.BOT_PERSONA_FULL_NAME?.trim() || name;
+  const female = process.env.BOT_PERSONA_GENDER?.trim().toLowerCase() === 'female';
+  const isPartner = name.toLowerCase() === partner.trim().toLowerCase();
+  return {
+    PERSONA_NAME: name,
+    PERSONA_FULL_NAME: fullName,
+    PERSONA_PARTNER_NAME: isPartner ? owner : partner,
+    PERSONA_ROLE: female ? 'cofundadora' : 'cofundador',
+    PERSONA_GENDER_RULE: PERSONA_GENDER_RULES[female ? 'female' : 'male'],
+  };
+}
+
 export function substituteTokens(text: string): string {
+  const persona = personaTokens();
   return text
     .replace(/\{\{OWNER_NAME\}\}/g, process.env.OWNER_NAME ?? '{{OWNER_NAME}}')
-    .replace(/\{\{PARTNER_NAME\}\}/g, process.env.PARTNER_NAME ?? '{{PARTNER_NAME}}');
+    .replace(/\{\{PARTNER_NAME\}\}/g, process.env.PARTNER_NAME ?? '{{PARTNER_NAME}}')
+    .replace(/\{\{(PERSONA_[A-Z_]+)\}\}/g, (token, key: string) => persona[key] ?? token);
 }
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);

@@ -1,0 +1,66 @@
+{
+  "id": "language-switch-mid-chat",
+  "source": "language switch mid-chat (2026-11-09 export, export case A in reverse): Spanish chat, customer writes two English words, the reply must follow to English; a bare answer keeps English",
+  "tags": [
+    "language",
+    "live"
+  ],
+  "lang": "es",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "switch-to-english",
+      "rule": "reply_must_match",
+      "patterns": [
+        "\\b(?:for|two|include|includes|would|dates|hi)\\b"
+      ],
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "no-spanish-after-english",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "\\b(?:cuesta|personas|hola|cuales|cuándo|cuando)\\b"
+      ],
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "answers-in-english-on-bare-answer",
+      "rule": "reply_must_match",
+      "patterns": [
+        "\\b(?:the|for|two|dates|would|which|what)\\b"
+      ],
+      "turn": 3,
+      "weight": 2,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Hola, quiero info de la mina de esmeraldas en Chivor",
+      "mockReply": "¡Hola! Soy Alexandra Burgos, de Andean Scapes. ¿Vienen en pareja, solos o en grupo?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Hi, what is included in CORE? Can I book for two?",
+      "mockReply": "Hi! CORE includes one mine, the night at the hacienda and local miners as guides. Would you like the dates for two?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Ok, and the dates for two?",
+      "mockReply": "For two people, the dates are open. Which of them works for you?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

@@ -42,6 +42,7 @@ export interface ProcessMessageOutput {
   shouldAlertOwner: boolean;
   ownerAlertType?: string;
   shouldSendImage: boolean;
+  /** First reply of a new conversation: the webhook sends media.ownerImage with `reply` as its caption. */
   shouldSendOwnerImage: boolean;
   /**
    * True when this turn ships gallery photos (see `requestedGalleryImages`).

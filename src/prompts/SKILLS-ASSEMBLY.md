@@ -21,13 +21,13 @@ This file is **NOT** sent to DeepSeek.
 | 7 | External `dynamic.json` (v6+) | Live: pricing, availability, payments, media, reservationPolicy, `sites.*.entrySegments` |
 | 8 | Runtime DB | LO QUE YA SABEMOS, phase, pain, selectedExperienceId, entry marker, history |
 
-Env: `OWNER_NAME` (default Heinner), `PARTNER_NAME` (default Alexandra).
+Env: `OWNER_NAME` (default Heinner), `PARTNER_NAME` (default Alexandra), and the bot persona `BOT_PERSONA_NAME` / `BOT_PERSONA_FULL_NAME` / `BOT_PERSONA_GENDER` (empty name = `OWNER_NAME`; gender `male|female`).
 
 ---
 
 ## Assembly order (system prompt)
 
-All MD blocks get `{{OWNER_NAME}}` / `{{PARTNER_NAME}}` substituted.
+All MD blocks get `{{OWNER_NAME}}` / `{{PARTNER_NAME}}` and the `{{PERSONA_*}}` tokens substituted (`substituteTokens`, `skill-loader.ts`). `{{PERSONA_GENDER_RULE}}` is prompt text that lives in `skill-loader.ts` (`PERSONA_GENDER_RULES`), not in an MD file.
 
 ```
 0. seller-personality.skill.md
@@ -276,6 +276,10 @@ total autorizado").
 |---|---|
 | `{{OWNER_NAME}}` | env |
 | `{{PARTNER_NAME}}` | env |
+| `{{PERSONA_NAME}}` / `{{PERSONA_FULL_NAME}}` | `BOT_PERSONA_NAME` / `BOT_PERSONA_FULL_NAME`, else `OWNER_NAME` |
+| `{{PERSONA_PARTNER_NAME}}` | `OWNER_NAME` when the persona is `PARTNER_NAME`, else `PARTNER_NAME` |
+| `{{PERSONA_ROLE}}` | `cofundador` / `cofundadora` from `BOT_PERSONA_GENDER` |
+| `{{PERSONA_GENDER_RULE}}` | self-reference gender rule from `BOT_PERSONA_GENDER` |
 | `{{CATALOG}}` | renderer above |
 | `{{BUSINESS_DATA}}` | renderer above |
 
@@ -388,5 +392,5 @@ or `dist/` boots without it.
 
 1. No invented prices, discounts, dates, slots, payment endpoints.  
 2. No AI self-disclosure.  
-3. Speak as `{{OWNER_NAME}}`.  
+3. Speak as `{{PERSONA_NAME}}` (the persona; defaults to `{{OWNER_NAME}}`).  
 4. Payment detail release = deterministic runtime, not LLM creativity.
