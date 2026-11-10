@@ -1,0 +1,104 @@
+{
+  "id": "ad-opener-unmarked-referral",
+  "source": "EN twin of ad-opener-unmarked-referral. Export 2026-11-07: ad leads replied 32% in 2.3.0 after a price/menu opener vs 62% in 2.0.x; owner plan 2026-11-07: intro + one value line + group question, no price/menu/dates. Meta default text with an ad referral and no campaign code is an ad entry too.",
+  "tags": [
+    "marker",
+    "live"
+  ],
+  "lang": "en",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    },
+    {
+      "id": "short-opener",
+      "rule": "reply_length_at_most",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "expected": 400
+    },
+    {
+      "id": "marker-hidden",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\b[CHR]0\\d\\b|marcador|campaign code|codigo de campa"
+      ]
+    },
+    {
+      "id": "no-price",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\$\\s?\\d|\\bCOP\\b|\\d{3}[.,]000|starting (?:at|from)|\\bfrom \\$"
+      ]
+    },
+    {
+      "id": "no-plan-menu",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\bBASIC\\b|\\bCORE\\b[\\s\\S]{0,160}\\bPRIME\\b|\\bPRIME\\b[\\s\\S]{0,160}\\bCORE\\b"
+      ]
+    },
+    {
+      "id": "no-dates",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\\s+\\d{1,2}|\\b\\d{1,2}(?:st|nd|rd|th)?\\s+(?:of\\s+)?(?:January|February|March|April|May|June|July|August|September|October|November|December)\\b"
+      ]
+    },
+    {
+      "id": "asks-group",
+      "rule": "reply_must_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "[^.!?\\n]*(?:alone|solo|by yourself|on your own|couple|partner|group)[^.!?\\n]*\\?"
+      ]
+    },
+    {
+      "id": "owner-intro",
+      "rule": "reply_must_match",
+      "turn": 1,
+      "weight": 1,
+      "critical": false,
+      "patterns": [
+        "\\b(?:i'?m|i am|this is) \\w+[^.?!\\n]{0,60}andean scapes"
+      ]
+    }
+  ],
+  "turns": [
+    {
+      "user": "Hello! Can I get more info on this?",
+      "mockReply": "Hi! I'm Heinner, co-founder of Andean Scapes with Alexandra. We take you inside a real emerald mine in Chivor with local miners. To give you the exact price and dates, would it be just you, a couple or a group?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ],
+  "seedConversation": {
+    "adReferral": {
+      "headline": "Rodada a Chivor + mina real de esmeraldas",
+      "sourceType": "ad"
+    }
+  }
+}

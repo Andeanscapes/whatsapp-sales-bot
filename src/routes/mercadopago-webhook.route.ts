@@ -97,6 +97,11 @@ export async function mercadoPagoWebhookRoutes(app: FastifyInstance, opts: { rep
 
     if (opts.repos.paymentReservation.markApproved(payment.external_reference, String(payment.id))) {
       logger.info({ paymentId: String(payment.id), externalReference: payment.external_reference }, '[MERCADOPAGO] payment approved');
+      // Approved payment is the conversion: same terminal state as /booking, so
+      // reports count it and the bot stops replying to the booked lead.
+      if (!opts.repos.conversation.getBookedAt(reservation.customerPhone)) {
+        opts.repos.conversation.setBooked(reservation.customerPhone);
+      }
     }
     return reply.code(200).send({ ok: true });
   });

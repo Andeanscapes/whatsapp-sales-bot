@@ -42,6 +42,12 @@ export const envSchema = z.object({
 
   OWNER_NAME: z.string().min(1),
   PARTNER_NAME: z.string().min(1),
+  // Who the bot speaks as. Empty = OWNER_NAME. Routing, alerts and commands keep OWNER_NAME.
+  BOT_PERSONA_NAME: z.string().default(''),
+  BOT_PERSONA_FULL_NAME: z.string().default(''),
+  BOT_PERSONA_GENDER: z.enum(['male', 'female']).default('male'),
+  // First reply of a new conversation ships media.ownerImage with the reply as caption.
+  PERSONA_GREETING_IMAGE_ENABLED: boolSchema.default(false),
 
   OWNER_PERSONAL_WHATSAPP_NUMBER: z.string().min(1),
   ALERT_CHANNEL: z.enum(['telegram', 'whatsapp', 'log']).default('telegram'),
@@ -83,7 +89,6 @@ export const envSchema = z.object({
 
   SEND_IMAGES_ENABLED: boolSchema.default(true),
   MEDIA_MARKER_RETRY_ENABLED: boolSchema.default(true),
-  MESSAGE_DELAY: boolSchema.default(false),
   MAX_GALLERY_IMAGES_PER_SEND: z.coerce.number().catch(5),
   MAX_GALLERY_IMAGES_PER_CUSTOMER_PER_HOUR: z.coerce.number().int().nonnegative().catch(45),
   MAX_GALLERY_IMAGES_PER_CUSTOMER_PER_DAY: z.coerce.number().int().nonnegative().catch(150),

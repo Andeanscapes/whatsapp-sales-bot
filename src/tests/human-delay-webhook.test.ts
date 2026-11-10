@@ -71,14 +71,11 @@ function inboundPayload(phone: string, text: string, id: string): string {
 describe('human-delay webhook wiring', () => {
   let db: Database.Database;
   let app: Awaited<ReturnType<typeof buildApp>>;
-  let previousMessageDelay: boolean;
   let previousWebhookOwnerOnly: boolean;
 
   beforeEach(async () => {
     loadSkills();
-    previousMessageDelay = env.MESSAGE_DELAY;
     previousWebhookOwnerOnly = env.WEBHOOK_OWNER_ONLY_ENABLED;
-    env.MESSAGE_DELAY = true;
     env.WEBHOOK_OWNER_ONLY_ENABLED = false;
     paceMock.mockClear();
     createTurnPacerMock.mockClear();
@@ -91,7 +88,6 @@ describe('human-delay webhook wiring', () => {
   });
 
   afterEach(async () => {
-    env.MESSAGE_DELAY = previousMessageDelay;
     env.WEBHOOK_OWNER_ONLY_ENABLED = previousWebhookOwnerOnly;
     await app.close();
     db.close();
@@ -116,37 +112,9 @@ describe('human-delay webhook wiring', () => {
       expect(sendTextMock).toHaveBeenCalled();
     });
 
-    expect(createTurnPacerMock).toHaveBeenCalledWith(
-      expect.any(Number),
-      expect.any(Function),
-      true,
-    );
+    expect(createTurnPacerMock).toHaveBeenCalledWith(expect.any(Function));
     expect(paceMock).toHaveBeenCalled();
     expect(paceMock.mock.invocationCallOrder[0]).toBeLessThan(sendTextMock.mock.invocationCallOrder[0]);
-  });
-
-  it('passes MESSAGE_DELAY=false into the pacer when flag is off', async () => {
-    env.MESSAGE_DELAY = false;
-    const body = inboundPayload('573001112244', 'Hola', 'wamid-delay-2');
-    await app.inject({
-      method: 'POST',
-      url: '/webhooks/whatsapp',
-      headers: {
-        'content-type': 'application/json',
-        'x-hub-signature-256': sign(body),
-      },
-      payload: body,
-    });
-
-    await vi.waitFor(() => {
-      expect(createTurnPacerMock).toHaveBeenCalled();
-    });
-
-    expect(createTurnPacerMock).toHaveBeenCalledWith(
-      expect.any(Number),
-      expect.any(Function),
-      false,
-    );
   });
 
   it('does not send a reply when pacing reports a newer inbound', async () => {

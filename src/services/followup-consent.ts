@@ -575,6 +575,21 @@ function isExplicitPermissionQuestion(text: string): boolean {
 }
 
 /**
+ * True when one of our earlier messages was a request to write later (a consent ask),
+ * not a sales question. Same matcher as the ask validator, applied to the first `?`.
+ */
+export function isFollowupPermissionQuestion(text: string): boolean {
+  if (!text.includes('?')) return false;
+  // Older asks ("¿Te gustaría que te avise cuando haya novedades?") predate the current
+  // permission frames; matched here only, inside the question sentence, never widened
+  // in the ask validator. No "cuente": "¿te gustaría que te cuente el PRIME?" is sales.
+  return isExplicitPermissionQuestion(text)
+    || LEGACY_FOLLOWUP_ASK.test(normalize(splitAtQuestion(text).question));
+}
+
+const LEGACY_FOLLOWUP_ASK = /\b(?:te gustaria|quieres) que te (?:avise|escriba|contacte)\b/;
+
+/**
  * Validates an LLM-authored consent ask. The engine may only accept-and-strip or
  * reject: rewriting or appending copy would violate the "LLM owns reply text"
  * invariant, so a malformed draft is discarded rather than repaired.

@@ -1,0 +1,124 @@
+{
+  "id": "returning-r01-after-quote",
+  "source": "EN twin. returning customer after a long silence (2026-11-09 export): REGRESO must win over the ad copy; name the stored case, ask the blocker, no intro, no re-asked group, no price. Couple, PRIME quoted, back on R01 94 days later.",
+  "tags": [
+    "returning",
+    "marker",
+    "live"
+  ],
+  "lang": "en",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "uses-history",
+      "rule": "reply_must_match",
+      "turn": 4,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "PRIME|couple|two of you"
+      ]
+    },
+    {
+      "id": "no-segment-copy",
+      "rule": "reply_must_not_match",
+      "turn": 4,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "following the story|when we looked at the experience|real immersion in the emerald"
+      ]
+    },
+    {
+      "id": "no-intro",
+      "rule": "reply_must_not_match",
+      "turn": 4,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\bI'?m [A-Z]\\w+|\\bmy name is\\b"
+      ]
+    },
+    {
+      "id": "no-reask-group",
+      "rule": "reply_must_not_match",
+      "turn": 4,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "(?:how many (?:people|of you)|solo, as a couple|a couple or)[^?]*\\?"
+      ]
+    },
+    {
+      "id": "no-price",
+      "rule": "reply_must_not_match",
+      "turn": 4,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\$\\s?\\d|\\d{3}[.,]000|\\bCOP\\b"
+      ]
+    },
+    {
+      "id": "asks-blocker",
+      "rule": "reply_must_match",
+      "turn": 4,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "stop|\\bheld\\b|\\bhold(?:ing)?\\b|missing|get in the way|kept you|unsure|left to|blocker"
+      ]
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "turn": 4,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    }
+  ],
+  "turns": [
+    {
+      "user": "Hi, I'd like information about the emerald mine trip",
+      "mockReply": "Hi! Are you coming as a couple, solo or as a group?",
+      "replay": true,
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "As a couple",
+      "mockReply": "Great. PRIME is the fullest: two mines and horseback riding. What date are you looking at?",
+      "replay": true,
+      "seedQualification": {
+        "people": 2,
+        "plan": "prime_2d1n_chivor"
+      },
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "February 27",
+      "mockReply": "For a couple, PRIME is $1,700,000 on February 27. Shall we go ahead with the booking?",
+      "replay": true,
+      "seedPriceGiven": true,
+      "seedQualification": {
+        "date": "February 27"
+      },
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "R01 Hi! I saw your videos about emerald mining culture and I'd like to know what going to the mine is like 💚",
+      "gapDaysBefore": 94,
+      "mockReply": "You were looking at PRIME as a couple for February 27. What held you back: the price or the date?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

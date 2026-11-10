@@ -3,7 +3,8 @@ import Database from 'better-sqlite3';
 import { loadSkills } from '../services/skill-loader.js';
 import { migrate } from '../db/migrate.js';
 import { createRepositories, type Repositories } from '../db/repositories/index.js';
-import { extractBookingFields, isAmbiguousPartyComparison, isCorrectionMessage, contextAwareExtract, detectPlan, isExplicitDateDeferral, isUncertainDateAnswer, isDateAskQuestion, isQualificationComplete, resolveLanguage, getLastAssistantQuestion, reconstructFromHistory, resolvePlanReference, isPlanQuestion } from '../services/qualification-engine.js';
+import { env } from '../config/env.js';
+import { extractBookingFields, isForbiddenCustomerName, isAmbiguousPartyComparison, isCorrectionMessage, contextAwareExtract, detectPlan, isExplicitDateDeferral, isUncertainDateAnswer, isDateAskQuestion, isQualificationComplete, resolveLanguage, getLastAssistantQuestion, reconstructFromHistory, resolvePlanReference, isPlanQuestion } from '../services/qualification-engine.js';
 import { detectExplicitLanguageSwitch } from '../services/language-service.js';
 import { getActiveExperience } from '../services/product-registry.js';
 
@@ -19,6 +20,56 @@ describe('extractBookingFields — people detection', () => {
     'mi made y yo',
   ])('detects 2 people from "%s"', (text) => {
     expect(extractBookingFields(text).collected_people).toBe(2);
+  });
+
+  it.each([
+    ['There are 2 of us', 2],
+    ['two of us', 2],
+    ["We're 3", 3],
+    ['we are four people', 4],
+    ['There will be 5 of us', 5],
+  ])('detects an English group answer "%s"', (text, people) => {
+    expect(extractBookingFields(text).collected_people).toBe(people);
+  });
+
+  it.each([
+    ['2 adultos y mis hijos de 16 y 12 años', 4, [16, 12]],
+    ['2 adultos y mis hijos de 16, 12 y 8 años', 5, [16, 12, 8]],
+    ['2 adultos y mi hijo de 8 años', 3, [8]],
+    ['2 adults and my kids aged 16 and 12', 4, [16, 12]],
+    ['2 adults and my kids aged 16, 12, and 8', 5, [16, 12, 8]],
+    ['2 adultos y mis hijos de 12 y 14 años, llegamos el 21', 4, [12, 14]],
+    ['2 adultos y mis 2 hijos de 8 y 10', 4, [8, 10]],
+  ])('counts children named by age in "%s"', (text, people, ages) => {
+    const fields = extractBookingFields(text);
+    expect(fields.collected_adults).toBe(2);
+    expect(fields.collected_children).toBe(ages.length);
+    expect(fields.collected_people).toBe(people);
+    expect(JSON.parse(String(fields.collected_child_ages_json))).toEqual(ages);
+  });
+
+  it.each([
+    '2 adultos y mis hijos de 25 años',
+    '2 adultos y mis hijos de 10 a 14 años',
+    '2 adultos y mis hijos de 10-14 años',
+    '2 adultos y mis hijos de 3 años',
+    '2 adultos y mis hijos de 8 y 10, 14 de noviembre',
+    '2 adultos y mis hijos de 8 y 10, 3 personas mas',
+    '2 adultos y mis hijos de 8 y 10 y 2 sobrinos',
+    '2 adultos y mis 3 hijos de 8 y 10',
+    '2 adultos y mi hija de 9 y mi hijo de 12',
+    '2 adultos y mis hijos de 16, 12 y 8 a 10 años',
+  ])('leaves an unclear child list unknown in "%s"', (text) => {
+    const fields = extractBookingFields(text);
+    expect(fields.collected_children).toBeUndefined();
+    expect(fields.collected_child_ages_json).toBeUndefined();
+  });
+
+  it.each([
+    'we are 2 days away from the trip',
+    '2 of us are vegetarian',
+  ])('does not read "%s" as a group', (text) => {
+    expect(extractBookingFields(text).collected_people).toBeUndefined();
   });
 
   it.each([
@@ -204,6 +255,19 @@ describe('extractBookingFields — name blacklist regressions (2026-08-02 histor
     'Opciones',
   ])('does not store "%s" as a name', (text) => {
     expect(extractBookingFields(text).collected_name).toBeUndefined();
+  });
+
+  it('never treats the bot persona name as the customer name', () => {
+    const previous = env.BOT_PERSONA_NAME;
+    env.BOT_PERSONA_NAME = 'Valentina';
+    try {
+      expect(isForbiddenCustomerName('valentina')).toBe(true);
+      expect(isForbiddenCustomerName('Juan')).toBe(false);
+      env.BOT_PERSONA_NAME = '';
+      expect(isForbiddenCustomerName('')).toBe(false);
+    } finally {
+      env.BOT_PERSONA_NAME = previous;
+    }
   });
 
   it('does not store an origin declaration as a name', () => {
@@ -810,10 +874,10 @@ describe('resolveLanguage — stability', () => {
     expect(lang).toBe('es');
   });
 
-  it('keeps stored en despite Spanish word in message', () => {
+  it('switches a stored en to es on a clear Spanish message (2+ Spanish words)', () => {
     repos.conversation.upsert(PHONE, { language: 'en' });
     const lang = resolveLanguage(repos, PHONE, 'Hola como estas');
-    expect(lang).toBe('en');
+    expect(lang).toBe('es');
   });
 
   it('switches to en on explicit request', () => {
@@ -838,10 +902,10 @@ describe('resolveLanguage — stability', () => {
     expect(resolveLanguage(repos, PHONE, 'C01 Hola, quiero el plan en la mina de esmeraldas de Chivor.')).toBe('es');
   });
 
-  it('a short or mixed ad opener keeps the stored language', () => {
+  it('a single English word does not switch a stored es; a clear English message does', () => {
     repos.conversation.upsert(PHONE, { language: 'es' });
     expect(resolveLanguage(repos, PHONE, 'C01 hi')).toBe('es');
-    expect(resolveLanguage(repos, PHONE, 'Hi! I want the PRIME trip, what dates?')).toBe('es');
+    expect(resolveLanguage(repos, PHONE, 'Hi! I want the PRIME trip, what dates?')).toBe('en');
   });
 
   it('detects en for new conversation', () => {

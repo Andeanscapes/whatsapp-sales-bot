@@ -1,5 +1,5 @@
 import type { Repositories } from '../db/repositories/index.js';
-import { normalizeText, detectLanguageOrNull, detectExplicitLanguageSwitch, detectAdOpenerLanguage, type SupportedLanguage } from './language-service.js';
+import { normalizeText, detectLanguageOrNull, detectExplicitLanguageSwitch, detectAdOpenerLanguage, detectMessageLanguage, type SupportedLanguage } from './language-service.js';
 import type { FallbackReplies } from './skill-loader.js';
 import type { MergedQualification } from './types.js';
 import { getEquivalentPlan, getPlans, getSites, getUnavailableSites, type ActiveExperience } from './product-registry.js';
@@ -8,9 +8,11 @@ import { env } from '../config/env.js';
 import { parseChildAges } from './qualification-format.js';
 import { calculatePriceQuote } from './pricing-calculator.js';
 
-function isForbiddenCustomerName(name: string): boolean {
+/** Team names, including the bot persona, are never the customer's name ("Hola Alexandra"). */
+export function isForbiddenCustomerName(name: string): boolean {
   const n = name.toLowerCase().trim();
-  return n === env.OWNER_NAME.toLowerCase().trim() || n === env.PARTNER_NAME.toLowerCase().trim();
+  return [env.OWNER_NAME, env.PARTNER_NAME, env.BOT_PERSONA_NAME]
+    .some(team => team.trim() !== '' && n === team.toLowerCase().trim());
 }
 
 // Expanded from production history (2026-08-02 dump): plural/accented diversions
@@ -160,6 +162,43 @@ const CHILD_COUNT_WORDS: Record<string, number> = {
 };
 const ADULT_COUNT_RE = new RegExp(String.raw`\b${COUNT_TOKEN}\s*(?:adulto(?:s)?|adulta(?:s)?|adults?)\b`, 'i');
 const CHILD_COUNT_RE = new RegExp(String.raw`\b${COUNT_TOKEN}\s*(?:ninos?|ninas?|child(?:ren)?|kids)\b`, 'i');
+
+// "hijos de 16, 12 y 8" / "kids aged 16 and 12": the ages that follow a child noun.
+// Commas only before the final "y/and" item; punctuation is kept on purpose because
+// "10-14" or "10 a 14" is a range, not two children.
+const CHILD_NOUN = String.raw`(?:hijos?|hijas?|ninos?|ninas?|kids?|children|sons?|daughters?)`;
+const CHILD_AGE_LIST_RE = new RegExp(
+  String.raw`\b(${CHILD_NOUN})\s+(?:de\s+|aged\s+|of\s+)?(\d{1,2}(?:\s*,\s*\d{1,2})*(?:\s*,?\s*(?:\by\b|\be\b|\band\b)\s*\d{1,2})?)\b`,
+);
+// Anything after the list that is still a number ("…y 10, 14 de noviembre", "…y 2
+// sobrinos", "8 a 10") means the list is not only ages.
+const NUMBER_AFTER_LIST = /^\s*(?:,|-|\ba\b|\bhasta\b|\bto\b|\by\b|\be\b|\band\b)?\s*\d/;
+const CHILD_NOUN_RE = new RegExp(String.raw`\b${CHILD_NOUN}\b`);
+const COUNT_BEFORE_NOUN = /\b(\d{1,2}|dos|tres|cuatro|cinco|seis|two|three|four|five|six)\s+$/;
+
+/**
+ * One child per listed age, or null when the list cannot be trusted: a range, a
+ * trailing number, an adult age, another child noun ("mi hija de 9 y mi hijo de 12"),
+ * a count that disagrees ("mis 3 hijos de 8 y 10"), or a plural noun with one age
+ * ("mis hijos de 3 años"). A wrong headcount reaches QUOTE LOCK, so an unclear list
+ * stays unknown and the bot asks.
+ */
+function childAgesFromList(text: string): number[] | null {
+  const lowered = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const match = CHILD_AGE_LIST_RE.exec(lowered);
+  if (!match) return null;
+  const before = lowered.slice(0, match.index);
+  const after = lowered.slice(match.index + match[0].length);
+  if (NUMBER_AFTER_LIST.test(after) || CHILD_NOUN_RE.test(before) || CHILD_NOUN_RE.test(after)) return null;
+  const ages = match[2].split(/\s*,?\s*(?:\by\b|\be\b|\band\b)\s*|\s*,\s*/).map(Number);
+  if (ages.some(age => !Number.isInteger(age) || age >= 18)) return null;
+  const statedCount = before.match(COUNT_BEFORE_NOUN);
+  if (statedCount && parseCountWord(statedCount[1]) !== ages.length) return null;
+  const pluralNoun = /(?:s|children)$/.test(match[1]);
+  if (pluralNoun && ages.length < 2) return null;
+  if (!pluralNoun && ages.length !== 1) return null;
+  return ages;
+}
 
 function parseCountWord(raw: string): number | null {
   const n = CHILD_COUNT_WORDS[raw.toLowerCase()] ?? parseInt(raw, 10);
@@ -641,7 +680,12 @@ export function extractBookingFields(text: string, experience?: ActiveExperience
   const adultsMatch = normalized.match(ADULT_COUNT_RE);
   const childMatch = normalized.match(CHILD_COUNT_RE);
   const adultsNum = adultsMatch ? parseCountWord(adultsMatch[1]) : null;
-  const childrenNum = childMatch ? parseCountWord(childMatch[1]) : null;
+  // "2 adultos y mis hijos de 16 y 12 años": children named by age, no count word.
+  const childAges = adultsNum != null && !childMatch ? childAgesFromList(text) : null;
+  const childrenNum = childMatch
+    ? parseCountWord(childMatch[1])
+    : childAges ? childAges.length : null;
+  if (childAges) fields.collected_child_ages_json = JSON.stringify(childAges);
   const explicitlyNoChildren = /\b(?:sin|no (?:hay|van|vamos con|tenemos|llevamos))\s+(?:ninos?|ninas?|hijos?|children|kids)\b/i.test(normalized);
   const hasAdultCount = adultsNum != null;
   const hasChildCount = childrenNum != null;
@@ -671,6 +715,16 @@ export function extractBookingFields(text: string, experience?: ActiveExperience
   const simpleNumberMatch = text.match(/\b(?:somos|van|vamos|seriamos|serian|somos como|van como)\s+(\d+)\b/i);
   if (simpleNumberMatch && !fields.collected_people && !mixedAdultsAndChildren) {
     fields.collected_people = parseInt(simpleNumberMatch[1], 10);
+  }
+  // English answers to the opener's group question: "there are 2 of us", "we are 3",
+  // "two of us". Without it an English group stayed unknown and no quote followed.
+  // `normalized` strips punctuation, so "we're" arrives as "we re". "we are 2" counts
+  // only when nothing but a people word follows ("we are 2 days away" is not a group).
+  // Both forms must be the whole answer, so "2 of us are vegetarian" is not a headcount.
+  const englishGroupMatch = normalized.trim().match(/^(?:(?:just\s+)?(?:there\s+(?:are|will\s+be)\s+)?(\d+|two|three|four|five|six|seven|eight|nine|ten)\s+of\s+us|we\s+(?:are|re)\s+(\d+|two|three|four|five|six|seven|eight|nine|ten)(?:\s+(?:people|persons|travell?ers|adults))?)$/);
+  const englishGroup = englishGroupMatch ? parseCountWord(englishGroupMatch[1] ?? englishGroupMatch[2]) : null;
+  if (englishGroup != null && englishGroup > 0 && !fields.collected_people && !mixedAdultsAndChildren) {
+    fields.collected_people = englishGroup;
   }
 
   const couplePattern = /\b(?:couple|pareja|dos personas|2 personas|dos pilotos|mi esposo y yo|mi esposa y yo|mi novio y yo|mi novia y yo|mi pareja y yo|mi hija y yo|mi hijo y yo|mi (?:mam[aá]|madre|made) y yo|vamos dos|somos dos|somos 2|vamos 2|por ahora dos)\b/i;
@@ -1046,19 +1100,68 @@ export function getCollectedFields(repos: Repositories, phone: string): Record<s
   return repos.conversation.getCollectedFields(phone);
 }
 
-export function resolveLanguage(repos: Repositories, phone: string, message: string): SupportedLanguage {
-  const explicit = detectExplicitLanguageSwitch(message);
-  if (explicit) return explicit;
+export interface TurnLanguage {
+  /** es | en: drives the deterministic copy. Any other language falls back to English. */
+  language: SupportedLanguage;
+  /** Language the reply is written in: es, en, or another code from the language detector. */
+  replyLanguage: string;
+  /** The customer switched language on this message: reply in the new language, unannounced. */
+  switched: boolean;
+}
 
+/** The customer's last message before this one, or null. The current text is excluded. */
+function previousCustomerMessage(repos: Repositories, phone: string, message: string): string | null {
+  const history = repos.message.getRecentMessages(phone, 12);
+  // Some paths store the inbound before the engine runs: drop it once, so a repeated
+  // "Hi" (same text as the previous message) still counts as two in a row.
+  if (history.at(-1)?.role === 'user' && history.at(-1)?.content === message) history.pop();
+  return history.filter(entry => entry.role === 'user').at(-1)?.content ?? null;
+}
+
+function sameLanguageAsPrevious(repos: Repositories, phone: string, message: string, lang: string): boolean {
+  const previous = previousCustomerMessage(repos, phone, message);
+  return previous != null && detectMessageLanguage(previous)?.lang === lang;
+}
+
+/**
+ * Reply language for this turn. Order: an explicit request, then a new ad opener, then
+ * the message itself. A message with two or more words of another language switches at
+ * once ("Entre el basic y el core" in an English chat). A single word ("En pareja!",
+ * "Hi") switches only when the customer's previous message was in that language too,
+ * so one stray word never flips the chat. Bare answers ("ok", "sí", "2") never switch.
+ */
+export function resolveTurnLanguage(repos: Repositories, phone: string, message: string): TurnLanguage {
+  const stored = repos.conversation.getReplyLanguage(phone) ?? repos.conversation.getLanguage(phone);
+  const explicit = detectExplicitLanguageSwitch(message);
   // A new ad opener in the other language outranks the stored one (live 2026-11-02:
   // "P410 Hi! I'd like the PRIME…" from a former Spanish lead was answered in Spanish).
-  const adOpener = detectAdOpenerLanguage(message);
-  if (adOpener) return adOpener;
+  const forced = explicit ?? detectAdOpenerLanguage(message);
+  const detected = detectMessageLanguage(message);
 
-  const existing = repos.conversation.getLanguage(phone);
-  if (existing) return existing;
+  let replyLanguage: string;
+  if (forced) {
+    replyLanguage = forced;
+  } else if (!stored) {
+    // First contact keeps the original es/en scoring (e.g. "stop" is English there);
+    // the wider detector only decides languages that scoring does not know.
+    replyLanguage = detectLanguageOrNull(message) ?? detected?.lang ?? 'es';
+  } else if (detected?.strong) {
+    replyLanguage = detected.lang;
+  } else if (detected && sameLanguageAsPrevious(repos, phone, message, detected.lang)) {
+    replyLanguage = detected.lang;
+  } else {
+    replyLanguage = stored;
+  }
 
-  return detectLanguageOrNull(message) ?? 'es';
+  return {
+    language: replyLanguage === 'es' ? 'es' : 'en',
+    replyLanguage,
+    switched: stored != null && replyLanguage !== stored,
+  };
+}
+
+export function resolveLanguage(repos: Repositories, phone: string, message: string): SupportedLanguage {
+  return resolveTurnLanguage(repos, phone, message).language;
 }
 
 const COP_AMOUNT = /(?:\$\s*|COP\s*)?(\d{1,3}(?:[.,]\d{3})+|\d{6,})(?:\s*(?:COP|pesos))?/gi;

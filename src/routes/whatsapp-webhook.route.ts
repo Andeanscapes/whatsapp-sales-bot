@@ -420,7 +420,7 @@ export async function notifyAssignedLineIfDormant(repos: Repositories, msg: Extr
 interface ReplyCarryingImage {
   url: string;
   mediaId: string;
-  flow: 'price_image' | 'contextual_image';
+  flow: 'price_image' | 'contextual_image' | 'owner_image';
   /** Feed caption, used only when the reply is too long to be the caption. */
   fallbackCaption: string;
   /**
@@ -440,8 +440,9 @@ function showsPlanCard(result: ProcessMessageOutput): boolean {
 /**
  * The single image that carries the reply as its caption, or null for a plain
  * text reply. A price turn shows the plan card; any other turn may show a themed
- * contextual photo. The engine never sets both (contextual selection is skipped
- * on price turns), so this is a priority list, not a merge.
+ * contextual photo, else the greeting photo on a new conversation's first reply.
+ * The engine never sets card and contextual together (contextual selection is
+ * skipped on price and first turns), so this is a priority list, not a merge.
  *
  * Resolved once per turn: the price fallback path below reuses this result rather
  * than re-deriving the plan image, so the two paths cannot select different cards.
@@ -483,13 +484,17 @@ function resolveReplyCarryingImage(
     if (!planImage || planCardSentRecently(repos, phone, planImage)) return null;
     return { url: planImage.url, mediaId: planImage.id, flow: 'price_image', fallbackCaption: planImage.caption };
   }
-  return result.contextualImage
-    ? {
+  if (result.contextualImage) {
+    return {
       url: result.contextualImage.url,
       mediaId: galleryMediaId(result.contextualImage),
       flow: 'contextual_image',
       fallbackCaption: '',
-    }
+    };
+  }
+  const ownerImage = result.shouldSendOwnerImage ? getOwnerImage(getSkills()) : null;
+  return ownerImage
+    ? { url: ownerImage.url, mediaId: 'owner_intro', flow: 'owner_image', fallbackCaption: '' }
     : null;
 }
 
@@ -546,10 +551,9 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
       const queuePosition = (pendingByPhone.get(msg.from) ?? 0) + 1;
       pendingByPhone.set(msg.from, queuePosition);
       const task = prev.then(async () => {
-        const startedAtMs = Date.now();
-        // Newer inbound queued → the customer already waited, so reply without delay.
+        // Newer inbound queued → this turn is superseded and stops sending (burst merge).
         const shouldSkip = () => (pendingByPhone.get(msg.from) ?? 0) > queuePosition;
-        const pacer = createTurnPacer(startedAtMs, shouldSkip, env.MESSAGE_DELAY);
+        const pacer = createTurnPacer(shouldSkip);
 
         try {
           const optOutRequest = msg.type === 'text' && isOptOutMessage(msg.text);
@@ -953,48 +957,6 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
                 if (result.outboundDateAction === 'asked') repos.conversation.setDateAsked(msg.from);
                 if (result.outboundDateAction === 'options_offered') repos.conversation.setDateOptionsOffered(msg.from);
               });
-
-              if (result.shouldSendOwnerImage && !isBridgeActive(repos, msg.from)) {
-                const skills = getSkills();
-                const ownerImg = getOwnerImage(skills);
-                const reservationId = ownerImg && canSendImage(repos, msg.from)
-                  ? reserveImageSend(repos, msg.from, 'owner_intro')
-                  : null;
-                if (ownerImg && reservationId != null) {
-                  let imageSent = false;
-                  try {
-                    if (!await pacer.pace()) {
-                      releaseImageReservation(repos, reservationId);
-                    } else if (isBridgeActive(repos, msg.from)) {
-                      releaseImageReservation(repos, reservationId);
-                    } else {
-                      await sendImageUrl(msg.from, ownerImg.url, ownerImg.caption);
-                      imageSent = true;
-                    }
-                  } catch (err) {
-                    if (!(err instanceof WhatsAppSendError) || !err.deliveryUncertain) releaseImageReservation(repos, reservationId);
-                    logSystemError('whatsapp_send', 'error', err, { phone: msg.from, flow: 'owner_image' });
-                  }
-                  if (imageSent) {
-                    repos.message.addMessage({
-                      customer_phone: msg.from,
-                      direction: 'outbound',
-                      message_type: 'image',
-                      body: ownerImg.caption,
-                      created_at: new Date().toISOString(),
-                    });
-                    recordOutboundMedia(repos, {
-                      phone: msg.from,
-                      url: ownerImg.url,
-                      mediaId: 'owner_intro',
-                      caption: ownerImg.caption,
-                      carriedReply: false,
-                      flow: 'owner_image',
-                      turnInboundMessageId: msg.id,
-                    });
-                  }
-                }
-              }
 
               // Only when the plan card did NOT already carry the reply as its caption
               // (reply too long to caption, or no claim available). Otherwise this

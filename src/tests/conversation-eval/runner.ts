@@ -211,6 +211,11 @@ export function applyScenarioSeeds(ctx: RunContext, scenario: Scenario): () => v
     if (seed.conversationMode) ctx.repos.conversation.setMode(ctx.customerPhone, seed.conversationMode as ConversationMode);
     if (seed.softClosed) ctx.repos.conversation.setSoftClosed(ctx.customerPhone);
     if (seed.priceGiven) ctx.repos.conversation.setPriceGiven(ctx.customerPhone);
+    if (seed.adReferral) {
+      ctx.repos.conversation.upsert(ctx.customerPhone, {
+        ad_referral_json: JSON.stringify({ headline: seed.adReferral.headline, source_type: seed.adReferral.sourceType }),
+      });
+    }
     // Seed followup subscription status: primarily for consent-path testing.
     if (seed.followupStatus) {
       ctx.repos.followupSubscription.ensureExists(ctx.customerPhone);
@@ -265,12 +270,28 @@ export function applyScenarioSeeds(ctx: RunContext, scenario: Scenario): () => v
   };
 }
 
+/**
+ * Moves the whole stored conversation back in time (test DB only), so the next turn
+ * arrives after a real silence. Message rows and the conversation timestamps the
+ * returning-customer logic reads are shifted together.
+ */
+function ageConversation(ctx: RunContext, days: number): void {
+  const shift = `-${days} days`;
+  ctx.db.prepare(`UPDATE messages SET created_at = strftime('%Y-%m-%dT%H:%M:%fZ', created_at, ?) WHERE customer_phone = ?`)
+    .run(shift, ctx.customerPhone);
+  for (const column of ['first_seen_at', 'last_seen_at', 'price_given_at', 'handed_off_at', 'entry_marker_at']) {
+    ctx.db.prepare(`UPDATE conversations SET ${column} = strftime('%Y-%m-%dT%H:%M:%fZ', ${column}, ?) WHERE customer_phone = ? AND ${column} IS NOT NULL`)
+      .run(shift, ctx.customerPhone);
+  }
+}
+
 export async function runTurn(
   ctx: RunContext,
   turnDef: ScenarioTurn,
   turnNumber: number,
   mode: 'deterministic' | 'live' = 'deterministic',
 ): Promise<TurnRecord> {
+  if (turnDef.gapDaysBefore) ageConversation(ctx, turnDef.gapDaysBefore);
   if (turnDef.seedPriceGiven) ctx.repos.conversation.setPriceGiven(ctx.customerPhone);
   if (turnDef.seedLeadScore !== undefined) ctx.repos.conversation.updateLeadScore(ctx.customerPhone, turnDef.seedLeadScore);
   applyQualificationSeed(ctx.repos, ctx.customerPhone, turnDef.seedQualification);
