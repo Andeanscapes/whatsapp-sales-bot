@@ -64,7 +64,7 @@ const FOLLOW_UP_SENT_STATUSES: ReadonlySet<string> = new Set(['sent', 'accepted'
 const FOLLOW_UP_REPLY_WINDOW_HOURS = 72;
 
 const ALLOWED_CONVERSATION_COLUMNS = new Set([
-  'language', 'lead_score', 'last_seen_at', 'opt_out_at', 'handed_off_at',
+  'language', 'reply_language', 'lead_score', 'last_seen_at', 'opt_out_at', 'handed_off_at',
   'collected_name', 'collected_date', 'collected_date_window', 'date_status', 'collected_people',
   'collected_transport_need', 'collected_lodging_need',
   'collected_pet', 'collected_plan',
@@ -645,6 +645,13 @@ export class SqliteConversationRepo implements ConversationRepository {
       'SELECT language FROM conversations WHERE customer_phone = ?'
     ).get(phone) as { language: 'es' | 'en' | null } | undefined;
     return row?.language ?? null;
+  }
+
+  getReplyLanguage(phone: string): string | null {
+    const row = this.db.prepare(
+      'SELECT reply_language FROM conversations WHERE customer_phone = ?'
+    ).get(phone) as { reply_language: string | null } | undefined;
+    return row?.reply_language ?? null;
   }
 
   getSalesPhase(phone: string): string | null {

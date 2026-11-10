@@ -1,0 +1,124 @@
+{
+  "id": "returning-r01-after-quote",
+  "source": "returning customer after a long silence (2026-11-09 export): REGRESO must win over the ad copy; name the stored case, ask the blocker, no intro, no re-asked group, no price. Case export case B: couple, PRIME quoted for 27 Feb, back on R01 94 days later.",
+  "tags": [
+    "returning",
+    "marker",
+    "live"
+  ],
+  "lang": "es",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "uses-history",
+      "rule": "reply_must_match",
+      "turn": 4,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "PRIME|pareja"
+      ]
+    },
+    {
+      "id": "no-segment-copy",
+      "rule": "reply_must_not_match",
+      "turn": 4,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "sigues la historia|cuando vimos la experiencia|inmersi[oó]n real en la zona esmeraldera"
+      ]
+    },
+    {
+      "id": "no-intro",
+      "rule": "reply_must_not_match",
+      "turn": 4,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\bsoy [A-ZÁÉÍÓÚ]\\w+|de nuevo por aqu[ií]"
+      ]
+    },
+    {
+      "id": "no-reask-group",
+      "rule": "reply_must_not_match",
+      "turn": 4,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "¿[^?]*(?:cu[aá]nt[oa]s (?:personas|son|van)|sol[oa]s?, en pareja|en pareja o)[^?]*\\?"
+      ]
+    },
+    {
+      "id": "no-price",
+      "rule": "reply_must_not_match",
+      "turn": 4,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\$\\s?\\d|\\d{3}[.,]000|\\bCOP\\b"
+      ]
+    },
+    {
+      "id": "asks-blocker",
+      "rule": "reply_must_match",
+      "turn": 4,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "fren|falt|detuv|qued[oó] pendiente|resolver"
+      ]
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "turn": 4,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    }
+  ],
+  "turns": [
+    {
+      "user": "Hola, quiero información de la aventura minera",
+      "mockReply": "¡Hola! ¿Vienen en pareja, solos o en grupo?",
+      "replay": true,
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Pareja",
+      "mockReply": "Perfecto. PRIME es la más completa: dos minas y cabalgata. ¿Para qué fecha lo miran?",
+      "replay": true,
+      "seedQualification": {
+        "people": 2,
+        "plan": "prime_2d1n_chivor"
+      },
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "27 de febrero",
+      "mockReply": "Para pareja, PRIME queda en $1.700.000 el 27 de febrero. ¿Seguimos con la reserva?",
+      "replay": true,
+      "seedPriceGiven": true,
+      "seedQualification": {
+        "date": "27 de febrero"
+      },
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "R01 ¡Hola! Vi sus videos de la cultura esmeraldera y quiero saber cómo es ir a la mina 💚",
+      "gapDaysBefore": 94,
+      "mockReply": "Venías en pareja mirando PRIME para el 27 de febrero. ¿Qué te frenó: el valor o la fecha?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

@@ -332,6 +332,11 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
       later confirmations. This remains an inbound reply path, not automated outbound.
       The cue fires on the **first** selection only (`!storedPlan`); a later switch
       never re-cues it, because a marker on that turn would suppress the plan card.
+    - **The greeting photo is not gallery media either.** With
+      `PERSONA_GREETING_IMAGE_ENABLED`, the first reply of a new conversation rides on
+      `media.ownerImage` as its caption (claim `owner_intro`), at the lowest priority:
+      a requested gallery, the plan card or a contextual photo always wins, and a reply
+      over the caption limit goes as text. It never ships as a separate message.
     - **The plan card is not gallery media.** It is a deterministic reply-carrying image
       the webhook sends with the unchanged LLM reply as caption, for the **stored**
       plan, on exactly two triggers: a price turn (`priceJustGiven`) or a plan switch
@@ -502,7 +507,7 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
 12. **Two media ledgers, never merged.** `media_sends` is the rate-limit ledger
     (claim/release, 72h budget, derived id only — never a url). `outbound_media` is
     the operator-replay ledger (url, exact caption, theme, `carried_reply`), written
-    by `recordOutboundMedia()` at the seven delivery sites after a send succeeds or
+    by `recordOutboundMedia()` at the eight delivery sites after a send succeeds or
     is uncertain. Rules:
     - **A ledger write must never break delivery.** Every call is wrapped; a failure
       is logged and the row is lost. Nothing on the reply path reads `outbound_media`,
@@ -810,7 +815,7 @@ without having seen a real exit code.
 [x] Skills v2 assembly builds system prompt per SKILLS-ASSEMBLY.md
 [x] Dynamic price change reflected in simulate without editing md skills
 [x] No payment phone/link in system prompt
-[x] Explicit and first-plan-selection galleries ship only via `[[FOTOS:<theme>]]`; owner intro image still disabled pending sales strategy review
+[x] Explicit and first-plan-selection galleries ship only via `[[FOTOS:<theme>]]`; greeting photo (`ownerImage`) carries a new conversation's first reply as caption when `PERSONA_GREETING_IMAGE_ENABLED`
 [x] Requested photos survive handoff/soft-unsafe turns; hardSafetyFail outranks marker reasons
 [x] A photo request is the photo nouns OR a visual imperative; a repeat request re-requires the marker
 [x] Every delivered outbound image is recorded in `outbound_media`; a ledger failure never breaks the send

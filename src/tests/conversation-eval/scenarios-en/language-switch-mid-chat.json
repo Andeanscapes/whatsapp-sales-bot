@@ -1,0 +1,93 @@
+{
+  "id": "language-switch-mid-chat",
+  "source": "language switch mid-chat, replay of export case A (2026-11-09 export): English chat, a Spanish message with two Spanish words must switch the reply to Spanish; a single Spanish word ('En pareja!') does not",
+  "tags": [
+    "language",
+    "live"
+  ],
+  "lang": "en",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "stays-english-on-single-word",
+      "rule": "reply_must_match",
+      "patterns": [
+        "\\b(?:great|couple|which|sounds|one|day|night|you)\\b"
+      ],
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "switches-to-spanish",
+      "rule": "reply_must_match",
+      "patterns": [
+        "\\b(?:entre|diferencia|noche|cuál|cual|qué|que)\\b"
+      ],
+      "turn": 3,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "no-english-after-switch",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "\\b(?:the|between|difference|night|which|would)\\b"
+      ],
+      "turn": 3,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "spanish-price-answer",
+      "rule": "reply_must_match",
+      "patterns": [
+        "\\b(?:valor|costo|personas|plan|cada)\\b"
+      ],
+      "turn": 4,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "no-english-price-answer",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "\\b(?:the|each|price|how much|for two)\\b"
+      ],
+      "turn": 4,
+      "weight": 2,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Hi, I'd like info about the emerald mine trip in Chivor",
+      "mockReply": "Hi! It's a real emerald mine in Chivor, with local miners and a night at the hacienda. Are you coming as a couple, solo or as a group?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "En pareja!",
+      "mockReply": "Great, a couple! BASIC is a day trip and CORE adds a night at the hacienda. Which one sounds better to you?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Entre el basic y el core, cuál me conviene?",
+      "mockReply": "Entre BASIC y CORE, la diferencia es la noche en la hacienda. ¿Qué les llama más?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Que costo tiene cada una?",
+      "mockReply": "Para dos personas te paso el valor de cada plan en un momento. ¿Cuál les interesa?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

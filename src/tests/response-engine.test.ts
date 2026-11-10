@@ -29,6 +29,7 @@ import {
 import { env } from '../config/env.js';
 import { resetRoutingConfigCache, type RoutingConfig } from '../services/lead-routing.js';
 import { calculatePriceQuote, formatCop, getQuoteFingerprint } from '../services/pricing-calculator.js';
+import { readFileSync } from 'node:fs';
 import { allSitesActivePayload, useAllSitesActive, withoutPlans } from './helpers/all-sites-catalog.js';
 
 // The multi-site regression net runs with every destination active, as the CI
@@ -2466,26 +2467,106 @@ describe('processMessage', () => {
     expect(conv.soft_closed_at).toBeTruthy();
   });
 
-  it('a C01 price anchor is not a quote: price_given_at stays null and QUOTE LOCK still runs next turn', async () => {
+  // The ad opener runs on the CI catalog as served (one active destination): with two
+  // open destinations the destination question owns the first turn instead.
+  const useServedCatalog = (): void => {
+    useAllSitesActive(JSON.parse(readFileSync(new URL('../../scripts/bot-dynamic.ci.json', import.meta.url), 'utf8')) as unknown);
+  };
+
+  it('first reply to an ad lead with the group unknown gets the APERTURA cue and no price anchor', async () => {
+    useServedCatalog();
     mockLlmComplete.mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
-    const phone = '573001112266';
-    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'En Chivor entras a minas reales. Desde $370.000 por persona. ¿Qué les encaja más?' } }));
+    const phone = '573001118801';
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'Hola, soy Heinner. Es una mina real en Chivor. ¿Viajas solo, en pareja o en grupo?' } }));
 
-    await processMessage({ repos, customerPhone: phone, message: 'C01 Hola, somos 2, quiero el plan en la mina de Chivor.' });
+    await processMessage({ repos, customerPhone: phone, message: 'C01 ¡Hola! Quiero saber de qué se trata la experiencia minera.' });
     const firstPrompt = mockLlmComplete.mock.calls.at(-1)?.[0].systemPrompt ?? '';
-    expect(firstPrompt).toContain('PRECIO DESDE');
+    expect(firstPrompt).toContain('APERTURA DE ANUNCIO: primer mensaje');
+    expect(firstPrompt).not.toMatch(/PRECIO DESDE|PRICE ANCHOR/);
     expect(repos.conversation.getPriceGivenAt(phone)).toBeNull();
 
-    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'Para 2 personas, el plan queda en $950.000 COP. ¿Qué fecha les sirve?' } }));
-    await processMessage({ repos, customerPhone: phone, message: 'Core' });
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'Buenísimo. ¿Les encaja más CORE o PRIME?' } }));
+    await processMessage({ repos, customerPhone: phone, message: 'Somos 2' });
     const secondPrompt = mockLlmComplete.mock.calls.at(-1)?.[0].systemPrompt ?? '';
-    expect(secondPrompt).toContain('QUOTE LOCK');
-    expect(secondPrompt).not.toContain('PRECIO DESDE');
+    expect(secondPrompt).not.toContain('APERTURA DE ANUNCIO: primer mensaje');
   });
 
-  it('a C01 opener naming plan and group gets QUOTE LOCK, not the price anchor, and records the price', async () => {
+  it('an unmarked ad entry (Meta default text + referral) gets the APERTURA cue; an organic first message does not', async () => {
+    useServedCatalog();
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'Hola, soy Heinner. ¿Viajas solo, en pareja o en grupo?' } }));
+
+    const adPhone = '573001118802';
+    repos.conversation.upsert(adPhone, { ad_referral_json: JSON.stringify({ headline: 'Rodada a Chivor', source_type: 'ad' }) });
+    await processMessage({ repos, customerPhone: adPhone, message: '¡Hola! Quiero más información' });
+    expect(mockLlmComplete.mock.calls.at(-1)?.[0].systemPrompt ?? '').toContain('APERTURA DE ANUNCIO: primer mensaje');
+
+    await processMessage({ repos, customerPhone: '573001118803', message: 'Hola, quiero más información' });
+    expect(mockLlmComplete.mock.calls.at(-1)?.[0].systemPrompt ?? '').not.toContain('APERTURA DE ANUNCIO: primer mensaje');
+  });
+
+  it('a price asked on the ad opener is quoted per plan once the group arrives', async () => {
+    useServedCatalog();
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001118805';
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'Soy Heinner. Para darte el valor exacto, ¿viajas solo, en pareja o en grupo?' } }));
+    await processMessage({ repos, customerPhone: phone, message: 'C03 Hola, ¿cuánto vale la aventura minera en moto?' });
+    const first = mockLlmComplete.mock.calls.at(-1)?.[0].systemPrompt ?? '';
+    expect(first).toContain('APERTURA DE ANUNCIO: primer mensaje');
+    expect(first).not.toContain('PRECIO PEDIDO SIN PLAN:');
+
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'Para 2 personas: CORE $950.000 y PRIME $1.700.000. ¿Con cuál seguimos?' } }));
+    await processMessage({ repos, customerPhone: phone, message: 'Somos 2' });
+    const second = mockLlmComplete.mock.calls.at(-1)?.[0].systemPrompt ?? '';
+    expect(second).toMatch(/PRECIO PEDIDO SIN PLAN:[^\n]*\$950\.000[^\n]*\$1\.700\.000/);
+    // The comparison is the quote: the price is recorded and the cue does not repeat.
+    expect(repos.conversation.getPriceGivenAt(phone)).not.toBeNull();
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'Entendido. ¿Qué fecha les sirve?' } }));
+    await processMessage({ repos, customerPhone: phone, message: 'y qué incluye?' });
+    expect(mockLlmComplete.mock.calls.at(-1)?.[0].systemPrompt ?? '').not.toContain('PRECIO PEDIDO SIN PLAN:');
+  });
+
+  it('an organic lead that asked the price keeps the price gate when it gives the group', async () => {
+    useServedCatalog();
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    const phone = '573001118806';
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'Depende del grupo. ¿Cuántas personas viajan?' } }));
+    await processMessage({ repos, customerPhone: phone, message: 'Hola, ¿cuánto vale la experiencia minera?' });
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'Buenísimo. ¿Les encaja más CORE o PRIME?' } }));
+    await processMessage({ repos, customerPhone: phone, message: 'Somos 2' });
+    const prompt = mockLlmComplete.mock.calls.at(-1)?.[0].systemPrompt ?? '';
+    expect(prompt).not.toContain('PRECIO PEDIDO SIN PLAN:');
+    expect(prompt).toContain('PRICE GATE ACTIVO:');
+  });
+
+  it('a funnel (H) opener gets the group-first APERTURA cue', async () => {
+    useServedCatalog();
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: '¿Qué les encaja más: CORE o PRIME?' } }));
+    await processMessage({ repos, customerPhone: '573001118807', message: 'H01 - Hola, quiero conocer la experiencia en Chivor' });
+    expect(mockLlmComplete.mock.calls.at(-1)?.[0].systemPrompt ?? '').toContain('APERTURA DE ANUNCIO: primer mensaje');
+  });
+
+  it('a C01 opener that already gives the group gets no APERTURA cue', async () => {
+    mockLlmComplete.mockReset();
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'Buenísimo. ¿Les encaja más CORE o PRIME?' } }));
+    await processMessage({ repos, customerPhone: '573001118804', message: 'C01 Hola, somos 2, quiero el plan en la mina de Chivor.' });
+    expect(mockLlmComplete.mock.calls.at(-1)?.[0].systemPrompt ?? '').not.toContain('APERTURA DE ANUNCIO: primer mensaje');
+  });
+
+  it('a C01 opener naming plan and group gets QUOTE LOCK and records the price', async () => {
     mockLlmComplete.mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
@@ -2495,7 +2576,7 @@ describe('processMessage', () => {
     await processMessage({ repos, customerPhone: phone, message: 'C01 Hola, somos 2 y queremos el CORE en Chivor' });
     const prompt = mockLlmComplete.mock.calls.at(-1)?.[0].systemPrompt ?? '';
     expect(prompt).toContain('QUOTE LOCK');
-    expect(prompt).not.toContain('PRECIO DESDE');
+    expect(prompt).not.toContain('APERTURA DE ANUNCIO: primer mensaje');
     expect(repos.conversation.getPriceGivenAt(phone)).not.toBeNull();
   });
 
@@ -4171,6 +4252,41 @@ describe('processMessage', () => {
     expect(result.shouldSendGalleryImages).toBe(false);
     expect(result.shouldSendImage).toBe(false);
     expect(mockLlmComplete).toHaveBeenCalled();
+  });
+
+  it('flags the greeting photo on the first reply only, and only when enabled', async () => {
+    const previous = env.PERSONA_GREETING_IMAGE_ENABLED;
+    const previousImages = env.SEND_IMAGES_ENABLED;
+    env.SEND_IMAGES_ENABLED = true;
+    mockLlmComplete.mockReset();
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'Hola, ¿viajarías solo, en pareja o en grupo?' } }));
+    try {
+      env.PERSONA_GREETING_IMAGE_ENABLED = false;
+      const off = await processMessage({ repos, customerPhone: '573001119911', message: 'Hola' });
+      expect(off.shouldSendOwnerImage).toBe(false);
+
+      env.PERSONA_GREETING_IMAGE_ENABLED = true;
+      const phone = '573001119912';
+      const first = await processMessage({ repos, customerPhone: phone, message: 'Hola' });
+      expect(first.shouldSendOwnerImage).toBe(true);
+      const second = await processMessage({ repos, customerPhone: phone, message: 'Somos dos' });
+      expect(second.shouldSendOwnerImage).toBe(false);
+
+      // Photo already sent within 72h: no photo cue on a new conversation for that lead.
+      repos.mediaSend.claimSend('573001119914', 'owner_intro', new Date(Date.now() - 72 * 3_600_000).toISOString());
+      const alreadySent = await processMessage({ repos, customerPhone: '573001119914', message: 'Hola' });
+      expect(alreadySent.shouldSendOwnerImage).toBe(false);
+      expect(mockLlmComplete.mock.calls.at(-1)?.[0].systemPrompt ?? '').not.toContain('FOTO DE SALUDO:');
+
+      // Images off: no photo and no caption cue, so the model is never told a photo is coming.
+      env.SEND_IMAGES_ENABLED = false;
+      const noImages = await processMessage({ repos, customerPhone: '573001119913', message: 'Hola' });
+      expect(noImages.shouldSendOwnerImage).toBe(false);
+      expect(mockLlmComplete.mock.calls.at(-1)?.[0].systemPrompt ?? '').not.toContain('FOTO DE SALUDO:');
+    } finally {
+      env.PERSONA_GREETING_IMAGE_ENABLED = previous;
+      env.SEND_IMAGES_ENABLED = previousImages;
+    }
   });
 
   it('does not append large-group sales copy to fracture guidance', async () => {

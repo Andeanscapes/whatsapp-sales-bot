@@ -266,7 +266,7 @@ describe('dynamic data validation', () => {
     expect(skills.dynamicData).not.toBeNull();
   });
 
-  it('keeps C03 entry valueHook factual: no ad-copy, no invented comparative, keeps route caveats', () => {
+  it('keeps C03 entry valueHook factual: no ad-copy, no invented comparative; route caveats live in the route data', () => {
     setDynamicService(null);
     const skills = loadSkills();
     const valueHook = skills.dynamicData?.experiences.emerald_mining_tour
@@ -278,9 +278,13 @@ describe('dynamic data validation', () => {
     // Comparative/superlative claims the catalog does not support: the route is
     // documented as "NO es la recomendada", and Chivor is the closest/safest access.
     expect(valueHook).not.toMatch(/m[aá]s (?:directa|corta|r[aá]pida|cercana|segura)/i);
-    // Facts that must survive: distance + the moto/4x4-only restriction.
-    expect(valueHook).toMatch(/35 km/);
-    expect(valueHook).toMatch(/moto o (?:carro )?4x4/i);
+    // Owner decision 2026-11-07: the moto opener leads with the ride and the mine;
+    // road conditions are given only when asked, so they must stay in the route data.
+    expect(valueHook).toMatch(/moto/i);
+    expect(valueHook).toMatch(/mina/i);
+    const route = JSON.stringify(skills.dynamicData?.experiences.emerald_mining_tour?.sites.chivor?.route ?? {});
+    expect(route).toMatch(/35 km/);
+    expect(route).toMatch(/moto o (?:carro )?4x4/i);
   });
 
   it('keeps mining duration, medical assistance, and mine type distinctions', () => {

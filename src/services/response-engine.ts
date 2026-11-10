@@ -13,7 +13,7 @@ import { DeepSeekLlmClient } from './llm/deepseek-llm-client.js';
 import { runLeadAnalysis } from './lead-analysis-runner.js';
 import type { LlmTurn } from './llm/llm-client.js';
 import type { MergedQualification, OutboundDateAction, ProcessMessageInput, ProcessMessageOutput } from './types.js';
-import { getActiveExperience, getSiteCommonQuestions, getFutureAvailableDatesForPlan, getGalleryImages, getPlans, hasPublicPaymentFacts, isPlanPaused, isPricingAvailable, getPublicPaymentFactsForPlan, hasMultipleExperiences, getExperiences, scopeSkillsToExperience, getDynamicPlanImages, getSiteFallbackGalleryTheme, scopeGalleryToPlan, resolveCurrentPlanId } from './product-registry.js';
+import { getActiveExperience, getSiteCommonQuestions, getFutureAvailableDatesForPlan, getGalleryImages, getPlans, hasPublicPaymentFacts, isPlanPaused, isPricingAvailable, getPublicPaymentFactsForPlan, hasMultipleExperiences, getExperiences, scopeSkillsToExperience, getDynamicPlanImages, getOwnerImage, getSiteFallbackGalleryTheme, scopeGalleryToPlan, resolveCurrentPlanId } from './product-registry.js';
 import type { ActiveExperience, PublicPaymentFacts } from './product-registry.js';
 import { calculatePerPersonEquivalent, calculatePriceQuote, findQuotedAlternative, getQuoteFingerprint, isQuoteFingerprintStale, quoteFingerprintPlanId, listCheaperPlanQuotes, formatCop, type TransportNeed } from './pricing-calculator.js';
 import {
@@ -23,6 +23,7 @@ import {
   buildDbQualification,
   getCollectedFields,
   resolveLanguage,
+  resolveTurnLanguage,
   isConfirmedDate,
   isConcreteDayDate,
   isQualificationComplete,
@@ -37,8 +38,9 @@ import {
   detectQuotedPlans,
   siteNamedRecently,
   extractCopAmounts,
+  isForbiddenCustomerName,
 } from './qualification-engine.js';
-import { findPlanBrochureImage, galleryImageLimit, hasShownLlmGallery, PLAN_BROCHURE_THEME, planCardSentRecently, remainingGalleryImageBudget, selectBalancedByCategory } from './media-service.js';
+import { canSendPlanImage, findPlanBrochureImage, galleryImageLimit, hasShownLlmGallery, PLAN_BROCHURE_THEME, planCardSentRecently, remainingGalleryImageBudget, selectBalancedByCategory } from './media-service.js';
 import {
   isSoftCloseMessage,
   isPriceObjectionMessage,
@@ -84,7 +86,7 @@ import {
   isPhotoSiteCorrection,
 } from './reply-guard.js';
 import { findEntryMarker, parseEntryMarker } from './entry-marker.js';
-import { classifyPendingConsentReply, isDuplicateConsentEcho } from './followup-consent.js';
+import { classifyPendingConsentReply, isDuplicateConsentEcho, isFollowupPermissionQuestion } from './followup-consent.js';
 import { detectRequestedGalleryThemes, selectContextualImage } from './contextual-media.js';
 import { assignLine, isReferralLine } from './lead-routing.js';
 import { MONTH_NAMES } from './constants.js';
@@ -163,24 +165,47 @@ function formatReturningContext(
   repos: ProcessMessageInput['repos'],
   customerPhone: string,
   conversation: ConversationRow,
-  facts: { silenceMs: number; planId: string | null; planRetired: boolean },
+  facts: { silenceMs: number; planId: string | null; planName: string | null; planRetired: boolean },
 ): string {
   const lastOutbound = repos.message.getLastOutboundBody(customerPhone) ?? '';
+  const lastText = repos.message.getLastOutboundTextBody(customerPhone);
+  // A permission ask is not the sales thread: "retómala" made the model re-ask it.
   const lastQuestion = lastOutbound.startsWith('[template:')
     ? 'último contacto nuestro: plantilla de seguimiento'
-    : formatLastQuestion(repos.message.getLastOutboundTextBody(customerPhone));
+    : lastText && isFollowupPermissionQuestion(lastText)
+      ? 'último contacto nuestro: pedimos permiso para escribirle (no lo retomes)'
+      : formatLastQuestion(lastText);
+  const step = furthestReturningStep(conversation, facts.planId);
   const fields = [
     formatSilence(facts.silenceMs),
-    facts.planRetired ? 'plan anterior retirado (ofrece las opciones actuales)' : facts.planId ? `plan=${facts.planId}` : 'sin plan guardado',
+    facts.planRetired
+      ? 'plan anterior retirado (ofrece las opciones actuales)'
+      : facts.planId ? `plan=${facts.planName ?? facts.planId}` : 'sin plan guardado',
     conversation.collected_people != null ? `personas=${conversation.collected_people}` : null,
     conversation.collected_transport_need ? `transporte=${conversation.collected_transport_need}` : null,
     conversation.collected_date ? `fecha=${conversation.collected_date}${isStoredDatePast(conversation) ? ' (ya pasó)' : ''}` : null,
     conversation.price_given_at ? 'precio ya entregado antes del silencio' : null,
     conversation.sales_phase ? `fase=${conversation.sales_phase}` : null,
-    conversation.lead_pain ? `bloqueo=${conversation.lead_pain}` : null,
+    `paso alcanzado=${step.label}`,
+    conversation.lead_pain ? `bloqueo=${conversation.lead_pain}` : `frenos probables=${step.blockers}`,
     lastQuestion,
   ].filter((field): field is string => field !== null);
   return fields.join(' · ');
+}
+
+/** How far the previous conversation got, and what usually stops a lead at that point. */
+function furthestReturningStep(
+  conversation: ConversationRow,
+  planId: string | null,
+): { label: string; blockers: string } {
+  if (conversation.handed_off_at) return { label: 'pidió reservar', blockers: 'el pago o la confirmación del cupo' };
+  if (conversation.price_given_at && conversation.date_status === 'selected') {
+    return { label: 'cotización y fecha elegida', blockers: 'la logística o el pago' };
+  }
+  if (conversation.price_given_at) return { label: 'cotización entregada', blockers: 'el valor o la fecha' };
+  if (planId) return { label: 'plan elegido, sin cotizar', blockers: 'el valor o la fecha' };
+  if (conversation.collected_people != null) return { label: 'grupo conocido, sin plan', blockers: 'qué plan les encaja o la fecha' };
+  return { label: 'solo información', blockers: 'fecha, presupuesto, logística o seguridad' };
 }
 
 function formatSilence(silenceMs: number): string {
@@ -476,9 +501,6 @@ export function isOptOutMessage(message: string): boolean {
 }
 
 export const llmClient = new DeepSeekLlmClient(true);
-
-/** A customer asking for dates gets them answered; the first-reply anchor is for the plain "quiero el plan" opening. */
-const ASKS_DATES = /\b(?:fechas?|dates?)\b/i;
 
 function isPriceQuestion(text: string): boolean {
   const norm = normalizeForKeywordMatch(text);
@@ -841,8 +863,7 @@ function persistCollectedFromLlmTurn(repos: ProcessMessageInput['repos'], phone:
   const dbFields: Record<string, unknown> = {};
   if (f.name != null) {
     const nameStr = String(f.name).trim();
-    const nameLower = nameStr.toLowerCase();
-    if (nameLower !== env.OWNER_NAME.toLowerCase().trim() && nameLower !== env.PARTNER_NAME.toLowerCase().trim()) {
+    if (!isForbiddenCustomerName(nameStr)) {
       dbFields.collected_name = nameStr;
     }
   }
@@ -939,7 +960,8 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
   let skills = getSkills();
   const multipleExperiences = hasMultipleExperiences(skills);
 
-  const lang = resolveLanguage(repos, customerPhone, message);
+  const turnLanguage = resolveTurnLanguage(repos, customerPhone, message);
+  const lang = turnLanguage.language;
   const normalized = message.toLowerCase().trim();
 
   const storedConversation = repos.conversation.getByPhone(customerPhone);
@@ -1336,6 +1358,7 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
   if (revisedChildCount) repos.conversation.clearCollectedChildAges(customerPhone);
   repos.conversation.upsert(customerPhone, {
     language: lang,
+    reply_language: turnLanguage.replyLanguage,
     ...nonDateContext,
   });
   if (contextFields.collected_plan === null) {
@@ -1687,9 +1710,20 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     ? formatReturningContext(repos, customerPhone, returningRow, {
       silenceMs,
       planId: returningRow.collected_plan,
+      planName: getPlans(activeExperience).find(plan => plan.id === returningRow.collected_plan)?.name ?? null,
       planRetired: turn.retiredPlanUnmapped,
     })
     : null;
+  if (returningGap || returningTurn) {
+    logger.info({
+      phone: customerPhone,
+      silenceHours: Math.round(silenceMs / 3_600_000),
+      lastDirectionBeforeTurn,
+      returningTurn,
+      consentAnswerTurn,
+      step: returningRow ? furthestReturningStep(returningRow, returningRow.collected_plan).label : null,
+    }, '[RETURNING] returning customer turn');
+  }
   const priorContext = returningContext
     ? null
     : entryMarker?.temperature === 'retargeting'
@@ -1777,16 +1811,22 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     return pricedReplies.length === 2
       && pricedReplies.every(m => detectQuotedPlan(m.content, activeExperience, people, conversationSiteId) === activePlanId);
   };
-  // First reply to a C/H campaign lead: a catalog "desde" anchor, which is not a quote.
-  // It must not set price_given_at, or QUOTE LOCK and the T3a total are skipped later.
-  // A turn that can already be quoted (plan + group known) gets QUOTE LOCK instead; the
-  // plan rule mirrors `lockedPlanId` in skills-prompt-assembly so both sides agree.
-  const quoteEligibleThisTurn = typeof safeCollected.personas === 'number'
-    && (typeof safeCollected.plan === 'string' || getPlans(activeExperience).length === 1);
-  const entryPriceAnchorTurn = isNewConversation && !storedMarker && !!entryMarker
-    && (entryMarker.temperature === 'cold' || entryMarker.temperature === 'funnel')
-    && !quoteEligibleThisTurn
-    && !isPriceQuestion(message) && !ASKS_DATES.test(normalizeText(message));
+  // First reply to an ad lead (any campaign code, or Meta's default text with a referral)
+  // whose group is still unknown: the opener asks the group, never a price or menu.
+  // Funnel (H) leads included since 2026-11-09: their segment opener was the plan menu,
+  // which got fewer replies than a group question (export 2026-11-07).
+  const adEntry = !!entryMarker || !!storedConversation?.ad_referral_json;
+  const adOpeningTurn = isNewConversation && adEntry && typeof safeCollected.personas !== 'number';
+  // Ad leads only: a price question still unanswered in recent history (the opener
+  // defers it to the group answer) is quoted once the group is known. Other leads keep
+  // the existing price gate.
+  const pendingPriceQuestion = adEntry && repos.conversation.getPriceGivenAt(customerPhone) == null
+    && (isPriceQuestion(message) || recentMessages.some(m => m.role === 'user' && isPriceQuestion(m.content)));
+  // Pre-LLM half of the greeting photo gate; the post-LLM half drops it on guarded turns.
+  // canSendPlanImage = images on and no `owner_intro` send in the last 72h (same claim
+  // id the webhook uses), so a lead who already got the photo gets no photo cue.
+  const greetingPhotoCandidate = env.PERSONA_GREETING_IMAGE_ENABLED && isNewConversation
+    && getOwnerImage(skills) != null && canSendPlanImage(repos, customerPhone, 'owner_intro');
   const promptInput = {
     skills: planGallerySkills,
     lang,
@@ -1798,6 +1838,7 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     entryOpeningTurn: isNewConversation,
     priorContext,
     returning: returningContext,
+    returningPriceQuestion: returningTurn && isPriceQuestion(message),
     leadPain: knownPain,
     // A returning customer asking the price gets a fresh QUOTE LOCK: the old quote is days
     // old and the PRECIO YA ENTREGADO cue would forbid the total they just asked for.
@@ -1819,7 +1860,11 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     priceObjectionThisTurn,
     transportObjectionThisTurn,
     pauseSummaryAlreadySent: isPauseSummaryAlreadySent(),
-    entryPriceAnchor: entryPriceAnchorTurn,
+    adOpeningTurn,
+    pendingPriceQuestion,
+    greetingPhotoTurn: greetingPhotoCandidate,
+    replyLanguage: turnLanguage.replyLanguage,
+    languageSwitchedThisTurn: turnLanguage.switched,
   };
   const systemPrompt = buildSystemPrompt(promptInput);
   const llmHistory = recentMessages.map(m => ({ role: m.role, content: m.content }));
@@ -2251,8 +2296,7 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
   // Mark price_given / pricePresented only when at least one booking signal exists
   // (plan/date/transport/people), so a first-turn price mention cannot unlock
   // handoff/hot-lead paths on its own.
-  // The entry "desde" anchor is not a quote (see entryPriceAnchorTurn).
-  const initialPriceMentioned = !entryPriceAnchorTurn && replyMentionsPrice(strippedReplyText);
+  const initialPriceMentioned = replyMentionsPrice(strippedReplyText);
   const msgPriceFields = extractBookingFields(message, exp);
   const priceContextSignals = [
     merged.plan, merged.fecha, merged.transporte, merged.personas,
@@ -2360,7 +2404,7 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
 
   merged = { ...merged, dateStatus: repos.conversation.getDateStatus(customerPhone) };
 
-  const finalPriceJustGiven = legalPrice && !entryPriceAnchorTurn && replyMentionsPrice(strippedReplyText);
+  const finalPriceJustGiven = legalPrice && replyMentionsPrice(strippedReplyText);
   if (finalPriceJustGiven && !prePriceRow) repos.conversation.upsert(customerPhone, { price_given_at: new Date().toISOString() });
   const outputPriceJustGiven = !needsHumanEffective && finalPriceJustGiven;
 
@@ -2409,7 +2453,11 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
   // Plan image flag only — deepseek-llm-client plain-text mode hardcodes img=false,
   // so this stays false until structured img returns. Not a live media path today.
   const shouldSendImage = !softUnsafePhrasing && llmTurn.img;
-  // TODO(sales-strategy): owner intro image intentionally disabled pending team review.
+  // Greeting photo (owner decision 2026-11-09): the first reply of a new conversation
+  // rides on media.ownerImage as its caption. The webhook gives a gallery or plan card
+  // priority, and sends plain text when the photo cannot carry the reply.
+  const greetingImageTurn = greetingPhotoCandidate
+    && !needsHumanEffective && !softUnsafePhrasing && !pausedPlanThisTurn;
   const mediaReplyFailure = persistentUnmarkedPhotoPromise || persistentMissingExplicitMarker;
   const shouldAlertOwner = needsHumanEffective || (hybrid.isHot && pricePresented) || mediaReplyFailure;
   const ownerAlertType = mediaReplyFailure
@@ -2464,7 +2512,7 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     reply: strippedReplyText, shouldSendReply: true,
     leadScore: finalScore, usedAi: true,
     shouldAlertOwner, ownerAlertType, shouldSendImage,
-    shouldSendOwnerImage: false,
+    shouldSendOwnerImage: greetingImageTurn,
     shouldSendGalleryImages: requestedGalleryImageUrls.length > 0,
     requestedGalleryImages: requestedGalleryImageUrls.length > 0 ? requestedGalleryImageUrls : undefined,
     contextualImage: contextualImage ? { url: contextualImage.url } : undefined,

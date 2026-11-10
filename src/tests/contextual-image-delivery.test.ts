@@ -12,7 +12,7 @@ import * as budgetGuard from '../services/budget-guard.js';
 import * as leadAnalyzer from '../services/lead-analyzer.js';
 import * as completion from '../services/llm/deepseek-completion.js';
 import * as skillLoader from '../services/skill-loader.js';
-import { getActiveExperience, getDynamicPlanImages } from '../services/product-registry.js';
+import { getActiveExperience, getDynamicPlanImages, getOwnerImage } from '../services/product-registry.js';
 import { calculatePriceQuote, formatCop } from '../services/pricing-calculator.js';
 import { useAllSitesActive } from './helpers/all-sites-catalog.js';
 
@@ -888,6 +888,72 @@ describe('contextual image delivery', () => {
       });
       expect(recordSpy).toHaveBeenCalled();
       recordSpy.mockRestore();
+    });
+  });
+
+  describe('greeting photo', () => {
+    it('sends the first reply as the owner photo caption, in a single message', async () => {
+      const phone = '573001110301';
+      const owner = getOwnerImage(skillLoader.getSkills());
+      expect(owner).not.toBeNull();
+      processMessageMock.mockResolvedValue(baseResult({ shouldSendOwnerImage: true }));
+
+      await inbound(phone, 'wamid-greet-1', 'Hola');
+
+      await vi.waitFor(() => expect(repos.outboundMedia.listByPhone(phone)).toHaveLength(1));
+      expect(sendImageUrlMock).toHaveBeenCalledExactlyOnceWith(phone, owner?.url, REPLY);
+      expect(sendTextMock).not.toHaveBeenCalled();
+      expect(repos.outboundMedia.listByPhone(phone)[0]).toMatchObject({
+        media_url: owner?.url, caption: REPLY, carried_reply: 1, flow: 'owner_image',
+      });
+    });
+
+    it('lets an explicit first-turn gallery carry the reply instead of the owner photo', async () => {
+      const phone = '573001110304';
+      const owner = getOwnerImage(skillLoader.getSkills());
+      processMessageMock.mockResolvedValue(baseResult({
+        shouldSendOwnerImage: true, requestedGalleryImages: [IMAGE_URL], galleryRequestedByCustomer: true,
+      }));
+
+      await inbound(phone, 'wamid-greet-4', 'Hola, tienes fotos de la mina?');
+
+      await vi.waitFor(() => expect(sendImageUrlMock).toHaveBeenCalledWith(phone, IMAGE_URL, REPLY));
+      expect(sendImageUrlMock.mock.calls.some(call => call[1] === owner?.url)).toBe(false);
+    });
+
+    it('sends plain text when the owner photo was already sent within 72h', async () => {
+      const phone = '573001110305';
+      repos.mediaSend.claimSend(phone, 'owner_intro', new Date(Date.now() - 72 * 3_600_000).toISOString());
+      processMessageMock.mockResolvedValue(baseResult({ shouldSendOwnerImage: true }));
+
+      await inbound(phone, 'wamid-greet-5', 'Hola');
+
+      await vi.waitFor(() => expect(sendTextMock).toHaveBeenCalledWith(phone, REPLY));
+      expect(sendImageUrlMock).not.toHaveBeenCalled();
+    });
+
+    it('sends plain text when the first reply is too long to caption', async () => {
+      const phone = '573001110302';
+      const longReply = 'a'.repeat(MAX_IMAGE_CAPTION_CHARS + 1);
+      processMessageMock.mockResolvedValue(baseResult({ reply: longReply, shouldSendOwnerImage: true }));
+
+      await inbound(phone, 'wamid-greet-2', 'Hola');
+
+      await vi.waitFor(() => expect(sendTextMock).toHaveBeenCalledWith(phone, longReply));
+      expect(sendImageUrlMock).not.toHaveBeenCalled();
+    });
+
+    it('lets the plan card carry a first-turn quote instead of the owner photo', async () => {
+      const phone = '573001110303';
+      repos.conversation.upsert(phone, { collected_plan: 'core_2d1n_chivor' });
+      const card = getDynamicPlanImages(skillLoader.getSkills()).find(image => image.planId === 'core_2d1n_chivor');
+      expect(card).toBeDefined();
+      processMessageMock.mockResolvedValue(baseResult({ priceJustGiven: true, shouldSendOwnerImage: true }));
+
+      await inbound(phone, 'wamid-greet-3', 'somos 2, cuanto vale el core?');
+
+      await vi.waitFor(() => expect(sendImageUrlMock).toHaveBeenCalled());
+      expect(sendImageUrlMock).toHaveBeenCalledExactlyOnceWith(phone, card?.url, REPLY);
     });
   });
 });

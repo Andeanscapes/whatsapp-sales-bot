@@ -28,6 +28,8 @@ export function migrate(db: Database.Database): void {
   db.exec('DROP INDEX IF EXISTS idx_follow_up_events_customer_anchor_stage');
 
   addColumnIfMissing(db, 'messages', 'app_version', 'TEXT');
+  // Any detected reply language (fr, pt, ...). `language` stays es|en for fixed copy.
+  addColumnIfMissing(db, 'conversations', 'reply_language', 'TEXT');
   addColumnIfMissing(db, 'messages', 'media_id', 'TEXT');
   // 'operator' on messages the team sent through the bridge. NULL = bot, or any row written before this column.
   addColumnIfMissing(db, 'messages', 'sender', 'TEXT');
