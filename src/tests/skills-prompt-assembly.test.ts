@@ -398,6 +398,71 @@ describe('skills-prompt-assembly', () => {
     expect(prompt).not.toContain('Hermanas Carvajalino');
     expect(prompt).not.toContain('{{OWNER_NAME}}');
     expect(prompt).not.toContain('{{PARTNER_NAME}}');
+    expect(prompt).not.toMatch(/\{\{PERSONA_[A-Z_]+\}\}/);
+  });
+
+  it('keeps the owner as the persona when no BOT_PERSONA_* is set', () => {
+    const keys = ['OWNER_NAME', 'PARTNER_NAME', 'BOT_PERSONA_NAME', 'BOT_PERSONA_FULL_NAME', 'BOT_PERSONA_GENDER'] as const;
+    const previous = keys.map(key => [key, process.env[key]] as const);
+    process.env.OWNER_NAME = 'Heinner';
+    process.env.PARTNER_NAME = 'Alexandra';
+    for (const key of ['BOT_PERSONA_NAME', 'BOT_PERSONA_FULL_NAME', 'BOT_PERSONA_GENDER'] as const) delete process.env[key];
+    try {
+      const prompt = assembleSystemPrompt({ skills: withLivePricing(loadSkills()), lang: 'es' });
+      expect(prompt).toContain('Eres Heinner, ~35, cofundador de Andean Scapes.');
+      expect(prompt).toContain('habla de ti en masculino');
+    } finally {
+      for (const [key, value] of previous) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
+  it('keeps the campaign segment angle on the plan-options turn', () => {
+    const skills = loadSkills();
+    const input = { skills, lang: 'es' as const, collectedFields: { personas: 2, site: 'chivor' }, entryMarker: { code: 'C02', temperature: 'cold' as const } };
+    const withSegment = assembleSystemPrompt(input);
+    expect(withSegment).toContain('OPCIONES DE PLAN ESTE TURNO:');
+    expect(withSegment).toContain('Enmarca las opciones con el ángulo del ENTRY_SEGMENT');
+    const organic = assembleSystemPrompt({ ...input, entryMarker: undefined });
+    expect(organic).not.toContain('Enmarca las opciones con el ángulo del ENTRY_SEGMENT');
+  });
+
+  it('asks for the name on a greeting-photo turn only', () => {
+    const skills = withLivePricing(loadSkills());
+    expect(assembleSystemPrompt({ skills, lang: 'es', greetingPhotoTurn: true })).toContain('FOTO DE SALUDO:');
+    expect(assembleSystemPrompt({ skills, lang: 'en', greetingPhotoTurn: true })).toContain('GREETING PHOTO:');
+    expect(assembleSystemPrompt({ skills, lang: 'es' })).not.toContain('FOTO DE SALUDO:');
+    expect(assembleSystemPrompt({ skills, lang: 'es', greetingPhotoTurn: true, returning: 'previous chat' })).not.toContain('FOTO DE SALUDO:');
+  });
+
+  it('speaks as the configured persona, with the owner as her partner', () => {
+    const keys = ['OWNER_NAME', 'PARTNER_NAME', 'BOT_PERSONA_NAME', 'BOT_PERSONA_FULL_NAME', 'BOT_PERSONA_GENDER'] as const;
+    const previous = keys.map(key => [key, process.env[key]] as const);
+    Object.assign(process.env, {
+      OWNER_NAME: 'Heinner',
+      PARTNER_NAME: 'Alexandra',
+      BOT_PERSONA_NAME: 'Alexandra',
+      BOT_PERSONA_FULL_NAME: 'Alexandra Burgos',
+      BOT_PERSONA_GENDER: 'female',
+    });
+    try {
+      const prompt = assembleSystemPrompt({ skills: withLivePricing(loadSkills()), lang: 'es' });
+      expect(prompt).toContain('Eres Alexandra Burgos, ~35, cofundadora de Andean Scapes.');
+      // The partner appears only in the trust vignette, never in the self-introduction.
+      expect(prompt.match(/Heinner/g)).toHaveLength(1);
+      expect(prompt).toContain('Soy Alexandra Burgos, de Andean Scapes');
+      expect(prompt).toContain('habla de ti siempre en femenino');
+      expect(prompt).not.toMatch(/\bcofundador\b/);
+      expect(prompt).toContain('No nombres a nadie más del equipo.');
+      expect(prompt).not.toMatch(/Con Heinner armamos/);
+    } finally {
+      for (const [key, value] of previous) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
   });
 
   it('renders catalog narrative without inventing prices in catalog block', () => {
@@ -859,20 +924,46 @@ describe('skills-prompt-assembly', () => {
     expect(cue('Hola, quiero información')).toBe('');
   });
 
-  it('first reply to a C/H campaign lead carries one catalog per-person price anchor', () => {
-    const anchorLine = (input: Parameters<typeof assembleSystemPrompt>[0]): string =>
-      /PRECIO DESDE:[^\n]*|PRICE ANCHOR:[^\n]*/.exec(assembleSystemPrompt(input))?.[0] ?? '';
-    const cold = anchorLine({ skills: loadSkills(), lang: 'es', entryMarker: { code: 'C01', temperature: 'cold' }, collectedFields: { site: 'chivor' }, entryPriceAnchor: true });
-    expect(cold).toMatch(/desde \$[\d.]+ por persona/);
-    expect(cold).not.toMatch(/\b\d{1,3}\.\d{3}\.\d{3}\b/);
-    const en = anchorLine({ skills: loadSkills(), lang: 'en', entryMarker: { code: 'H01', temperature: 'funnel' }, collectedFields: { site: 'chivor' }, entryPriceAnchor: true });
-    expect(en).toMatch(/starting at \$[\d,]+ per person/);
-    expect(anchorLine({ skills: loadSkills(), lang: 'es', entryMarker: { code: 'C01', temperature: 'cold' }, collectedFields: { site: 'chivor' } })).toBe('');
-    expect(anchorLine({ skills: loadSkills(), lang: 'es', entryMarker: { code: 'R01', temperature: 'retargeting' }, entryPriceAnchor: true })).toBe('');
-    // Quote-eligible, already priced, or returning: QUOTE LOCK / REGRESO own the turn.
-    expect(anchorLine({ skills: loadSkills(), lang: 'es', entryMarker: { code: 'C01', temperature: 'cold' }, collectedFields: { site: 'chivor', personas: 2, plan: 'core_2d1n_chivor' }, entryPriceAnchor: true })).toBe('');
-    expect(anchorLine({ skills: loadSkills(), lang: 'es', entryMarker: { code: 'C01', temperature: 'cold' }, collectedFields: { site: 'chivor' }, priceGiven: true, entryPriceAnchor: true })).toBe('');
-    expect(anchorLine({ skills: loadSkills(), lang: 'es', entryMarker: { code: 'C01', temperature: 'cold' }, collectedFields: { site: 'chivor' }, returning: 'hace 4 dias', entryPriceAnchor: true })).toBe('');
+  it('first reply to an ad lead carries the APERTURA cue and never a price anchor', () => {
+    const line = (input: Parameters<typeof assembleSystemPrompt>[0]): string =>
+      /APERTURA DE ANUNCIO: primer mensaje[^\n]*/.exec(assembleSystemPrompt(input))?.[0] ?? '';
+    const base = { skills: loadSkills(), lang: 'es', collectedFields: { site: 'chivor' } } as const;
+    const cold = line({ ...base, entryMarker: { code: 'C01', temperature: 'cold' }, adOpeningTurn: true });
+    expect(cold).toMatch(/solo, en pareja o para un grupo/);
+    expect(cold).toMatch(/Sin precios/);
+    expect(line({ ...base, entryMarker: { code: 'R01', temperature: 'retargeting' }, adOpeningTurn: true })).not.toBe('');
+    expect(line({ ...base, entryMarker: null, adOpeningTurn: true })).not.toBe('');
+    expect(line({ ...base, entryMarker: { code: 'C01', temperature: 'cold' } })).toBe('');
+    expect(line({ ...base, entryMarker: { code: 'C01', temperature: 'cold' }, adOpeningTurn: true, returning: 'hace 4 dias' })).toBe('');
+    const prompt = assembleSystemPrompt({ ...base, entryMarker: { code: 'C01', temperature: 'cold' }, adOpeningTurn: true });
+    expect(prompt).not.toMatch(/PRECIO DESDE|PRICE ANCHOR/);
+  });
+
+  it('a price asked before the group is known is quoted per plan for that group, from the catalog', () => {
+    const line = (personas: number, extra: Partial<Parameters<typeof assembleSystemPrompt>[0]> = {}): string =>
+      /PRECIO PEDIDO SIN PLAN:[^\n]*/.exec(assembleSystemPrompt({ skills: loadSkills(), lang: 'es', collectedFields: { site: 'chivor', personas }, pendingPriceQuestion: true, ...extra }))?.[0] ?? '';
+    const solo = line(1);
+    expect(solo).toMatch(/CORE[^|]*\$620\.000/);
+    expect(solo).toMatch(/PRIME[^|]*\$960\.000/);
+    expect(solo).not.toMatch(/370\.000|550\.000|670\.000/);
+    expect(solo).not.toMatch(/BASIC|480\.000/);
+    const couple = line(2);
+    expect(couple).toMatch(/CORE[^|]*\$950\.000/);
+    expect(couple).toMatch(/PRIME[^|]*\$1\.700\.000/);
+    expect(line(2, { lang: 'en' })).toMatch(/2 people[^\n]*\$950,000[^\n]*\$1,700,000/);
+    expect(line(2, { pendingPriceQuestion: false })).toBe('');
+    expect(line(2, { priceGiven: true })).toBe('');
+    expect(line(2, { returning: 'hace 4 dias' })).toBe('');
+    expect(line(2, { collectedFields: { site: 'chivor', personas: 2, plan: 'core_2d1n_chivor' } })).toBe('');
+    const gated = assembleSystemPrompt({ skills: loadSkills(), lang: 'es', collectedFields: { site: 'chivor', personas: 2 }, pendingPriceQuestion: true });
+    expect(gated).not.toContain('PRICE GATE ACTIVO:');
+    expect(gated).not.toContain('OPCIONES DE PLAN ESTE TURNO:');
+  });
+
+  it('never tells the ad opener the conversation is already advanced', () => {
+    const input = { skills: loadSkills(), lang: 'es', collectedFields: { site: 'chivor', idioma: 'es', dateStatus: 'unasked' } } as const;
+    expect(assembleSystemPrompt({ ...input, entryOpeningTurn: true, adOpeningTurn: true })).not.toContain('CONTINUACION:');
+    expect(assembleSystemPrompt(input)).toContain('CONTINUACION:');
   });
 
   it('renders campaign strategy without exposing referent names', () => {

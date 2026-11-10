@@ -91,3 +91,92 @@ export function detectAdOpenerLanguage(text: string): SupportedLanguage | null {
   if (es >= 2 && es > en) return 'es';
   return null;
 }
+
+/**
+ * Per-language function and everyday words, used to recognise a language change
+ * mid-chat. Words that are also common Spanish ("tres", "les", "sur", "come", "siete",
+ * "das", "ola") are left out of the other lists, so a Spanish lead is never read as
+ * French or Italian. Plan and product names are left out on purpose: "core" or
+ * "prime" is not evidence of a language.
+ */
+const LANGUAGE_WORDS: Readonly<Record<string, readonly string[]>> = {
+  es: [
+    'hola', 'buenos', 'buenas', 'gracias', 'como', 'cuanto', 'cuanta', 'costo', 'cuesta',
+    'entre', 'el', 'los', 'las', 'del', 'cada', 'tiene', 'tengo', 'tenemos', 'estamos',
+    'queremos', 'quiero', 'puedo', 'pueden', 'podemos', 'pareja', 'somos', 'personas',
+    'pero', 'porque', 'tambien', 'aqui', 'cuando', 'donde', 'cual', 'cuales', 'precio',
+    'fecha', 'fechas', 'reservar', 'incluye', 'esta', 'este', 'hacer', 'minas', 'mina',
+    'noche', 'dias', 'favor', 'saber', 'informacion', 'ayuda', 'necesito', 'gustaria',
+  ],
+  en: [
+    'hi', 'hello', 'hey', 'thanks', 'thank', 'what', 'where', 'when', 'how', 'much',
+    'price', 'cost', 'costs', 'available', 'availability', 'date', 'dates', 'book',
+    'reserve', 'people', 'couple', 'transport', 'pickup', 'lodging', 'hotel', 'included',
+    'information', 'about', 'help', 'emerald', 'just', 'planning', 'visit', 'december',
+    'january', 'february', 'march', 'april', 'june', 'july', 'august', 'september',
+    'october', 'november', 'private', 'can', 'have', 'would', 'want', 'interested', 'the',
+    'and', 'of', 'is', 'are', 'we', 'you', 'our', 'for', 'with', 'from', 'this', 'that',
+    'them', 'which', 'like', 'prefer', 'sure', 'not', 'please', 'two', 'trip',
+  ],
+  fr: [
+    'bonjour', 'bonsoir', 'salut', 'merci', 'je', 'nous', 'vous', 'est', 'des',
+    'avec', 'pour', 'combien', 'quel', 'quelle', 'voudrions', 'voudrais', 'sommes', 'prix',
+    'pas', 'oui', 'aussi', 'mais', 'personnes', 'voyage', 'cout', 'coute',
+    'deux', 'trois', 'elle', 'faire', 'veux', 'voulons', 'pouvez', 'peut', 'cette',
+  ],
+  pt: [
+    'obrigado', 'obrigada', 'voce', 'voces', 'custa', 'preco', 'pessoas', 'casal',
+    'gostaria', 'nao', 'sim', 'muito', 'tambem', 'pode', 'sao', 'bom', 'boa',
+    'tudo', 'bem', 'tem', 'mais', 'ainda', 'passeio', 'viagem', 'dois', 'duas',
+    'onde', 'qual', 'quais', 'oi', 'pra',
+  ],
+  de: [
+    'hallo', 'guten', 'danke', 'bitte', 'ich', 'wir', 'sie', 'ist', 'sind', 'und', 'nicht',
+    'oder', 'mit', 'fur', 'wie', 'viel', 'kostet', 'kosten', 'preis', 'personen', 'paar',
+    'mochten', 'gibt', 'auch', 'sehr', 'gut', 'zu', 'dass', 'haben', 'konnen',
+    'wann', 'wo', 'dieser', 'eine',
+  ],
+  it: [
+    'ciao', 'grazie', 'buongiorno', 'buonasera', 'per', 'sono', 'siamo', 'prezzo',
+    'persone', 'coppia', 'vorrei', 'vorremmo', 'questo', 'questa', 'anche', 'molto', 'bene',
+    'dove', 'quando', 'puoi', 'possiamo', 'della', 'delle', 'degli', 'nel', 'nella', 'che',
+    'sei', 'voglio', 'quanti', 'quante', 'informazioni',
+  ],
+};
+
+/** Display names for the prompt's `Language:` line. Unknown codes fall back to the code. */
+const LANGUAGE_NAMES: Readonly<Record<string, string>> = {
+  es: 'español', en: 'English', fr: 'français', pt: 'português', de: 'Deutsch', it: 'italiano',
+};
+
+export function languageName(code: string): string {
+  return LANGUAGE_NAMES[code] ?? code;
+}
+
+export interface MessageLanguage {
+  lang: string;
+  /** Two or more language words, clearly more than any other language. A single word is weak. */
+  strong: boolean;
+}
+
+/** es and en switch on two words; a rarer language needs three (Spanish shares short words with them). */
+const STRONG_HITS: Readonly<Record<string, number>> = { es: 2, en: 2 };
+const STRONG_HITS_OTHER = 3;
+
+/**
+ * Language of one message, or null when it carries no language evidence ("ok", "sí",
+ * "2", emoji, a plan name). Bare answers therefore never count as a switch.
+ */
+export function detectMessageLanguage(text: string): MessageLanguage | null {
+  // URLs carry "com", "www" and slugs, not the customer's language (live: a TikTok link
+  // read as Portuguese).
+  const withoutUrls = text.replace(/\b(?:https?:\/\/|www\.)\S+/gi, ' ');
+  const words = new Set(normalizeText(withoutUrls).split(' ').filter(Boolean));
+  const ranked = Object.entries(LANGUAGE_WORDS)
+    .map(([lang, list]) => ({ lang, hits: list.filter(word => words.has(word)).length }))
+    .sort((a, b) => b.hits - a.hits);
+  const best = ranked[0];
+  if (!best || best.hits === 0) return null;
+  const runnerUp = ranked[1]?.hits ?? 0;
+  return { lang: best.lang, strong: best.hits >= (STRONG_HITS[best.lang] ?? STRONG_HITS_OTHER) && best.hits > runnerUp };
+}

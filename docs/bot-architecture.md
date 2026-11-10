@@ -152,7 +152,7 @@ flowchart TD
 
 Important behavior:
 
-- `{{OWNER_NAME}}` and `{{PARTNER_NAME}}` tokens are replaced from env.
+- `{{OWNER_NAME}}`, `{{PARTNER_NAME}}` and the `{{PERSONA_*}}` tokens are replaced from env (`BOT_PERSONA_*`; the persona defaults to `OWNER_NAME`).
 - `refreshSkills(true)` runs non-blocking on first inbound of a new conversation.
 - `refreshSkills(false)` runs for existing conversations and refreshes only if stale.
 - If dynamic fetch fails while dynamic URL is configured, price/date/reservation messages get safe fallback instead of invented data.
@@ -197,7 +197,7 @@ Webhook details:
 - Incoming messages are processed sequentially per phone using `processingPhones` map.
 - Duplicate WhatsApp message IDs are ignored by `processed_webhook_messages`.
 - Text, image, audio, and video can be extracted. Only text reaches bot brain. Media is forwarded only in bridge/handoff paths.
-- Optional human-like send pacing (`MESSAGE_DELAY`): when `true`, bot customer-facing sends wait via `createTurnPacer` in `human-delay.ts` — first message of a turn ~10–40s (minus LLM elapsed), later burst messages ~1–4s. Skips delay if a newer inbound for the same phone is already queued. Off by default (dev/CI/simulate); enable in prod env only. Does not delay bridge/agent/admin sends or system-error fallbacks.
+- No response delay: the first bot message of a turn is sent as soon as it is ready. `createTurnPacer` in `human-delay.ts` only keeps a ~1–4s gap between later messages of the same turn (photos, then text) so they arrive in order, and stops a turn whose phone already has a newer inbound queued (burst merge). The `MESSAGE_DELAY` flag was removed (2026-11-07). Does not apply to bridge/agent/admin sends or system-error fallbacks.
 
 ## Customer Chat Flow
 
@@ -602,7 +602,7 @@ Historical Meta template copy: see `docs/meta-template-submission.local.md` (arc
 
 ## Media Flow
 
-There are exactly **three** live media paths, all on the inbound reply path. No
+There are exactly **four** live media paths, all on the inbound reply path. No
 automated follow-up gallery nudge exists.
 
 | Path | Trigger | Shape |
@@ -610,8 +610,10 @@ automated follow-up gallery nudge exists.
 | LLM gallery | explicit photo request or first concrete plan selection | up to `MAX_GALLERY_IMAGES_PER_SEND` (hard-capped at 5) photos; the last claimed one captions the reply |
 | Plan card | `priceJustGiven` | one matching plan image captioning the reply; price-objection turns require a uniquely quoted alternative |
 | Contextual photo | reply theme matches typed feed images | one photo captioning the reply |
+| Greeting photo | first reply of a new conversation, `PERSONA_GREETING_IMAGE_ENABLED` | `media.ownerImage` captioning the reply; lowest priority (gallery, card, contextual win); 72h claim `owner_intro`; text when the reply exceeds the caption limit |
 
-The owner intro image stays **disabled** pending sales strategy review. Plan image
+The greeting photo never ships as a separate message after the text (the old
+`owner_image` block did, and WhatsApp could render it above the reply). Plan image
 also respects `llmTurn.img`, which is structurally wired but returns false in
 plain-text mode.
 
@@ -802,9 +804,10 @@ it: bot photos as real images carrying the caption they were sent with, customer
 photos re-downloaded, everything else as text in chronological order.
 
 - **`outbound_media` is the replay ledger.** `recordOutboundMedia()`
-  (`conversation-media.ts`) is called at each of the seven delivery sites — the
-  requested-gallery loop, the reply-carrying image, the owner intro, the price-card
-  fallback, `ai_image`, the follow-up template header (one-shot and recurring), and
+  (`conversation-media.ts`) is called at each of the eight delivery sites — the
+  requested-gallery loop, the comparison leading cards, the reply-carrying image (plan
+  card, contextual or greeting photo), the price-card fallback, `ai_image`, the
+  follow-up template header (one-shot and recurring), and
   the consent ask — **after** a send succeeds or is uncertain. It stores the url,
   the exact caption, the resolved theme, and `carried_reply`.
 - **A ledger write can never break delivery.** Every call is wrapped; a failure is

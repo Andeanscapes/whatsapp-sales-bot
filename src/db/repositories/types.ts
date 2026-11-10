@@ -112,6 +112,8 @@ export interface ConversationRepository {
   clearRetiredPlan(phone: string): void;
   clearCollectedTransport(phone: string): void;
   getLanguage(phone: string): 'es' | 'en' | null;
+  /** Language the last reply was written in: es, en, or another detected code. */
+  getReplyLanguage(phone: string): string | null;
   getSalesPhase(phone: string): string | null;
   setSalesPhase(phone: string, phase: string): void;
   getLeadIntent(phone: string): string | null;

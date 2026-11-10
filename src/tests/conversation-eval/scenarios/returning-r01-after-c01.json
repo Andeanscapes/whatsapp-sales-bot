@@ -1,0 +1,111 @@
+{
+  "id": "returning-r01-after-c01",
+  "source": "returning customer after a long silence (2026-11-09 export): REGRESO must win over the ad copy; name the stored case, ask the blocker, no intro, no re-asked group, no price. Case export case C: came on C01, group of 4 and CORE, back on R01 78 days later. First turn runs live so the C01 marker is stored.",
+  "tags": [
+    "returning",
+    "marker",
+    "live"
+  ],
+  "lang": "es",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "uses-history",
+      "rule": "reply_must_match",
+      "turn": 3,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "CORE|4 personas|cuatro|grupo de 4"
+      ]
+    },
+    {
+      "id": "no-segment-copy",
+      "rule": "reply_must_not_match",
+      "turn": 3,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "sigues la historia|cuando vimos la experiencia|inmersi[oó]n real en la zona esmeraldera"
+      ]
+    },
+    {
+      "id": "no-intro",
+      "rule": "reply_must_not_match",
+      "turn": 3,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\bsoy [A-ZÁÉÍÓÚ]\\w+|de nuevo por aqu[ií]"
+      ]
+    },
+    {
+      "id": "no-reask-group",
+      "rule": "reply_must_not_match",
+      "turn": 3,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "¿[^?]*(?:cu[aá]nt[oa]s (?:personas|son|van)|sol[oa]s?, en pareja|en pareja o)[^?]*\\?"
+      ]
+    },
+    {
+      "id": "no-price",
+      "rule": "reply_must_not_match",
+      "turn": 3,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\$\\s?\\d|\\d{3}[.,]000|\\bCOP\\b"
+      ]
+    },
+    {
+      "id": "asks-blocker",
+      "rule": "reply_must_match",
+      "turn": 3,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "fren|falt|detuv|qued[oó] pendiente|resolver"
+      ]
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "turn": 3,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    }
+  ],
+  "turns": [
+    {
+      "user": "C01 - Hola, quiero informacion y fechas para la aventura minera en Chivor 💚",
+      "mockReply": "¡Hola! La aventura en Chivor es una mina real con mineros locales. ¿Vienen en pareja, solos o en grupo?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Somos 4",
+      "mockReply": "Para 4, CORE es el que más encaja: una mina y noche en la hacienda. ¿Les cuento las fechas?",
+      "replay": true,
+      "seedQualification": {
+        "people": 4,
+        "plan": "core_2d1n_chivor"
+      },
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "R01 ¡Hola! Vi sus videos de la cultura esmeraldera y quiero saber cómo es ir a la mina 💚",
+      "gapDaysBefore": 78,
+      "mockReply": "Venías con 4 personas mirando CORE. ¿Qué te frenó: el valor o la fecha?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

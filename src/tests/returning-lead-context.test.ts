@@ -6,6 +6,7 @@ import { loadSkills } from '../services/skill-loader.js';
 import { useAllSitesActive } from './helpers/all-sites-catalog.js';
 import { env } from '../config/env.js';
 import { isReEngagementMessage } from '../services/reply-guard.js';
+import { isFollowupPermissionQuestion } from '../services/followup-consent.js';
 import type { LlmClientInput, LlmResult, LlmTurn } from '../services/llm/llm-client.js';
 import type { LeadAnalysis } from '../services/lead-analyzer.js';
 
@@ -111,8 +112,108 @@ describe('returning customer context (REGRESO)', () => {
     await processMessage({ repos, customerPhone: phone, message: 'Hola, volvimos a escribir' });
 
     expect(systemPrompt()).toContain('REGRESO: hace 3 días');
-    expect(systemPrompt()).toContain(`plan=${CORE}`);
+    // The plan display name, not the internal id, so the model can say it.
+    expect(systemPrompt()).toContain('plan=CORE');
+    expect(systemPrompt()).not.toContain(`plan=${CORE}`);
     expect(systemPrompt()).not.toContain('CONTINUACION:');
+  });
+
+  // Export 2026-11-09, export case B: a quoted couple came back on an R01 ad and the reply
+  // pasted the R01 segment copy instead of their case. REGRESO now replaces the segment.
+  it('drops the ad segment on a returning turn, so REGRESO is the only opener', async () => {
+    const phone = '573009990020';
+    seedReturning(phone, 94 * DAY_MS, 'Para pareja, PRIME queda en total. ¿Les sirve el 27 de febrero?');
+    repos.conversation.upsert(phone, { collected_plan: 'prime_2d1n_chivor', collected_people: 2 });
+    repos.conversation.setPriceGiven(phone);
+
+    await processMessage({ repos, customerPhone: phone, message: 'R01 ¡Hola! Vi sus videos de la cultura esmeraldera y quiero saber cómo es ir a la mina 💚' });
+
+    const prompt = systemPrompt();
+    expect(prompt).toContain('REGRESO: hace 94 días');
+    expect(prompt).toContain('texto prellenado de un anuncio');
+    expect(prompt).toContain('paso alcanzado=cotización entregada');
+    expect(prompt).toContain('frenos probables=el valor o la fecha');
+    expect(prompt).not.toContain('SEGMENT_DETECTED: R01');
+    expect(prompt).not.toContain('ENTRY_SEGMENT R01');
+    expect(prompt).not.toContain('UNA SOLA PREGUNTA: máximo');
+    expect(prompt).not.toContain('APERTURA DE ANUNCIO: primer');
+  });
+
+  it('drops the stored C01 segment when a C01 lead returns on R01', async () => {
+    const phone = '573009990021';
+    seedReturning(phone, 78 * DAY_MS);
+    repos.conversation.upsert(phone, { collected_plan: CORE, collected_people: 4, entry_marker: 'C01', entry_temperature: 'cold' });
+
+    await processMessage({ repos, customerPhone: phone, message: 'R01 ¡Hola! Vi sus videos de la cultura esmeraldera y quiero saber cómo es ir a la mina 💚' });
+
+    const prompt = systemPrompt();
+    expect(prompt).toContain('REGRESO: hace 78 días');
+    expect(prompt).toContain('paso alcanzado=plan elegido, sin cotizar');
+    expect(prompt).not.toContain('SEGMENT_DETECTED: C01');
+    expect(prompt).not.toContain('ENTRY_SEGMENT C01');
+  });
+
+  it('does not ask the model to pick up our consent ask as the open question', async () => {
+    const phone = '573009990022';
+    seedReturning(phone, 78 * DAY_MS, 'Quedamos viendo la aventura minera en Chivor. ¿Te gustaría que te avise cuando haya novedades?');
+    repos.conversation.upsert(phone, { collected_plan: CORE, collected_people: 4 });
+
+    await processMessage({ repos, customerPhone: phone, message: 'Hola de nuevo' });
+
+    const prompt = systemPrompt();
+    expect(prompt).toContain('pedimos permiso para escribirle (no lo retomes)');
+    expect(prompt).not.toContain('última pregunta nuestra: "Quedamos viendo');
+  });
+
+  // Invariant 14: a returning price question is quoted, so the cue must not also say
+  // "Sin precio" or force the blocker question.
+  it('answers a returning price question instead of asking the blocker', async () => {
+    const phone = '573009990040';
+    seedReturning(phone, 10 * DAY_MS);
+    repos.conversation.upsert(phone, { collected_plan: CORE, collected_people: 2 });
+    repos.conversation.setPriceGiven(phone);
+
+    await processMessage({ repos, customerPhone: phone, message: 'Hola de nuevo, ¿cuánto vale el plan para 2?' });
+
+    const prompt = systemPrompt();
+    expect(prompt).toContain('REGRESO: hace 10 días');
+    expect(prompt).toContain('QUOTE LOCK');
+    expect(prompt).toContain('responde lo que pregunta según QUOTE LOCK');
+    expect(prompt).not.toMatch(/REGRESO:[^\n]*Sin precio/);
+  });
+
+  it('keeps the blocker question and no price on a plain return', async () => {
+    const phone = '573009990041';
+    seedReturning(phone, 10 * DAY_MS);
+    repos.conversation.upsert(phone, { collected_plan: CORE, collected_people: 2 });
+
+    await processMessage({ repos, customerPhone: phone, message: 'Hola de nuevo' });
+
+    expect(systemPrompt()).toMatch(/REGRESO:[^\n]*pregunta por el freno[^\n]*Sin precio/);
+  });
+
+  it.each([
+    ['Quedamos viendo la aventura. ¿Te gustaría que te avise cuando haya novedades?', true],
+    ['¿Te puedo escribir más adelante por este medio?', true],
+    ['¿Te gustaría que te cuente cómo es el PRIME?', false],
+    ['Te escribo mañana con las fechas. ¿Cuántos van?', false],
+    ['Te gustaría que te avise, me dijiste. ¿Cuántos van a viajar?', false],
+  ])('isFollowupPermissionQuestion(%s) = %s', (text, expected) => {
+    expect(isFollowupPermissionQuestion(text)).toBe(expected);
+  });
+
+  it.each([
+    [{}, 'solo información', 'fecha, presupuesto, logística o seguridad'],
+    [{ collected_people: 2 }, 'grupo conocido, sin plan', 'qué plan les encaja o la fecha'],
+  ])('names the furthest step reached and its likely blockers (%o)', async (fields, step, blockers) => {
+    const phone = `57300999003${Object.keys(fields).length}`;
+    seedReturning(phone, 5 * DAY_MS);
+    repos.conversation.upsert(phone, fields);
+
+    await processMessage({ repos, customerPhone: phone, message: 'Hola de nuevo' });
+
+    expect(systemPrompt()).toContain(`paso alcanzado=${step}`);
+    expect(systemPrompt()).toContain(`frenos probables=${blockers}`);
   });
 
   it('adds REGRESO for a returning customer with no ad code stored', async () => {

@@ -15,23 +15,23 @@ Si RUNTIME trae `SEGMENT_DETECTED`, el bloque `ENTRY_SEGMENT` de DATOS te da tre
 
 | Campo | Dónde se usa |
 |---|---|
-| `valueHook` | FASE 1 (primer contacto): es tu frase de apertura. Si viene vacío, no abras con pitch de marca — pasa directo al dato que pidieron. |
-| `diagnosisQuestion` | FASE 2: es tu pregunta de diagnóstico, en lugar de la genérica. |
+| `valueHook` | FASE 1 (primer contacto): es tu frase de apertura. Si viene vacío, no abras con pitch de marca — pasa directo al dato que pidieron. Con `APERTURA DE ANUNCIO`, va después de presentarte. |
+| `diagnosisQuestion` | FASE 2: es tu pregunta de diagnóstico, en lugar de la genérica. Con `APERTURA DE ANUNCIO` en RUNTIME, espera al turno siguiente. |
 | `planMatch` | FASE 2b: guía para la recomendación. Es orientación, no un guion. |
 
 Parafrasea en tu voz, con brevedad y **una pregunta** (un `¿` y un `?`). Las opciones
 de `diagnosisQuestion` van dentro de esa pregunta, nunca en otra.
 
 **Hook vacío:** usa `diagnosisQuestion` desde el primer contacto, no grupo genérico.
-Saludar o pedir información no contradice el segmento. En logística, conecta con
+**Primer contacto de anuncio:** solo si RUNTIME trae la línea `APERTURA DE ANUNCIO`, esa línea
+manda el turno. Saludar o pedir información no contradice el segmento. En logística, conecta con
 la ruta del CATALOGO sin asumir vehículo propio. Una contradicción explícita sí manda.
 
-**`valueHook`: usa hechos, no lemas.** Conserva su pregunta de bloqueo en tu voz.
-En retargeting con historial, reemplaza la intro genérica por grupo+plan reales
-(RETARGET OVERRIDE en whatsapp-sales), manteniendo esa pregunta. Con la línea
+**`valueHook`: usa hechos, no lemas.** En retargeting con historial, reemplaza la intro
+genérica por grupo+plan reales (RETARGET OVERRIDE en whatsapp-sales). Con la línea
 `REGRESO:` en RUNTIME, el contexto de REGRESO manda sobre el segmento (ver whatsapp-sales §REGRESO).
 
-Si `valueHook` o `diagnosisQuestion` trae pregunta, usa esa y ninguna otra.
+Si la `diagnosisQuestion` trae pregunta, en FASE 2 usa esa y ninguna otra.
 
 Sin `SEGMENT_DETECTED`, usa `cold-info-handler` y el diagnóstico genérico.
 

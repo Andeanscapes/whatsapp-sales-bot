@@ -50,6 +50,11 @@ const turnSchema = z.object({
   user: z.string().min(1),
   mockReply: z.string(),
   replay: z.boolean().optional(),
+  /**
+   * Days of silence before this turn: every earlier message (and timestamp the engine
+   * reads) is moved back by this many days, so a returning-customer turn can be tested.
+   */
+  gapDaysBefore: z.number().positive().max(400).optional(),
   consentAnswer: z.enum(['affirm', 'decline', 'ambiguous']).optional(),
   expect: expectSchema.optional(),
   mockAnalysis: z.object({
@@ -71,6 +76,8 @@ const seedConversationSchema = z.object({
   priceGiven: z.boolean().optional(),
   qualification: qualificationSeedSchema.optional(),
   followupStatus: z.enum(['unasked', 'pending', 'active', 'declined', 'revoked']).optional(),
+  /** Meta ad referral stored before the first inbound (an ad entry without a campaign code). */
+  adReferral: z.object({ headline: z.string().min(1), sourceType: z.string().min(1) }).strict().optional(),
 }).strict();
 
 const seedSystemSchema = z.object({

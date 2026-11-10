@@ -1,15 +1,17 @@
 {
   "id": "entry-funnel-H01",
-  "source": "EN twin of entry-funnel-H01 (funnel campaign marker; the plan-options question also qualifies)",
+  "source": "EN twin of entry-funnel-H01 | 2026-11-09: funnel (H) leads get the group-first ad opener (owner decision).",
   "tags": ["marker", "live"],
   "lang": "en",
   "liveRuns": 2,
   "minLiveScore": 80,
   "criteria": [
     { "id": "marker-hidden", "rule": "reply_must_not_match", "patterns": ["H01|marker|campaign code"], "turn": 1, "weight": 2, "critical": true },
-    { "id": "no-brand-restart", "rule": "reply_must_not_match", "patterns": ["i'?m .{0,30}co-?founder|we are Andean Scapes|we're Andean Scapes|let me introduce Andean Scapes"], "turn": 1, "weight": 2, "critical": true },
-    { "id": "qualifies-lead", "rule": "reply_must_match", "patterns": ["(?:^|[.!?\\n])[^.!?\\n]*\\b(?:couple|solo|alone|group|how many|people|time|intens|pace|nature|activities|BASIC|CORE|PRIME|fits?)[^.!?\\n]*\\?"], "turn": 1, "weight": 1 },
-    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 1, "weight": 2, "critical": true }
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 1, "weight": 2, "critical": true },
+    { "id": "no-brand-restart", "rule": "reply_must_not_match", "patterns": ["we're Andean Scapes|we are Andean Scapes|let me introduce Andean Scapes"], "turn": 1, "weight": 2, "critical": true },
+    { "id": "no-plan-menu", "rule": "reply_must_not_match", "turn": 1, "weight": 2, "critical": true, "patterns": ["\\bBASIC\\b|\\bCORE\\b[\\s\\S]{0,160}\\bPRIME\\b|\\bPRIME\\b[\\s\\S]{0,160}\\bCORE\\b"] },
+    { "id": "no-price", "rule": "reply_must_not_match", "turn": 1, "weight": 2, "critical": true, "patterns": ["\\$\\s?\\d|\\bCOP\\b|\\d{3}[.,]000|\\bfrom\\s*\\*?\\$|starting at"] },
+    { "id": "asks-group", "rule": "reply_must_match", "turn": 1, "weight": 2, "critical": true, "patterns": ["[^.!?\\n]*(?:alone|solo|couple|partner|group|how many)[^.!?\\n]*\\?"] }
   ],
   "turns": [
     { "user": "H01 - Hi, I want to know more about the experience in Chivor 💚", "mockReply": "Chivor is an authentic emerald mine where real miners show you how they work. Are you coming as a couple, solo or in a group?", "expect": { "shouldSendReply": true } }

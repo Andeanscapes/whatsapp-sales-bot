@@ -1,0 +1,143 @@
+{
+  "id": "ad-opener-price-asked-solo",
+  "source": "Export 2026-11-07: ad leads replied 32% in 2.3.0 after a price/menu opener vs 62% in 2.0.x; owner plan 2026-11-07: intro + one value line + group question, no price/menu/dates. A price asked on the opener is deferred to the group, then every plan is quoted for that group from the catalog.",
+  "tags": [
+    "marker",
+    "live"
+  ],
+  "lang": "es",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    },
+    {
+      "id": "short-opener",
+      "rule": "reply_length_at_most",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "expected": 400
+    },
+    {
+      "id": "marker-hidden",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\b[CHR]0\\d\\b|marcador|campaign code|codigo de campa"
+      ]
+    },
+    {
+      "id": "no-price",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\$\\s?\\d|\\bCOP\\b|\\d{3}[.,]000|\\bdesde\\s*\\*?\\$"
+      ]
+    },
+    {
+      "id": "no-plan-menu",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\bBASIC\\b|\\bCORE\\b[\\s\\S]{0,160}\\bPRIME\\b|\\bPRIME\\b[\\s\\S]{0,160}\\bCORE\\b"
+      ]
+    },
+    {
+      "id": "no-dates",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\b\\d{1,2}\\s+(?:de\\s+)?(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\\b|(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\\s+\\d{1,2}\\b"
+      ]
+    },
+    {
+      "id": "asks-group",
+      "rule": "reply_must_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "[^¿.!?\\n]*(?:sol[oa]s?\\b|pareja|grupo)[^¿.!?\\n]*\\?"
+      ]
+    },
+    {
+      "id": "owner-intro",
+      "rule": "reply_must_match",
+      "turn": 1,
+      "weight": 1,
+      "critical": false,
+      "patterns": [
+        "\\bsoy \\w+[^.?!\\n]{0,60}andean scapes"
+      ]
+    },
+    {
+      "id": "quotes-core",
+      "rule": "reply_must_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "620[.,]000"
+      ]
+    },
+    {
+      "id": "quotes-prime",
+      "rule": "reply_must_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "960[.,]000"
+      ]
+    },
+    {
+      "id": "no-retired-price",
+      "rule": "reply_must_not_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "550[.,]000|670[.,]000|1[.,]000[.,]000|370[.,]000|15 ?%"
+      ]
+    },
+    {
+      "id": "one-question-quote",
+      "rule": "max_question_marks",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    }
+  ],
+  "turns": [
+    {
+      "user": "C01 ¡Hola! ¿Cuánto vale la experiencia minera?",
+      "mockReply": "¡Hola! Soy Heinner, cofundador de Andean Scapes con Alexandra. Es una mina real de esmeraldas en Chivor con mineros locales; el valor depende del grupo. ¿Sería para ti solo, en pareja o para un grupo?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Voy solo",
+      "mockReply": "Para ti solo: CORE, con una mina y caminata, queda en *$620.000*; PRIME, con dos minas y cabalgata, en *$960.000*. ¿Con cuál seguimos?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

@@ -32,9 +32,29 @@
       "turn": 1,
       "weight": 2,
       "critical": true
+    },
+    {
+      "id": "no-price",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "\\$\\s?\\d|\\bCOP\\b|\\d{3}[.,]000|\\bdesde\\s*\\*?\\$"
+      ],
+      "turn": 1,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "asks-group",
+      "rule": "reply_must_match",
+      "patterns": [
+        "[^¿.!?\\n]*(?:sol[oa]s?\\b|pareja|grupo)[^¿.!?\\n]*\\?"
+      ],
+      "turn": 1,
+      "weight": 2,
+      "critical": true
     }
   ],
-  "source": "owner plan 2026-11-01: C01 first reply is a 3-plan menu with no price; about half the leads went silent after it. Price anchor on the first reply was tried in prompt wording (2026-11-01) and did not move the live model (0/4); deferred to catalog copy.",
+  "source": "Owner plan 2026-11-07 (export: 2.3.0 ad leads replied 32% after the price anchor/menu opener vs 62% in 2.0.x): the PRECIO DESDE anchor is removed; the opener asks the group, no price. Id kept for baseline continuity.",
   "lang": "es",
   "turns": [
     {
@@ -42,7 +62,7 @@
       "expect": {
         "shouldSendReply": true
       },
-      "mockReply": "Hola, soy Heinner. En Chivor se entra a minas reales con guías de la zona. CORE queda desde $475.000 por persona para 2.\n\n¿Qué les encaja más: BASIC, CORE o PRIME?"
+      "mockReply": "Hola, soy Heinner, cofundador de Andean Scapes con Alexandra. En Chivor entras a una mina real con guías de la zona. Para darte el valor exacto, ¿la experiencia sería para ti solo, en pareja o para un grupo?"
     }
   ]
 }
