@@ -1,6 +1,6 @@
 {
   "id": "price-objection-downsell-coscuez",
-  "source": "EN twin of price-objection-downsell-coscuez (regression: customer asks for a lower price after a Coscuez PRIME quote; reopenPausedSites because Coscuez is paused live; requires the Coscuez CORE total, not only total)",
+  "source": "EN twin of price-objection-downsell-coscuez (regression: customer asks for a lower price after a Coscuez PRIME quote; reopenPausedSites because Coscuez is paused live; requires the Coscuez CORE total, not only total) | 2026-11-12: Coscuez repriced (CORE 1.004.000, PRIME 2.270.000 for 2) and BASIC added (720.000 for 2): both are catalog-priced cheaper alternatives, and BASIC reduces scope by dropping the night.",
   "tags": ["objection", "live"],
   "lang": "en",
   "liveRuns": 1,
@@ -8,14 +8,14 @@
   "seedSystem": { "reopenPausedSites": true },
   "criteria": [
     { "id": "no-discount", "rule": "reply_must_not_match", "patterns": ["discount|reduction|\\bfor free\\b|free of charge|no charge|\\bpromo(?:tion)?\\b"], "turn": 2, "weight": 3, "critical": true },
-    { "id": "offers-cheaper-plan", "rule": "reply_must_match", "patterns": ["essential|CORE|1[., ]200[., ]000"], "turn": 2, "weight": 3, "critical": true },
-    { "id": "catalog-priced-alternative", "rule": "reply_must_match", "patterns": ["1[., ]200[., ]000"], "turn": 2, "weight": 3, "critical": true },
-    { "id": "explains-reduced-scope", "rule": "reply_must_match", "patterns": ["(?:without|doesn'?t include|does not include|not include|doesn'?t add|leaves out|drops|removes|excludes|skips|but no|no).{0,70}(?:Fura|Tena)|(?:Fura|Tena).{0,70}(?:\\bnot\\b|\\bout\\b|exclu|remov|drop)"], "turn": 2, "weight": 3, "critical": true },
+    { "id": "offers-cheaper-plan", "rule": "reply_must_match", "patterns": ["essential|CORE|BASIC|day trip|1[., ]004[., ]000|720[., ]000"], "turn": 2, "weight": 3, "critical": true },
+    { "id": "catalog-priced-alternative", "rule": "reply_must_match", "patterns": ["1[., ]004[., ]000|720[., ]000"], "turn": 2, "weight": 3, "critical": true },
+    { "id": "explains-reduced-scope", "rule": "reply_must_match", "patterns": ["(?:without|doesn'?t include|does not include|not include|doesn'?t add|leaves out|drops|removes|excludes|skips|but no|no).{0,70}(?:Fura|Tena)|(?:Fura|Tena).{0,70}(?:\\bnot\\b|\\bout\\b|exclu|remov|drop)|no overnight|without (?:the |an )?(?:night|overnight)|no night|day trip"], "turn": 2, "weight": 3, "critical": true },
     { "id": "no-instagram-soft-close", "rule": "reply_must_not_match", "patterns": ["instagram|whenever you (?:want|like|wish|are ready|'re ready)|later on|down the road"], "turn": 2, "weight": 3, "critical": true },
     { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 2, "weight": 2, "critical": true }
   ],
   "turns": [
-    { "user": "Hi, we're a couple and we're interested in the most complete plan in Coscuez, the PRIME. How much does it cost?", "mockReply": "For two people, the most complete option in Coscuez comes to $1,840,000 COP. What date do you have in mind?", "expect": { "shouldSendReply": true, "priceJustGiven": true } },
-    { "user": "That's a bit expensive for us, do you have more basic plans?", "mockReply": "I understand. CORE keeps the mine and the lodging, without Fura and Tena. For 2 people it comes to $1,200,000 COP. Does that scope work for you?", "expect": { "shouldSendReply": true } }
+    { "user": "Hi, we're a couple and we're interested in the most complete plan in Coscuez, the PRIME. How much does it cost?", "mockReply": "For two people, the most complete option in Coscuez comes to $2,270,000 COP. What date do you have in mind?", "expect": { "shouldSendReply": true, "priceJustGiven": true } },
+    { "user": "That's a bit expensive for us, do you have more basic plans?", "mockReply": "I understand. CORE keeps the mine and the lodging, without Fura and Tena. For 2 people it comes to $1,004,000 COP. Does that scope work for you?", "expect": { "shouldSendReply": true } }
   ]
 }

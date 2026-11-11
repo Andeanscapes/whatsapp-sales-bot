@@ -1,0 +1,75 @@
+{
+  "id": "near-city-expectation-remote-trip",
+  "source": "Expectation check: the lead thinks it is a short mine tour; the bot explains the overnight trip.",
+  "tags": [
+    "price",
+    "live"
+  ],
+  "lang": "es",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "not-short",
+      "rule": "reply_must_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\bno\\b[^.]{0,30}(cerca|corto|visita)|dos d[ií]as|d[ií]as con noche"
+      ]
+    },
+    {
+      "id": "hours",
+      "rule": "reply_must_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": false,
+      "patterns": [
+        "5[-–]6 horas|5[-–]6 h"
+      ]
+    },
+    {
+      "id": "no-price",
+      "rule": "reply_must_not_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\$\\s?\\d|\\d{3}[.,]000"
+      ]
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    },
+    {
+      "id": "short-reply",
+      "rule": "reply_length_at_most",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "expected": 320
+    }
+  ],
+  "turns": [
+    {
+      "user": "C01 ¡Hola! ¿Cuánto vale la experiencia minera?",
+      "mockReply": "¡Hola! Soy Heinner, cofundador de Andean Scapes con Alexandra. Es una mina real de esmeraldas en Chivor con mineros locales; el valor depende del grupo. ¿Sería para ti solo, en pareja o para un grupo?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "¿Es una mina cerca de Bogotá, tipo un tour de un par de horas?",
+      "mockReply": "No es una visita de un par de horas: es una aventura de dos días con noche, a 5-6 horas de Bogotá, y el último tramo es destapado. Entras a una mina real con guía y duermes en la hacienda. ¿Te cuento los planes?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

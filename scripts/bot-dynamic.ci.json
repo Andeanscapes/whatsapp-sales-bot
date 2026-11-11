@@ -1,5 +1,5 @@
 {
-  "v": 20,
+  "v": 22,
   "updated": "2026-10-28T22:25:20Z",
   "referentAttribution": {
     "profileId": "andean-scapes-co",
@@ -104,8 +104,8 @@
   },
   "media": {
     "ownerImage": {
-      "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/brand/owner.jpg",
-      "caption": "Heinner y Alexandra - Andean Scapes"
+      "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/brand/alexandra.jpg",
+      "caption": "Alexandra Burgos - Andean Scapes"
     }
   },
   "experiences": {
@@ -138,7 +138,8 @@
             "DURACION: la experiencia varía por plan. BASIC (pasadia): mina ~2h + caminata ~1h, el mismo dia. CORE: jornada minera ~2.5h (1 mina) + caminata ~2h. PRIME: jornada minera ~5h (2 minas) + cabalgata ~2h. Incluye traslados locales, preparacion, ingreso y salida. El tiempo dentro de la mina es solo una parte, varia segun las condiciones del dia; nunca digas que es tiempo continuo bajo tierra.",
             "ASISTENCIA MEDICA: se incluye una poliza de asistencia medica, normalmente gestionada con Magenta Seguros de Medellin. En eventos normales contamos con personal operativo y apoyo ante cualquier eventualidad, pero no con personal sanitario presencial. En grupos grandes y eventos especiales podemos contar con personal de enfermeria solo cuando se haya coordinado y confirmado. Un seguro de viaje integral distinto a esta asistencia no esta incluido.",
             "TIPO DE MINA: todas las minas aliadas son minas reales de esmeralda de la zona esmeraldifera. Algunas operan artesanalmente y otras tienen mayor movimiento o escala. Ninguna es mina de carbon y no existe relacion con la mineria de carbon. La mina especifica depende de disponibilidad y condiciones del dia. PRIME incluye acceso a 2 minas.",
-            "REALIDAD DEL VIAJE (explicala corta y honesta, una sola vez, cuando el cliente compare planes, pregunte por BASIC, por transporte o por como llegar; es informacion para elegir bien, no alarma ni presion): Chivor queda a unos 160 km de Bogota, pero son 5-6 horas por trayecto porque el ultimo tramo es de montana y via destapada. Las minas no estan en el pueblo: desde Chivor se sube en 4x4 por via rural, y ese 4x4 local ya va incluido en todos los planes. BASIC se puede, pero es un dia muy largo: salir de Bogota de madrugada, unas 9 horas de experiencia y otras 5-6 horas de regreso el mismo dia. Por eso CORE y PRIME incluyen la noche en Hacienda El Recuerdo con cena y desayuno: se descansa, no hay que regresar el mismo dia y la jornada minera se vive sin afan.",
+            "VALOR DEL VIAJE (explicalo corto y honesto, una sola vez, cuando el cliente compare planes, pregunte por el plan sin noche o por como llegar; es informacion para elegir bien, no alarma ni presion): el plan empieza y termina en el pueblo de Chivor, Boyaca, a unas 5-6 horas de Bogota por carretera, con el ultimo tramo destapado. Llegar al pueblo es por cuenta del cliente: en carro propio, moto o bus. El transporte privado desde la ciudad de origen es un servicio aparte que solo se cotiza si lo piden. Desde el pueblo va cubierto en todos los planes: 4x4 hasta la mina, guia, casco y botas, poliza de asistencia medica y comidas. El plan sin noche es un dia largo: salir de madrugada, unas 9 horas de experiencia y 5-6 horas de regreso el mismo dia. Los planes con noche incluyen la hacienda con cena y desayuno, sin apuro para el regreso.",
+            "REGIONES: en Colombia hay dos regiones esmeralderas y operamos en las dos. Chivor esta en el oriente de Boyaca (Valle de Tenza). Si el cliente no sabe donde queda, dilo en una frase: oriente de Boyaca, a unas 5-6 horas de Bogota.",
             "TRANSPORTE PRIVADO (por que cuesta lo que cuesta): no es un traslado urbano. Es un vehiculo 4x4 con conductor dedicado, ida y regreso Bogota-Chivor-Bogota, con 5-6 horas por trayecto y tramo destapado; son jornadas completas de conductor y vehiculo. El valor es por vehiculo y cubre hasta 4 personas, asi que compartido entre varios baja mucho por persona. Para 1 o 2 personas lo normal es bus publico (la opcion mas economica) o carro propio o moto hasta Chivor pueblo; desde ahi nuestro 4x4 local los sube a la mina. Si el cliente objeta el transporte, separa siempre el valor del plan del transporte: el transporte es opcional y no cambia el plan elegido.",
             "Las esmeraldas no se garantizan: el valor de la experiencia es la cultura esmeraldera, la naturaleza y la gastronomia, no el hallazgo. Si aparece una piedra, se acuerda en el momento con los mineros y el guia."
           ],
@@ -600,22 +601,22 @@
             "tz": "America/Bogota",
             "dates": [
               {
-                "d": "2026-10-24",
-                "s": "limited",
-                "sl": 7
-              },
-              {
                 "d": "2026-10-31",
                 "s": "limited",
                 "sl": 7
               },
               {
-                "d": "2026-11-14",
+                "d": "2026-11-21",
                 "s": "limited",
-                "sl": 7
+                "sl": 5
               },
               {
                 "d": "2026-11-28",
+                "s": "limited",
+                "sl": 5
+              },
+              {
+                "d": "2026-12-05",
                 "s": "limited",
                 "sl": 5
               },
@@ -625,12 +626,37 @@
                 "sl": 5
               },
               {
+                "d": "2026-12-19",
+                "s": "limited",
+                "sl": 5
+              },
+              {
                 "d": "2027-01-09",
                 "s": "limited",
                 "sl": 5
               },
               {
+                "d": "2027-01-16",
+                "s": "limited",
+                "sl": 5
+              },
+              {
                 "d": "2027-01-23",
+                "s": "limited",
+                "sl": 5
+              },
+              {
+                "d": "2027-01-30",
+                "s": "limited",
+                "sl": 5
+              },
+              {
+                "d": "2027-02-13",
+                "s": "limited",
+                "sl": 5
+              },
+              {
+                "d": "2027-02-27",
                 "s": "limited",
                 "sl": 5
               }
@@ -714,6 +740,7 @@
                 ]
               },
               "tier": "core",
+              "recommended": true,
               "legacyPlanIds": [
                 "2d1n_mining"
               ],
@@ -917,10 +944,10 @@
             },
             "R01": {
               "label": "Returning - General",
-              "description": "Lead que tuvo conversación previa pero no reservó.",
+              "description": "Lead que llega de los videos de cultura esmeraldera. Puede ser nuevo o haber escrito antes: si hay historial lo retoma REGRESO; si no, es un primer contacto.",
               "valueHook": "Qué bueno que sigues la historia. Te cuento cómo es vivirla dentro de una mina real de esmeraldas en Chivor, con mineros locales.",
-              "diagnosisQuestion": "Cuando vimos la experiencia hace poco, ¿qué te frenó: disponibilidad de fecha, presupuesto, logística, o seguridad?",
-              "planMatch": "El plan que ya vieron o similar. Resolver el blocker concreto.",
+              "diagnosisQuestion": "¿Qué fue lo que más te llamó la atención de la historia: entrar a la mina, la cultura esmeraldera o la naturaleza de la zona?",
+              "planMatch": "Primer contacto: grupo primero, luego plan según lo que le llamó la atención. Con historial: el plan que ya vio.",
               "contextualMediaTypes": [
                 "mine"
               ]
@@ -965,7 +992,7 @@
           ],
           "name": "Chivor",
           "location": "Chivor, Boyacá, Colombia",
-          "meetingPoint": "Chivor town center",
+          "meetingPoint": "parque principal de Chivor, Boyacá",
           "route": {
             "fromBogota": "Desde Bogota toma la via hacia Tunja. Al pasar por el sector del Sisga, gira a la derecha para bajar al Valle de Tenza y continuar hacia Chivor. No es necesario llegar a Tunja. En el sector de Macanal puedes cruzar en ferry dentro del horario de operacion o bordear la represa para llegar a Chivor. Tiempo orientativo Bogota-Chivor: 5-6 horas; confirmar segun trafico, punto de salida y acceso elegido.",
             "alternateRoute": "Via Region del Guavio por Ubala: Bogota → Ubala → Hacienda El Recuerdo/Chivor. Esta ruta NO es la recomendada para carro normal: solo aplica para moto o carro 4x4. Desde Ubala hasta la Hacienda son aprox 35 km por via rural. Siempre validar estado de las vias antes de viajar.",
@@ -1033,6 +1060,7 @@
             "name": "Hacienda El Recuerdo",
             "activities": "Ganaderia y apicultura",
             "amenities": [
+              "Cafe y agua",
               "WiFi para trabajo remoto",
               "Ambiente rural comodo",
               "Descanso en finca"
@@ -1047,7 +1075,7 @@
           "safetyInfo": {
             "equipment": "Casco, botas de seguridad y guia acompanante durante toda la actividad minera.",
             "medicalSupport": "Se incluye una poliza de asistencia medica, normalmente gestionada con Magenta Seguros de Medellin. Durante eventos normales contamos con personal operativo y apoyo ante cualquier eventualidad, pero no con personal sanitario presencial. En grupos grandes y eventos especiales podemos contar con personal de enfermeria solo cuando se haya coordinado y confirmado.",
-            "regionSecurity": "El Valle de Tenza es una region tranquila; el equipo valida las condiciones operativas antes de cada salida.",
+            "regionSecurity": "Chivor esta en el Valle de Tenza, zona de embalses: los embalses La Esmeralda y Guavio dan energia a las principales ciudades del centro del pais, y hay bases militares que los protegen. Tambien hay una base militar en la zona minera de Chivor. A la mina siempre se entra con guia y equipo, y el equipo valida las condiciones operativas antes de cada salida.",
             "notes": [
               "La mina tiene ingreso controlado y siempre se entra con guia.",
               "Edad minima: 5 anios. Grupo de niños menores requiere validacion previa.",
@@ -1132,7 +1160,7 @@
         "coscuez": {
           "clarifications": [
             "El alojamiento es un hotel rural en Borbur, con habitacion privada y bano privado. No es una hacienda ni tiene relacion con Hacienda El Recuerdo. No se publica el nombre del hotel; el equipo confirma el establecimiento.",
-            "CORE y PRIME incluyen la misma experiencia de una mina (~2.5h), charla esmeraldera y visita a la plaza Chacaro (~1h), y caminata al mirador a cielo abierto (~2h). PRIME no incluye una segunda mina ni cabalgata.",
+            "BASIC es pasadia de 1 dia sin alojamiento: una mina, charla esmeraldera y plaza Chacaro, almuerzo tipico y traslados locales. CORE y PRIME incluyen la misma experiencia de una mina (~2.5h), charla esmeraldera y visita a la plaza Chacaro (~1h), y caminata al mirador a cielo abierto (~2h). PRIME no incluye una segunda mina ni cabalgata.",
             "En PRIME, el dia 2 despues del desayuno se realiza el traslado 4x4 a Fura y Tena y una caminata corta en Chanares. Al regresar de la visita se come el fiambre tipico en Chanares antes de volver a Borbur.",
             "El recorrido local Borbur - Coscuez - Borbur no se realiza en 4x4. El 4x4 local solo corresponde a la excursion PRIME a Fura y Tena, a unos 45 minutos desde Borbur por trayecto segun el operador.",
             "Las duraciones del folleto son aproximadas. No representan tiempo continuo bajo tierra ni permiten garantizar una suma total de horas; pueden incluir traslados y preparacion. No prometer ascenso a la cima de Fura o Tena.",
@@ -1154,12 +1182,13 @@
             "Usa la misma regla de calculo del motor que Chivor: couple_half_from_five. No reinterpretar el nombre ni crear una formula nueva; sin el calculador o un QUOTE LOCK, el equipo confirma cotizaciones de 3 o mas personas.",
             "Cada adulto o nino que participa cuenta como un cupo completo. No hay descuento infantil publicado. Edad minima: 5 anios.",
             "Si RUNTIME incluye QUOTE LOCK, copia unicamente ese total exacto. Nunca reconstruyas el total desde los precios visibles.",
-            "El anticipo es 25% y el saldo 75%. No solicitar pago antes de validar disponibilidad. Confirmacion sujeta a validacion del equipo.",
+            "El anticipo es 50% y el saldo 50% en los tres planes de Coscuez. No solicitar pago antes de validar disponibilidad. Confirmacion sujeta a validacion del equipo.",
             "Transporte desde Bogota no esta incluido en la tarifa base. Agrega $1.700.000 COP para hasta 4 personas solo si lo solicitan. Para mas personas, valida el costo con el equipo.",
             "Llegada recomendada: sabado 9:00 am al parque central de San Pablo de Borbur. Regreso al pueblo el domingo despues del mediodia, con horario exacto sujeto al itinerario y validacion del equipo.",
             "Las fechas planeadas son las mismas que Chivor, por instruccion del operador. Cupos y disponibilidad final requieren validacion. No garantizar salidas entre semana sin consultar al equipo.",
             "Pet-friendly sujeto a coordinacion; no prometer que las mascotas ingresan a la mina o a todos los lugares.",
-            "La ruta CORE es Borbur - Coscuez - Borbur, en transporte local convencional. PRIME agrega el recorrido en 4x4 a Fura y Tena el segundo dia. No llamar 4x4 a todos los traslados."
+            "La ruta CORE es Borbur - Coscuez - Borbur, en transporte local convencional. PRIME agrega el recorrido en 4x4 a Fura y Tena el segundo dia. No llamar 4x4 a todos los traslados.",
+            "BASIC es pasadia: sin alojamiento. CORE y PRIME incluyen 1 noche."
           ],
           "media": {
             "gallery": [
@@ -1335,22 +1364,17 @@
             "tz": "America/Bogota",
             "dates": [
               {
-                "d": "2026-10-24",
+                "d": "2026-11-21",
                 "s": "limited",
-                "sl": 7
-              },
-              {
-                "d": "2026-10-31",
-                "s": "limited",
-                "sl": 7
-              },
-              {
-                "d": "2026-11-14",
-                "s": "limited",
-                "sl": 7
+                "sl": 5
               },
               {
                 "d": "2026-11-28",
+                "s": "limited",
+                "sl": 5
+              },
+              {
+                "d": "2026-12-05",
                 "s": "limited",
                 "sl": 5
               },
@@ -1360,7 +1384,17 @@
                 "sl": 5
               },
               {
+                "d": "2026-12-19",
+                "s": "limited",
+                "sl": 5
+              },
+              {
                 "d": "2027-01-09",
+                "s": "limited",
+                "sl": 5
+              },
+              {
+                "d": "2027-01-16",
                 "s": "limited",
                 "sl": 5
               },
@@ -1368,19 +1402,101 @@
                 "d": "2027-01-23",
                 "s": "limited",
                 "sl": 5
+              },
+              {
+                "d": "2027-01-30",
+                "s": "limited",
+                "sl": 5
+              },
+              {
+                "d": "2027-02-13",
+                "s": "limited",
+                "sl": 5
+              },
+              {
+                "d": "2027-02-27",
+                "s": "limited",
+                "sl": 5
               }
             ],
             "rule": "Nunca digas que todo está vendido. El equipo valida disponibilidad para cualquier fecha. Si preguntan cuáles están libres, lista las fechas planeadas y di que el equipo las valida. Siempre deriva la confirmación al equipo. Nunca ofrezcas fechas pasadas ni presentes los cupos publicados como disponibilidad confirmada."
           },
           "plans": {
+            "basic_1d_coscuez": {
+              "pricing": {
+                "individual": 420000,
+                "couple": 720000,
+                "calculation": "couple_half_from_five"
+              },
+              "clarifications": [],
+              "addons": [],
+              "media": {
+                "planImages": [
+                  {
+                    "id": "basic_1d_coscuez",
+                    "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/plans/basic/card.png?v=e50bc5d24a1d",
+                    "caption": "Plan BASIC: pasadia de 1 dia en Coscuez"
+                  }
+                ]
+              },
+              "tier": "basic",
+              "depositPercentage": 50,
+              "name": "BASIC — Coscuez — Pasadia 1 Dia",
+              "duration": "1D/0N",
+              "shortDescription": "Pasadia minero en Coscuez: 1 mina guiada, charla esmeraldera y plaza Chacaro, con almuerzo tipico. Llegas sabado 9:00 am y regresas el mismo dia en la tarde. Sin alojamiento.",
+              "benefits": "La forma de conocer la mina de Coscuez sin noche de alojamiento.",
+              "keywords": [
+                "basic",
+                "basica",
+                "pasadia",
+                "pasadía",
+                "sin noche",
+                "coscuez",
+                "borbur"
+              ],
+              "included": [
+                "Charla esmeraldera y visita a plaza Chacaro (~1h)",
+                "Una entrada guiada a mina con equipo de seguridad y seguro de asistencia medica (~2.5h)",
+                "1 almuerzo tipico (~1h)",
+                "Transporte local Borbur - Coscuez - Borbur (~2h)",
+                "Guias especializados de la region; tour en espanol"
+              ],
+              "notIncludedUnlessConfirmed": [
+                "Alojamiento: BASIC es pasadia, sin noche",
+                "Transporte desde Bogota u otra ciudad: servicio privado opcional con costo adicional"
+              ],
+              "itinerary": [
+                {
+                  "day": 1,
+                  "title": "Día 1",
+                  "activities": [
+                    "Encuentro en parque central de San Pablo de Borbur, 9:00 am",
+                    "Charla esmeraldera y plaza Chacaro, visita guiada a una mina; orden exacto por confirmar",
+                    "Almuerzo tipico y regreso a Borbur en la tarde"
+                  ]
+                }
+              ],
+              "imageId": "basic_1d_coscuez",
+              "galleryTheme": "mine",
+              "status": "active",
+              "selectionAliases": [
+                "basic",
+                "basica",
+                "basico",
+                "pasadia",
+                "pasadía",
+                "la de una mina sin noche",
+                "sin noche"
+              ],
+              "includedAddonIds": []
+            },
             "core_2d1n_coscuez": {
               "pricing": {
-                "individual": 650000,
-                "couple": 1200000,
+                "individual": 580000,
+                "couple": 1004000,
                 "calculation": "couple_half_from_five"
               },
               "clarifications": [
-                "El anticipo vigente es 25%; no usar las imagenes anteriores que indican 50%.",
                 "Precio pareja corresponde al total de 2 personas. Para grupos mayores, aplicar la regla del motor compartida con Chivor."
               ],
               "addons": [],
@@ -1388,15 +1504,17 @@
                 "planImages": [
                   {
                     "id": "core_2d1n_coscuez",
-                    "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/plans/core/card.png",
-                    "caption": ""
+                    "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/plans/core/card.png?v=3e45dddfc462",
+                    "caption": "Plan CORE: 2 dias / 1 noche en Coscuez"
                   }
                 ]
               },
               "tier": "core",
+              "recommended": true,
+              "depositPercentage": 50,
               "name": "CORE — Coscuez — 2 Dias / 1 Noche",
               "duration": "2D/1N",
-              "shortDescription": "Una mina y caminata al mirador, con charla esmeraldera, plaza Chacaro, hotel rural privado y 4 comidas.",
+              "shortDescription": "Una mina y caminata al mirador, con charla esmeraldera, plaza Chacaro, hotel rural privado, hidratacion y 3 comidas. Incluye recorrido por zonas de interes y acompanamiento para compra de esmeraldas.",
               "benefits": "Experiencia minera y cultural en Coscuez, con alojamiento en Borbur y traslados locales.",
               "keywords": [
                 "core",
@@ -1415,10 +1533,12 @@
               "included": [
                 "Charla esmeraldera y visita a plaza Chacaro (~1h)",
                 "Una entrada guiada a mina con equipo de seguridad y seguro de asistencia medica (~2.5h)",
+                "Hidratacion",
                 "Caminata al mirador a cielo abierto (~2h)",
                 "Una noche en hotel rural de Borbur: habitacion privada con cama doble y bano privado",
                 "Guias especializados de la region; tour en espanol",
-                "4 comidas: 2 desayunos, 1 cena y 1 almuerzo tipico (~4h de comidas segun folleto)",
+                "Recorrido por zonas de interes y acompanamiento para compra de esmeraldas",
+                "3 comidas: 1 desayuno, 1 cena y 1 almuerzo tipico (~4h de comidas segun folleto)",
                 "Transporte local convencional Borbur - Coscuez - Borbur (~2h)"
               ],
               "itinerary": [
@@ -1449,22 +1569,17 @@
                 "core coscues",
                 "core borbur",
                 "esencial",
-                "basica",
-                "basico",
-                "la de una mina",
-                "essential",
-                "basic"
+                "essential"
               ],
               "includedAddonIds": []
             },
             "prime_2d1n_coscuez": {
               "pricing": {
-                "individual": 1000000,
-                "couple": 1840000,
+                "individual": 1497000,
+                "couple": 2270000,
                 "calculation": "couple_half_from_five"
               },
               "clarifications": [
-                "El anticipo vigente es 25%; no usar las imagenes anteriores que indican 50%.",
                 "Precio pareja corresponde al total de 2 personas. Para grupos mayores, aplicar la regla del motor compartida con Chivor."
               ],
               "addons": [],
@@ -1472,12 +1587,13 @@
                 "planImages": [
                   {
                     "id": "prime_2d1n_coscuez",
-                    "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/plans/prime/card.png",
-                    "caption": ""
+                    "url": "https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/plans/prime/card.png?v=fb37be9a6c27",
+                    "caption": "Plan PRIME: 2 dias / 1 noche en Coscuez con Fura y Tena"
                   }
                 ]
               },
               "tier": "prime",
+              "depositPercentage": 50,
               "name": "PRIME — Coscuez — 2 Dias / 1 Noche",
               "duration": "2D/1N",
               "shortDescription": "Una mina, caminata al mirador y excursion a Fura y Tena el segundo dia en 4x4, con caminata corta y fiambre en Chanares. Hotel rural privado y 5 comidas.",
@@ -1550,85 +1666,85 @@
               "label": "Familiar Adventure / General",
               "description": "Segmento de conversacion para Coscuez. Validar necesidades y logistica propias de San Pablo de Borbur.",
               "valueHook": "Una mina real de esmeraldas, plaza Chacaro y noche en un hotel rural de Borbur. PRIME agrega Fura y Tena el segundo dia.",
-              "diagnosisQuestion": "¿Prefieren CORE con mina y mirador, o PRIME que agrega Fura y Tena el segundo dia?",
-              "planMatch": "CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
+              "diagnosisQuestion": "¿Prefieren BASIC de un dia, CORE con mina y mirador, o PRIME que agrega Fura y Tena el segundo dia?",
+              "planMatch": "BASIC, CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
             },
             "C02": {
               "label": "4x4 / Off-Road Adventure",
               "description": "Segmento de conversacion para Coscuez. Validar necesidades y logistica propias de San Pablo de Borbur.",
               "valueHook": "Una mina real de esmeraldas, plaza Chacaro y noche en un hotel rural de Borbur. PRIME agrega Fura y Tena el segundo dia.",
               "diagnosisQuestion": "¿Llegan por su cuenta al parque central de San Pablo de Borbur o necesitan transporte desde Bogota?",
-              "planMatch": "CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
+              "planMatch": "BASIC, CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
             },
             "C03": {
               "label": "Moto / Bike Adventure",
               "description": "Segmento de conversacion para Coscuez. Validar necesidades y logistica propias de San Pablo de Borbur.",
               "valueHook": "Una mina real de esmeraldas, plaza Chacaro y noche en un hotel rural de Borbur. PRIME agrega Fura y Tena el segundo dia.",
               "diagnosisQuestion": "¿Llegan por su cuenta al parque central de San Pablo de Borbur o necesitan transporte desde Bogota?",
-              "planMatch": "CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
+              "planMatch": "BASIC, CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
             },
             "C04": {
               "label": "Kids / Family Mining Education",
               "description": "Segmento de conversacion para Coscuez. Validar necesidades y logistica propias de San Pablo de Borbur.",
               "valueHook": "Una mina real de esmeraldas, plaza Chacaro y noche en un hotel rural de Borbur. PRIME agrega Fura y Tena el segundo dia.",
               "diagnosisQuestion": "¿Que edades tienen los ninos? La edad minima es 5 anios.",
-              "planMatch": "CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
+              "planMatch": "BASIC, CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
             },
             "H01": {
               "label": "Hot Lead - General",
               "description": "Segmento de conversacion para Coscuez. Validar necesidades y logistica propias de San Pablo de Borbur.",
               "valueHook": "",
-              "diagnosisQuestion": "¿Prefieren CORE con mina y mirador, o PRIME que agrega Fura y Tena el segundo dia?",
-              "planMatch": "CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
+              "diagnosisQuestion": "¿Prefieren BASIC de un dia, CORE con mina y mirador, o PRIME que agrega Fura y Tena el segundo dia?",
+              "planMatch": "BASIC, CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
             },
             "H02": {
               "label": "Hot Lead - 4x4",
               "description": "Segmento de conversacion para Coscuez. Validar necesidades y logistica propias de San Pablo de Borbur.",
               "valueHook": "",
               "diagnosisQuestion": "¿Llegan por su cuenta al parque central de San Pablo de Borbur o necesitan transporte desde Bogota?",
-              "planMatch": "CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
+              "planMatch": "BASIC, CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
             },
             "H03": {
               "label": "Hot Lead - Moto",
               "description": "Segmento de conversacion para Coscuez. Validar necesidades y logistica propias de San Pablo de Borbur.",
               "valueHook": "",
               "diagnosisQuestion": "¿Llegan por su cuenta al parque central de San Pablo de Borbur o necesitan transporte desde Bogota?",
-              "planMatch": "CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
+              "planMatch": "BASIC, CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
             },
             "H04": {
               "label": "Hot Lead - Kids",
               "description": "Segmento de conversacion para Coscuez. Validar necesidades y logistica propias de San Pablo de Borbur.",
               "valueHook": "",
               "diagnosisQuestion": "¿Que edades tienen los ninos? La edad minima es 5 anios.",
-              "planMatch": "CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
+              "planMatch": "BASIC, CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
             },
             "R01": {
               "label": "Returning - General",
-              "description": "Segmento de conversacion para Coscuez. Validar necesidades y logistica propias de San Pablo de Borbur.",
+              "description": "Lead que llega de los videos de cultura esmeraldera. Puede ser nuevo o haber escrito antes: si hay historial lo retoma REGRESO; si no, es un primer contacto.",
               "valueHook": "",
-              "diagnosisQuestion": "¿Que detalle de la experiencia en Coscuez les gustaria resolver para avanzar?",
-              "planMatch": "CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
+              "diagnosisQuestion": "¿Qué fue lo que más te llamó la atención de la historia: entrar a la mina, la cultura esmeraldera o los cerros de Fura y Tena?",
+              "planMatch": "BASIC, CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
             },
             "R02": {
               "label": "Returning - 4x4",
               "description": "Segmento de conversacion para Coscuez. Validar necesidades y logistica propias de San Pablo de Borbur.",
               "valueHook": "",
               "diagnosisQuestion": "¿Que detalle de la experiencia en Coscuez les gustaria resolver para avanzar?",
-              "planMatch": "CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
+              "planMatch": "BASIC, CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
             },
             "R03": {
               "label": "Returning - Moto",
               "description": "Segmento de conversacion para Coscuez. Validar necesidades y logistica propias de San Pablo de Borbur.",
               "valueHook": "",
               "diagnosisQuestion": "¿Que detalle de la experiencia en Coscuez les gustaria resolver para avanzar?",
-              "planMatch": "CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
+              "planMatch": "BASIC, CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
             },
             "R04": {
               "label": "Returning - Kids",
               "description": "Segmento de conversacion para Coscuez. Validar necesidades y logistica propias de San Pablo de Borbur.",
               "valueHook": "",
               "diagnosisQuestion": "¿Que detalle de la experiencia en Coscuez les gustaria resolver para avanzar?",
-              "planMatch": "CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
+              "planMatch": "BASIC, CORE o PRIME de Coscuez; confirmar fecha y tamano del grupo."
             }
           },
           "selectionAliases": [
@@ -1639,15 +1755,13 @@
             "occidente",
             "oeste"
           ],
-          "status": "inactive",
-          "unavailableNote": "Coscuez existe en nuestro catalogo, pero hoy no esta disponible: sus fechas dependen de unas fechas de pago que el equipo debe confirmar. Si el cliente pregunta por Coscuez, dile con claridad que lo tenemos pero que por ahora no esta disponible y que aun no hay fecha. No des precios, fechas, itinerario ni fotos de Coscuez, y no prometas avisarle. Puedes ofrecer Chivor, que si esta disponible.",
           "name": "Coscuez — San Pablo de Borbur",
           "location": "Coscuez, San Pablo de Borbur, Boyaca, Colombia",
           "meetingPoint": "Parque central de San Pablo de Borbur, Boyaca",
           "route": {
             "fromBogota": "Ruta orientativa por el corredor norte: Bogota - Zipaquira - Ubate - Chiquinquira - Pauna - San Pablo de Borbur. Destino final: parque central del casco urbano, no la mina ni Coscuez. Confirmar navegacion y estado del corredor antes de salir; no usar atajos rurales sin validar.",
             "localAccess": "Punto de encuentro: parque central de San Pablo de Borbur. Ruta local: Borbur - Coscuez - Borbur; este traslado no es 4x4.",
-            "arrivalTips": "Encuentro sabado 9:00 am en el parque central de San Pablo de Borbur. El tiempo depende del punto de salida, trafico, lluvia y estado del corredor. Para evitar depender de un viaje nocturno o una conexion incierta, considerar llegar el dia anterior y coordinar alojamiento adicional; esa noche no esta incluida en el plan 2D/1N.",
+            "arrivalTips": "Encuentro sabado 9:00 am en el parque central de San Pablo de Borbur. El tiempo depende del punto de salida, trafico, lluvia y estado del corredor. Para evitar depender de un viaje nocturno o una conexion incierta, considerar llegar el dia anterior y coordinar alojamiento adicional; esa noche no esta incluida en CORE ni PRIME (2D/1N).",
             "botRules": [
               "No usar las rutas de Chivor, Ubala, Macanal ni el ferry para orientar este destino.",
               "Para carro propio o bus publico, el equipo confirma la logistica; no inventar requisitos de vehiculo, horarios, operadores, tarifas ni parqueadero.",
@@ -1666,17 +1780,16 @@
               "Coordinar pin exacto y parqueadero; el destino es el parque central de Borbur, no la mina ni una hacienda. Confirmar via, seguridad actual, compatibilidad de carro o moto y logistica el dia anterior y antes de salir. No afirmar verificacion de hoy ni copiar presencia militar de Chivor. Para llegada previa, validar alojamiento adicional y costo: no esta incluido."
             ]
           },
-          "shortDescription": "Aventura minera 2 dias/1 noche en Coscuez, con encuentro y hotel rural en San Pablo de Borbur. CORE incluye una mina y caminata al mirador; PRIME agrega Fura y Tena el segundo dia. Tour en espanol.",
-          "fullDescription": "Experiencia de 2 dias y 1 noche en el occidente de Boyaca. Ambos planes incluyen charla esmeraldera y plaza Chacaro, una entrada guiada a mina con equipo de seguridad y seguro de asistencia medica, caminata al mirador a cielo abierto, alojamiento en hotel rural de Borbur con habitacion y bano privados, comidas y traslados locales. PRIME agrega una excursion el segundo dia a Fura y Tena en 4x4, caminata corta en Chanares y almuerzo fiambre antes del regreso a Borbur. CORE incluye 4 comidas y PRIME 5. El transporte desde Bogota es opcional y se cobra aparte. Llegada recomendada sabado 9:00 am; regreso domingo despues del mediodia.",
+          "shortDescription": "Aventura minera en Coscuez, San Pablo de Borbur: BASIC pasadia de 1 dia, CORE de 2 dias/1 noche con una mina y caminata al mirador, y PRIME que agrega Fura y Tena el segundo dia. Tour en espanol.",
+          "fullDescription": "Experiencia en el occidente de Boyaca. Los tres planes incluyen charla esmeraldera y plaza Chacaro, una entrada guiada a mina con equipo de seguridad y seguro de asistencia medica, traslados locales Borbur - Coscuez - Borbur y guias de la region. BASIC es un pasadia de 1 dia sin alojamiento, con 1 almuerzo tipico. CORE y PRIME son de 2 dias y 1 noche en hotel rural de Borbur con habitacion y bano privados; CORE incluye 3 comidas y agrega caminata al mirador a cielo abierto e hidratacion. PRIME incluye 5 comidas y agrega el segundo dia la excursion 4x4 a Fura y Tena con caminata corta en Chanares. El transporte desde Bogota es opcional y se cobra aparte. Llegada recomendada sabado 9:00 am; regreso domingo despues del mediodia (CORE y PRIME) o el mismo dia en la tarde (BASIC). Anticipo 50%.",
           "included": [
             "Charla esmeraldera y visita a plaza Chacaro (~1h)",
             "Una entrada guiada a mina (~2.5h), con equipo de seguridad",
             "Seguro de asistencia medica durante la experiencia",
-            "Caminata al mirador a cielo abierto (~2h)",
-            "Una noche en hotel rural de Borbur, habitacion privada con cama doble y bano privado",
-            "Guias especializados de la region, tour en espanol",
             "Traslados locales Borbur - Coscuez - Borbur",
-            "Comidas segun plan: CORE 4; PRIME 5"
+            "Guias especializados de la region, tour en espanol",
+            "CORE y PRIME: caminata al mirador a cielo abierto (~2h) y una noche en hotel rural de Borbur, habitacion privada con cama doble y bano privado",
+            "Comidas segun plan: BASIC 1 (almuerzo tipico); CORE 3 (1 desayuno, 1 cena, 1 almuerzo tipico); PRIME 5"
           ],
           "notIncludedUnlessConfirmed": [
             "Transporte desde Bogota u otra ciudad: servicio privado desde Bogota opcional con costo adicional",
@@ -1728,7 +1841,8 @@
         }
       },
       "siteSelection": {
-        "context": "En Colombia hay dos regiones esmeralderas: oriente (Chivor) y occidente (Coscuez). Hoy Chivor es el destino disponible; Coscuez esta temporalmente no disponible (ver DESTINO NO DISPONIBLE TEMPORALMENTE)."
+        "context": "En Colombia hay dos regiones esmeralderas y operamos en las dos. Las dos son seguras, quedan a una distancia parecida de Bogota (unas 5-6 horas) y cada una es una experiencia unica: no hay una mejor que la otra. Las dos tienen mina real de esmeraldas con guias de la region, naturaleza y caminata, pero la experiencia minera es distinta. Chivor, en el oriente de Boyaca (Valle de Tenza): noche en la Hacienda El Recuerdo y subida en 4x4 hasta la mina; es la que mas se disfruta en plan offroad, en moto o en carro, y en PRIME suma dos minas y cabalgata. Coscuez, en el occidente de Boyaca (San Pablo de Borbur): hotel rural en el pueblo, charla esmeraldera en la plaza Chacaro y, en PRIME, excursion a los cerros de Fura y Tena. Muestra las dos y deja que el cliente elija segun lo que le interesa; si menciona moto, carro, 4x4 o ruta, cuentale que Chivor es la mas offroad, sin descartar Coscuez. Si no tiene preferencia, sugiere Chivor como punto de partida.",
+        "defaultSiteId": "chivor"
       },
       "name": "Emerald Mining Tour",
       "agePolicy": {

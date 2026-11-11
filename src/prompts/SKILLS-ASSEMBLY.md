@@ -211,7 +211,31 @@ QUOTE LOCK: escribe "Para {N} personas, el plan queda en {fmt} {currency}".
 Copia esas personas y ese total; no recalcules ni redondees otra cifra.
 [+ transporte pendiente, si aplica]
 [+ "Este turno entrega ese total…" — solo cuando el precio NO se ha dado aún]
+[+ "APERTURA DE COTIZACION obligatoria antes del total: aplica whatsapp-sales.skill.md §FASE 3 \"Apertura de cotización\" con PLAN_CON_NOCHE=si|no; [IDEAS_OBLIGATORIAS=1,2 — solo con noche]; DURACION={duración}; INICIO={meetingPoint}; LLEGADA=por cuenta del cliente" (o "LLEGADA=no la menciones" con transporte privado) — solo hechos; la redacción vive en el skill; no en retorno ni T3a]
+[+ "Nombra el plan como {plan}; con {N} opciones no lo llames esencial ni completa." — sitio con 3+ planes]
+[+ "Plan de un solo día: obligatorio en esta misma respuesta, di que es un día largo…" — solo cuando el plan elegido es de 1D/0N]
+[+ "Sin dia elegido: recomienda solo esta fecha publicada ({fecha})… No listes varias fechas." — sin día, no retorno]
+[+ "Máximo 340 caracteres." — no en turno de retorno]
 ```
+
+Size limits live in `REPLY_CHAR_LIMIT` (`skills-prompt-assembly.ts`): plan options 280,
+quote 340, price without plan 340. Export 2026-11-11: quotes of 400+ characters got a
+reply 37% of the time vs 47-52% under 350. Guidance only; no guard trims the reply.
+
+### OPCIONES DE PLAN ESTE TURNO (runtime, group known, no plan, site with 3+ plans)
+
+```
+OPCIONES DE PLAN ESTE TURNO: {plan} ({duración}) | … [PUNTO DE INICIO: inicia y termina en {meetingPoint}; llegar es por cuenta del cliente. Obligatorio: abre la respuesta con ese punto de inicio…] [Usa el ángulo de ruta o vehículo del ENTRY_SEGMENT… solo si encaja con el grupo; nunca "familiar" si es pareja o viaja solo.] Presenta todas estas opciones… sin precios. … [Obligatorio: escribe la palabra "recomendado|recommended" junto a {plan con recommended: true en el catálogo}, con su beneficio del CATALOGO.] [{día sin noche}: di que es un solo día, con ida y regreso el mismo día.] Un solo párrafo, máximo 280 caracteres. Una sola pregunta para elegir.
+```
+
+### PRECIO PEDIDO SIN PLAN (runtime, price asked before a plan is chosen, 2026-11-11)
+
+```
+PRECIO PEDIDO SIN PLAN: … Un solo párrafo, máximo 340 caracteres. [PUNTO DE INICIO: inicia y termina en {meetingPoint}; llegar es por cuenta del cliente.] [Menciona primero, sin precio: {día sin noche}, sin noche.] Totales para {N}, sin transporte: {plan}: {total} | … [Obligatorio: escribe la palabra "recomendado|recommended" junto a {plan con recommended: true}.] Una pregunta: con cuál seguimos.
+```
+
+The day plan is named without a total (`quotablePlans` still keeps it out of the totals).
+Totals stay in the order the catalog lists them, after the day option.
 
 Sales skills must treat this as the only allowed plan total. Listing unit rates
 or rebuilding 3/4-person stacks for 5+ is a money bug (`group-of-5-math`).

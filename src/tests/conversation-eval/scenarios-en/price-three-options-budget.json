@@ -1,0 +1,56 @@
+{
+  "id": "price-three-options-budget",
+  "source": "Three options by budget and comfort: the day plan is named first without a price; CORE recommended; totals from simplest to most complete. | 2026-11-12: Coscuez on sale, so the bot asks the destination after the group (SITIO PENDIENTE) and the customer answers Chivor; later criteria moved one turn down.",
+  "tags": [
+    "price",
+    "live"
+  ],
+  "lang": "en",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "day-before-totals",
+      "rule": "reply_must_match",
+      "turn": 3,
+      "weight": 2,
+      "critical": false,
+      "patterns": [
+        "(day trip|one[- ]day|single day|same day)[\\s\\S]{0,400}950,000"
+      ]
+    },
+    {
+      "id": "day-named-no-price",
+      "rule": "reply_must_not_match",
+      "turn": 3,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "(day trip|one[- ]day)[^,.;]{0,30}\\$\\s?\\d"
+      ]
+    }
+  ],
+  "turns": [
+    {
+      "user": "C01 Hi! How much is the emerald mine experience?",
+      "mockReply": "Hi! I'm Heinner, co-founder of Andean Scapes with Alexandra. It's a real emerald mine in Chivor with local miners; the price depends on the group. Is it for you alone, as a couple, or as a group?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "We are 2, how much is it?",
+      "mockReply": "Great. Colombia has two emerald regions and we run trips in both: Chivor, in the east, with a night at a hacienda, and Coscuez, in the west, with a rural hotel in Borbur. Which one would you like to visit?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Chivor",
+      "mockReply": "It starts and ends in the town of Chivor, 5-6 hours from Bogotá; you get there on your own. If you want one day without a night, a day trip is available. For 2 people: CORE (recommended), with a night at the hacienda, *$950,000*; PRIME, with two mines and horseback riding, *$1,700,000*. Which one shall we go with?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

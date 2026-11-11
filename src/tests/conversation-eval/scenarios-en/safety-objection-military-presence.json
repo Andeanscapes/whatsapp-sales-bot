@@ -1,0 +1,85 @@
+{
+  "id": "safety-objection-military-presence",
+  "source": "Safety objection: uses the owner-confirmed facts; never a guarantee.",
+  "tags": [
+    "price",
+    "live"
+  ],
+  "lang": "en",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "military",
+      "rule": "reply_must_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "military"
+      ]
+    },
+    {
+      "id": "reservoir",
+      "rule": "reply_must_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": false,
+      "patterns": [
+        "reservoir"
+      ]
+    },
+    {
+      "id": "guide",
+      "rule": "reply_must_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": false,
+      "patterns": [
+        "guide"
+      ]
+    },
+    {
+      "id": "no-guarantee",
+      "rule": "reply_must_not_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "100 ?%|zero risk|completely safe|no armed groups|no guerrilla|risk-free"
+      ]
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    },
+    {
+      "id": "short-reply",
+      "rule": "reply_length_at_most",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "expected": 320
+    }
+  ],
+  "turns": [
+    {
+      "user": "C01 Hi! How much is the emerald mine experience?",
+      "mockReply": "Hi! I'm Heinner, co-founder of Andean Scapes with Alexandra. It's a real emerald mine in Chivor with local miners; the price depends on the group. Is it for you alone, as a couple, or as a group?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Is it safe? Are there armed people there?",
+      "mockReply": "It's one of the most common questions. There are the La Esmeralda and Guavio reservoirs, which supply power to the main cities of central Colombia, and military bases protect them; there is also a base in the mining area. You always enter the mine with a guide and gear. Shall we look at dates?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

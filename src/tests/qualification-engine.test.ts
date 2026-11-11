@@ -73,6 +73,13 @@ describe('extractBookingFields — people detection', () => {
   });
 
   it.each([
+    ['We are 2, how much is it?', 2],
+    ['there are 3 of us, how much does it cost?', 3],
+  ])('reads a headcount followed by a price question in "%s"', (text, people) => {
+    expect(extractBookingFields(text).collected_people).toBe(people);
+  });
+
+  it.each([
     'Somos tree personas yo y mis dos amantes',
     'somos tree',
     'tree personas',

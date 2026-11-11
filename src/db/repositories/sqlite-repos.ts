@@ -56,8 +56,19 @@ import type {
   FollowupEventRepository,
   FollowupEventRow,
 } from './types.js';
+import { inferNotBookedReason } from './types.js';
 import { env } from '../../config/env.js';
 import { canonicalizeDateText } from '../../services/date-canonicalizer.js';
+
+/** Direction of the last bot or customer message (team bridge messages are not the bot waiting). */
+function lastBotOrCustomerDirection(rows: readonly { direction: string; sender?: string | null }[]): 'inbound' | 'outbound' | null {
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const { direction, sender } = rows[i];
+    if (sender === 'operator') continue;
+    if (direction === 'inbound' || direction === 'outbound') return direction;
+  }
+  return null;
+}
 
 /** Statuses Meta may have accepted: counted as sent in the report (uncertain included). */
 const FOLLOW_UP_SENT_STATUSES: ReadonlySet<string> = new Set(['sent', 'accepted', 'delivered', 'uncertain']);
@@ -851,6 +862,18 @@ export class SqliteMessageRepo implements MessageRepository {
       "SELECT body FROM messages WHERE customer_phone = ? AND direction = 'inbound' ORDER BY created_at DESC, id DESC LIMIT 1"
     ).get(phone) as { body: string | null } | undefined;
     return row?.body ?? null;
+  }
+
+  hasMessageBefore(phone: string, iso: string): boolean {
+    return this.db.prepare(
+      "SELECT 1 FROM messages WHERE customer_phone = ? AND created_at < ? LIMIT 1"
+    ).get(phone, iso) !== undefined;
+  }
+
+  getRecentInbound(phone: string, limit: number): { body: string | null; created_at: string }[] {
+    return this.db.prepare(
+      "SELECT body, created_at FROM messages WHERE customer_phone = ? AND direction = 'inbound' ORDER BY created_at DESC, id DESC LIMIT ?"
+    ).all(phone, limit) as { body: string | null; created_at: string }[];
   }
 
   getLastInboundAt(phone: string): string | null {
@@ -1781,6 +1804,7 @@ export class SqliteTranscriptRepo implements TranscriptRepository {
       sales_phase: string | null;
       handed_off_at: string | null;
       converted_at: string | null;
+      lead_pain: LeadPain | null;
       message_count: number;
       inbound_count: number;
       outbound_count: number;
@@ -1814,6 +1838,7 @@ export class SqliteTranscriptRepo implements TranscriptRepository {
         c.sales_phase,
         c.handed_off_at,
         c.converted_at,
+        c.lead_pain,
         COUNT(m.id) AS message_count,
         SUM(CASE WHEN m.direction = 'inbound' THEN 1 ELSE 0 END) AS inbound_count,
         SUM(CASE WHEN m.direction = 'outbound' THEN 1 ELSE 0 END) AS outbound_count,
@@ -1948,6 +1973,8 @@ export class SqliteTranscriptRepo implements TranscriptRepository {
         aiUsageBreakdown: this.computeBreakdownForPhone(conv.customer_phone, sinceIso, untilIso),
         followUps,
         operatorMessages,
+        bookedAt: conv.converted_at,
+        notBookedReason: inferNotBookedReason(conv.converted_at, conv.lead_pain, lastBotOrCustomerDirection(msgRows)),
         messages,
       };
     });

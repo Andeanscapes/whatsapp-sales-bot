@@ -119,6 +119,7 @@ const experienceSchema = z.object({
    plans: z.array(z.object({
      id: z.string(),
      tier: z.string().min(1).optional(),
+     recommended: z.boolean().optional(),
      legacyPlanIds: z.array(z.string().min(1)).optional(),
      depositPercentage: z.number().min(0).max(100).optional(),
      siteId: z.string().optional(),
@@ -146,6 +147,7 @@ const experienceSchema = z.object({
    sites: z.record(z.object({
      name: z.string().optional(),
      selectionAliases: z.array(z.string()).optional(),
+     meetingPoint: z.string().optional(),
    }).strict()).optional(),
    siteSelection: siteSelectionSchema.optional(),
    unavailableSites: z.array(z.object({
@@ -479,6 +481,7 @@ function experienceFromDynamic(expId: string, dyn: InternalExperienceData): Expe
   const plans = dyn.plans.map(plan => ({
     id: plan.id,
     tier: plan.tier,
+    recommended: plan.recommended,
     legacyPlanIds: plan.legacyPlanIds,
     depositPercentage: plan.depositPercentage,
     siteId: plan.siteId,
@@ -525,6 +528,7 @@ function experienceFromDynamic(expId: string, dyn: InternalExperienceData): Expe
     sites: Object.fromEntries(Object.entries(dyn.sites).map(([id, site]) => [id, {
       name: site.name,
       selectionAliases: site.selectionAliases,
+      meetingPoint: site.meetingPoint,
     }])),
     siteSelection: dyn.siteSelection,
     unavailableSites: dyn.unavailableSites,

@@ -94,6 +94,14 @@
       "patterns": [
         "ferry|Macanal|Ubal[aá]|destapad|35 km|estado de las v[ií]as"
       ]
+    },
+    {
+      "id": "opener-words",
+      "rule": "reply_words_at_most",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "expected": 65
     }
   ],
   "turns": [
