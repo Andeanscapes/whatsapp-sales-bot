@@ -6242,7 +6242,8 @@ describe('processMessage — plan reference switch and plan card', () => {
     await processMessage({ repos, customerPhone: phone, message: 'How much is it?' });
 
     const prompt = mockLlmComplete.mock.calls[0]?.[0].systemPrompt ?? '';
-    expect(prompt).toMatch(/QUOTE LOCK: escribe "For 2 people, the plan comes to \$[\d.]+ COP"/);
+    // English separators in the verbatim English sentence ("$950,000", not "$950.000").
+    expect(prompt).toMatch(/QUOTE LOCK: escribe "For 2 people, the plan comes to \$\d{1,3}(?:,\d{3})+ COP"/);
     expect(prompt).not.toContain('el plan queda en');
   });
 

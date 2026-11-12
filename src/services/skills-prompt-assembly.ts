@@ -71,10 +71,10 @@ function mentionedDuration(message: string): string | null {
   return long ? `${long[1]}d/${long[2]}n` : null;
 }
 
-function perPersonQuoteCue(total: number, people: number, currency: string): string {
+function perPersonQuoteCue(total: number, people: number, currency: string, lang: 'es' | 'en' = 'es'): string {
   const equivalent = people > 1 ? calculatePerPersonEquivalent(total, people) : null;
   return equivalent
-    ? ` EQUIVALENTE POR PERSONA: ${formatMoney(equivalent.amount, currency)} ${currency}${equivalent.approximate ? ' (aproximado por redondeo)' : ''}. Muestra este equivalente junto al total, sin sustituirlo; no es la tarifa individual del catalogo.`
+    ? ` EQUIVALENTE POR PERSONA: ${formatMoney(equivalent.amount, currency, lang)} ${currency}${equivalent.approximate ? ' (aproximado por redondeo)' : ''}. Muestra este equivalente junto al total, sin sustituirlo; no es la tarifa individual del catalogo.`
     : '';
 }
 
@@ -602,6 +602,8 @@ export interface AssembleSystemPromptInput {
   priceGiven?: boolean;
   /** Latest inbound text — used only for RUNTIME intent cues, never quoted back. */
   latestCustomerMessage?: string;
+  /** The customer asked something other than the price this turn (engine-detected). */
+  otherQuestionThisTurn?: boolean;
   /**
    * Emoji graphemes this thread already used in our own replies. Passed as state so
    * the model can pick a different one: a static "no repitas" rule has no per-turn
@@ -690,7 +692,7 @@ const DAY_PLAN_DURATION = /\/\s*0\s*n\b/i;
  * a reply 37% of the time vs 47-52% under 350; plan menus dropped from 66% (200-249) to
  * 56% at 250+. Guidance only: no guard trims the model's text (invariant 8).
  */
-export const REPLY_CHAR_LIMIT = { planOptions: 280, quote: 340, priceNoPlan: 340, siteQuestion: 320 } as const;
+export const REPLY_CHAR_LIMIT = { planOptions: 280, quote: 340, priceNoPlan: 340, siteQuestion: 320, siteQuestionWithAnswer: 380 } as const;
 
 type CatalogPlan = ReturnType<typeof getPlans>[number];
 
@@ -729,7 +731,7 @@ function arrivesOnOwn(transport: unknown): boolean {
 }
 
 export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
-   const { skills, lang, collectedFields, salesPhase, customerContext, selectedExperienceId, entryMarker, priorContext, retargetingWithHistory, entryOpeningTurn, returning, leadPain, priceGiven, latestCustomerMessage, dateSelectedThisTurn, planSelectedThisTurn, closeCtaAcceptedThisTurn, reservationRequestedThisTurn, proactiveMode, consentAskRetryInstruction, reaskAfterOptOut, consentAcceptedThisTurn, followupReopenedThisTurn, usedEmojis, galleryShown, galleryRequestThemes, galleryImagesRemaining, galleryRetryInstruction, advanceQuestionRetryInstruction, brochurePlanId, otherSitePhotoRequest, photoSiteCorrection, priceObjectionThisTurn, transportObjectionThisTurn, pauseSummaryAlreadySent, adOpeningTurn, pendingPriceQuestion, greetingPhotoTurn, replyLanguage, languageSwitchedThisTurn, returningPriceQuestion } = input;
+   const { skills, lang, collectedFields, salesPhase, customerContext, selectedExperienceId, entryMarker, priorContext, retargetingWithHistory, entryOpeningTurn, returning, leadPain, priceGiven, latestCustomerMessage, otherQuestionThisTurn, dateSelectedThisTurn, planSelectedThisTurn, closeCtaAcceptedThisTurn, reservationRequestedThisTurn, proactiveMode, consentAskRetryInstruction, reaskAfterOptOut, consentAcceptedThisTurn, followupReopenedThisTurn, usedEmojis, galleryShown, galleryRequestThemes, galleryImagesRemaining, galleryRetryInstruction, advanceQuestionRetryInstruction, brochurePlanId, otherSitePhotoRequest, photoSiteCorrection, priceObjectionThisTurn, transportObjectionThisTurn, pauseSummaryAlreadySent, adOpeningTurn, pendingPriceQuestion, greetingPhotoTurn, replyLanguage, languageSwitchedThisTurn, returningPriceQuestion } = input;
 
   const personality = substituteTokens(readPrompt('seller-personality.skill.md'));
   // entry-strategy must precede cold-info-handler: the first-turn handler reads the
@@ -786,7 +788,7 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
   if (lang) {
     const replyCode = replyLanguage ?? lang;
     const replyName = languageName(replyCode);
-    runtime.push(`Language: ${replyCode}. Reply in ${replyName} on every turn, even when the customer answers with one word in another language ("sí", "En pareja!"): that does not change the reply language. Earlier replies in the history, even in another language, do not decide it: the language is this line's. CATALOGO and DATOS are written in Spanish: translate them when you reply.`);
+    runtime.push(`Language: ${replyCode}. Reply in ${replyName} on every turn, even when the customer answers with one word in another language ("sí", "En pareja!"): that does not change the reply language. Earlier replies in the history, even in another language, do not decide it: the language is this line's. CATALOGO and DATOS are written in Spanish: translate them when you reply.${replyCode === 'en' ? ' Write amounts with English separators (740,000), even where DATOS writes 740.000.' : ''}`);
     if (languageSwitchedThisTurn) {
       runtime.push(`IDIOMA CAMBIADO: el cliente pasó a escribir en ${replyName}. Responde en ${replyName} desde este mensaje, sin comentar el cambio ni preguntar en qué idioma seguir. Tus respuestas anteriores en otro idioma no cuentan: sigue en ${replyName} hasta el final de la conversación, salvo que el cliente vuelva a cambiar.`);
     }
@@ -925,7 +927,16 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
       const siteList = sites.map(site => `${site.id} (${site.name ?? site.id})`)
         .join(' | ');
       const priceNote = pendingPriceQuestion ? ' Pidió precio: dile en media frase que depende del destino y lo das apenas elija.' : '';
-      runtime.push(`SITIO PENDIENTE: ${siteList}. Confirma destino antes de plan o precio; esa es la única pregunta de este turno. Explica las regiones según SITE_SELECTION, con una diferencia real de cada destino tomada de SITE_SELECTION y CATALOGO; si el cliente o el anuncio ya mostraron un interés, conéctalo con la región que más lo cumple según SITE_SELECTION, sin descartar la otra: elige el cliente.${priceNote} Si el cliente hizo otra pregunta, respóndela en una frase antes. Máximo ${REPLY_CHAR_LIMIT.siteQuestion} caracteres en total.`);
+      // Live 2026-11-12 (release 2.5.0 eval): "is it close?" / "is it safe?" / "can you pick me
+      // up?" got the answer plus the full two-region pitch (340-460 chars). The answer comes
+      // first and the destination is asked by name only; the regions are explained next turn.
+      const regionsCue = otherQuestionThisTurn
+        ? ' El cliente hizo otra pregunta: respóndela primero en 1 o 2 frases con hechos del CATALOGO (si un hecho es de un solo destino, di de cuál); luego pregunta a cuál de las dos regiones quiere ir, en una sola frase que solo las nombre con su ubicación, sin describirlas.'
+        : ' Explica las regiones según SITE_SELECTION, con una diferencia real de cada destino tomada de SITE_SELECTION y CATALOGO; si el cliente o el anuncio ya mostraron un interés, conéctalo con la región que más lo cumple según SITE_SELECTION, sin descartar la otra: elige el cliente.';
+      // The answer plus the destination question needs more room than the question alone
+      // (live safety answer: 4 required facts + destination = 340-380 chars).
+      const siteLimit = otherQuestionThisTurn ? REPLY_CHAR_LIMIT.siteQuestionWithAnswer : REPLY_CHAR_LIMIT.siteQuestion;
+      runtime.push(`SITIO PENDIENTE: ${siteList}. Confirma destino antes de plan o precio; esa es la única pregunta de este turno.${regionsCue}${priceNote} Máximo ${siteLimit} caracteres en total.`);
     }
   }
 
@@ -983,7 +994,7 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
       runtime.push(alternatives == null
         ? `OBJECION DE PRECIO: COMPARACION INCOMPLETA. Falta ${missingComparisonInput}. No afirmes que no existen opciones mas economicas ni compares totales parciales con completos. Pide el dato faltante o explica que el equipo debe validar el precio pendiente; usa CATALOGO para describir diferencias de alcance sin inventar valores.`
         : alternatives.length > 0
-        ? `OBJECION DE PRECIO: el cliente cuestiona el valor. Puedes cotizar solo estas alternativas realmente mas economicas para ${knownPeople} personas; cada total es autoritativo: ${alternatives.map(option => `- ${option.planId} (${option.siteName}): ${formatMoney(option.total, option.currency)} ${option.currency}.${typeof knownPeople === 'number' ? perPersonQuoteCue(option.total, knownPeople, option.currency) : ''}`).join(' | ')}. No inventes descuentos. La sede alternativa solo aparece porque su total es menor que la opcion mas economica de la sede activa.`
+        ? `OBJECION DE PRECIO: el cliente cuestiona el valor. Puedes cotizar solo estas alternativas realmente mas economicas para ${knownPeople} personas; cada total es autoritativo: ${alternatives.map(option => `- ${option.planId} (${option.siteName}): ${formatMoney(option.total, option.currency, lang === 'en' ? 'en' : 'es')} ${option.currency}.${typeof knownPeople === 'number' ? perPersonQuoteCue(option.total, knownPeople, option.currency, lang === 'en' ? 'en' : 'es') : ''}`).join(' | ')}. No inventes descuentos. La sede alternativa solo aparece porque su total es menor que la opcion mas economica de la sede activa.`
         : 'OBJECION DE PRECIO: el cliente cuestiona el valor. No hay una alternativa de plan con menor precio en el catalogo para este grupo. No inventes descuentos ni presentes otra sede como mas economica. Explica con brevedad que cambia entre los planes disponibles en CATALOGO y pregunta si quiere comparar su alcance.');
     } else {
       runtime.push(
@@ -1182,11 +1193,13 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
       const sizeCue = diagnosisTurn ? '' : ` Máximo ${REPLY_CHAR_LIMIT.quote} caracteres.`;
       // The quoted sentence is copied verbatim, so it must be in the customer's
       // language: a Spanish-only sentence made English leads get Spanish quotes.
+      // The sentence is copied verbatim, so its number format follows the language too: an
+      // English quote with "$740.000" was copied as written (live 2026-11-12).
       const quoteSentence = lang === 'en'
-        ? `For ${quote.people} ${quote.people === 1 ? 'person' : 'people'}, the plan comes to ${formatMoney(amount, quote.currency)} ${quote.currency}`
+        ? `For ${quote.people} ${quote.people === 1 ? 'person' : 'people'}, the plan comes to ${formatMoney(amount, quote.currency, 'en')} ${quote.currency}`
         : `Para ${quote.people} ${quote.people === 1 ? 'persona' : 'personas'}, el plan queda en ${formatMoney(amount, quote.currency)} ${quote.currency}`;
       runtime.push(
-        `QUOTE LOCK: escribe "${quoteSentence}". Copia esas personas y ese total; no recalcules ni redondees otra cifra.${quote.requiresTransportConfirmation ? '' : perPersonQuoteCue(amount, quote.people, quote.currency)}${transportNote}${diagnosisTurn ? ' Turno de retorno: diagnostica el freno primero; usa este total solo si el cliente pide el precio.' : ' Este turno entrega ese total; no lo pospongas para despues de preguntar fecha o mes.'}${openingCue}${planNameCue}${dayTripCue}${noDayClose}${sizeCue}`,
+        `QUOTE LOCK: escribe "${quoteSentence}". Copia esas personas y ese total; no recalcules ni redondees otra cifra.${quote.requiresTransportConfirmation ? '' : perPersonQuoteCue(amount, quote.people, quote.currency, lang === 'en' ? 'en' : 'es')}${transportNote}${diagnosisTurn ? ' Turno de retorno: diagnostica el freno primero; usa este total solo si el cliente pide el precio.' : ' Este turno entrega ese total; no lo pospongas para despues de preguntar fecha o mes.'}${openingCue}${planNameCue}${dayTripCue}${noDayClose}${sizeCue}`,
       );
     }
   }
