@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { migrate } from '../db/migrate.js';
 import { createRepositories, type Repositories } from '../db/repositories/index.js';
-import { loadSkills, setDynamicService } from '../services/skill-loader.js';
-import { useAllSitesActive } from './helpers/all-sites-catalog.js';
+import { loadSkills } from '../services/skill-loader.js';
+import { useAllSitesActive, usePausedCoscuez } from './helpers/all-sites-catalog.js';
 
 // The multi-site regression net runs with every destination active, as the CI
 // fixture had before destinations could be paused.
@@ -998,8 +998,7 @@ describe('followup scheduler — paused destination', () => {
   const PAUSED_PLAN = 'core_2d1n_coscuez';
 
   beforeEach(() => {
-    setDynamicService(null);
-    loadSkills();
+    usePausedCoscuez();
   });
 
   it('rechecks the stored plan after the one-shot claim', async () => {
@@ -1059,8 +1058,7 @@ describe('followup scheduler — paused destination', () => {
     repos.conversation.upsert(PHONE, { collected_plan: PAUSED_PLAN });
     vi.spyOn(llmClient, 'complete').mockImplementation(async () => {
       // The destination pauses while the provider is working on the draft.
-      setDynamicService(null);
-      loadSkills();
+      usePausedCoscuez();
       return {
         turn: {
           reply: '¿Te parece si te escribo más adelante?\n[[FOLLOWUP_CONSENT]]',

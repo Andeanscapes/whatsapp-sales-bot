@@ -7,8 +7,8 @@ import type { ConversationMode, Repositories } from '../../db/repositories/index
 import type { LlmResult, LlmTurn } from '../../services/llm/llm-client.js';
 import type { LlmClientInput } from '../../services/llm/llm-client.js';
 import type { Scenario, ScenarioTurn } from './schema.js';
-import { getDynamicService, getSkills, loadSkills, setDynamicService } from '../../services/skill-loader.js';
-import { useAllSitesActive } from '../helpers/all-sites-catalog.js';
+import { getDynamicService, getOperatorCatalog, getSkills, loadSkills, setDynamicService } from '../../services/skill-loader.js';
+import { allSitesActivePayload, useAllSitesActive } from '../helpers/all-sites-catalog.js';
 import { getActiveExperience } from '../../services/product-registry.js';
 import { resolveLanguage } from '../../services/qualification-engine.js';
 import { DynamicDataService, PRICING_NOT_AVAILABLE } from '../../services/dynamic-data-service.js';
@@ -243,7 +243,8 @@ export function applyScenarioSeeds(ctx: RunContext, scenario: Scenario): () => v
     throw new Error(`${scenario.id}: reopenPausedSites cannot be combined with dynamicSkillAvailable`);
   }
   const previousDynamicService = dynamicAvailable !== undefined || reopenPausedSites ? getDynamicService() : null;
-  if (reopenPausedSites) useAllSitesActive();
+  // Reopens the catalog in use (the served feed in the live pass; the CI fixture offline).
+  if (reopenPausedSites) useAllSitesActive(allSitesActivePayload(getOperatorCatalog() ?? undefined));
   const restoreReopened = (): void => {
     if (!reopenPausedSites) return;
     setDynamicService(previousDynamicService);

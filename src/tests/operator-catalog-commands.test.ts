@@ -28,7 +28,7 @@ beforeEach(() => {
   db = new Database(':memory:');
   migrate(db);
   repos = createRepositories(db);
-  // No live service: operator views read the committed CI catalog (incl. paused Coscuez).
+  // No live service: operator views read the offline CI catalog, mocked below with Coscuez paused.
   setDynamicService(null);
   previousRoutingJson = env.LEAD_ROUTING_JSON;
   previousTelegramChatId = env.TELEGRAM_CHAT_ID;
@@ -86,6 +86,20 @@ function captureCalls(): { path: string; body: Record<string, unknown> | null }[
   });
   return calls;
 }
+
+vi.mock('../services/skill-loader.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../services/skill-loader.js')>();
+  const { readFileSync } = await import('node:fs');
+  const { dynamicDataSchema } = await import('../services/dynamic-data-schema.js');
+  // Operator views label a paused site, so Coscuez is paused here regardless of its sale state.
+  // Built inline: the helper module imports the skill-loader this factory is mocking.
+  const payload = JSON.parse(readFileSync(new URL('../../scripts/bot-dynamic.ci.json', import.meta.url), 'utf8')) as { experiences: Record<string, { sites: Record<string, Record<string, unknown>> }> };
+  for (const experience of Object.values(payload.experiences)) {
+    const coscuez = experience.sites.coscuez;
+    if (coscuez) Object.assign(coscuez, { status: 'inactive', unavailableNote: 'Coscuez existe en nuestro catalogo, pero hoy no esta disponible.' });
+  }
+  return { ...actual, getOperatorCatalog: () => dynamicDataSchema.parse(payload) };
+});
 
 describe('operator catalog helpers', () => {
   it('lists both sites and marks coscuez as paused', () => {

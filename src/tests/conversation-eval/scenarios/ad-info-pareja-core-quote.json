@@ -1,0 +1,239 @@
+{
+  "id": "ad-info-pareja-core-quote",
+  "source": "Live dev demo 2026-11-11 (C01 → pareja → CORE): the menu named three plans with no start point, recommendation or long-day note, and the quote called CORE 'la experiencia esencial' and closed with three dates + '¿Cuál les sirve?'. Export 2026-11-11: total + date list was the most common last message before silence (~136 leads); quotes of 400+ characters got a reply 37% of the time vs 47-52% under 350. The quote-turn esencial check is non-critical: the CORE catalog shortDescription itself says \"La experiencia esencial con noche\". 2026-11-11 (2): the quote states the trip scale (not an afternoon plan, 2 days all-inclusive from town): leads with a question before the price replied 65% vs 49%. 2026-11-11 (3): two obligatory opening ideas (not an afternoon plan; duration + all handled); start point optional on the quote; no 'familiar' for a couple.",
+  "tags": [
+    "pricing",
+    "qualification",
+    "live"
+  ],
+  "lang": "es",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "menu-start-point",
+      "rule": "reply_must_match",
+      "patterns": [
+        "pueblo|parque|(?:inicia|arranca|empieza|termina)[^.?!\\n]{0,60}Chivor"
+      ],
+      "turn": 2,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "menu-own-arrival",
+      "rule": "reply_must_match",
+      "patterns": [
+        "por (?:su|tu) cuenta|por cuenta (?:de )?(?:ustedes|su|tu|propia)|llegan? (?:en|por) (?:su|tu)|carro propio|en bus"
+      ],
+      "turn": 2,
+      "weight": 2,
+      "critical": false
+    },
+    {
+      "id": "menu-recommended",
+      "rule": "reply_must_match",
+      "patterns": [
+        "recomend"
+      ],
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "menu-day-plan-same-day",
+      "rule": "reply_must_match",
+      "patterns": [
+        "mismo d[ií]a|ida y (?:vuelta|regreso)"
+      ],
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "menu-no-price",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "\\$\\s?\\d|\\bCOP\\b"
+      ],
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "menu-short",
+      "rule": "reply_length_at_most",
+      "expected": 340,
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "menu-one-question",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "menu-no-family-for-couple",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "famil(?:ia|iar|iares|ias)\\b"
+      ],
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "quote-total",
+      "rule": "reply_must_match",
+      "patterns": [
+        "950[.,]000"
+      ],
+      "turn": 3,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "quote-trip-scale",
+      "rule": "reply_must_match",
+      "patterns": [
+        "no (?:es )?(?:un plan )?(?:de una tarde|para todos)|no es para (?:todo el mundo|cualquiera)"
+      ],
+      "turn": 3,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "quote-duration",
+      "rule": "reply_must_match",
+      "patterns": [
+        "2\\s*d[ií]as|dos d[ií]as"
+      ],
+      "turn": 3,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "quote-own-arrival",
+      "rule": "reply_must_match",
+      "patterns": [
+        "por (?:su|tu) cuenta|por cuenta (?:de )?(?:ustedes|su|tu|propia)"
+      ],
+      "turn": 3,
+      "weight": 1,
+      "critical": false
+    },
+    {
+      "id": "quote-start-point",
+      "rule": "reply_must_match",
+      "patterns": [
+        "pueblo|parque|(?:inicia|arranca|empieza|termina)[^.?!\\n]{0,60}Chivor|desde Chivor"
+      ],
+      "turn": 3,
+      "weight": 1,
+      "critical": false
+    },
+    {
+      "id": "quote-no-esencial",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "esencial|m[aá]s completa"
+      ],
+      "turn": 3,
+      "weight": 1,
+      "critical": false
+    },
+    {
+      "id": "quote-no-transport-included",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "incluye (?:el )?transporte|transporte incluido"
+      ],
+      "turn": 3,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "quote-recommends-a-date",
+      "rule": "reply_must_match",
+      "patterns": [
+        "\\b\\d{1,2}\\s+de\\s+(?:noviembre|diciembre|enero|febrero|marzo)"
+      ],
+      "turn": 3,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "quote-single-date",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "\\b\\d{1,2}\\s*(?:,|y|o)\\s*(?:el\\s+)?\\d{1,2}\\s+de\\s+(?:noviembre|diciembre|enero|febrero|marzo)",
+        "(?:noviembre|diciembre|enero|febrero|marzo)[^?\\n]{0,40}\\b\\d{1,2}\\s+de\\s+(?:noviembre|diciembre|enero|febrero|marzo)"
+      ],
+      "turn": 3,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "quote-no-dead-end",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "alguna fecha en mente|te suena|les suena|cu[aá]l les sirve|cu[aá]l te sirve"
+      ],
+      "turn": 3,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "quote-short",
+      "rule": "reply_length_at_most",
+      "expected": 390,
+      "turn": 3,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "quote-one-question",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 3,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "quote-no-invented-date",
+      "rule": "no_unpublished_date",
+      "turn": 3,
+      "weight": 3,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "C01 - Hola, quiero informacion y fechas para la aventura minera en Chivor 💚",
+      "replay": true,
+      "mockReply": "Soy Alexandra Burgos, de Andean Scapes. Es una inmersión real en la zona esmeraldera: mina con guías locales, noche en hacienda y desconexión total, con el ritmo adaptado a tu grupo.\n\n¿La experiencia sería para ti solo, en pareja o para un grupo?"
+    },
+    {
+      "user": "pareja",
+      "mockReply": "Arranca y termina en el parque principal de Chivor; llegar es por su cuenta. BASIC es un solo día, con ida y regreso el mismo día; CORE, el recomendado, es una mina, caminata y noche en la hacienda; PRIME suma otra mina y cabalgata. ¿Cuál les encaja?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "CORE",
+      "mockReply": "No es un plan de una tarde: es una aventura de 2 días con todo resuelto desde el pueblo de Chivor (4x4, guía, hacienda, comidas); llegar es por su cuenta. Para 2 personas, el plan queda en $950.000 COP, unos $475.000 por persona. ¿Les reviso cupo para el 21 de noviembre?",
+      "expect": {
+        "shouldSendReply": true
+      },
+      "seedQualification": {
+        "people": 2,
+        "plan": "core_2d1n_chivor"
+      }
+    }
+  ]
+}

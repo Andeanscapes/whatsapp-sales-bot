@@ -1,0 +1,128 @@
+{
+  "id": "two-destinations-moto-interest",
+  "source": "Owner decision 2026-11-12: with two destinations the bot shows both (equally safe, same distance, unique experiences) and lets the customer choose; when the ad or the customer shows an off-road interest (moto, car, 4x4) it says Chivor is the most off-road one, without ruling Coscuez out. The C03 opener keeps the moto angle and asks only the group.",
+  "tags": [
+    "marker",
+    "qualification",
+    "live"
+  ],
+  "lang": "es",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "moto-angle-opener",
+      "rule": "reply_must_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "moto|rodada|ruta"
+      ]
+    },
+    {
+      "id": "asks-group-first",
+      "rule": "reply_must_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "[^¿.!?\\n]*(?:sol[oa]s?\\b|pareja|grupo)[^¿.!?\\n]*\\?"
+      ]
+    },
+    {
+      "id": "no-destination-question-opener",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "coscuez|borbur|occidente|(?:qu[eé]|cu[aá]l) (?:destino|regi[oó]n)[^.!?¿\\n]*\\?"
+      ]
+    },
+    {
+      "id": "no-price-opener",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\$\\s?\\d|\\bCOP\\b|\\d{3}[.,]000"
+      ]
+    },
+    {
+      "id": "opener-words",
+      "rule": "reply_words_at_most",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "expected": 65
+    },
+    {
+      "id": "names-both-regions",
+      "rule": "reply_must_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "chivor[\\s\\S]{0,300}coscuez|coscuez[\\s\\S]{0,300}chivor"
+      ]
+    },
+    {
+      "id": "chivor-offroad",
+      "rule": "reply_must_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "chivor[^.?!]{0,140}(?:offroad|off-road|moto|4x4|ruta|destapad|trocha)|(?:offroad|off-road|moto|4x4|ruta|destapad|trocha)[^.?!]{0,140}chivor"
+      ]
+    },
+    {
+      "id": "customer-chooses",
+      "rule": "reply_must_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "[^¿.!?\\n]*(?:cu[aá]l|qu[eé] (?:regi[oó]n|destino)|les? (?:llama|interesa|gustar[ií]a))[^¿.!?\\n]*\\?"
+      ]
+    },
+    {
+      "id": "no-price-before-destination",
+      "rule": "reply_must_not_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\$\\s?\\d|\\bCOP\\b|\\d{3}[.,]000"
+      ]
+    },
+    {
+      "id": "one-destination-question",
+      "rule": "max_question_marks",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    }
+  ],
+  "turns": [
+    {
+      "user": "C03 ¡Hola! Quiero saber de qué se trata la aventura minera en moto 🏍️",
+      "mockReply": "Hola, soy Alexandra, de Andean Scapes. Es una rodada en moto hasta una mina real de esmeraldas, con mineros de la zona. ¿Vas solo, en pareja o en grupo?",
+      "expect": {
+        "shouldSendReply": true,
+        "priceJustGiven": false
+      }
+    },
+    {
+      "user": "Somos 2",
+      "mockReply": "Buenísimo. Operamos en dos regiones esmeralderas, las dos seguras y a una distancia parecida: Chivor, en el oriente, es la más offroad para ir en moto, con noche en hacienda y 4x4 a la mina; Coscuez, en el occidente, tiene hotel rural y los cerros de Fura y Tena. ¿Cuál les llama más?",
+      "expect": {
+        "shouldSendReply": true,
+        "priceJustGiven": false
+      }
+    }
+  ]
+}

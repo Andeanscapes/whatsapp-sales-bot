@@ -1,0 +1,85 @@
+{
+  "id": "safety-objection-military-presence",
+  "source": "Safety objection: uses the owner-confirmed facts; never a guarantee.",
+  "tags": [
+    "price",
+    "live"
+  ],
+  "lang": "es",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "military",
+      "rule": "reply_must_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "militar"
+      ]
+    },
+    {
+      "id": "reservoir",
+      "rule": "reply_must_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": false,
+      "patterns": [
+        "embalse"
+      ]
+    },
+    {
+      "id": "guide",
+      "rule": "reply_must_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": false,
+      "patterns": [
+        "gu[ií]a"
+      ]
+    },
+    {
+      "id": "no-guarantee",
+      "rule": "reply_must_not_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "100 ?%|cero riesgo|totalmente seguro|no hay guerrilla|no hay grupos armados|sin riesgo"
+      ]
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    },
+    {
+      "id": "short-reply",
+      "rule": "reply_length_at_most",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "expected": 320
+    }
+  ],
+  "turns": [
+    {
+      "user": "C01 ¡Hola! ¿Cuánto vale la experiencia minera?",
+      "mockReply": "¡Hola! Soy Heinner, cofundador de Andean Scapes con Alexandra. Es una mina real de esmeraldas en Chivor con mineros locales; el valor depende del grupo. ¿Sería para ti solo, en pareja o para un grupo?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "¿Es seguro? ¿Hay gente armada por allá?",
+      "mockReply": "Es de lo que más preguntan. Allí están los embalses La Esmeralda y el Guavio, que dan energía a las principales ciudades del centro del país, y hay bases militares que los protegen; también hay una base en la zona minera. A la mina siempre se entra con guía y equipo. ¿Miramos fecha?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

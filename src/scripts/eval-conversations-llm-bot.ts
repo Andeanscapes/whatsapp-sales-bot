@@ -42,12 +42,12 @@ function requireLiveLlmConfig(): void {
 }
 
 /**
- * Safety ceiling for a live pass, not a target. Estimated, not measured, on
- * 2026-10-26 from `npm run measure:prompt` and the env token prices: the full live
- * subset lands near $0.60. Re-derive from those two sources when either grows.
+ * Safety ceiling for a live pass, not a target. Measured 2026-11-11: the 61-scenario
+ * Spanish live subset passed $1.00 at scenario 46 (about $1.35 with retries).
+ * Re-derive when the live subset or the token prices grow.
  */
 function maxEvaluationCostUsd(): number {
-  const raw = Number(process.env.EVAL_MAX_COST_USD ?? '1.00');
+  const raw = Number(process.env.EVAL_MAX_COST_USD ?? '3.00');
   if (!Number.isFinite(raw) || raw <= 0) throw new Error('EVAL_MAX_COST_USD must be a positive number');
   return raw;
 }
@@ -113,6 +113,9 @@ async function main(): Promise<void> {
 
   const results: ScenarioResult[] = [];
   let totalCostUsd = 0;
+  // Set when the cost cap is reached: the run stops, but the scenarios already
+  // finished are still reported and written, so the partial result is visible.
+  let costCapMessage: string | null = null;
   const todayStart = new Date().toISOString().slice(0, 10);
 
   for (let scenarioIndex = 0; scenarioIndex < scenarios.length; scenarioIndex++) {
@@ -125,7 +128,7 @@ async function main(): Promise<void> {
     let retriedRun = -1;
     let retries = 0;
 
-    for (let run = 0; run < runCount; run++) {
+    for (let run = 0; run < runCount && !costCapMessage; run++) {
       const progress = progressLabel(scenarioIndex + 1, scenarios.length);
       const isRetry = retriedRun === run;
       console.log(`${progress} starting ${scenario.id} run ${run + 1}/${runCount}${isRetry ? ' (retry)' : ''}`);
@@ -175,10 +178,8 @@ async function main(): Promise<void> {
         }
         totalCostUsd += ctx.repos.aiUsage.getDailyCost(todayStart);
         if (totalCostUsd > maxCostUsd) {
-          throw new Error(
-            `Live conversation eval cost $${totalCostUsd.toFixed(4)} exceeded EVAL_MAX_COST_USD=$${maxCostUsd.toFixed(4)} `
-            + `after ${scenarioIndex + 1}/${scenarios.length} scenarios. Raise the cap or narrow the run with --scenario.`,
-          );
+          costCapMessage = `Live conversation eval cost $${totalCostUsd.toFixed(4)} exceeded EVAL_MAX_COST_USD=$${maxCostUsd.toFixed(4)} `
+            + `during ${scenarioIndex + 1}/${scenarios.length} scenarios. Raise the cap or narrow the run with --scenario.`;
         }
       } finally {
         try {
@@ -191,18 +192,27 @@ async function main(): Promise<void> {
       }
     }
 
-    const aggregated = { ...aggregateRuns(runResults), ...(retries > 0 ? { retries } : {}) };
-    results.push(runCount > 1 ? aggregated : { ...aggregated, runs: undefined });
-    console.log(`${progressLabel(scenarioIndex + 1, scenarios.length)} finished ${scenario.id} score=${aggregated.score} cost=$${totalCostUsd.toFixed(4)}`);
+    if (runResults.length > 0) {
+      const aggregated = { ...aggregateRuns(runResults), ...(retries > 0 ? { retries } : {}) };
+      results.push(runCount > 1 ? aggregated : { ...aggregated, runs: undefined });
+      console.log(`${progressLabel(scenarioIndex + 1, scenarios.length)} finished ${scenario.id} score=${aggregated.score} cost=$${totalCostUsd.toFixed(4)}`
+        + `${runResults.length < runCount ? ` (partial: ${runResults.length}/${runCount} runs)` : ''}`);
+    }
+    if (costCapMessage) {
+      const notRun = scenarios.slice(scenarioIndex + (runResults.length > 0 ? 1 : 0)).map(item => item.id);
+      console.log(`[LLM_BOT_EVAL] cost cap reached; not run (${notRun.length}): ${notRun.join(', ') || 'none'}`);
+      break;
+    }
   }
 
   const report = buildReport('live', results, totalCostUsd);
   printReport(report);
   const path = writeReport(report, pack.reportFile);
+  console.log(`Report written to: ${path}`);
+  if (costCapMessage) throw new Error(`${costCapMessage} Partial report: ${results.length}/${scenarios.length} scenarios.`);
   if (report.suite.hardFails > 0) throw new Error(`Conversation eval hard failures: ${report.suite.hardFails}`);
   const minScore = Number(process.env.MIN_CONVERSATION_SCORE ?? 70);
   if (report.suite.average < minScore) throw new Error(`Conversation eval average ${report.suite.average} below ${minScore}`);
-  console.log(`Report written to: ${path}`);
 }
 
 main().catch((error: unknown) => {

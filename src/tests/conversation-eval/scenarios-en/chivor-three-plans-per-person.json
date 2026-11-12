@@ -1,25 +1,162 @@
 {
   "id": "chivor-three-plans-per-person",
-  "source": "EN twin of chivor-three-plans-per-person (customer replay 2026-10-26: after 'couple' the bot hid the day trip behind a binary essential/complete question; BASIC quote needs total plus per-person equivalent)",
-  "tags": ["plan", "live"],
+  "source": "EN twin of chivor-three-plans-per-person (customer replay 2026-10-26: after 'couple' the bot hid the day trip behind a binary essential/complete question; BASIC quote needs total plus per-person equivalent) | 2026-11-12: Coscuez on sale, so a lead that names no destination is asked it after the group; the three Chivor options follow the destination.",
+  "tags": [
+    "plan",
+    "live"
+  ],
   "lang": "en",
   "liveRuns": 1,
   "minLiveScore": 85,
+  "seedSystem": {
+    "reopenPausedSites": true
+  },
   "criteria": [
-    { "id": "basic-visible", "rule": "reply_must_match", "patterns": ["BASIC"], "turn": 2, "critical": true },
-    { "id": "core-visible", "rule": "reply_must_match", "patterns": ["CORE"], "turn": 2, "critical": true },
-    { "id": "prime-visible", "rule": "reply_must_match", "patterns": ["PRIME"], "turn": 2, "critical": true },
-    { "id": "pasadia-distinguished", "rule": "reply_must_match", "patterns": ["day[- ]trip|day pass|no overnight|without (?:an? )?(?:night|overnight|lodging|accommodation)|no (?:lodging|accommodation)"], "turn": 2, "critical": true },
-    { "id": "no-price-before-choice", "rule": "reply_must_not_match", "patterns": ["\\$|\\bCOP\\b"], "turn": 2, "critical": true },
-    { "id": "one-choice-question", "rule": "max_question_marks", "max": 1, "turn": 2, "critical": true },
-    { "id": "group-total", "rule": "reply_must_match", "patterns": ["740[., ]000"], "turn": 3, "critical": true },
-    { "id": "per-person-equivalent", "rule": "reply_must_match", "patterns": ["370[., ]000.{0,35}(?:per person|each)"], "turn": 3, "critical": true },
-    { "id": "no-solo-rate", "rule": "reply_must_not_match", "patterns": ["480[., ]000"], "turn": 3, "critical": true },
-    { "id": "basic-card", "rule": "output_flag_equals", "flag": "mediaPlanId", "expected": "basic_1d_chivor", "turn": 3, "critical": true }
+    {
+      "id": "asks-destination",
+      "rule": "reply_must_match",
+      "patterns": [
+        "chivor.{0,200}coscuez|coscuez.{0,200}chivor"
+      ],
+      "turn": 2,
+      "critical": true
+    },
+    {
+      "id": "no-price-before-destination",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "\\$|\\bCOP\\b"
+      ],
+      "turn": 2,
+      "critical": true
+    },
+    {
+      "id": "one-destination-question",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 2,
+      "critical": true
+    },
+    {
+      "id": "basic-visible",
+      "rule": "reply_must_match",
+      "patterns": [
+        "BASIC"
+      ],
+      "turn": 3,
+      "critical": true
+    },
+    {
+      "id": "core-visible",
+      "rule": "reply_must_match",
+      "patterns": [
+        "CORE"
+      ],
+      "turn": 3,
+      "critical": true
+    },
+    {
+      "id": "prime-visible",
+      "rule": "reply_must_match",
+      "patterns": [
+        "PRIME"
+      ],
+      "turn": 3,
+      "critical": true
+    },
+    {
+      "id": "pasadia-distinguished",
+      "rule": "reply_must_match",
+      "patterns": [
+        "day[- ]trip|day pass|no overnight|without (?:an? )?(?:night|overnight|lodging|accommodation)|no (?:lodging|accommodation)|single day|same[- ]day"
+      ],
+      "turn": 3,
+      "critical": true
+    },
+    {
+      "id": "no-price-before-choice",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "\\$|\\bCOP\\b"
+      ],
+      "turn": 3,
+      "critical": true
+    },
+    {
+      "id": "one-choice-question",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 3,
+      "critical": true
+    },
+    {
+      "id": "group-total",
+      "rule": "reply_must_match",
+      "patterns": [
+        "740[., ]000"
+      ],
+      "turn": 4,
+      "critical": true
+    },
+    {
+      "id": "per-person-equivalent",
+      "rule": "reply_must_match",
+      "patterns": [
+        "370[., ]000.{0,35}(?:per person|each)"
+      ],
+      "turn": 4,
+      "critical": true
+    },
+    {
+      "id": "no-solo-rate",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "480[., ]000"
+      ],
+      "turn": 4,
+      "critical": true
+    },
+    {
+      "id": "basic-card",
+      "rule": "output_flag_equals",
+      "flag": "mediaPlanId",
+      "expected": "basic_1d_chivor",
+      "turn": 4,
+      "critical": true
+    }
   ],
   "turns": [
-    { "user": "hi", "mockReply": "Hi, I'm Heinner from Andean Scapes. Are you traveling as a couple, solo or in a group?", "expect": { "shouldSendReply": true } },
-    { "user": "couple", "mockReply": "We have BASIC, a day trip with no overnight, CORE with one mine and lodging, and PRIME with two mines and horseback riding. Which one suits you best?", "expect": { "shouldSendReply": true, "priceJustGiven": false } },
-    { "user": "the basic one", "mockReply": "BASIC is the day trip with a guided mine visit, a hike, breakfast and lunch. For 2 people it comes to $740,000 COP, which is $370,000 COP per person. What date do you have in mind?", "expect": { "shouldSendReply": true, "priceJustGiven": true, "mediaPlanId": "basic_1d_chivor" } }
+    {
+      "user": "hi",
+      "mockReply": "Hi, I'm Heinner from Andean Scapes. Are you traveling as a couple, solo or in a group?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "couple",
+      "mockReply": "Great. Colombia has two emerald regions and we run trips in both: Chivor, in the east, with a night at a hacienda, and Coscuez, in the west, with a rural hotel in Borbur. Which one would you like to visit?",
+      "expect": {
+        "shouldSendReply": true,
+        "priceJustGiven": false
+      }
+    },
+    {
+      "user": "Chivor",
+      "mockReply": "We have BASIC, a day trip with no overnight, CORE with one mine and lodging, and PRIME with two mines and horseback riding. Which one suits you best?",
+      "expect": {
+        "shouldSendReply": true,
+        "priceJustGiven": false
+      }
+    },
+    {
+      "user": "the basic one",
+      "mockReply": "BASIC is the day trip with a guided mine visit, a hike, breakfast and lunch. For 2 people it comes to $740,000 COP, which is $370,000 COP per person. What date do you have in mind?",
+      "expect": {
+        "shouldSendReply": true,
+        "priceJustGiven": true,
+        "mediaPlanId": "basic_1d_chivor"
+      }
+    }
   ]
 }

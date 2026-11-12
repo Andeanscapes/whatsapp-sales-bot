@@ -109,6 +109,9 @@ jobs:
       AI_ENABLED: "true"
       MIN_CONVERSATION_SCORE: "90"
       MAX_SCORE_DROP: "8"
+      # 64 live scenarios per pack since 2026-11-12; two-destination turns put a pass at ~$2.00-2.30
+      # with retries (measured 2026-11-12). Same as the script default cap (3.00).
+      EVAL_MAX_COST_USD: "3.00"
     steps:
       - uses: actions/checkout@v4
         with:

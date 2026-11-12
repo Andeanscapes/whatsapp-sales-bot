@@ -9,7 +9,7 @@
     { "id": "marker-hidden", "rule": "reply_must_not_match", "patterns": ["R01|marker|campaign code"], "turn": 4, "weight": 2, "critical": true },
     { "id": "continues-context", "rule": "reply_must_match", "patterns": ["(?:were|was)\\b.{0,40}\\b(?:solo|alone)\\b|(?:travel(?:ing|ling)?|coming|going|were) (?:solo|alone|on your own|by yourself)|just for you|for you alone|for (?:one|1) person|just you"], "turn": 4, "weight": 2, "critical": true },
     { "id": "plan-recalled", "rule": "reply_must_match", "patterns": ["PRIME|2 mines|two mines|horseback"], "turn": 4, "weight": 2, "critical": true },
-    { "id": "diagnoses-blocker", "rule": "reply_must_match", "patterns": ["what(?:'s| is| was)? (?:still )?(?:missing|holding|stopp|left)|what held|what stopped|what changed|what (?:do|would) you need|what can i (?:sort|solve|help)|what(?:'s| is) (?:still )?needed"], "turn": 4, "weight": 2, "critical": true },
+    { "id": "diagnoses-blocker", "rule": "reply_must_match", "patterns": ["what(?:'s| is| was)? (?:still )?(?:missing|holding|stopp|left)|what held|what stopped|what changed|what (?:do|would) you need|what can i (?:sort|solve|help)|what(?:'s| is) (?:still )?needed|what(?:'s| is) (?:still )?unresolved|what (?:would|do) you (?:like|want) to (?:resolve|sort out)|what(?:'s| is) (?:still )?(?:up in the air|open|pending)"], "turn": 4, "weight": 2, "critical": true },
     { "id": "offers-pain-fecha", "rule": "reply_must_match", "patterns": ["\\bdates?\\b"], "turn": 4, "weight": 1 },
     { "id": "offers-pain-logistics", "rule": "reply_must_match", "patterns": ["transport|logistics"], "turn": 4, "weight": 1 },
     { "id": "offers-pain-safety-or-budget", "rule": "reply_must_match", "patterns": ["safety|budget|price"], "turn": 4, "weight": 1 },

@@ -1,7 +1,7 @@
 {
   "name": "Andean Scapes English conversation pack (twins of the Spanish pack)",
-  "version": "2026-11-01-en-curated-language-switch-returning",
-  "totalTests": 70,
+  "version": "2026-11-12-en-curated-language-switch-returning-two-destinations",
+  "totalTests": 81,
   "scenarioIds": [
     "ad-info-then-group-asks-plan",
     "ad-price-date-opening",
@@ -72,6 +72,17 @@
     "ad-opener-unmarked-referral",
     "language-switch-mid-chat",
     "returning-r01-after-c01",
-    "returning-r01-after-quote"
+    "returning-r01-after-quote",
+    "price-three-options-budget",
+    "expensive-to-basic-no-discount",
+    "basic-chosen-long-day-deposit",
+    "pickup-bogota-assumed",
+    "safety-objection-military-presence",
+    "where-is-chivor-region",
+    "closing-restates-meeting-point",
+    "near-city-expectation-remote-trip",
+    "ad-info-pareja-core-quote",
+    "two-destinations-group-first",
+    "two-destinations-moto-interest"
   ]
 }
