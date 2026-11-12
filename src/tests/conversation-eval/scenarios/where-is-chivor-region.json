@@ -1,0 +1,75 @@
+{
+  "id": "where-is-chivor-region",
+  "source": "Region question: Boyacá and the travel time, no price.",
+  "tags": [
+    "price",
+    "live"
+  ],
+  "lang": "es",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "boyaca",
+      "rule": "reply_must_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "Boyac[aá]"
+      ]
+    },
+    {
+      "id": "hours",
+      "rule": "reply_must_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "5[-–]6 h|5[-–]6 horas"
+      ]
+    },
+    {
+      "id": "no-price",
+      "rule": "reply_must_not_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\$\\s?\\d|\\d{3}[.,]000"
+      ]
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    },
+    {
+      "id": "short-reply",
+      "rule": "reply_length_at_most",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "expected": 320
+    }
+  ],
+  "turns": [
+    {
+      "user": "C01 ¡Hola! ¿Cuánto vale la experiencia minera?",
+      "mockReply": "¡Hola! Soy Heinner, cofundador de Andean Scapes con Alexandra. Es una mina real de esmeraldas en Chivor con mineros locales; el valor depende del grupo. ¿Sería para ti solo, en pareja o para un grupo?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "¿Dónde queda Chivor?",
+      "mockReply": "En el oriente de Boyacá, en el Valle de Tenza: una de las dos regiones esmeralderas del país, a unas 5-6 horas de Bogotá. ¿Vienen en carro propio o en bus?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

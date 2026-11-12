@@ -165,6 +165,8 @@ const planItineraryDaySchema = z.object({
 /** Shared optional plan narrative fields (sites-native plans only). */
 const v11PlanNarrativeSchema = z.object({
   tier: z.string().min(1).optional(),
+  /** The plan the bot recommends on this site's option and price turns (at most one per site). */
+  recommended: z.boolean().optional(),
   /**
    * Plan ids this plan replaces (renamed or retired). A customer stored on an old id
    * is moved to this plan instead of being handed off. Unique across the experience.
@@ -220,6 +222,11 @@ const v11ExperienceNarrativeSchema = z.object({
 /** Site selection context and coming-soon destinations. */
 export const siteSelectionSchema = z.object({
   context: z.string().min(1),
+  /**
+   * Destination suggested when the customer has no preference. Also lends its campaign
+   * segment angle to the opening turn while the destination is still open.
+   */
+  defaultSiteId: z.string().min(1).optional(),
   comingSoon: z.array(z.object({
     name: z.string().min(1),
     shortDescription: z.string().min(1).optional(),
@@ -420,7 +427,14 @@ const dynamicSiteSchema = z.object({
   // acknowledges it using `unavailableNote` (catalog copy, required when inactive).
   status: z.enum(['active', 'inactive']).optional(),
   unavailableNote: z.string().min(1).optional(),
-}).merge(v11SiteNarrativeSchema).strict();
+}).merge(v11SiteNarrativeSchema).strict().superRefine((site, ctx) => {
+  // The options and price cues name ONE recommended plan; two flags would make the pick
+  // depend on key order.
+  const recommended = Object.entries(site.plans).filter(([, plan]) => plan.recommended === true).map(([id]) => id);
+  if (recommended.length > 1) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['plans'], message: `at most one recommended plan per site, got: ${recommended.join(', ')}` });
+  }
+});
 
 const dynamicExperienceSitesSchema = z.object({
   status: z.enum(['active', 'inactive']).optional(),
@@ -431,7 +445,12 @@ const dynamicExperienceSitesSchema = z.object({
   // Multi-site context and coming-soon destinations. Present only if the
   // experience spans 2+ locations.
   siteSelection: siteSelectionSchema.optional(),
-}).merge(v11ExperienceNarrativeSchema).strict();
+}).merge(v11ExperienceNarrativeSchema).strict().superRefine((experience, ctx) => {
+  const defaultSiteId = experience.siteSelection?.defaultSiteId;
+  if (defaultSiteId && !experience.sites[defaultSiteId]) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['siteSelection', 'defaultSiteId'], message: `unknown site: ${defaultSiteId}` });
+  }
+});
 
 // ---------------------------------------------------------------------------
 // v9 "unified" shape (current production shape, pre-sites): plans own pricing/

@@ -104,6 +104,14 @@
       "patterns": [
         "como hablamos|retomemos|la vez pasada|ya me habias|lo que hablamos|quedamos en"
       ]
+    },
+    {
+      "id": "opener-words",
+      "rule": "reply_words_at_most",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "expected": 65
     }
   ],
   "turns": [

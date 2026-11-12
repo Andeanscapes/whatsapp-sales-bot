@@ -127,6 +127,13 @@ function evaluateCriterion(criterion: Criterion, turns: TurnRecord[]): Criterion
     return criterionResult(criterion, replyText.length <= max, `length=${replyText.length} max=${max}`);
   }
 
+  // Owner brief 2026-11-12: the 2.4.0 opener stays under ~60 words.
+  if (criterion.rule === 'reply_words_at_most') {
+    const max = criterion.expected as number;
+    const words = replyText.split(/\s+/).filter(Boolean).length;
+    return criterionResult(criterion, words <= max, `words=${words} max=${max}`);
+  }
+
   if (criterion.rule === 'output_question_count_at_most') {
     const max = criterion.expected as number;
     const count = (replyText.match(/\?/g) ?? []).length;

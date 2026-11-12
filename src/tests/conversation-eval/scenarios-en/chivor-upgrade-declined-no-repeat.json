@@ -1,19 +1,75 @@
 {
   "id": "chivor-upgrade-declined-no-repeat",
-  "source": "EN twin of chivor-upgrade-declined-no-repeat (review 2026-10-26: an upgrade suggested for a pain is offered once; after the customer keeps BASIC it must not be pitched again)",
-  "tags": ["plan", "objection", "live"],
+  "source": "EN twin of chivor-upgrade-declined-no-repeat (review 2026-10-26: an upgrade suggested for a pain is offered once; after the customer keeps BASIC it must not be pitched again) | 2026-11-12: Coscuez on sale, so the bot asks the destination after the group (SITIO PENDIENTE) and the customer answers Chivor; later criteria moved one turn down.",
+  "tags": [
+    "plan",
+    "objection",
+    "live"
+  ],
   "lang": "en",
   "liveRuns": 1,
   "minLiveScore": 85,
   "criteria": [
-    { "id": "no-repeat-upgrade", "rule": "reply_must_not_match", "patterns": ["\\bCORE\\b|\\bPRIME\\b"], "turn": 5, "critical": true },
-    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 5, "critical": true }
+    {
+      "id": "no-repeat-upgrade",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "\\bCORE\\b|\\bPRIME\\b"
+      ],
+      "turn": 6,
+      "critical": true
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 6,
+      "critical": true
+    }
   ],
   "turns": [
-    { "user": "hi", "mockReply": "Hi, I'm Heinner from Andean Scapes. Are you traveling as a couple, solo or in a group?", "expect": { "shouldSendReply": true } },
-    { "user": "couple", "mockReply": "We have BASIC, a day trip with no overnight, CORE with one mine and lodging, and PRIME with two mines and horseback riding. Which one suits you best?", "expect": { "shouldSendReply": true } },
-    { "user": "the basic one", "mockReply": "BASIC is the day trip with a guided mine visit, a hike, breakfast and lunch. For 2 people it comes to $740,000 COP, which is $370,000 COP per person. What date do you have in mind?", "expect": { "shouldSendReply": true, "priceJustGiven": true } },
-    { "user": "does the experience end very late? I wouldn't want to get back too late", "mockReply": "BASIC heads back the same day in the afternoon. If you'd rather not drive at night, CORE includes lodging and you return on Sunday in daylight. Want me to compare the two for you?", "expect": { "shouldSendReply": true } },
-    { "user": "no, we prefer the basic, thanks", "mockReply": "Perfect, we'll go with BASIC. What date do you have in mind?", "expect": { "shouldSendReply": true } }
+    {
+      "user": "hi",
+      "mockReply": "Hi, I'm Heinner from Andean Scapes. Are you traveling as a couple, solo or in a group?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "couple",
+      "mockReply": "Great. Colombia has two emerald regions and we run trips in both: Chivor, in the east, with a night at a hacienda, and Coscuez, in the west, with a rural hotel in Borbur. Which one would you like to visit?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Chivor",
+      "mockReply": "We have BASIC, a day trip with no overnight, CORE with one mine and lodging, and PRIME with two mines and horseback riding. Which one suits you best?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "the basic one",
+      "mockReply": "BASIC is the day trip with a guided mine visit, a hike, breakfast and lunch. For 2 people it comes to $740,000 COP, which is $370,000 COP per person. What date do you have in mind?",
+      "expect": {
+        "shouldSendReply": true,
+        "priceJustGiven": true
+      }
+    },
+    {
+      "user": "does the experience end very late? I wouldn't want to get back too late",
+      "mockReply": "BASIC heads back the same day in the afternoon. If you'd rather not drive at night, CORE includes lodging and you return on Sunday in daylight. Want me to compare the two for you?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "no, we prefer the basic, thanks",
+      "mockReply": "Perfect, we'll go with BASIC. What date do you have in mind?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
   ]
 }

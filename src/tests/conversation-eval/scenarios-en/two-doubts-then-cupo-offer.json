@@ -95,7 +95,7 @@
     },
     {
       "user": "Hi, does the local 4x4 leave from the village? How long is the ride?",
-      "mockReply": "Yes, the local 4x4 goes up from Chivor village to the mine, already included in the plan. Want me to check the spot for November 14?",
+      "mockReply": "Yes, the local 4x4 goes up from Chivor village to the mine, already included in the plan. Want me to check the spot for November 21?",
       "expect": {
         "shouldSendReply": true
       }

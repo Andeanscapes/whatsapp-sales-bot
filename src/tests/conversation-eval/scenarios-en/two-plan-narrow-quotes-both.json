@@ -1,6 +1,6 @@
 {
   "id": "two-plan-narrow-quotes-both",
-  "source": "EN twin of two-plan-narrow-quotes-both",
+  "source": "EN twin of two-plan-narrow-quotes-both | 2026-11-12: Coscuez on sale, so the bot asks the destination after the group (SITIO PENDIENTE) and the customer answers Chivor; later criteria moved one turn down.",
   "lang": "en",
   "tags": [
     "objection",
@@ -24,7 +24,7 @@
       "patterns": [
         "950[.,]000[\\s\\S]{0,200}1[.,]700[.,]000|1[.,]700[.,]000[\\s\\S]{0,200}950[.,]000"
       ],
-      "turn": 1,
+      "turn": 2,
       "weight": 3,
       "critical": true
     },
@@ -32,7 +32,7 @@
       "id": "one-question",
       "rule": "max_question_marks",
       "max": 1,
-      "turn": 1,
+      "turn": 2,
       "weight": 2,
       "critical": true
     },
@@ -42,7 +42,7 @@
       "patterns": [
         "740,000|BASIC[^.]{0,40}\\$"
       ],
-      "turn": 1,
+      "turn": 2,
       "weight": 1
     },
     {
@@ -53,12 +53,19 @@
       ],
       "weight": 2,
       "critical": true,
-      "turn": 1
+      "turn": 2
     }
   ],
   "turns": [
     {
       "user": "Hi, what is the price of CORE and PRIME for 2 people?",
+      "mockReply": "Great. Colombia has two emerald regions and we run trips in both: Chivor, in the east, with a night at a hacienda, and Coscuez, in the west, with a rural hotel in Borbur. Which one would you like to visit?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Chivor",
       "mockReply": "For 2 people, CORE comes to *$950,000 COP* and PRIME to *$1,700,000 COP*. Which one appeals more?",
       "expect": {
         "shouldSendReply": true

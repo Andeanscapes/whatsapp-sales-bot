@@ -1,0 +1,183 @@
+{
+  "id": "two-destinations-group-first",
+  "source": "EN twin of two-destinations-group-first. Owner decision 2026-11-12: with Chivor and Coscuez both on sale, an ad lead that names no destination keeps the group question first (reply rate, export 2026-11-07). The destination is asked after the group, explaining the two emerald regions; with no preference the bot suggests Chivor while saying both are good, and a bare yes to that suggestion stores Chivor so the deferred price is quoted for that site only. | 2026-11-12: the customer chooses (owner rule), so the bot may answer \"no preference\" with a choice question instead of a single suggestion; the last turn names Chivor. A bare yes to a single-destination suggestion is pinned by unit tests (resolveSiteAnswer).",
+  "tags": [
+    "marker",
+    "qualification",
+    "live"
+  ],
+  "lang": "en",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "seedSystem": {
+    "reopenPausedSites": true
+  },
+  "criteria": [
+    {
+      "id": "asks-group-first",
+      "rule": "reply_must_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "[^.!?\\n]*(?:\\bsolo\\b|alone|by yourself|couple|partner|group)[^.!?\\n]*\\?"
+      ]
+    },
+    {
+      "id": "one-question-opener",
+      "rule": "max_question_marks",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    },
+    {
+      "id": "no-destination-question-opener",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "coscuez|borbur|\\bwest(?:ern)?\\b|which (?:destination|region)[^.!?\\n]*\\?"
+      ]
+    },
+    {
+      "id": "no-price-opener",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\$\\s?\\d|\\bCOP\\b|\\d{3}[.,]000"
+      ]
+    },
+    {
+      "id": "names-both-regions",
+      "rule": "reply_must_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "chivor[\\s\\S]{0,300}coscuez|coscuez[\\s\\S]{0,300}chivor"
+      ]
+    },
+    {
+      "id": "no-price-before-destination",
+      "rule": "reply_must_not_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\$\\s?\\d|\\bCOP\\b|\\d{3}[.,]000"
+      ]
+    },
+    {
+      "id": "one-destination-question",
+      "rule": "max_question_marks",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    },
+    {
+      "id": "suggests-chivor",
+      "rule": "reply_must_match",
+      "turn": 3,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "chivor"
+      ]
+    },
+    {
+      "id": "both-are-good",
+      "rule": "reply_must_match",
+      "turn": 3,
+      "weight": 1,
+      "critical": false,
+      "patterns": [
+        "coscuez|borbur|\\bwest(?:ern)?\\b"
+      ]
+    },
+    {
+      "id": "no-price-on-suggestion",
+      "rule": "reply_must_not_match",
+      "turn": 3,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\$\\s?\\d|\\bCOP\\b|\\d{3}[.,]000"
+      ]
+    },
+    {
+      "id": "quotes-chivor-core",
+      "rule": "reply_must_match",
+      "turn": 4,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "950[.,]000"
+      ]
+    },
+    {
+      "id": "no-coscuez-prices",
+      "rule": "reply_must_not_match",
+      "turn": 4,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "1[.,]004[.,]000|2[.,]270[.,]000|720[.,]000"
+      ]
+    },
+    {
+      "id": "one-question-quote",
+      "rule": "max_question_marks",
+      "turn": 4,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    },
+    {
+      "id": "opener-words",
+      "rule": "reply_words_at_most",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "expected": 65
+    }
+  ],
+  "turns": [
+    {
+      "user": "C01 Hi! How much is the mining experience?",
+      "mockReply": "Hi! I'm Alexandra, from Andean Scapes. It's a real emerald mine with local guides; I'll give you the exact price as soon as you share a couple of details. Would it be just you, a couple or a group?",
+      "expect": {
+        "shouldSendReply": true,
+        "priceJustGiven": false
+      }
+    },
+    {
+      "user": "We are 2",
+      "mockReply": "Great. Colombia has two emerald regions and we run trips in both: Chivor, in the east, with a night at a hacienda, and Coscuez, in the west, with a rural hotel in Borbur; the price depends on the destination. Which one would you like to visit?",
+      "expect": {
+        "shouldSendReply": true,
+        "priceJustGiven": false
+      }
+    },
+    {
+      "user": "not sure, which one do you recommend?",
+      "mockReply": "Both are great and different, and Coscuez is a great option too. To start, I'd suggest Chivor, with a night at a hacienda and a 4x4 ride up to the mine. Shall we start with Chivor?",
+      "expect": {
+        "shouldSendReply": true,
+        "priceJustGiven": false
+      }
+    },
+    {
+      "user": "yes, Chivor",
+      "mockReply": "It starts and ends in Chivor town; getting there is on you. If you'd rather do a single day with no night, there's the day trip. For 2 people: CORE, recommended, with a night at the hacienda, *$950,000*; PRIME, with two mines and horseback riding, *$1,700,000*. Which one shall we go with?",
+      "expect": {
+        "shouldSendReply": true,
+        "priceJustGiven": true
+      }
+    }
+  ]
+}

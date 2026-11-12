@@ -106,6 +106,49 @@ describe('two-site catalog selection', () => {
     expect(reconstructFromHistory(repos, phone, {}, experience).plan).toBeUndefined();
   });
 
+  // Group first, destination second: the destination is asked only once the group is known.
+  it('asks the group before the destination on a first ad turn', () => {
+    const skills = loadSkills();
+    const runtime = assembleSystemPrompt({
+      skills, lang: 'es', entryMarker: { code: 'C01', temperature: 'cold' }, entryOpeningTurn: true, adOpeningTurn: true, collectedFields: {},
+    }).split('\nRUNTIME:').at(-1) ?? '';
+    expect(runtime).toContain('APERTURA DE ANUNCIO: primer mensaje');
+    expect(runtime).toContain('DESTINO SIN ELEGIR');
+    expect(runtime).not.toContain('SITIO PENDIENTE');
+    expect(runtime).not.toContain('OPCIONES DE PLAN');
+    // The ad angle survives through the catalog default destination's segment.
+    expect(runtime).toContain('SEGMENT_DETECTED: C01');
+    // The price depends on the destination chosen next turn: no "next message" promise.
+    expect(runtime).not.toContain('llegan en tu siguiente mensaje, apenas responda');
+    expect(runtime).toContain('no prometas que llegan en tu siguiente mensaje');
+
+    const secondTurn = assembleSystemPrompt({
+      skills, lang: 'es', entryMarker: { code: 'C01', temperature: 'cold' }, collectedFields: { personas: 2 }, pendingPriceQuestion: true,
+    }).split('\nRUNTIME:').at(-1) ?? '';
+    expect(secondTurn).toContain('SITIO PENDIENTE');
+    expect(secondTurn).toContain('Explica las regiones según SITE_SELECTION');
+    expect(secondTurn).toContain('depende del destino');
+    expect(secondTurn).not.toContain('PRECIO PEDIDO SIN PLAN');
+
+    const organic = assembleSystemPrompt({ skills, lang: 'es', entryOpeningTurn: true, collectedFields: {} }).split('\nRUNTIME:').at(-1) ?? '';
+    expect(organic).toContain('DESTINO SIN ELEGIR');
+    expect(organic).not.toContain('SITIO PENDIENTE');
+  });
+
+  // Bounded: a customer who never gives a readable group ("con mi familia") is not stuck on
+  // the group question; the destination is asked from the second turn on.
+  it('asks the destination after the opening turn even with the group unknown', () => {
+    const runtime = assembleSystemPrompt({ skills: loadSkills(), lang: 'es', collectedFields: {} }).split('\nRUNTIME:').at(-1) ?? '';
+    expect(runtime).toContain('SITIO PENDIENTE');
+    expect(runtime).not.toContain('DESTINO SIN ELEGIR');
+  });
+
+  it('leaves the destination out of a proactive consent ask', () => {
+    const runtime = assembleSystemPrompt({ skills: loadSkills(), lang: 'es', proactiveMode: 'consent_ask', collectedFields: {} }).split('\nRUNTIME:').at(-1) ?? '';
+    expect(runtime).not.toContain('SITIO PENDIENTE');
+    expect(runtime).not.toContain('DESTINO SIN ELEGIR');
+  });
+
   it('keeps a single question while the destination is pending on an entry lead', () => {
     const skills = loadSkills();
     const runtime = assembleSystemPrompt({ skills, entryMarker: { code: 'R01', temperature: 'retargeting' } })
@@ -155,7 +198,8 @@ describe('two-site catalog selection', () => {
 
   it.each(['core', 'prime'])('requires a destination for an ambiguous first %s selection', alias => {
     const experience = getActiveExperience(loadSkills());
-    expect(experience.plans).toHaveLength(5);
+    // Three plans per destination (BASIC, CORE, PRIME) now that Coscuez is on sale.
+    expect(experience.plans).toHaveLength(6);
     expect(detectPlan(`quiero el ${alias}`, experience)).toBeNull();
   });
 
@@ -223,7 +267,7 @@ describe('two-site catalog selection', () => {
 
   it.each([[CORE, 'chivor'], [COSCUEZ_CORE, 'coscuez']])('resolves brochure within the stored or named site: %s', (stored, site) => {
     // "del otro plan" is a two-plan rule.
-    const experience = getActiveExperience(useAllSitesActive(withoutPlans(allSitesActivePayload(), ['basic_1d_chivor'])));
+    const experience = getActiveExperience(useAllSitesActive(withoutPlans(allSitesActivePayload(), ['basic_1d_chivor', 'basic_1d_coscuez'])));
     const otherSite = site === 'chivor' ? 'coscuez' : 'chivor';
     // Without naming a different site, resolves "otro plan" within same site → PRIME counterpart
     expect(resolveBrochurePlanId('brochure del otro plan', stored, null, experience, site)).toBe(
@@ -290,10 +334,84 @@ describe('tier words the bot offers resolve on every site', () => {
   });
 });
 
+describe('English destination choice', () => {
+  it.each([
+    ['We\'re a couple and we\'re interested in Chivor', 'chivor'],
+    ['hi, we are a couple and we want to visit Chivor', 'chivor'],
+    ['Coscuez please', 'coscuez'],
+    ['We would like to go to Coscuez', 'coscuez'],
+    // Same as the Spanish "quiero info ... en Chivor".
+    // "know" without a question is "conocer"; "check out" and "learn about" show interest.
+    ['H01 - Hi, I want to know more about the experience in Chivor', 'chivor'],
+    ['I want to know Chivor', 'chivor'],
+    ['we would like to get to know Coscuez', 'coscuez'],
+    ['we want to check out Chivor', 'chivor'],
+    ['I\'d like to learn about emeralds in Chivor', 'chivor'],
+    ['we\'ll go with Chivor to check the mines', 'chivor'],
+    ['I want to visit Chivor and learn mining', 'chivor'],
+    ['I want Chivor, let me know the price', 'chivor'],
+    ['Hi, I\'d like info about the emerald mine trip in Chivor', 'chivor'],
+    ['C01 Hi, I want info and dates for the emerald mine adventure in Chivor', 'chivor'],
+    ['We\'ll go with Chivor', 'chivor'],
+    ['we prefer Coscuez', 'coscuez'],
+  ])('chooses: %s', (message, site) => {
+    expect(detectSiteChoice(message, getActiveExperience(loadSkills()))).toBe(site);
+  });
+
+  it.each([
+    'We don\'t want Chivor',
+    'I wanted to ask how far Coscuez is',
+    'My uncle lives in Chivor',
+    'Chivor or Coscuez, which is better?',
+    // A mention is not a choice (invariant 11): "go with", "pick" and "prefer" name a site here.
+    'Can you pick us up in Chivor?',
+    'Is it safe to go with kids to Coscuez?',
+    'we will go with our kids to Chivor, is it safe?',
+    'I prefer to know how far Chivor is',
+    // Questions about a site are not choices (same as the Spanish "quiero saber si ...").
+    'I want to know how far Chivor is',
+    'we would like to know if Coscuez is safe',
+    'quiero saber si Coscuez es seguro',
+  ])('does not choose: %s', message => {
+    expect(detectSiteChoice(message, getActiveExperience(loadSkills()))).toBeNull();
+  });
+});
+
+describe('English yes to a site question', () => {
+  it.each([
+    ['Yes', 'Both regions are great and different. Shall we start with Chivor?'],
+    ['sure', 'Are you interested in Chivor?'],
+    ['sounds good', 'If you have no preference, how about Chivor?'],
+    ['ok', 'Would you like to start with Chivor?'],
+  ])('chooses the offered site: %s after %s', (message, question) => {
+    expect(resolveSiteAnswer(message, question, getActiveExperience(loadSkills()))).toBe('chivor');
+  });
+
+  it.each([
+    ['Yes', 'Shall I send you photos of Chivor?'],
+    ['Yes', 'Does November 21 work for Chivor?'],
+    ['Yes', 'Shall we book the 21st in Chivor?'],
+    ['Yes', 'Would you like to go with Chivor or Coscuez?'],
+    ['Yes', 'Shall I check the spot in Chivor?'],
+    // An offer to send or explain something is not a destination choice.
+    ['yes', 'How about I send you the itinerary for Chivor?'],
+    ['yes', 'Would you like to start with the itinerary of Chivor?'],
+    ['si', '¿Les parece si les cuento cómo se llega a Chivor?'],
+    // Itinerary offers behave the same in both languages.
+    ['si', '¿Les interesa conocer el itinerario de Chivor?'],
+    ['yes', 'Are you interested in the itinerary for Chivor?'],
+    // Sending the plan is an offer, unlike "¿te cuente el plan?" (plan review).
+    ['si', '¿Te mando el plan de Chivor?'],
+    ['not sure', 'Shall we start with Chivor?'],
+  ])('does not choose a site: %s after %s', (message, question) => {
+    expect(resolveSiteAnswer(message, question, getActiveExperience(loadSkills()))).toBeNull();
+  });
+});
+
 describe('bare yes to a site question', () => {
   const OFFER = 'Chivor es la otra región.\n\n¿Te interesa Chivor para el mismo grupo de 2?';
 
-  it.each(['Si', 'si!', 'Ok', 'dale', 'claro', 'de una', 'listo', 'me interesa'])('chooses the offered site: %s', message => {
+  it.each(['Si', 'si!', 'Ok', 'dale', 'claro', 'de una', 'listo', 'me interesa', 'sí, me interesa', 'ok dale'])('chooses the offered site: %s', message => {
     expect(resolveSiteAnswer(message, OFFER, getActiveExperience(loadSkills()))).toBe('chivor');
   });
 
@@ -301,6 +419,14 @@ describe('bare yes to a site question', () => {
     '¿Quieres que primero te cuente el plan de Chivor?',
     '¿Quieres revisar los planes de Chivor primero?',
     '¿Te gustaría conocer la información de Chivor?',
+    // The no-preference suggestion (catalog SITE_SELECTION) closes with one destination.
+    // A topic word (ruta) is not an offer to send something.
+    '¿Te interesa la ruta 4x4 de Chivor?',
+    'Las dos son muy buenas y distintas. ¿Les parece empezar por Chivor?',
+    '¿Empezamos por Chivor?',
+    // English plan-review offer (live 2026-11-12).
+    'Want me to go with Chivor and show you the plans?',
+    'Shall I show you the Chivor options?',
   ])('accepts a plan-review offer: %s', question => {
     expect(resolveSiteAnswer('Si', question, getActiveExperience(loadSkills()))).toBe('chivor');
   });
@@ -321,6 +447,10 @@ describe('bare yes to a site question', () => {
     ['Si', '¿Quieres revisar las fotos de Chivor primero?'],
     ['Si', '¿Te interesa Chivor o Coscuez?'],
     ['Si', 'Te interesa Chivor? Bueno, ¿qué fecha les sirve?'],
+    ['Si', '¿Les parece bien el 21 de noviembre en Chivor?'],
+    ['Si', '¿Te parece si te mando fotos de Chivor?'],
+    ['Si', '¿Qué les parece, Chivor o Coscuez?'],
+    ['no sé', '¿A cuál de las dos regiones les gustaría ir, Chivor o Coscuez?'],
   ])('does not choose a site: %s after %s', (message, question) => {
     expect(resolveSiteAnswer(message, question, getActiveExperience(loadSkills()))).toBeNull();
   });

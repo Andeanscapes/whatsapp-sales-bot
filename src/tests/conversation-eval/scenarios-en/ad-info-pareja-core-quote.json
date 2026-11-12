@@ -1,0 +1,238 @@
+{
+  "id": "ad-info-pareja-core-quote",
+  "source": "EN twin of ad-info-pareja-core-quote. Live dev demo 2026-11-11 (C01 → couple → CORE): the menu had no start point, recommendation or long-day note, and the quote closed with three dates. Export 2026-11-11: total + date list was the most common last message before silence; quotes of 400+ characters got fewer replies. The quote-turn esencial check is non-critical: the CORE catalog shortDescription itself says \"La experiencia esencial con noche\". 2026-11-11 (2): the quote states the trip scale (not an afternoon plan, 2 days all-inclusive from town): leads with a question before the price replied 65% vs 49%. 2026-11-11 (3): two obligatory opening ideas (not an afternoon plan; duration + all handled); start point optional on the quote; no 'familiar' for a couple.",
+  "tags": [
+    "pricing",
+    "qualification",
+    "live"
+  ],
+  "lang": "en",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "menu-start-point",
+      "rule": "reply_must_match",
+      "patterns": [
+        "town|square|(?:start|begin|end)s?[^.?!\\n]{0,60}Chivor"
+      ],
+      "turn": 2,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "menu-own-arrival",
+      "rule": "reply_must_match",
+      "patterns": [
+        "on your own|on you\\b|up to you|your own (?:way|car|vehicle|transport)|by yourselves|by bus"
+      ],
+      "turn": 2,
+      "weight": 2,
+      "critical": false
+    },
+    {
+      "id": "menu-recommended",
+      "rule": "reply_must_match",
+      "patterns": [
+        "recommend"
+      ],
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "menu-day-plan-same-day",
+      "rule": "reply_must_match",
+      "patterns": [
+        "same day|round trip|there and back"
+      ],
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "menu-no-price",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "\\$\\s?\\d|\\bCOP\\b"
+      ],
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "menu-short",
+      "rule": "reply_length_at_most",
+      "expected": 340,
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "menu-one-question",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "menu-no-family-for-couple",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "famil(?:y|iar)"
+      ],
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "quote-total",
+      "rule": "reply_must_match",
+      "patterns": [
+        "950[.,]000"
+      ],
+      "turn": 3,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "quote-trip-scale",
+      "rule": "reply_must_match",
+      "patterns": [
+        "(?:not|isn'?t|is not) (?:a |an )?(?:quick |one[- ])?afternoon|not for every(?:one|body)"
+      ],
+      "turn": 3,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "quote-duration",
+      "rule": "reply_must_match",
+      "patterns": [
+        "2[- ]day|two[- ]day|2 days|two days"
+      ],
+      "turn": 3,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "quote-own-arrival",
+      "rule": "reply_must_match",
+      "patterns": [
+        "on your own|on you\\b|up to you|your own (?:way|car|vehicle|transport)"
+      ],
+      "turn": 3,
+      "weight": 1,
+      "critical": false
+    },
+    {
+      "id": "quote-start-point",
+      "rule": "reply_must_match",
+      "patterns": [
+        "town|square|(?:start|begin|end)s?[^.?!\\n]{0,60}Chivor|from Chivor"
+      ],
+      "turn": 3,
+      "weight": 1,
+      "critical": false
+    },
+    {
+      "id": "quote-no-essential",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "essential|most complete"
+      ],
+      "turn": 3,
+      "weight": 1,
+      "critical": false
+    },
+    {
+      "id": "quote-no-transport-included",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "includes? (?:the )?transport|transport (?:is )?included"
+      ],
+      "turn": 3,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "quote-recommends-a-date",
+      "rule": "reply_must_match",
+      "patterns": [
+        "(?:November|December|January|February|March)\\s+\\d{1,2}(?:st|nd|rd|th)?\\b|\\b\\d{1,2}(?:st|nd|rd|th)?\\s+of\\s+(?:November|December|January|February|March)"
+      ],
+      "turn": 3,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "quote-single-date",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "(?:November|December|January|February|March)\\s+\\d{1,2}(?:st|nd|rd|th)?\\s*(?:,|and|or)\\s*(?:(?:November|December|January|February|March)\\s+)?\\d{1,2}(?:st|nd|rd|th)?\\b(?!,\\d{3})"
+      ],
+      "turn": 3,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "quote-no-dead-end",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "date in mind|which (?:one|date) works|sound good"
+      ],
+      "turn": 3,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "quote-short",
+      "rule": "reply_length_at_most",
+      "expected": 390,
+      "turn": 3,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "quote-one-question",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 3,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "quote-no-invented-date",
+      "rule": "no_unpublished_date",
+      "turn": 3,
+      "weight": 3,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "C01 - Hi, I'd like information and dates for the mining adventure in Chivor 💚",
+      "replay": true,
+      "mockReply": "I'm Alexandra Burgos from Andean Scapes. It's a real immersion in the emerald region: a mine with local guides, a night at the hacienda and a full disconnect, paced for your group.\n\nWould it be just you, a couple or a group?"
+    },
+    {
+      "user": "couple",
+      "mockReply": "It starts and ends in the main square of Chivor town; you get there on your own. BASIC is a single day, there and back the same day; CORE, the one we recommend, is one mine, a hike and a night at the hacienda; PRIME adds a second mine and horseback riding. Which one fits you?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "CORE",
+      "mockReply": "It is not an afternoon plan: it is a 2-day adventure with everything handled from Chivor town (4x4, guide, hacienda, meals); getting there is on you. For 2 people, the plan comes to $950,000 COP, about $475,000 per person. Shall I check space for November 21?",
+      "expect": {
+        "shouldSendReply": true
+      },
+      "seedQualification": {
+        "people": 2,
+        "plan": "core_2d1n_chivor"
+      }
+    }
+  ]
+}

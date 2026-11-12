@@ -471,6 +471,36 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
       tier via `unavailableSites[].planTiers`, else it is cleared. Before this, the
       paused plan was absent from `getPlans`, so the accepted alternative never
       stored and the lead stayed stuck on the paused destination.
+    - **Group first, destination second** (owner decision 2026-11-12). With 2+ sites on
+      sale and no destination named, the opening turn (`entryOpeningTurn`, not a proactive
+      turn) gets `DESTINO SIN ELEGIR`: the only question is the group; no destination
+      question, plans or prices. From the next turn on `SITIO PENDIENTE` asks the
+      destination, explaining the regions from the catalog `siteSelection.context`
+      (facts and the no-preference suggestion live there, never in TS or skill text).
+      The deferral is bounded to the opening turn so a lead whose group is unreadable
+      ("con mi familia") is not stuck. A destination answer is never a booking: when
+      `siteChoiceThisTurn` picks a site other than the stored plan's, reservation intent
+      is suppressed for that turn ("¿Te interesa empezar por Chivor?" → "sí" used to page
+      the team). English choice phrases count only when they choose ("we'll go with
+      Chivor"); "go with kids to Coscuez" and "pick us up in Chivor" are mentions, and a
+      "yes" to an offer to send/explain something about a site never switches it.
+      Conversation scenarios run on the catalog production serves (the CI fixture
+      offline and in CI; the CDN feed when `DYNAMIC_SKILL_URL` is set), with no blanket
+      pause: a funnel scenario whose customer never names a destination answers the
+      destination question like a real lead. `reopenPausedSites` reopens that same catalog.
+      **The destination is the customer's choice** (owner 2026-11-12): both regions are
+      presented as safe, at a similar distance and unique; an off-road interest (moto, car,
+      4x4) is matched to Chivor without ruling Coscuez out; no preference → the catalog
+      `siteSelection.defaultSiteId`. That default also lends its campaign segment to the
+      opening turn, so C02/C03/C04 keep their angle while the destination is open
+      (`DESTINO SIN ELEGIR` still bans its lodging and plans). Deploy code before a catalog
+      that sets `defaultSiteId` or a plan `recommended` flag (strict schema).
+    - **R01 is not "returning" by itself.** The culture-video ads also bring NEW people
+      with the R01 marker. QUOTE LOCK diagnoses the blocker only with real history
+      (`retargetingWithHistory` or `returning`); a new R01 lead is a first contact, and
+      its catalog `diagnosisQuestion` asks what caught their attention, never "what stopped
+      you". The first ad turn is pinned by `first-turn-guard.test.ts` (C01/C02/C03/R01, one
+      and two destinations) and live by `reply_words_at_most` 60 on the opener scenarios.
     - **No destination chosen on a multi-site experience → no photos.**
       `resolveMediaThemes` and `detectRequestedGalleryThemes` return nothing (brochure
       excepted) when no site is preferred and the experience has 2+ sites, mirroring
@@ -719,18 +749,18 @@ columns from the old feature remain in place and are ignored.
   ENV_FILE=/dev/null` plus the `conversation-eval-llm` job env from `ci.yml` and your
   `DEEPSEEK_API_KEY`, and `DYNAMIC_SKILL_URL` unset. Release 2.3.0: four local passes
   in a row, three CI failures, until the runs used the CI env.
-- `npm run eval:conversations` — deterministic conversation-eval pack (61 Spanish scenarios plus their 61 English twins, mocked).
-- `npm run eval:conversations:llm-bot` — live LLM quality suite, Spanish (44 `live`-tagged
-  scenarios, ~$0.75 per pass, estimated; costs tokens). Local default.
+- `npm run eval:conversations` — deterministic conversation-eval pack (81 Spanish scenarios plus their 81 English twins, mocked).
+- `npm run eval:conversations:llm-bot` — live LLM quality suite, Spanish (64 `live`-tagged
+  scenarios, ~$2.00-2.30 per pass with retries, measured 2026-11-12; `EVAL_MAX_COST_USD` default 3.00). Local default.
 - `npm run eval:conversations:llm-bot -- --lang en` — live LLM quality suite, English
-  pack (`scenarios-en/`, one twin per Spanish scenario: 61, 44 of them `live`; writes
+  pack (`scenarios-en/`, one twin per Spanish scenario: 81, 64 of them `live`; writes
   `artifacts/conversation-eval-llm-bot-en.json`). CI runs BOTH live packs on PRs into
   master, each compared against its own baseline (`baselines/master-llm-bot.json`,
   `baselines/master-llm-bot-en.json`). Refresh a baseline by copying a real
   `--runs 2` artifact, never by hand-editing scores.
   A live run that hard-fails, or misses any criterion that is critical or weight >= 3,
   is re-run once (one retry per run) and only the retry is scored (`retries` in the
-  report, printed by the compare step). With 44 live scenarios, a single LLM miss
+  report, printed by the compare step). With 44+ live scenarios, a single LLM miss
   failed the master gate on most runs
   (2.3.0: `ad-info-then-group-asks-plan` 85 in CI, 5/5 locally on release and master).
   A real regression fails both attempts. Never raise this to more than one retry.
@@ -766,7 +796,11 @@ Live eval hotspots after skill changes: `group-of-5-math` (QUOTE LOCK total),
 (plan choice must quote AND demo), `consecutive-gallery-requests` (repeat and
 "show me" photo requests), `vacation-motive-discovery-baredate` (bare-day T3b close).
 Any change to the QUOTE LOCK cue must re-run the quote scenarios (`group-of-5-math`,
-`group-then-plan-quote`, `date-pick-*`) — they all read that cue. See `src/prompts/LESSONS.md`.
+`group-then-plan-quote`, `date-pick-*`, `ad-info-pareja-core-quote`) — they all read that cue. See `src/prompts/LESSONS.md`.
+QUOTE LOCK without a chosen day recommends ONE published date, never a list: "total + three
+dates + ¿cuál les sirve?" was the most common last message before silence (export
+2026-11-11). Reply-size guidance per turn lives in `REPLY_CHAR_LIMIT`; it is a cue, never a
+trimming guard (invariant 8).
 
 ### Writing conversation-eval scenarios
 
