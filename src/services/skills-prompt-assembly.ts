@@ -1096,7 +1096,10 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
       const startCue = guidance.meetingPoint
         ? `${startPointCue(guidance.meetingPoint, ownArrivalOptions)}Obligatorio: abre la respuesta con ese punto de inicio${ownArrivalOptions ? ' y que llegar es por su cuenta' : ''}. `
         : '';
-      runtime.push(`OPCIONES DE PLAN ESTE TURNO: ${sitePlans.map(plan => `${plan.name} (${plan.duration})`).join(' | ')}. ${startCue}${segmentAngle}Presenta todas estas opciones por nombre y una diferencia breve de CATALOGO, sin precios. No reduzcas la eleccion a esencial/completa.${recommendedCue}${dayCue} Un solo párrafo, máximo ${REPLY_CHAR_LIMIT.planOptions} caracteres. Una sola pregunta para elegir.`);
+      // Short names only: with "CORE — 2 Dias / 1 Noche (2D/1N)" in the cue the model copied the
+      // duration into the menu (release 2.5.0 eval, no-plan-offer-turn2 1/2). The day plan's
+      // single day is still said through dayCue.
+      runtime.push(`OPCIONES DE PLAN ESTE TURNO: ${sitePlans.map(plan => shortPlanName(plan.name) ?? plan.name).join(' | ')}. No escribas duraciones como "2 días / 1 noche"; del plan de un día di solo que es un solo día. ${startCue}${segmentAngle}Presenta todas estas opciones por nombre y una diferencia breve de CATALOGO, sin precios. No reduzcas la eleccion a esencial/completa.${recommendedCue}${dayCue} Un solo párrafo, máximo ${REPLY_CHAR_LIMIT.planOptions} caracteres. Una sola pregunta para elegir.`);
     }
   }
   // Live 2026-11-01/02: "quiero el plan 2D/1N" was answered "el 2D/1N es CORE" four
