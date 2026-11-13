@@ -7,19 +7,18 @@
     "average": 97,
     "min": 57,
     "count": 64,
-    "hardFails": 6,
+    "hardFails": 5,
     "costUsd": 2.119550399999999
   },
   "scenarios": [
     {
       "id": "ad-info-pareja-core-quote",
-      "score": 88,
+      "score": 93,
       "hardFail": true,
       "notes": [
-        "[menu-day-plan-same-day] missing: mismo d[ií]a|ida y (?:vuelta|regreso)",
         "[quote-trip-scale] missing: no (?:es )?(?:un plan )?(?:de una tarde|para todos)|no es para (?:todo el mundo|cualquiera)",
         "[quote-own-arrival] missing: por (?:su|tu) cuenta|por cuenta (?:de )?(?:ustedes|su|tu|propia)",
-        "run 2 retried after a failed run"
+        "run 1 retried after a failed run"
       ],
       "criteria": [
         {
@@ -52,11 +51,11 @@
         {
           "id": "menu-day-plan-same-day",
           "rule": "reply_must_match",
-          "passed": false,
-          "score": 0,
+          "passed": true,
+          "score": 100,
           "weight": 2,
           "critical": true,
-          "evidence": "missing: mismo d[ií]a|ida y (?:vuelta|regreso)"
+          "evidence": "required patterns present"
         },
         {
           "id": "menu-no-price",
@@ -74,7 +73,7 @@
           "score": 100,
           "weight": 2,
           "critical": true,
-          "evidence": "length=235 max=340"
+          "evidence": "length=283 max=340"
         },
         {
           "id": "menu-one-question",
@@ -191,7 +190,7 @@
           "score": 100,
           "weight": 2,
           "critical": true,
-          "evidence": "length=342 max=390"
+          "evidence": "length=273 max=390"
         },
         {
           "id": "quote-one-question",
@@ -222,24 +221,24 @@
         },
         {
           "user": "pareja",
-          "reply": "El plan empieza y termina en el parque principal de Chivor; llegar es por su cuenta, en carro, moto o bus. Tenemos BASIC de un solo día, CORE con una mina y noche (el recomendado) y PRIME con dos minas y cabalgata. ¿Cuál les llama más?",
+          "reply": "El plan empieza y termina en el parque principal de Chivor; llegar es por su cuenta, en carro, moto o bus. Tenemos BASIC de un día con ida y regreso el mismo día, CORE recomendado con una mina y noche en hacienda, y PRIME con dos minas y cabalgata.\n\n¿Cuál de los tres les encaja más?",
           "leadScore": 10,
           "shouldAlertOwner": false,
           "shouldSendImage": false
         },
         {
           "user": "CORE",
-          "reply": "Perfecto, el CORE es la experiencia con una mina guiada y caminata al mirador, con noche en Hacienda El Recuerdo. Son 2 días / 1 noche y desde el pueblo va todo resuelto: 4x4 a la mina, guía, casco y botas, y las comidas.\n\nPara 2 personas, el plan queda en *$950.000 COP* (unos $475.000 por persona). ¿Les reviso cupo para el 21 de noviembre?",
-          "leadScore": 16,
+          "reply": "Buena elección. El CORE es una aventura de 2 días y 1 noche: desde el pueblo va todo resuelto, con 4x4 hasta la mina, guía, casco y botas, y las comidas.\n\nPara 2 personas, el plan queda en *$950.000 COP*, unos $475.000 por persona. ¿Les reviso cupo para el 21 de noviembre?",
+          "leadScore": 17,
           "shouldAlertOwner": false,
           "shouldSendImage": false
         }
       ],
       "runs": {
         "total": 2,
-        "passed": 0
+        "passed": 1
       },
-      "retries": 2
+      "retries": 1
     },
     {
       "id": "ad-info-then-group-asks-plan",
@@ -597,12 +596,9 @@
     },
     {
       "id": "ad-opener-price-asked-couple",
-      "score": 95,
-      "hardFail": true,
-      "notes": [
-        "[asks-group] missing: [^¿.!?\\n]*(?:sol[oa]s?\\b|pareja|grupo)[^¿.!?\\n]*\\?",
-        "run 2 retried after a failed run"
-      ],
+      "score": 100,
+      "hardFail": false,
+      "notes": [],
       "criteria": [
         {
           "id": "one-question",
@@ -620,7 +616,7 @@
           "score": 100,
           "weight": 2,
           "critical": true,
-          "evidence": "length=254 max=400"
+          "evidence": "length=276 max=400"
         },
         {
           "id": "marker-hidden",
@@ -661,11 +657,11 @@
         {
           "id": "asks-group",
           "rule": "reply_must_match",
-          "passed": false,
-          "score": 0,
+          "passed": true,
+          "score": 100,
           "weight": 2,
           "critical": true,
-          "evidence": "missing: [^¿.!?\\n]*(?:sol[oa]s?\\b|pareja|grupo)[^¿.!?\\n]*\\?"
+          "evidence": "required patterns present"
         },
         {
           "id": "owner-intro",
@@ -773,7 +769,7 @@
           "score": 100,
           "weight": 2,
           "critical": true,
-          "evidence": "length=292 max=390"
+          "evidence": "length=290 max=390"
         },
         {
           "id": "opener-words",
@@ -782,27 +778,27 @@
           "score": 100,
           "weight": 2,
           "critical": true,
-          "evidence": "words=46 max=65"
+          "evidence": "words=50 max=65"
         }
       ],
       "turnResults": [
         {
           "user": "C01 ¡Hola! ¿Cuánto vale la experiencia minera?",
-          "reply": "¡Hola! Soy TestOwner, de Andean Scapes. Te cuento en persona: es una inmersión real en la zona esmeraldera, con mina, guías locales y desconexión total.\n\nEl valor exacto te lo doy apenas sepa si sería para ti solo, en pareja o para un grupo. ¿Cómo sería?",
+          "reply": "¡Hola! Soy TestOwner, de Andean Scapes. Te cuento de primera mano: es una inmersión real en la zona esmeraldera, con mina, guías locales y desconexión total.\n\nEl valor exacto te lo doy apenas sepa un par de datos. ¿La experiencia sería para ti solo, en pareja o para un grupo?",
           "leadScore": 6,
           "shouldAlertOwner": false,
           "shouldSendImage": false
         },
         {
           "user": "Somos 2",
-          "reply": "Perfecto, dos personas. Antes del valor, dime: ¿te llama más Chivor, en el oriente de Boyacá, con noche en hacienda y subida en 4x4 a la mina, o Coscuez, en el occidente, con hotel rural en el pueblo y charla esmeraldera en la plaza?",
+          "reply": "Perfecto, dos personas. Antes del valor necesito saber a cuál región quieren ir: Chivor, en el oriente de Boyacá, es la más offroad, con noche en hacienda y subida en 4x4 a la mina; Coscuez, en el occidente, es hotel rural en el pueblo y charla esmeraldera en la plaza Chacaro. ¿Cuál les llama más?",
           "leadScore": 16,
           "shouldAlertOwner": false,
           "shouldSendImage": false
         },
         {
           "user": "Chivor",
-          "reply": "Chivor entonces. El plan empieza y termina en el parque principal de Chivor; llegar es por cuenta de ustedes.\n\nBASIC es un solo día sin noche. Para 2 personas: CORE, 2 días / 1 noche, queda en *$950.000 COP* y es el recomendado; PRIME, 2 días / 1 noche, en $1.700.000 COP. ¿Con cuál seguimos?",
+          "reply": "Chivor entonces. El plan empieza y termina en el parque principal de Chivor; llegar es por cuenta de ustedes.\n\nBASIC es un solo día sin noche. Para 2 personas: CORE — 2 Días / 1 Noche queda en *$950.000 COP*, el recomendado, y PRIME — 2 Días / 1 Noche en $1.700.000 COP. ¿Con cuál seguimos?",
           "leadScore": 22,
           "shouldAlertOwner": false,
           "shouldSendImage": false
@@ -810,9 +806,8 @@
       ],
       "runs": {
         "total": 2,
-        "passed": 1
-      },
-      "retries": 1
+        "passed": 2
+      }
     },
     {
       "id": "ad-opener-price-asked-solo",
@@ -1314,13 +1309,12 @@
     },
     {
       "id": "basic-chosen-long-day-deposit",
-      "score": 63,
+      "score": 75,
       "hardFail": true,
       "notes": [
-        "[long-day] missing: d[ií]a largo",
         "[same-day-return] missing: esa misma tarde|mismo d[ií]a|regres[a-z]+ esa (misma )?tarde",
         "[deposit-30] missing: 30 ?%",
-        "[minimum] score 63 < 80",
+        "[minimum] score 75 < 80",
         "run 1 retried after a failed run"
       ],
       "criteria": [
@@ -1336,11 +1330,11 @@
         {
           "id": "long-day",
           "rule": "reply_must_match",
-          "passed": false,
-          "score": 0,
+          "passed": true,
+          "score": 100,
           "weight": 2,
           "critical": true,
-          "evidence": "missing: d[ií]a largo"
+          "evidence": "required patterns present"
         },
         {
           "id": "same-day-return",
@@ -1367,7 +1361,7 @@
           "score": 100,
           "weight": 2,
           "critical": true,
-          "evidence": "length=175 max=320"
+          "evidence": "length=236 max=320"
         },
         {
           "id": "no-25-deposit",
@@ -1400,38 +1394,38 @@
       "turnResults": [
         {
           "user": "C01 ¡Hola! ¿Cuánto vale la experiencia minera?",
-          "reply": "¡Hola! Soy TestOwner, de Andean Scapes. Te cuento en persona: es una inmersión real en la zona esmeraldera, con mina, guías locales y desconexión total.\n\nEl valor exacto te lo doy apenas sepa un par de datos. ¿La experiencia sería para ti solo, en pareja o para un grupo?",
+          "reply": "¡Hola! Soy TestOwner, de Andean Scapes. Te cuento de primera mano: es una inmersión real en la zona esmeraldera, con mina, guías locales y desconexión total.\n\nEl valor exacto te lo doy apenas sepa un par de datos. ¿La experiencia sería para ti solo, en pareja o para un grupo?",
           "leadScore": 6,
           "shouldAlertOwner": false,
           "shouldSendImage": false
         },
         {
           "user": "Quiero el pasadía para 2",
-          "reply": "Perfecto, el pasadía para dos. Antes de darte el valor, ¿te interesa más Chivor, en el oriente de Boyacá, o Coscuez, en San Pablo de Borbur?",
+          "reply": "Perfecto, el pasadía para dos. Antes de darte el valor, ¿en cuál región te gustaría: Chivor, en el oriente de Boyacá, con subida en 4x4 a la mina, o Coscuez, en San Pablo de Borbur, con hotel rural en el pueblo?",
           "leadScore": 14,
           "shouldAlertOwner": false,
           "shouldSendImage": false
         },
         {
           "user": "Chivor",
-          "reply": "Chivor entonces. El BASIC para 2 personas queda en *$740.000 COP*, con mina guiada, caminata al mirador y las comidas del día.\n\n¿Quieres que te comparta las fechas publicadas?",
+          "reply": "Chivor entonces. Para 2 personas, BASIC — Pasadía 1 Día queda en *$740.000 COP*.\n\nEs un día largo: mina guiada, caminata al mirador del Púlpito y comidas tipo fiambre, sin noche. ¿Les reviso cupo para alguna de las salidas de noviembre?",
           "leadScore": 20,
           "shouldAlertOwner": false,
           "shouldSendImage": false
         },
         {
           "user": "El 28 de noviembre",
-          "reply": "El 28 de noviembre entonces. Para 2 personas, BASIC queda en *$740.000 COP*.\n\n¿Qué te parece esa fecha?",
-          "leadScore": 31,
+          "reply": "El 28 de noviembre entonces. Para 2 personas, BASIC — Pasadía 1 Día queda en *$740.000 COP*.\n\n¿Qué te parece?",
+          "leadScore": 36,
           "shouldAlertOwner": false,
           "shouldSendImage": false
         }
       ],
       "runs": {
         "total": 2,
-        "passed": 0
+        "passed": 1
       },
-      "retries": 2
+      "retries": 1
     },
     {
       "id": "buying-signal-payment-facts",

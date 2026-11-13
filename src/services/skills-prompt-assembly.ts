@@ -788,7 +788,7 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
   if (lang) {
     const replyCode = replyLanguage ?? lang;
     const replyName = languageName(replyCode);
-    runtime.push(`Language: ${replyCode}. Reply in ${replyName} on every turn, even when the customer answers with one word in another language ("sí", "En pareja!"): that does not change the reply language. Earlier replies in the history, even in another language, do not decide it: the language is this line's. CATALOGO and DATOS are written in Spanish: translate them when you reply.${replyCode === 'en' ? ' Write amounts with English separators (740,000), even where DATOS writes 740.000.' : ''}`);
+    runtime.push(`Language: ${replyCode}. Reply in ${replyName} on every turn, even when the customer answers with one word in another language ("sí", "En pareja!"): that does not change the reply language. Earlier replies in the history, even in another language, do not decide it: the language is this line's. CATALOGO and DATOS are written in Spanish: translate them when you reply.${replyCode === 'en' ? ' Write amounts with English separators (1,234,000), even where DATOS writes 1.234.000.' : ''}`);
     if (languageSwitchedThisTurn) {
       runtime.push(`IDIOMA CAMBIADO: el cliente pasó a escribir en ${replyName}. Responde en ${replyName} desde este mensaje, sin comentar el cambio ni preguntar en qué idioma seguir. Tus respuestas anteriores en otro idioma no cuentan: sigue en ${replyName} hasta el final de la conversación, salvo que el cliente vuelva a cambiar.`);
     }
@@ -931,8 +931,8 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
       // up?" got the answer plus the full two-region pitch (340-460 chars). The answer comes
       // first and the destination is asked by name only; the regions are explained next turn.
       const regionsCue = otherQuestionThisTurn
-        ? ' El cliente hizo otra pregunta: respóndela primero en 1 o 2 frases con hechos del CATALOGO (si un hecho es de un solo destino, di de cuál); luego pregunta a cuál de las dos regiones quiere ir, en una sola frase que solo las nombre con su ubicación, sin describirlas.'
-        : ' Explica las regiones según SITE_SELECTION, con una diferencia real de cada destino tomada de SITE_SELECTION y CATALOGO; si el cliente o el anuncio ya mostraron un interés, conéctalo con la región que más lo cumple según SITE_SELECTION, sin descartar la otra: elige el cliente.';
+        ? ' El cliente hizo otra pregunta: respóndela primero en 1 o 2 frases con hechos del CATALOGO (si un hecho es de un solo destino, di de cuál; planes y precios esperan al destino); luego pregunta a cuál de las dos regiones quiere ir, en una sola frase que solo las nombre con su ubicación, sin describirlas.'
+        : ' Explica las regiones según SITE_SELECTION, con una diferencia real de cada destino tomada de SITE_SELECTION y CATALOGO; si el cliente o el anuncio ya mostraron un interés, conéctalo con la región que más lo cumple según SITE_SELECTION, sin descartar la otra: elige el cliente. Si el cliente hizo otra pregunta, respóndela en una frase antes.';
       // The answer plus the destination question needs more room than the question alone
       // (live safety answer: 4 required facts + destination = 340-380 chars).
       const siteLimit = otherQuestionThisTurn ? REPLY_CHAR_LIMIT.siteQuestionWithAnswer : REPLY_CHAR_LIMIT.siteQuestion;

@@ -68,7 +68,7 @@
       "id": "pasadia-distinguished",
       "rule": "reply_must_match",
       "patterns": [
-        "day[- ]trip|day pass|no overnight|without (?:an? )?(?:night|overnight|lodging|accommodation)|no (?:lodging|accommodation)|single day|same[- ]day"
+        "day[- ]trip|day pass|no overnight|without (?:an? )?(?:night|overnight|lodging|accommodation)|no (?:lodging|accommodation)|BASIC[^.]{0,40}(?:single day|same[- ]day)"
       ],
       "turn": 3,
       "critical": true

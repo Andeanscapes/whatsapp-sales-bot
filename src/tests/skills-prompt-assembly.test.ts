@@ -154,6 +154,26 @@ describe('skills-prompt-assembly', () => {
     expect(newR01).not.toContain('Turno de retorno');
   });
 
+  // Release 2.5.0 eval: a question on the destination turn is answered first and the regions are
+  // only named; without one the regions are explained. Both keep the answer-first line.
+  it('SITIO PENDIENTE answers a question first and only names the regions', () => {
+    const sitio = (extra: Partial<Parameters<typeof assembleSystemPrompt>[0]>): string =>
+      /SITIO PENDIENTE:[^\n]*/.exec(assembleSystemPrompt({ skills: loadSkills(), lang: 'es', collectedFields: { personas: 2 }, ...extra }))?.[0] ?? '';
+    const withQuestion = sitio({ otherQuestionThisTurn: true });
+    expect(withQuestion).toContain('El cliente hizo otra pregunta: respóndela primero');
+    expect(withQuestion).toContain('planes y precios esperan al destino');
+    expect(withQuestion).toContain('Máximo 380 caracteres');
+    expect(withQuestion).not.toContain('Explica las regiones según SITE_SELECTION');
+    const plain = sitio({});
+    expect(plain).toContain('Explica las regiones según SITE_SELECTION');
+    expect(plain).toContain('Si el cliente hizo otra pregunta, respóndela en una frase antes.');
+    expect(plain).toContain('Máximo 320 caracteres');
+    // A price question keeps the default branch plus the price note.
+    const price = sitio({ pendingPriceQuestion: true, entryMarker: { code: 'C01', temperature: 'cold' } });
+    expect(price).toContain('Explica las regiones según SITE_SELECTION');
+    expect(price).toContain('depende del destino');
+  });
+
   it('the start point never says getting there is theirs when they asked for transport', () => {
     const runtime = (fields: Record<string, unknown>, extra: Partial<Parameters<typeof assembleSystemPrompt>[0]> = {}): string =>
       assembleSystemPrompt({ skills: loadSkills(), lang: 'es', collectedFields: fields, ...extra }).split('\nRUNTIME:').at(-1) ?? '';

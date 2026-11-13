@@ -7,7 +7,7 @@
     "average": 97,
     "min": 57,
     "count": 64,
-    "hardFails": 5,
+    "hardFails": 4,
     "costUsd": 2.1469713
   },
   "scenarios": [
@@ -5249,11 +5249,9 @@
     },
     {
       "id": "safety-objection-military-presence",
-      "score": 83,
+      "score": 100,
       "hardFail": false,
-      "notes": [
-        "[reservoir] missing: reservoir"
-      ],
+      "notes": [],
       "criteria": [
         {
           "id": "military",
@@ -5267,11 +5265,11 @@
         {
           "id": "reservoir",
           "rule": "reply_must_match",
-          "passed": false,
-          "score": 0,
+          "passed": true,
+          "score": 100,
           "weight": 2,
           "critical": false,
-          "evidence": "missing: reservoir"
+          "evidence": "required patterns present"
         },
         {
           "id": "guide",
@@ -5307,20 +5305,20 @@
           "score": 100,
           "weight": 2,
           "critical": true,
-          "evidence": "length=337 max=400"
+          "evidence": "length=308 max=320"
         }
       ],
       "turnResults": [
         {
           "user": "C01 Hi! How much is the emerald mine experience?",
-          "reply": "Hi, I'm TestOwner, one of the founders of Andean Scapes. We run real emerald-mine adventures with local guides in Boyacá — mud, water and all, not a polished tourist setup.\n\nThe exact price depends on how you travel and how many of you there are, so I'll get it to you as soon as I know: is this for you solo, as a couple, or a group?",
+          "reply": "Hi, I'm TestOwner, cofounder of Andean Scapes. This is a real emerald mine with local guides, mud, water and the community that lives it every day.\n\nThe exact price depends on how you're coming and who with. Is this for you solo, as a couple, or a group?",
           "leadScore": 6,
           "shouldAlertOwner": false,
           "shouldSendImage": false
         },
         {
           "user": "Is it safe? Are there armed people there?",
-          "reply": "Fair question. We go in with local guides and full safety gear, and the mine has controlled entry — you're never in there alone. There's also a military base in the Chivor mining area, and the team checks conditions before every departure.\n\nWhich region are you thinking of: Chivor, in eastern Boyacá, or Coscuez, in San Pablo de Borbur?",
+          "reply": "Fair question. The mines have controlled entry and you always go in with a guide and safety gear. Chivor sits in a zone of reservoirs with military bases nearby, and the team checks conditions before every departure.\n\nWhich region interests you: Chivor, in eastern Boyacá, or Coscuez, in San Pablo de Borbur?",
           "leadScore": 16,
           "shouldAlertOwner": false,
           "shouldSendImage": false
@@ -5463,12 +5461,9 @@
     },
     {
       "id": "two-destinations-group-first",
-      "score": 93,
-      "hardFail": true,
-      "notes": [
-        "[no-destination-question-opener] matched: coscuez|borbur|\\bwest(?:ern)?\\b|which (?:destination|region)[^.!?\\n]*\\?",
-        "run 1 retried after a failed run"
-      ],
+      "score": 100,
+      "hardFail": false,
+      "notes": [],
       "criteria": [
         {
           "id": "asks-group-first",
@@ -5491,11 +5486,11 @@
         {
           "id": "no-destination-question-opener",
           "rule": "reply_must_not_match",
-          "passed": false,
-          "score": 0,
+          "passed": true,
+          "score": 100,
           "weight": 2,
           "critical": true,
-          "evidence": "matched: coscuez|borbur|\\bwest(?:ern)?\\b|which (?:destination|region)[^.!?\\n]*\\?"
+          "evidence": "no forbidden patterns"
         },
         {
           "id": "no-price-opener",
@@ -5594,44 +5589,43 @@
           "score": 100,
           "weight": 2,
           "critical": true,
-          "evidence": "words=54 max=65"
+          "evidence": "words=57 max=65"
         }
       ],
       "turnResults": [
         {
           "user": "C01 Hi! How much is the mining experience?",
-          "reply": "Hi, I'm TestOwner, founder of Andean Scapes. This is a real emerald mine with local guides, mud and all — not a tour set up for show.\n\nThe exact price depends on your group and which region you pick, so give me one detail: would this be just you, a couple, or a group?",
+          "reply": "Hi, I'm TestOwner, founder of Andean Scapes. This is a real emerald mine with local guides — mud, water, and the actual mining community, not a tour set up for visitors.\n\nI'll give you the exact price as soon as I know a couple of details. Would this be just you, as a couple, or a group?",
           "leadScore": 6,
           "shouldAlertOwner": false,
           "shouldSendImage": false
         },
         {
           "user": "We are 2",
-          "reply": "Nice, two of you works well for this.\n\nWe run in two emerald regions, both about 5-6 hours from Bogotá. Chivor is the more off-road one: night at Hacienda El Recuerdo and a 4x4 up to the mine. Coscuez has a rural hotel in the village and the Chacaro square chat.\n\nWhich one sounds more like your trip?",
+          "reply": "Perfect. We run in two emerald regions, and the price depends on which one you pick.\n\nChivor is in eastern Boyacá: you sleep at Hacienda El Recuerdo and go up to the mine in 4x4 — the most off-road of the two. Coscuez, in western Boyacá, is a rural hotel in the village with the emerald talk in Chacaro square.\n\nWhich one sounds more like you?",
           "leadScore": 16,
           "shouldAlertOwner": false,
           "shouldSendImage": false
         },
         {
           "user": "not sure, which one do you recommend?",
-          "reply": "If you don't have a preference, I'd start with Chivor. The 4x4 up to the mine and the night at the hacienda make it feel more like an adventure.\n\nCoscuez is a great option too, just a different flavor. Want me to go with Chivor?",
-          "leadScore": 22,
+          "reply": "Both are real and safe, so it comes down to what you enjoy. If you like off-road and a hacienda stay, Chivor is the one I'd start with.\n\nCoscuez is more village life and the Chacaro square talk, plus Fura and Tena on the full plan. Want me to go with Chivor?",
+          "leadScore": 20,
           "shouldAlertOwner": false,
           "shouldSendImage": false
         },
         {
           "user": "yes, Chivor",
-          "reply": "Chivor it is. The trip starts and ends in the main square of Chivor, Boyacá — getting there is on you.\n\nBASIC is a single day, no overnight. For 2 people: CORE — 2 Días / 1 Noche is *$950,000 COP* (recommended), and PRIME — 2 Días / 1 Noche is $1,700,000 COP.\n\nWhich one do we go with?",
-          "leadScore": 29,
+          "reply": "Chivor it is. The plan starts and ends in Chivor village, Boyacá — getting there is on you.\n\nBASIC is a single day with no overnight. For 2 people: CORE — 2 Days / 1 Night is *$950,000 COP* (recommended), and PRIME — 2 Days / 1 Night is $1,700,000 COP.\n\nWhich one do we go with?",
+          "leadScore": 27,
           "shouldAlertOwner": false,
           "shouldSendImage": false
         }
       ],
       "runs": {
         "total": 2,
-        "passed": 1
-      },
-      "retries": 1
+        "passed": 2
+      }
     },
     {
       "id": "two-destinations-moto-interest",
