@@ -1,6 +1,6 @@
 {
   "id": "pickup-bogota-assumed",
-  "source": "Bogotá pickup assumption: starts in Chivor; private 4x4 price only when asked, as a separate line.",
+  "source": "Bogotá pickup assumption: starts in Chivor; private 4x4 price only when asked, as a separate line. | 2026-11-12: with two destinations the start point is the town of the chosen region; the check accepts either word order and \"the town\" (it judged wording, not the fact).",
   "tags": [
     "price",
     "live"
@@ -16,7 +16,7 @@
       "weight": 2,
       "critical": true,
       "patterns": [
-        "(inicia|empieza)[^.]{0,60}Chivor"
+        "(?:inicia|empieza|arranca)[^.]{0,60}(?:Chivor|Borbur|pueblo)|(?:Chivor|Borbur|pueblo)[^.]{0,60}(?:inicia|empieza|arranca)"
       ]
     },
     {

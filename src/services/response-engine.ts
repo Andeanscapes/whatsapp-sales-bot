@@ -1876,6 +1876,7 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     // old and the PRECIO YA ENTREGADO cue would forbid the total they just asked for.
     priceGiven: repos.conversation.getPriceGivenAt(customerPhone) != null && !(returningTurn && isPriceQuestion(message)),
     latestCustomerMessage: message,
+    otherQuestionThisTurn: /[?¿]/.test(message) && !isPriceQuestion(message),
     dateSelectedThisTurn,
     planSelectedThisTurn,
     closeCtaAcceptedThisTurn,

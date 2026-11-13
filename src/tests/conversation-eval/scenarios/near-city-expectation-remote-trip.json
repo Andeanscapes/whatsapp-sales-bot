@@ -16,7 +16,7 @@
       "weight": 2,
       "critical": true,
       "patterns": [
-        "\\bno\\b[^.]{0,30}(cerca|corto|visita)|dos d[ií]as|d[ií]as con noche"
+        "\\bno\\b[^.]{0,30}(cerca|corto|visita)|no (?:tanto|exactamente|tan as[ií])|dos d[ií]as|d[ií]as con noche"
       ]
     },
     {

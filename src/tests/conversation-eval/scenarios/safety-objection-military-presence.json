@@ -1,6 +1,6 @@
 {
   "id": "safety-objection-military-presence",
-  "source": "Safety objection: uses the owner-confirmed facts; never a guarantee.",
+  "source": "Safety objection: uses the owner-confirmed facts; never a guarantee. | 2026-11-12: with two destinations this turn must also ask the destination, so the cap moved 320 -> 400 (cue 380).",
   "tags": [
     "price",
     "live"
@@ -63,7 +63,7 @@
       "turn": 2,
       "weight": 2,
       "critical": true,
-      "expected": 320
+      "expected": 400
     }
   ],
   "turns": [
