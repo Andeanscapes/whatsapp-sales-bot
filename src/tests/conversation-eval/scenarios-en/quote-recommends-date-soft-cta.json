@@ -79,7 +79,7 @@
   "turns": [
     {
       "user": "Which date do you recommend for the CORE?",
-      "mockReply": "For 2 people, CORE has published departures on November 14 and November 28. Want me to check the spot for November 14?",
+      "mockReply": "For 2 people, CORE has published departures on November 21 and November 28. Want me to check the spot for November 21?",
       "expect": {
         "shouldSendReply": true
       }

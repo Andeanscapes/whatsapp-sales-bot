@@ -1,0 +1,100 @@
+{
+  "id": "pickup-bogota-assumed",
+  "source": "Bogotá pickup assumption: starts in Chivor; private 4x4 price only when asked, as a separate line. | 2026-11-12: with two destinations the start point is the town of the chosen region; the check accepts either word order and \"the town\" (it judged wording, not the fact).",
+  "tags": [
+    "price",
+    "live"
+  ],
+  "lang": "en",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "starts-in-site",
+      "rule": "reply_must_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "(?:starts|begins)[^.]{0,60}(?:Chivor|Borbur)|(?:Chivor|Borbur)[^.]{0,60}(?:starts|begins)"
+      ]
+    },
+    {
+      "id": "no-pickup-claim",
+      "rule": "reply_must_not_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "we (pick|collect)|we'll pick|we will pick|pick (you|us) up from|departs from Bogot|(tour|trip|bus) (leaves|departs) (from )?Bogot"
+      ]
+    },
+    {
+      "id": "own-transport",
+      "rule": "reply_must_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": false,
+      "patterns": [
+        "on your own|by car, motorbike or bus"
+      ]
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    },
+    {
+      "id": "short-reply",
+      "rule": "reply_length_at_most",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "expected": 320
+    },
+    {
+      "id": "no-pickup-claim-t3",
+      "rule": "reply_must_not_match",
+      "turn": 3,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "we (pick|collect)|we'll pick|we will pick|pick (you|us) up from|departs from Bogot"
+      ]
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "turn": 3,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    }
+  ],
+  "turns": [
+    {
+      "user": "C01 Hi! How much is the emerald mine experience?",
+      "mockReply": "Hi! I'm Heinner, co-founder of Andean Scapes with Alexandra. It's a real emerald mine in Chivor with local miners; the price depends on the group. Is it for you alone, as a couple, or as a group?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Just me. What time do you leave Bogotá?",
+      "mockReply": "You don't leave from Bogotá: it starts and ends in the town of Chivor, 5-6 hours away. You get there on your own by car, motorbike or bus. For 1 person: CORE (recommended), $620,000; PRIME, $960,000. Which one shall we go with?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Can you pick us up in Bogotá?",
+      "mockReply": "I can quote private transport from Bogotá as a separate service, but for one person it is usually expensive; the direct bus is the cheapest option. Are you going by bus or by your own car to Chivor?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

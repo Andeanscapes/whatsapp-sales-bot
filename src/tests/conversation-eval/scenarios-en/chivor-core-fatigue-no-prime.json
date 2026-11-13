@@ -1,18 +1,68 @@
 {
   "id": "chivor-core-fatigue-no-prime",
-  "source": "EN twin of chivor-core-fatigue-no-prime (review 2026-10-26: a fatigue concern must never be answered with the plan that has the longest day)",
-  "tags": ["plan", "objection", "live"],
+  "source": "EN twin of chivor-core-fatigue-no-prime (review 2026-10-26: a fatigue concern must never be answered with the plan that has the longest day) | 2026-11-12: Coscuez on sale, so the bot asks the destination after the group (SITIO PENDIENTE) and the customer answers Chivor; later criteria moved one turn down.",
+  "tags": [
+    "plan",
+    "objection",
+    "live"
+  ],
   "lang": "en",
   "liveRuns": 1,
   "minLiveScore": 85,
   "criteria": [
-    { "id": "no-prime-for-fatigue", "rule": "reply_must_not_match", "patterns": ["\\bPRIME\\b"], "turn": 4, "critical": true },
-    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 4, "critical": true }
+    {
+      "id": "no-prime-for-fatigue",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "\\bPRIME\\b"
+      ],
+      "turn": 5,
+      "critical": true
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 5,
+      "critical": true
+    }
   ],
   "turns": [
-    { "user": "hi", "mockReply": "Hi, I'm Heinner from Andean Scapes. Are you coming as a couple, solo or in a group?", "expect": { "shouldSendReply": true } },
-    { "user": "couple", "mockReply": "We have BASIC, a day trip with no overnight, CORE with one mine and lodging, and PRIME with two mines and horseback riding. Which one fits you best?", "expect": { "shouldSendReply": true } },
-    { "user": "the core one", "mockReply": "CORE is a guided mine, a hike to the viewpoint and a night at the hacienda. For 2 people it comes to $950,000 COP, which is $475,000 COP per person. What date do you have in mind?", "expect": { "shouldSendReply": true, "priceJustGiven": true } },
-    { "user": "is it very tough? I get tired easily walking", "mockReply": "There's hiking and physical effort, but the night at the hacienda splits the day in two and the pace adapts to the group. Does anyone have a condition we should keep in mind?", "expect": { "shouldSendReply": true } }
+    {
+      "user": "hi",
+      "mockReply": "Hi, I'm Heinner from Andean Scapes. Are you coming as a couple, solo or in a group?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "couple",
+      "mockReply": "Great. Colombia has two emerald regions and we run trips in both: Chivor, in the east, with a night at a hacienda, and Coscuez, in the west, with a rural hotel in Borbur. Which one would you like to visit?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Chivor",
+      "mockReply": "We have BASIC, a day trip with no overnight, CORE with one mine and lodging, and PRIME with two mines and horseback riding. Which one fits you best?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "the core one",
+      "mockReply": "CORE is a guided mine, a hike to the viewpoint and a night at the hacienda. For 2 people it comes to $950,000 COP, which is $475,000 COP per person. What date do you have in mind?",
+      "expect": {
+        "shouldSendReply": true,
+        "priceJustGiven": true
+      }
+    },
+    {
+      "user": "is it very tough? I get tired easily walking",
+      "mockReply": "There's hiking and physical effort, but the night at the hacienda splits the day in two and the pace adapts to the group. Does anyone have a condition we should keep in mind?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
   ]
 }

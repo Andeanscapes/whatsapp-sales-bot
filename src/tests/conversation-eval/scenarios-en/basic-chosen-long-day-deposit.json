@@ -1,0 +1,117 @@
+{
+  "id": "basic-chosen-long-day-deposit",
+  "source": "Day plan chosen: total and long day first; the 30% deposit (not the 25% of the overnight plans) only once a date is picked. | 2026-11-12: Coscuez on sale, so the bot asks the destination after the group (SITIO PENDIENTE) and the customer answers Chivor; later criteria moved one turn down.",
+  "tags": [
+    "price",
+    "live"
+  ],
+  "lang": "en",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "day-total",
+      "rule": "reply_must_match",
+      "turn": 3,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "740,000"
+      ]
+    },
+    {
+      "id": "long-day",
+      "rule": "reply_must_match",
+      "turn": 3,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "long day"
+      ]
+    },
+    {
+      "id": "same-day-return",
+      "rule": "reply_must_match",
+      "turn": 3,
+      "weight": 2,
+      "critical": false,
+      "patterns": [
+        "that same evening|same day|same evening"
+      ]
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "turn": 3,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    },
+    {
+      "id": "short-reply",
+      "rule": "reply_length_at_most",
+      "turn": 3,
+      "weight": 2,
+      "critical": true,
+      "expected": 320
+    },
+    {
+      "id": "no-25-deposit",
+      "rule": "reply_must_not_match",
+      "turn": 4,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "25 ?%"
+      ]
+    },
+    {
+      "id": "deposit-30",
+      "rule": "reply_must_match",
+      "turn": 4,
+      "weight": 2,
+      "critical": false,
+      "patterns": [
+        "30 ?%"
+      ]
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "turn": 4,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    }
+  ],
+  "turns": [
+    {
+      "user": "C01 Hi! How much is the emerald mine experience?",
+      "mockReply": "Hi! I'm Heinner, co-founder of Andean Scapes with Alexandra. It's a real emerald mine in Chivor with local miners; the price depends on the group. Is it for you alone, as a couple, or as a group?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "I want the day trip for 2",
+      "mockReply": "Great. Colombia has two emerald regions and we run trips in both: Chivor, in the east, with a night at a hacienda, and Coscuez, in the west, with a rural hotel in Borbur. Which one would you like to visit?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Chivor",
+      "mockReply": "For 2 people, the day trip is $740,000. It is a long day: you arrive Saturday at 9:00 am and return that same evening, about 5-6 hours back. Which date works for you?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "November 28",
+      "mockReply": "November 28 is one of the planned dates; the team confirms the spot. To reserve it, the deposit is 30%: $222,000. Whose name shall I put the booking under?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

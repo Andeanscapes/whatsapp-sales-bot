@@ -94,6 +94,14 @@
       "patterns": [
         "ferry|Macanal|Ubal[aá]|dirt road|unpaved|35 km|road condition"
       ]
+    },
+    {
+      "id": "opener-words",
+      "rule": "reply_words_at_most",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "expected": 65
     }
   ],
   "turns": [

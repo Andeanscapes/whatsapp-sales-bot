@@ -3,7 +3,7 @@ import { loadSkills } from '../services/skill-loader.js';
 import { getActiveExperience } from '../services/product-registry.js';
 import { calculatePriceQuote, findQuotedAlternative, getStartingPrice, listCheaperPlanQuotes } from '../services/pricing-calculator.js';
 import { ADDON_ID_APIARY_CATTLE, ADDON_ID_PRIVATE_TRANSPORT } from '../services/dynamic-data-service.js';
-import { allSitesActivePayload, useAllSitesActive, withSamePricing } from './helpers/all-sites-catalog.js';
+import { allSitesActivePayload, useAllSitesActive, withoutPlans, withSamePricing } from './helpers/all-sites-catalog.js';
 
 // The multi-site regression net runs with every destination active, as the CI
 // fixture had before destinations could be paused.
@@ -13,8 +13,9 @@ beforeEach(() => {
 
 describe('calculatePriceQuote', () => {
   it('lists cheaper same-site plans and excludes equal-price plans at other sites', () => {
-    // Coscuez CORE priced exactly like Chivor's cheapest plan: equal is not cheaper.
-    const exp = getActiveExperience(useAllSitesActive(withSamePricing(allSitesActivePayload(), 'basic_1d_chivor', 'core_2d1n_coscuez')));
+    // Coscuez CORE priced exactly like Chivor's cheapest plan: equal is not cheaper. Coscuez BASIC
+    // is dropped here: it is cheaper than Chivor PRIME and would be listed.
+    const exp = getActiveExperience(useAllSitesActive(withSamePricing(withoutPlans(allSitesActivePayload(), ['basic_1d_coscuez']), 'basic_1d_chivor', 'core_2d1n_coscuez')));
 
     const alternatives = listCheaperPlanQuotes(exp, 'prime_2d1n_chivor', 2);
 
@@ -26,9 +27,10 @@ describe('calculatePriceQuote', () => {
     const exp = getActiveExperience(loadSkills());
     const withTransport = calculatePriceQuote(exp, { planId: 'basic_1d_chivor', people: 2, transportNeed: 'from_bogota' });
 
-    const [alternative] = listCheaperPlanQuotes(exp, 'prime_2d1n_chivor', 2, 'from_bogota') ?? [];
+    const alternative = (listCheaperPlanQuotes(exp, 'prime_2d1n_chivor', 2, 'from_bogota') ?? [])
+      .find(option => option.planId === 'basic_1d_chivor');
 
-    expect(alternative?.planId).toBe('basic_1d_chivor');
+    expect(alternative).toBeDefined();
     expect(alternative?.total).toBe(withTransport?.total ?? withTransport?.planTotal);
     expect(alternative?.planTotal).toBe(withTransport?.planTotal);
   });
@@ -57,7 +59,10 @@ describe('calculatePriceQuote', () => {
     const exp = getActiveExperience(loadSkills());
     expect(listCheaperPlanQuotes(exp, null, 2)).toBeNull();
     expect(listCheaperPlanQuotes(exp, 'prime_2d1n_coscuez', 0)).toBeNull();
-    expect(listCheaperPlanQuotes(exp, 'basic_1d_chivor', 2)).toEqual([]);
+    // Coscuez BASIC is the cheapest plan in the catalog: nothing is cheaper.
+    expect(listCheaperPlanQuotes(exp, 'basic_1d_coscuez', 2)).toEqual([]);
+    // Chivor BASIC (740.000 for 2) is above Coscuez BASIC (720.000), so the other site qualifies.
+    expect(listCheaperPlanQuotes(exp, 'basic_1d_chivor', 2)?.map(option => option.planId)).toEqual(['basic_1d_coscuez']);
   });
 
   it('uses the lowest one-person package total for a starting price', () => {

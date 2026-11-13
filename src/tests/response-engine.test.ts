@@ -29,8 +29,7 @@ import {
 import { env } from '../config/env.js';
 import { resetRoutingConfigCache, type RoutingConfig } from '../services/lead-routing.js';
 import { calculatePriceQuote, formatCop, getQuoteFingerprint } from '../services/pricing-calculator.js';
-import { readFileSync } from 'node:fs';
-import { allSitesActivePayload, useAllSitesActive, withoutPlans } from './helpers/all-sites-catalog.js';
+import { allSitesActivePayload, useAllSitesActive, usePausedCoscuez, withoutPlans } from './helpers/all-sites-catalog.js';
 
 // The multi-site regression net runs with every destination active, as the CI
 // fixture had before destinations could be paused.
@@ -249,6 +248,83 @@ describe('processMessage', () => {
     expect(prompt).toContain('historial local disponible');
     expect(prompt).toContain('personas=2');
     expect(prompt).not.toContain('sin historial local');
+    expect(prompt).toContain('RETORNO CON HISTORIAL');
+  });
+
+  // R01 also brings NEW people from the culture videos (marketing brief 2026-11-12). History is
+  // decided against the marker's arrival: a new R01 lead stays a first contact on EVERY turn
+  // (review 2026-11-12: it used to become a "return" from its second message, with no price).
+  it('a new R01 lead is a first contact on every turn, not only the first', async () => {
+    const phone = '573001112480';
+    mockLlmComplete.mockReset();
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: '¿Viajas solo, en pareja o en grupo?' } }));
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+
+    for (const message of ['R01 ¡Hola! Vi sus videos de la cultura esmeraldera y quiero saber cómo es ir a la mina', 'Somos pareja', 'Chivor, ¿cuánto vale?']) {
+      await processMessage({ repos, customerPhone: phone, message });
+      const runtime = String(mockLlmComplete.mock.calls.at(-1)?.[0].systemPrompt ?? '').split('\nRUNTIME:').at(-1) ?? '';
+      repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: '¿Viajas solo, en pareja o en grupo?', created_at: new Date(Date.now() + 1_000).toISOString() });
+      expect(runtime, message).not.toContain('RETORNO CON HISTORIAL');
+      expect(runtime, message).not.toContain('Turno de retorno');
+    }
+  });
+
+  // The marker can arrive on an inbound the engine never processed (stored, then picked up from
+  // the previous inbound). That message IS the marker: it is not earlier history.
+  it('an R01 marker picked up from the previous inbound is still a first contact', async () => {
+    const phone = '573001112482';
+    repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'R01 ¡Hola! Vi sus videos de la cultura esmeraldera', created_at: new Date(Date.now() - 60_000).toISOString() });
+    mockLlmComplete.mockReset();
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: '¿Viajas solo, en pareja o en grupo?' } }));
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+
+    await processMessage({ repos, customerPhone: phone, message: 'Somos pareja' });
+
+    const runtime = String(mockLlmComplete.mock.calls.at(-1)?.[0].systemPrompt ?? '').split('\nRUNTIME:').at(-1) ?? '';
+    expect(runtime).toContain('ENTRADA: retargeting (R01)');
+    expect(runtime).not.toContain('RETORNO CON HISTORIAL');
+  });
+
+  // Review 2026-11-12: with earlier history, an R01 message the engine never processed and a
+  // text-less inbound after it, the marker time must be the R01 row's, not the oldest inbound.
+  it('dates a picked-up R01 marker from its own row, keeping earlier history a return', async () => {
+    const phone = '573001112483';
+    const at = (minutesAgo: number): string => new Date(Date.now() - minutesAgo * 60_000).toISOString();
+    repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'Hola', created_at: at(120) });
+    repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: '¿Viajas solo, en pareja o en grupo?', created_at: at(119) });
+    const markerAt = at(10);
+    repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'R01 hola de nuevo', created_at: markerAt });
+    repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'image', created_at: at(5) });
+    mockLlmComplete.mockReset();
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: '¿Qué te falta resolver?' } }));
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+
+    await processMessage({ repos, customerPhone: phone, message: 'la fecha' });
+
+    const runtime = String(mockLlmComplete.mock.calls.at(-1)?.[0].systemPrompt ?? '').split('\nRUNTIME:').at(-1) ?? '';
+    expect(repos.conversation.getByPhone(phone)?.entry_marker_at).toBe(markerAt);
+    expect(runtime).toContain('RETORNO CON HISTORIAL');
+  });
+
+  it('a lead who talked with us before the R01 marker is a return, qualified or not', async () => {
+    const phone = '573001112481';
+    repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'Hola', created_at: new Date(Date.now() - 3_600_000).toISOString() });
+    repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: '¿Viajas solo, en pareja o en grupo?', created_at: new Date(Date.now() - 3_500_000).toISOString() });
+    mockLlmComplete.mockReset();
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: '¿Qué te falta resolver?' } }));
+    vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+    vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+
+    for (const message of ['R01 hola de nuevo', 'la fecha']) {
+      await processMessage({ repos, customerPhone: phone, message });
+      const runtime = String(mockLlmComplete.mock.calls.at(-1)?.[0].systemPrompt ?? '').split('\nRUNTIME:').at(-1) ?? '';
+      expect(runtime, message).toContain('RETORNO CON HISTORIAL');
+      // Without group and plan the history is still not claimed (no invented familiarity).
+      expect(runtime, message).toContain('sin historial local');
+    }
   });
 
   describe('bare day answer to our own date list', () => {
@@ -291,6 +367,52 @@ describe('processMessage', () => {
       const prompt = await answerEn(phone, message);
       expect(prompt).toContain('ESTADO DE TURNO: T3a');
       expect(String(repos.conversation.getByPhone(phone)?.collected_date ?? '')).toMatch(/28/);
+    });
+
+    // Dev 2026-11-11: the quote recommended one date ("¿Revisamos el cupo del 28 de
+    // noviembre?"); "si" stored no date, so the reservation "si" never alerted the team.
+    it.each([
+      ['573007710951', 'es', 'Para 2 personas, el plan queda en $950.000 COP. ¿Revisamos el cupo del 28 de noviembre?', 'si'],
+      ['573007710952', 'en', 'For 2 people, the plan comes to $950,000 COP. Want me to check availability for November 28?', 'yes'],
+    ])('a yes to the single recommended date stores it (%s)', async (phone, language, quote, message) => {
+      repos.conversation.upsert(phone, { language, collected_people: 2, collected_plan: 'core_2d1n_chivor', price_given_at: new Date().toISOString() });
+      repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'CORE', created_at: new Date(Date.now() - 120_000).toISOString() });
+      repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: quote, created_at: new Date(Date.now() - 60_000).toISOString() });
+      mockLlmComplete.mockReset();
+      mockLlmComplete.mockResolvedValueOnce(fromOld({ response: { reply: 'Listo. ¿Quieres que iniciemos la reserva?' } }));
+      vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+      vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+      await processMessage({ repos, customerPhone: phone, message });
+      expect(String(repos.conversation.getByPhone(phone)?.collected_date ?? '')).toMatch(/28/);
+      expect(mockLlmComplete.mock.calls[0]?.[0].systemPrompt ?? '').toContain('ESTADO DE TURNO: T3b');
+    });
+
+    it.each([
+      ['573007710954', 'Para 2 personas, el plan queda en $950.000 COP. ¿Te aparto el cupo?'],
+      ['573007710955', 'Yo me ocupo del 4x4 el 28 de noviembre. ¿Te mando fotos de la hacienda?'],
+    ])('a yes stores no date without a cupo question naming one offered date (%s)', async (phone, body) => {
+      repos.conversation.upsert(phone, { language: 'es', collected_people: 2, collected_plan: 'core_2d1n_chivor', price_given_at: new Date().toISOString() });
+      repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'CORE', created_at: new Date(Date.now() - 120_000).toISOString() });
+      repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body, created_at: new Date(Date.now() - 60_000).toISOString() });
+      mockLlmComplete.mockReset();
+      mockLlmComplete.mockResolvedValueOnce(fromOld({ response: { reply: '¿Qué fecha les sirve?' } }));
+      vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+      vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+      await processMessage({ repos, customerPhone: phone, message: 'si' });
+      expect(repos.conversation.getByPhone(phone)?.collected_date ?? null).toBeNull();
+    });
+
+    it('a yes after a cupo question naming two dates stores none', async () => {
+      const phone = '573007710953';
+      repos.conversation.upsert(phone, { language: 'es', collected_people: 2, collected_plan: 'core_2d1n_chivor', price_given_at: new Date().toISOString() });
+      repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'CORE', created_at: new Date(Date.now() - 120_000).toISOString() });
+      repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: 'Para 2 personas, el plan queda en $950.000 COP. ¿Revisamos cupo para el 21 o el 28 de noviembre?', created_at: new Date(Date.now() - 60_000).toISOString() });
+      mockLlmComplete.mockReset();
+      mockLlmComplete.mockResolvedValueOnce(fromOld({ response: { reply: '¿Cuál de las dos fechas les sirve?' } }));
+      vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+      vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+      await processMessage({ repos, customerPhone: phone, message: 'si' });
+      expect(repos.conversation.getByPhone(phone)?.collected_date ?? null).toBeNull();
     });
 
     it('does not pick an English day we did not offer', async () => {
@@ -1405,7 +1527,7 @@ describe('processMessage', () => {
       lead_score: 40,
     });
     mockLlmComplete.mockResolvedValueOnce(fromOld({ response: {
-      reply: 'Te entiendo. La experiencia esencial CORE reduce actividades frente a la más completa y para 2 personas queda en $1.200.000 COP. ¿Quieres comparar ese alcance?',
+      reply: 'Te entiendo. La experiencia esencial CORE reduce actividades frente a la más completa y para 2 personas queda en $1.004.000 COP. ¿Quieres comparar ese alcance?',
     } }));
 
     const result = await processMessage({
@@ -1423,9 +1545,11 @@ describe('processMessage', () => {
     expect(prompt).toContain('OBJECION DE PRECIO:');
     expect(prompt).toContain('core_2d1n_coscuez');
     const objectionCue = prompt.match(/OBJECION DE PRECIO:[^\n]*/)?.[0] ?? '';
-    // Another site is offered only below this site's cheapest plan: Chivor BASIC and
-    // CORE qualify, Chivor PRIME does not.
-    expect(objectionCue).toContain('basic_1d_chivor');
+    // Same-site cheaper plans are offered: Coscuez BASIC (720.000) qualifies, CORE does not
+    // in this objection cue. Another site is offered only below this site's cheapest plan
+    // (Coscuez BASIC 720.000): no Chivor plan qualifies.
+    expect(objectionCue).toContain('basic_1d_coscuez');
+    expect(objectionCue).not.toContain('basic_1d_chivor');
     expect(objectionCue).not.toContain('prime_2d1n_chivor');
     expect(prompt).not.toContain('PRECIO YA ENTREGADO:');
     expect(isPriceObjectionMessage('Se me hace algo costoso, tienes planes más básicos ?')).toBe(true);
@@ -2467,14 +2591,14 @@ describe('processMessage', () => {
     expect(conv.soft_closed_at).toBeTruthy();
   });
 
-  // The ad opener runs on the CI catalog as served (one active destination): with two
-  // open destinations the destination question owns the first turn instead.
-  const useServedCatalog = (): void => {
-    useAllSitesActive(JSON.parse(readFileSync(new URL('../../scripts/bot-dynamic.ci.json', import.meta.url), 'utf8')) as unknown);
+  // The ad opener needs one destination on sale: with two, the destination question owns the
+  // first turn (covered in multisite-plan-context). Coscuez is paused in memory here.
+  const useSingleDestinationCatalog = (): void => {
+    usePausedCoscuez();
   };
 
   it('first reply to an ad lead with the group unknown gets the APERTURA cue and no price anchor', async () => {
-    useServedCatalog();
+    useSingleDestinationCatalog();
     mockLlmComplete.mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
@@ -2494,7 +2618,7 @@ describe('processMessage', () => {
   });
 
   it('an unmarked ad entry (Meta default text + referral) gets the APERTURA cue; an organic first message does not', async () => {
-    useServedCatalog();
+    useSingleDestinationCatalog();
     mockLlmComplete.mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
@@ -2510,7 +2634,7 @@ describe('processMessage', () => {
   });
 
   it('a price asked on the ad opener is quoted per plan once the group arrives', async () => {
-    useServedCatalog();
+    useSingleDestinationCatalog();
     mockLlmComplete.mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
@@ -2533,7 +2657,7 @@ describe('processMessage', () => {
   });
 
   it('an organic lead that asked the price keeps the price gate when it gives the group', async () => {
-    useServedCatalog();
+    useSingleDestinationCatalog();
     mockLlmComplete.mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
@@ -2548,7 +2672,7 @@ describe('processMessage', () => {
   });
 
   it('a funnel (H) opener gets the group-first APERTURA cue', async () => {
-    useServedCatalog();
+    useSingleDestinationCatalog();
     mockLlmComplete.mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
@@ -5894,8 +6018,7 @@ describe('logQuoteMismatch', () => {
 
 describe('processMessage — paused stored destination', () => {
   beforeEach(() => {
-    setDynamicService(null);
-    loadSkills();
+    usePausedCoscuez();
     mockLlmComplete.mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
@@ -6119,7 +6242,8 @@ describe('processMessage — plan reference switch and plan card', () => {
     await processMessage({ repos, customerPhone: phone, message: 'How much is it?' });
 
     const prompt = mockLlmComplete.mock.calls[0]?.[0].systemPrompt ?? '';
-    expect(prompt).toMatch(/QUOTE LOCK: escribe "For 2 people, the plan comes to \$[\d.]+ COP"/);
+    // English separators in the verbatim English sentence ("$950,000", not "$950.000").
+    expect(prompt).toMatch(/QUOTE LOCK: escribe "For 2 people, the plan comes to \$\d{1,3}(?:,\d{3})+ COP"/);
     expect(prompt).not.toContain('el plan queda en');
   });
 
@@ -6663,6 +6787,65 @@ describe('processMessage — site switch by bare yes and other-site photos', () 
     expect(result.planSwitchedAfterQuote).toBe(true);
   });
 
+  // "te interesa" is also a soft reservation frame: a "sí" that only chooses the destination
+  // used to page the team as a reservation handoff on the first quote.
+  // The destination answer is not a booking, but a message that asks to book keeps its meaning,
+  // even when it also switches site (the highest-intent message must still alert).
+  // The engine flags a non-price question so SITIO PENDIENTE answers it before naming the regions.
+  it.each([
+    ['¿Es seguro? ¿Hay gente armada por allá?', '573009995150', true],
+    ['¿Cuánto vale?', '573009995151', false],
+    ['somos 2', '573009995152', false],
+  ])('flags a non-price question on the destination turn: %s', async (message, phone, expected) => {
+    repos.conversation.upsert(phone, { language: 'es', collected_people: 2 });
+    repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'Hola', created_at: new Date(Date.now() - 120_000).toISOString() });
+    repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: '¿Viajas solo, en pareja o en grupo?', created_at: new Date(Date.now() - 60_000).toISOString() });
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: '¿A cuál de las dos regiones les gustaría ir?' } }));
+
+    await processMessage({ repos, customerPhone: phone, message });
+
+    const sitio = /SITIO PENDIENTE:[^\n]*/.exec(String(mockLlmComplete.mock.calls.at(-1)?.[0].systemPrompt ?? ''))?.[0] ?? '';
+    expect(sitio).toContain('SITIO PENDIENTE');
+    expect(sitio.includes('El cliente hizo otra pregunta: respóndela primero')).toBe(expected);
+  });
+
+  it.each([
+    ['mejor Chivor, quiero reservar', '573009995140'],
+    ['quiero reservar en Chivor para el 21 de noviembre', '573009995141'],
+  ])('an explicit booking request that switches site keeps its reservation intent: %s', async (message, phone) => {
+    seedQuotedCoscuez(phone, 'Para 2 personas, el plan queda en $2.270.000 COP. ¿Les reviso cupo?');
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'Listo, reviso el cupo en Chivor con el equipo. ¿A nombre de quién?' } }));
+
+    await processMessage({ repos, customerPhone: phone, message });
+
+    // Switching site clears the previous quote, so no handoff fires on this turn (the team is
+    // paged once the new site is quoted); the booking intent itself must survive the switch.
+    expect(repos.conversation.getByPhone(phone)?.lead_intent).toBe('ready_to_book');
+    expect(repos.conversation.getCollectedPlan(phone)).toBe(CHIVOR_PRIME);
+  });
+
+  it.each(['si', 'dale, Chivor', 'sí, me interesa'])('a destination answer quotes without a reservation handoff: %s', async message => {
+    const phone = `5730099951${String(message.length).padStart(2, '0')}`;
+    repos.conversation.upsert(phone, { language: 'es', collected_people: 2 });
+    repos.message.addMessage({
+      customer_phone: phone, direction: 'inbound', message_type: 'text',
+      body: 'C01 ¡Hola! ¿Cuánto vale la experiencia minera?', created_at: new Date(Date.now() - 180_000).toISOString(),
+    });
+    repos.message.addMessage({
+      customer_phone: phone, direction: 'outbound', message_type: 'text',
+      body: 'Las dos son muy buenas y distintas. Para empezar te sugiero Chivor. ¿Te interesa empezar por Chivor?',
+      created_at: new Date(Date.now() - 60_000).toISOString(),
+    });
+    const total = calculatePriceQuote(getActiveExperience(getSkills()), { planId: 'core_2d1n_chivor', people: 2 })!.planTotal;
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: `Para 2 personas, CORE queda en ${formatCop(total)}. ¿Con cuál seguimos?` } }));
+
+    const result = await processMessage({ repos, customerPhone: phone, message });
+
+    expect(mockLlmComplete.mock.calls[0]?.[0].systemPrompt).toContain('SITIO ACTIVO: chivor');
+    expect(result.ownerAlertType).not.toBe('reservation_handoff');
+    expect(repos.conversation.getByPhone(phone)?.conversation_mode).toBe('bot');
+  });
+
   it.each([
     '¿Te mando fotos de la mina en Chivor?',
     '¿Qué fecha les sirve?',
@@ -6736,7 +6919,7 @@ describe('processMessage — site switch by bare yes and other-site photos', () 
   // it, or "brochure de Chivor" from a Coscuez lead ships nothing (invariant 11).
   it.each([
     ['prime_2d1n_coscuez', 'Chivor', 'https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/chivor/plans/prime/card.png?v=61b11c8f405b'],
-    ['prime_2d1n_chivor', 'Coscuez', 'https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/plans/prime/card.png'],
+    ['prime_2d1n_chivor', 'Coscuez', 'https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/plans/prime/card.png?v=fb37be9a6c27'],
   ])('ships the other site card on a brochure request with %s stored', async (storedPlan, site, cardUrl) => {
     const previousSendImages = env.SEND_IMAGES_ENABLED;
     const phone = '573009995109';
@@ -7039,7 +7222,7 @@ describe('processMessage — site switch by bare yes and other-site photos', () 
           reply: `CORE en Coscuez queda en ${formatCop(total)}. ¿Tenés algún mes en mente?\n[[FOTOS:mine]]`,
         } }));
 
-        const result = await processMessage({ repos, customerPhone: phone, message: 'si el basico' });
+        const result = await processMessage({ repos, customerPhone: phone, message: 'si la esencial' });
 
         expect(repos.conversation.getCollectedPlan(phone)).toBe(planId);
         expect(result.galleryRequestedByCustomer).toBe(false);

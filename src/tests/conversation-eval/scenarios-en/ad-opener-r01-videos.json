@@ -104,6 +104,14 @@
       "patterns": [
         "as we discussed|last time|we talked|you mentioned before"
       ]
+    },
+    {
+      "id": "opener-words",
+      "rule": "reply_words_at_most",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "expected": 65
     }
   ],
   "turns": [

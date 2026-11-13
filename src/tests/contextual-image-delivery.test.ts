@@ -304,7 +304,7 @@ describe('contextual image delivery', () => {
 
     await vi.waitFor(() => expect(sendImageUrlMock).toHaveBeenCalledWith(
       phone,
-      'https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/plans/core/card.png',
+      'https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/plans/core/card.png?v=3e45dddfc462',
       expect.any(String),
     ));
   });
@@ -323,7 +323,7 @@ describe('contextual image delivery', () => {
 
     await vi.waitFor(() => expect(sendImageUrlMock).toHaveBeenCalledWith(
       phone,
-      'https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/plans/core/card.png',
+      'https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/plans/core/card.png?v=3e45dddfc462',
       expect.any(String),
     ));
     expect(sendImageUrlMock).toHaveBeenCalledTimes(1);
@@ -459,7 +459,7 @@ describe('contextual image delivery', () => {
   // of being displaced by the unsolicited gallery.
   it('prefers the plan card over a proactive gallery on a price turn', async () => {
     const phone = '573001110020';
-    const card = 'https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/plans/core/card.png';
+    const card = 'https://cdn.andeanscapes.com/whatsapp_bot/media/emerald_mining_tour/coscuez/plans/core/card.png?v=3e45dddfc462';
     repos.conversation.upsert(phone, { collected_plan: 'core_2d1n_coscuez' });
     processMessageMock.mockResolvedValue(baseResult({
       priceJustGiven: true,
@@ -551,7 +551,7 @@ describe('contextual image delivery', () => {
 
       await inbound(phone, 'wamid-coscuez-choice', 'el de coscuez que vale ?');
       await vi.waitFor(() => expect(sendTextMock).toHaveBeenCalledWith(phone, choice));
-      await inbound(phone, 'wamid-coscuez-core-quote', 'si el basico');
+      await inbound(phone, 'wamid-coscuez-core-quote', 'si la esencial');
       await vi.waitFor(() => expect(repos.outboundMedia.listByPhone(phone)).toHaveLength(1));
 
       expect(repos.conversation.getCollectedPlan(phone)).toBe(planId);

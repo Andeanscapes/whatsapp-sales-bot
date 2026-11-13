@@ -1,0 +1,117 @@
+{
+  "id": "basic-chosen-long-day-deposit",
+  "source": "Day plan chosen: total and long day first; the 30% deposit (not the 25% of the overnight plans) only once a date is picked. | 2026-11-12: Coscuez on sale, so the bot asks the destination after the group (SITIO PENDIENTE) and the customer answers Chivor; later criteria moved one turn down.",
+  "tags": [
+    "price",
+    "live"
+  ],
+  "lang": "es",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "day-total",
+      "rule": "reply_must_match",
+      "turn": 3,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "740[.,]000"
+      ]
+    },
+    {
+      "id": "long-day",
+      "rule": "reply_must_match",
+      "turn": 3,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "d[ií]a largo"
+      ]
+    },
+    {
+      "id": "same-day-return",
+      "rule": "reply_must_match",
+      "turn": 3,
+      "weight": 2,
+      "critical": false,
+      "patterns": [
+        "esa misma tarde|mismo d[ií]a|regres[a-z]+ esa (misma )?tarde"
+      ]
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "turn": 3,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    },
+    {
+      "id": "short-reply",
+      "rule": "reply_length_at_most",
+      "turn": 3,
+      "weight": 2,
+      "critical": true,
+      "expected": 320
+    },
+    {
+      "id": "no-25-deposit",
+      "rule": "reply_must_not_match",
+      "turn": 4,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "25 ?%"
+      ]
+    },
+    {
+      "id": "deposit-30",
+      "rule": "reply_must_match",
+      "turn": 4,
+      "weight": 2,
+      "critical": false,
+      "patterns": [
+        "30 ?%"
+      ]
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "turn": 4,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    }
+  ],
+  "turns": [
+    {
+      "user": "C01 ¡Hola! ¿Cuánto vale la experiencia minera?",
+      "mockReply": "¡Hola! Soy Heinner, cofundador de Andean Scapes con Alexandra. Es una mina real de esmeraldas en Chivor con mineros locales; el valor depende del grupo. ¿Sería para ti solo, en pareja o para un grupo?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Quiero el pasadía para 2",
+      "mockReply": "Buenísimo. En Colombia hay dos regiones esmeralderas y operamos en las dos: Chivor, en el oriente, con noche en hacienda, y Coscuez, en el occidente, con hotel rural en Borbur. ¿A cuál les gustaría ir?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Chivor",
+      "mockReply": "Para 2 personas, el pasadía queda en $740.000. Es un día largo: llegan el sábado a las 9:00 am y regresan esa misma tarde, unas 5-6 horas de vuelta. ¿Qué fecha les sirve?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "El 28 de noviembre",
+      "mockReply": "El 28 de noviembre está entre las fechas planeadas; el equipo confirma el cupo. Para apartarlo es un anticipo del 30%: $222.000. ¿A nombre de quién lo reservamos?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}
