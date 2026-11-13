@@ -16,7 +16,7 @@
       "weight": 2,
       "critical": true,
       "patterns": [
-        "not (?:that |very )?(close|near|a short|a two-hour)|not (?:quite|exactly|really)|two-day|overnight"
+        "not (?:that |very |quite |exactly |really )?(close|near|a short|a two-hour)|two-day|overnight"
       ]
     },
     {

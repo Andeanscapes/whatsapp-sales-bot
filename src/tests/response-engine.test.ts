@@ -6791,6 +6791,24 @@ describe('processMessage — site switch by bare yes and other-site photos', () 
   // used to page the team as a reservation handoff on the first quote.
   // The destination answer is not a booking, but a message that asks to book keeps its meaning,
   // even when it also switches site (the highest-intent message must still alert).
+  // The engine flags a non-price question so SITIO PENDIENTE answers it before naming the regions.
+  it.each([
+    ['¿Es seguro? ¿Hay gente armada por allá?', '573009995150', true],
+    ['¿Cuánto vale?', '573009995151', false],
+    ['somos 2', '573009995152', false],
+  ])('flags a non-price question on the destination turn: %s', async (message, phone, expected) => {
+    repos.conversation.upsert(phone, { language: 'es', collected_people: 2 });
+    repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'Hola', created_at: new Date(Date.now() - 120_000).toISOString() });
+    repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: '¿Viajas solo, en pareja o en grupo?', created_at: new Date(Date.now() - 60_000).toISOString() });
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: '¿A cuál de las dos regiones les gustaría ir?' } }));
+
+    await processMessage({ repos, customerPhone: phone, message });
+
+    const sitio = /SITIO PENDIENTE:[^\n]*/.exec(String(mockLlmComplete.mock.calls.at(-1)?.[0].systemPrompt ?? ''))?.[0] ?? '';
+    expect(sitio).toContain('SITIO PENDIENTE');
+    expect(sitio.includes('El cliente hizo otra pregunta: respóndela primero')).toBe(expected);
+  });
+
   it.each([
     ['mejor Chivor, quiero reservar', '573009995140'],
     ['quiero reservar en Chivor para el 21 de noviembre', '573009995141'],

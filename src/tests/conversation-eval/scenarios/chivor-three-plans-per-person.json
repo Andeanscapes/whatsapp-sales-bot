@@ -68,7 +68,7 @@
       "id": "pasadia-distinguished",
       "rule": "reply_must_match",
       "patterns": [
-        "pasad[ií]a|sin noche|sin alojamiento|un solo d[ií]a|mismo d[ií]a"
+        "pasad[ií]a|sin noche|sin alojamiento|BASIC[^.]{0,40}(?:un solo d[ií]a|mismo d[ií]a)"
       ],
       "turn": 3,
       "critical": true

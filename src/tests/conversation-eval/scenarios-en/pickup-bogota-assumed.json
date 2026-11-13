@@ -16,7 +16,7 @@
       "weight": 2,
       "critical": true,
       "patterns": [
-        "(?:starts|begins|start|begin)[^.]{0,60}(?:Chivor|Borbur|town|village)|(?:Chivor|Borbur|town|village)[^.]{0,60}(?:starts|begins)"
+        "(?:starts|begins)[^.]{0,60}(?:Chivor|Borbur)|(?:Chivor|Borbur)[^.]{0,60}(?:starts|begins)"
       ]
     },
     {
