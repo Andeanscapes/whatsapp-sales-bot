@@ -20,6 +20,7 @@ const deepSeekApiResponseSchema = z.object({
   })).min(1),
   usage: z.object({
     prompt_tokens: z.number().int().optional().catch(undefined),
+    prompt_cache_hit_tokens: z.number().int().optional().catch(undefined),
     completion_tokens: z.number().int().optional().catch(undefined),
     completion_tokens_details: z.object({
       reasoning_tokens: z.number().int().optional().catch(undefined),
@@ -42,6 +43,8 @@ export interface DeepSeekCompletionResult {
   finishReason: string | undefined;
   promptTokens: number;
   completionTokens: number;
+  // Provider prompt-cache hits (observability only; cost is still estimated at the full input price).
+  cachedPromptTokens?: number;
 }
 
 /**
@@ -84,6 +87,7 @@ export async function requestDeepSeekCompletion(input: DeepSeekCompletionInput):
     const choice = parsed.data.choices[0];
     const content = choice?.message?.content?.trim();
     const promptTokens = parsed.data.usage?.prompt_tokens ?? 0;
+    const cachedPromptTokens = parsed.data.usage?.prompt_cache_hit_tokens ?? 0;
     const completionTokens = parsed.data.usage?.completion_tokens ?? 0;
 
     // Transport OK even if content empty — do not treat as infra outage.
@@ -96,10 +100,10 @@ export async function requestDeepSeekCompletion(input: DeepSeekCompletionInput):
         reasoningTokens: parsed.data.usage?.completion_tokens_details?.reasoning_tokens ?? 0,
         hasReasoningContent: Boolean(choice?.message?.reasoning_content),
       }, `${input.logTag} empty content`);
-      return { content: '', finishReason: choice?.finish_reason, promptTokens, completionTokens };
+      return { content: '', finishReason: choice?.finish_reason, promptTokens, completionTokens, cachedPromptTokens };
     }
 
-    return { content, finishReason: choice?.finish_reason, promptTokens, completionTokens };
+    return { content, finishReason: choice?.finish_reason, promptTokens, completionTokens, cachedPromptTokens };
   } catch (error) {
     logger.warn({ error: error instanceof Error ? error.message : 'unknown' }, `${input.logTag} request failed`);
     void reportDeepSeekFailure(error instanceof Error ? error.message : 'conexion fallida');

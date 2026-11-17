@@ -1,0 +1,65 @@
+{
+  "id": "release251-soft-next-step-after-price",
+  "source": "Bot export 2026-11-16: \"ok, gracias\" after a price was silence in 71 chats; the reply must offer one soft next step and not repeat the price. | 2.5.1: C02 so the price comes on turn 1 (C01 asks the destination first).",
+  "tags": [
+    "release-2.5.1",
+    "live",
+    "price"
+  ],
+  "lang": "es",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "no-repeated-price",
+      "rule": "reply_must_not_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\$\\s?\\d|\\d{3}[.,]000"
+      ]
+    },
+    {
+      "id": "one-soft-step",
+      "rule": "reply_must_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "sábado|separo|reservar|cuál|cuándo|fechas|cuento"
+      ]
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    },
+    {
+      "id": "reply-short",
+      "rule": "reply_words_at_most",
+      "turn": 2,
+      "weight": 1,
+      "expected": 45
+    }
+  ],
+  "turns": [
+    {
+      "user": "C02 ¡Hola! Somos 2, ¿cuánto vale?",
+      "mockReply": "En pareja, CORE queda en $950.000 COP, recomendado, con noche en la hacienda, comidas y mina con guía. ¿Con qué sábado seguimos?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "ok gracias",
+      "mockReply": "Con gusto. Si quieren, les separo el sábado que prefieran. ¿Cuál les sirve?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

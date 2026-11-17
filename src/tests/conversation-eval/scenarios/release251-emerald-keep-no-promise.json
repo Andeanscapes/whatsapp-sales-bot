@@ -1,0 +1,71 @@
+{
+  "id": "release251-emerald-keep-no-promise",
+  "source": "Public comment 2026-11-16 and bot data: emeralds are not guaranteed; if one appears it is agreed with the miners on the spot.",
+  "tags": [
+    "release-2.5.1",
+    "live",
+    "objection"
+  ],
+  "lang": "es",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "no-guarantee",
+      "rule": "reply_must_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "garantiz|no es (?:parte|garantizad)"
+      ]
+    },
+    {
+      "id": "no-promise-to-keep",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "te la (?:llevas|quedas|puedes llevar)|es tuya|te la puedes quedar"
+      ]
+    },
+    {
+      "id": "asks-group",
+      "rule": "reply_must_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "[^¿.!?\\n]*(?:sol[oa]s?\\b|pareja|grupo)[^¿.!?\\n]*\\?"
+      ]
+    },
+    {
+      "id": "no-price-turn-1",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\$\\s?\\d|\\bCOP\\b|\\d{3}[.,]000|\\bdesde\\s*\\*?\\$"
+      ]
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    }
+  ],
+  "turns": [
+    {
+      "user": "C01 ¡Hola! Si encuentro una esmeralda, ¿me la puedo llevar?",
+      "mockReply": "Eso no lo garantizamos: la esmeralda no es parte de la experiencia. Si aparece, se acuerda en el momento con los mineros y el guía. ¿La experiencia sería para ti solo, en pareja o para un grupo?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

@@ -860,7 +860,7 @@
               "label": "Familiar Adventure / General",
               "description": "Usuario que busca aventura familiar o grupal sin transporte específico.",
               "valueHook": "Es una inmersión real en la zona esmeraldera: mina con guías locales, noche en hacienda y desconexión total. Adaptamos el ritmo para tu grupo.",
-              "diagnosisQuestion": "¿Qué les encaja más: BASIC pasadía sin noche, CORE con una mina y noche, o PRIME con dos minas y cabalgata?",
+              "diagnosisQuestion": "¿Qué les encaja más: CORE con una mina y noche, PRIME con dos minas y cabalgata, o BASIC pasadía sin noche?",
               "planMatch": "BASIC (pasadia), CORE o PRIME segun alcance y tiempo buscado.",
               "contextualMediaTypes": [
                 "mine"
@@ -870,7 +870,7 @@
               "label": "4x4 / Off-Road Adventure",
               "description": "Usuario entusiasta de 4x4 y off-road.",
               "valueHook": "Es un viaje en carro o 4x4 hasta Chivor para entrar a una mina real de esmeraldas con mineros locales y pasar la noche en la hacienda.",
-              "diagnosisQuestion": "¿Qué les encaja más para la ruta 4x4: BASIC pasadía sin noche, CORE con una mina y noche, o PRIME con dos minas y cabalgata?",
+              "diagnosisQuestion": "¿Qué les encaja más para la ruta 4x4: CORE con una mina y noche, PRIME con dos minas y cabalgata, o BASIC pasadía sin noche?",
               "planMatch": "2D/1N con énfasis en ruta desafiante. Si vienen en vehículo propio, confirmamos compatibilidad.",
               "contextualMediaTypes": [
                 "car",
@@ -881,7 +881,7 @@
               "label": "Moto / Bike Adventure",
               "description": "Usuario interesado en rutas en motocicleta.",
               "valueHook": "Es una rodada en moto hasta Chivor para entrar a una mina real de esmeraldas con mineros locales y pasar la noche en la hacienda.",
-              "diagnosisQuestion": "¿Qué les encaja más para la ruta en moto: BASIC pasadía sin noche, CORE con una mina y noche, o PRIME con dos minas y cabalgata?",
+              "diagnosisQuestion": "¿Qué les encaja más para la ruta en moto: CORE con una mina y noche, PRIME con dos minas y cabalgata, o BASIC pasadía sin noche?",
               "planMatch": "2D/1N diseñado para moto riders. Confirmamos que traen equipamiento adecuado.",
               "contextualMediaTypes": [
                 "bike",
@@ -892,7 +892,7 @@
               "label": "Kids / Family Mining Education",
               "description": "Familia con niños interesada en experiencia educativa y minería.",
               "valueHook": "Los niños aman las minas (¡Minecraft es real aquí!). Tenemos guías especializados en niños, comidas adaptadas y actividades como apicultura que los encantarán.",
-              "diagnosisQuestion": "¿Qué edades tienen los niños? Según eso les digo si encaja BASIC pasadía sin noche, CORE con una mina y noche, o PRIME con dos minas y cabalgata.",
+              "diagnosisQuestion": "¿Qué edades tienen los niños? Según eso les digo si encaja CORE con una mina y noche, PRIME con dos minas y cabalgata, o BASIC pasadía sin noche.",
               "planMatch": "2D/1N con enfoque family-friendly, CORE o PRIME según edades. Ajustamos ritmo y comidas según necesidades.",
               "contextualMediaTypes": [
                 "kids",
@@ -903,7 +903,7 @@
               "label": "Hot Lead - General",
               "description": "Lead con alto intent desde funnel, sin transporte específico.",
               "valueHook": "",
-              "diagnosisQuestion": "¿Qué les encaja más: BASIC pasadía sin noche, CORE con una mina y noche, o PRIME con dos minas y cabalgata?",
+              "diagnosisQuestion": "¿Qué les encaja más: CORE con una mina y noche, PRIME con dos minas y cabalgata, o BASIC pasadía sin noche?",
               "planMatch": "BASIC, CORE o PRIME. Confirmamos fechas disponibles.",
               "contextualMediaTypes": [
                 "mine"
@@ -913,7 +913,7 @@
               "label": "Hot Lead - 4x4",
               "description": "Lead con alto intent desde funnel, interesado en ruta 4x4.",
               "valueHook": "",
-              "diagnosisQuestion": "¿Qué les encaja más para la ruta 4x4: BASIC pasadía sin noche, CORE con una mina y noche, o PRIME con dos minas y cabalgata?",
+              "diagnosisQuestion": "¿Qué les encaja más para la ruta 4x4: CORE con una mina y noche, PRIME con dos minas y cabalgata, o BASIC pasadía sin noche?",
               "planMatch": "2D/1N con énfasis en ruta 4x4. Confirmamos transporte y fechas.",
               "contextualMediaTypes": [
                 "car",
@@ -924,7 +924,7 @@
               "label": "Hot Lead - Moto",
               "description": "Lead con alto intent desde funnel, interesado en ruta moto.",
               "valueHook": "",
-              "diagnosisQuestion": "¿Qué les encaja más para la ruta en moto: BASIC pasadía sin noche, CORE con una mina y noche, o PRIME con dos minas y cabalgata?",
+              "diagnosisQuestion": "¿Qué les encaja más para la ruta en moto: CORE con una mina y noche, PRIME con dos minas y cabalgata, o BASIC pasadía sin noche?",
               "planMatch": "2D/1N diseñado para moto riders. Confirmamos equipamiento y fechas.",
               "contextualMediaTypes": [
                 "bike",
@@ -935,7 +935,7 @@
               "label": "Hot Lead - Kids",
               "description": "Lead con alto intent desde funnel, interesado en experiencia para niños.",
               "valueHook": "",
-              "diagnosisQuestion": "¿Qué edades traen? Según eso les digo si encaja BASIC pasadía sin noche, CORE con una mina y noche, o PRIME con dos minas y cabalgata.",
+              "diagnosisQuestion": "¿Qué edades traen? Según eso les digo si encaja CORE con una mina y noche, PRIME con dos minas y cabalgata, o BASIC pasadía sin noche.",
               "planMatch": "2D/1N family-friendly, CORE o PRIME según edades. Ajustamos según preferencias.",
               "contextualMediaTypes": [
                 "kids",
@@ -1841,7 +1841,7 @@
         }
       },
       "siteSelection": {
-        "context": "En Colombia hay dos regiones esmeralderas y operamos en las dos. Las dos son seguras, quedan a una distancia parecida de Bogota (unas 5-6 horas) y cada una es una experiencia unica: no hay una mejor que la otra. Las dos tienen mina real de esmeraldas con guias de la region, naturaleza y caminata, pero la experiencia minera es distinta. Chivor, en el oriente de Boyaca (Valle de Tenza): noche en la Hacienda El Recuerdo y subida en 4x4 hasta la mina; es la que mas se disfruta en plan offroad, en moto o en carro, y en PRIME suma dos minas y cabalgata. Coscuez, en el occidente de Boyaca (San Pablo de Borbur): hotel rural en el pueblo, charla esmeraldera en la plaza Chacaro y, en PRIME, excursion a los cerros de Fura y Tena. Muestra las dos y deja que el cliente elija segun lo que le interesa; si menciona moto, carro, 4x4 o ruta, cuentale que Chivor es la mas offroad, sin descartar Coscuez. Si no tiene preferencia, sugiere Chivor como punto de partida.",
+        "context": "En Colombia hay dos regiones esmeralderas y operamos en las dos. En las dos el equipo valida las condiciones operativas antes de cada salida. Quedan a una distancia parecida de Bogota (unas 5-6 horas) y cada una es una experiencia unica: no hay una mejor que la otra. Las dos tienen mina real de esmeraldas con guias de la region, naturaleza y caminata, pero la experiencia minera es distinta. Chivor, en el oriente de Boyaca (Valle de Tenza): noche en la Hacienda El Recuerdo y subida en 4x4 hasta la mina; es la que mas se disfruta en plan offroad, en moto o en carro, y en PRIME suma dos minas y cabalgata. Coscuez, en el occidente de Boyaca (San Pablo de Borbur): hotel rural en el pueblo, charla esmeraldera en la plaza Chacaro y, en PRIME, excursion a los cerros de Fura y Tena. Muestra las dos y deja que el cliente elija segun lo que le interesa; si menciona moto, carro, 4x4 o ruta, cuentale que Chivor es la mas offroad, sin descartar Coscuez. Si no tiene preferencia, sugiere Chivor como punto de partida.",
         "defaultSiteId": "chivor"
       },
       "name": "Emerald Mining Tour",

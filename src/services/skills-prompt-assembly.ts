@@ -675,6 +675,20 @@ export interface AssembleSystemPromptInput {
   languageSwitchedThisTurn?: boolean;
 }
 
+// Menu order (2.5.1): the recommended plan first, the day plan last, so the first named option is the
+// overnight plan the bot recommends (the catalog listed BASIC first).
+function menuOrder<T extends { duration?: string; recommended?: boolean }>(plans: T[]): T[] {
+  const rank = (plan: T): number => (plan.recommended === true ? 0 : DAY_PLAN_DURATION.test(plan.duration ?? '') ? 2 : 1);
+  return [...plans].sort((a, b) => rank(a) - rank(b));
+}
+
+// Asked for one day or a lower budget: only then the day plan is named first (2.5.1).
+const SECURITY_QUESTION = /segur|peligr|armad|guerrill|militar|ej[eé]rcito|orden p[uú]blico|riesgo|safe|danger|armed|military|troops/i;
+const DAY_PLAN_ASKED = /\b(d[ií]a|pasad[ií]a|sin noche|un solo d[ií]a|presupuesto|barat[oa]|econ[oó]mic[oa]|caro|cara|no me alcanza|menos plata|one day|day trip|budget|cheap|expensive|afford|no overnight|no night)\b/i;
+function dayPlanRequested(message: string | null | undefined): boolean {
+  return typeof message === 'string' && DAY_PLAN_ASKED.test(message);
+}
+
 /**
  * Plans quoted for a price asked before any plan is chosen: the overnight plans. A day
  * plan ("1D/0N") is offered only when the customer asks for a day trip (owner plan
@@ -692,7 +706,7 @@ const DAY_PLAN_DURATION = /\/\s*0\s*n\b/i;
  * a reply 37% of the time vs 47-52% under 350; plan menus dropped from 66% (200-249) to
  * 56% at 250+. Guidance only: no guard trims the model's text (invariant 8).
  */
-export const REPLY_CHAR_LIMIT = { planOptions: 280, quote: 340, priceNoPlan: 340, siteQuestion: 320, siteQuestionWithAnswer: 380 } as const;
+export const REPLY_CHAR_LIMIT = { planOptions: 280, quote: 340, priceNoPlan: 420, siteQuestion: 320, siteQuestionWithAnswer: 380 } as const;
 
 type CatalogPlan = ReturnType<typeof getPlans>[number];
 
@@ -768,9 +782,10 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
   // While the destination is open on the opening turn, the ad angle (route, moto, kids) comes
   // from the catalog default destination's segment: without it C02/C03 openers lost the angle
   // (live 2026-11-12, ad-opener-c03-moto 100 -> 89). DESTINO SIN ELEGIR still bans site facts.
-  const defaultSiteId = getSiteSelection(activeExperience)?.defaultSiteId;
-  const segmentSiteId = selectedSiteId
-    ?? (siteQuestionDeferred && sites.some(site => site.id === defaultSiteId) ? defaultSiteId : undefined);
+  // 2.5.1 (owner 2026-11-16): a non-vehicle code (C01, R01, kids) runs on videos from both regions, so
+  // no site's segment is borrowed while the destination is open: Chivor's copy ("noche en hacienda")
+  // is wrong for a Coscuez video. Vehicle codes (C02/C03/H02/H03) arrive with the site already set.
+  const segmentSiteId = selectedSiteId;
   // A return (REGRESO, or a retarget marker with real history) is answered from the history:
   // segment copy is written for a first contact. Live 2026-11-12: the R01 segment now asks a new
   // video viewer what caught their attention, and a returning R01 lead followed it and got quoted.
@@ -825,22 +840,30 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
   // Export 2026-11-07: ad leads answered a price or plan menu in the first reply far
   // less than a group question (2.3.0: 32% replied). The method lives here, not in a
   // skill file: as skill text the model applied it inconsistently.
+  // 2.5.1: a security question gets the catalog wording only. Live 2026-11-16 (EN) the bot
+  // invented "military bases" and named the valley; business.md §9 bans both.
+  if (typeof latestCustomerMessage === 'string' && SECURITY_QUESTION.test(latestCustomerMessage)) {
+    runtime.push('SEGURIDAD: si pregunta por seguridad, responde solo con esto: región tranquila; el equipo valida las condiciones operativas antes de cada salida; siempre se entra con guía local y equipo de seguridad. No menciones bases militares, ejército, grupos armados ni el nombre de la región o del valle. Nunca digas "100% seguro".');
+  }
+
   if (adOpeningTurn && !returning && (!sitePending || siteQuestionDeferred) && !pausedPlan && !proactiveMode) {
     runtime.push(
       'APERTURA DE ANUNCIO: primer mensaje de un lead de anuncio y aún no conoces el grupo. El anuncio prometió que quien fundó Andean Scapes le cuenta en persona. '
       + 'En 2 o 3 líneas y máximo 60 palabras, sin viñetas: (1) preséntate en primera persona con tu identidad de PERSONA; '
       + '(2) una frase de valor: parafrasea el valueHook del ENTRY_SEGMENT conservando el detalle concreto que lo distingue (cómo llega o con quién viaja); si el segmento no trae valueHook, toma ese ángulo de su diagnosisQuestion o planMatch (ruta 4x4, moto, niños); sin segmento, una frase vivida del CATALOGO; '
-      // With two destinations the price depends on the one chosen next turn, so the bridge
-      // must not promise it in the very next message.
-      + (siteQuestionDeferred
-        ? '(3) un puente de media frase hacia el valor exacto y las fechas (llegan en cuanto te dé un par de datos; no menciones regiones ni destinos; no prometas que llegan en tu siguiente mensaje; nunca "en los próximos días"), y una única pregunta, con estas tres opciones dichas explícitamente'
-        : '(3) un puente breve hacia el valor exacto y las fechas (llegan en tu siguiente mensaje, apenas responda; nunca "en los próximos días"), y una única pregunta')
-      + ': si la experiencia sería para él/ella solo, en pareja o para un grupo '
+      // Clarity before price (2.5.1): the first message says what the experience is (a weekend,
+      // with a night there) so the lead does not read it as a day trip or a pickup from Bogotá.
+      // It never promises the price: the price comes once the lead answers the group question.
+      + '(3) una frase de claridad del plan: es un fin de semana (sábado a domingo) con noche allá; solo si no preguntó por transporte, llega al pueblo por su cuenta y desde ahí lo lleva el equipo; '
+      + '(4) una única pregunta: si la experiencia sería para él/ella solo, en pareja o para un grupo, con el motivo "para recomendarte el plan" '
       + '(si el cliente o el ENTRY_SEGMENT hablan de niños: cuántos van y qué edades tienen los niños). '
       + 'Aunque diga que ya consultó antes, sin historial no preguntes qué lo frenó: eso va en el turno siguiente. '
-      + 'Sin precios, sin $, sin "desde", sin menú de planes (no enumeres los planes ni sus nombres) y sin fechas, aunque el cliente los pida: '
-      + (siteQuestionDeferred ? 'el valor exacto llega cuando sepas el grupo y el destino. ' : 'el valor exacto llega en el turno siguiente. ')
-      + 'Si nombró un plan o una duración, reconócelo en media frase sin precio. Ruta, vías o ferry solo si los preguntó.',
+      + 'Sin precios, sin $, sin "desde", sin "valor exacto", sin "te cuento el precio", sin menú de planes (no enumeres los planes ni sus nombres) y sin fechas, aunque el cliente los pida. '
+      + (siteQuestionDeferred ? 'El destino (Chivor o Coscuez) se pregunta después, con el grupo. ' : '')
+      + 'Si nombró un plan o una duración, reconócelo en media frase sin precio. '
+      // Live 2026-11-16: "¿es un día nada más?" got "Sí, hay un plan de pasadía" with no weekend: the confusion the owner sees.
+      + 'Si pregunta si es de un solo día o ida y vuelta, responde primero que el plan es de fin de semana (sábado a domingo) con noche allá; el pasadía existe solo como opción de un día largo. '
+      + 'Ruta, vías o ferry solo si los preguntó.',
     );
   }
 
@@ -922,7 +945,7 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
     } else if (siteQuestionDeferred) {
       // Named apart from SITIO PENDIENTE on purpose: the skills tell the model to ask the
       // destination whenever that token appears.
-      runtime.push('DESTINO SIN ELEGIR: aún no sabes el grupo. No preguntes por destino o región en este turno: la única pregunta es si viaja solo, en pareja o en grupo. No nombres planes ni precios. En la frase de valor toma del ENTRY_SEGMENT solo el ángulo del anuncio (cómo llega o con quién viaja), no su hospedaje ni sus planes; el resto, lo que SITE_SELECTION dice que comparten los destinos. Si el cliente pregunta por un destino, responde breve y vuelve a la pregunta de grupo.');
+      runtime.push('DESTINO SIN ELEGIR: aún no sabes el grupo. No preguntes por destino o región en este turno: la única pregunta es si viaja solo, en pareja o en grupo. No nombres planes ni precios. En la frase de valor usa solo lo que SITE_SELECTION dice que comparten los destinos (mina real de esmeraldas, guías de la región, fin de semana con noche allá): no nombres Chivor, Coscuez, hacienda ni hotel, porque el video pudo ser de cualquiera de los dos. Si el cliente pregunta por un destino, responde breve y vuelve a la pregunta de grupo.');
     } else {
       const siteList = sites.map(site => `${site.id} (${site.name ?? site.id})`)
         .join(' | ');
@@ -999,7 +1022,9 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
     } else {
       runtime.push(
         t3bCloseTurn
-          ? 'PRECIO YA ENTREGADO: no repitas el total ni $ ni COP, y no cotices otro plan. Este turno cierra (T3b), no vuelve a ofrecer fechas.'
+          // 2.5.1: the quote now comes before the plan is chosen; when plan and date arrive together the model
+          // re-quoted ("For 2 people, CORE comes to...") in ~half the live EN runs instead of closing.
+          ? 'PRECIO YA ENTREGADO: no repitas el total ni $ ni COP, y no cotices otro plan, aunque el cliente elija el plan en este mismo mensaje: el total ya lo vio. Este turno cierra (T3b): confirma la fecha, di el anticipo y pregunta si inicias la reserva; no vuelve a ofrecer fechas.'
           : 'PRECIO YA ENTREGADO: no repitas $ ni COP del plan salvo que el cliente pida otra cotización. Fechas/motivo → solo fechas + 1 pregunta.',
       );
       if (pauseSummaryAlreadySent && !t3bCloseTurn) {
@@ -1044,14 +1069,16 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
     runtime.push('INTENCION DE RESERVA: el cliente preguntó cómo continuar. Aplica el turno correspondiente de whatsapp-sales.skill.md según los datos conocidos.');
   }
   if (typeof knownPeople === 'number' && !lockedPlanId && activePlans.length > 1) {
-    const sitePlans = activePlans.filter(plan => plan.siteId === selectedSiteId);
+    const sitePlans = menuOrder(activePlans.filter(plan => plan.siteId === selectedSiteId));
     // The ad opener defers a price question until the group is known; once it is, the
     // customer gets every plan's total for that group instead of a second question.
     const pendingQuotes = pendingPriceQuestion && !priceGiven && !returning && !priceObjectionThisTurn && !sitePending && !pausedPlan
       && !proactiveMode && !consentAcceptedThisTurn && isPricingAvailable(activeExperience) && sitePlans.length > 1
       ? quotablePlans(sitePlans).map(plan => ({ plan, quote: calculatePriceQuote(activeExperience, { planId: plan.id, people: knownPeople, transportNeed: 'own' }) }))
       : [];
-    const priced = pendingQuotes.flatMap(({ plan, quote }) => (quote ? [{ name: plan.name, total: quote.planTotal, currency: quote.currency }] : []));
+    const priced = pendingQuotes.flatMap(({ plan, quote }) => (quote
+      ? [{ name: plan.name, total: quote.planTotal, currency: quote.currency }]
+      : []));
     const quotesComplete = pendingQuotes.length > 0 && priced.length === pendingQuotes.length;
     if (quotesComplete) {
       const moneyLang = lang === 'en' ? 'en' : 'es';
@@ -1065,9 +1092,17 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
       // Live 2026-11-11 (EN): "Marca/Menciona" was skipped ("I'd go with CORE", no day option),
       // the same miss the options cue had; the obligatory wording fixed it there.
       const recommendedCue = guidance.recommendedName ? `Obligatorio: escribe la palabra "${recommendedWord(lang)}" junto a ${guidance.recommendedName}. ` : '';
-      const dayCue = guidance.dayPlanNames.length > 0 ? `Obligatorio: menciona primero, sin precio: ${guidance.dayPlanNames.join(' | ')}, y di con esas palabras, en el idioma del cliente, que es un solo día sin noche. ` : '';
-      // Order: simplest option first (the day plan, no price), then the overnight totals.
-      runtime.push(`PRECIO PEDIDO SIN PLAN: el cliente pidió el precio y ya sabes el grupo. Un solo párrafo, máximo ${REPLY_CHAR_LIMIT.priceNoPlan} caracteres. ${startPointCue(guidance.meetingPoint, arrivesOnOwn(collectedFields?.transporte))}${dayCue}Totales para ${groupLabel}, sin transporte: ${priced.map(entry => `${entry.name}: ${formatMoney(entry.total, entry.currency, moneyLang)} ${entry.currency}`).join(' | ')}. Copia esas cifras; no sumes ni inventes otras. ${recommendedCue}Una pregunta: con cuál seguimos.`);
+      // Clarity before number (2.5.1): one line of what the trip includes, in outcomes, before the
+      // totals. The day plan is named only when the lead asked for one day or a lower budget.
+      // The first sentence carries the start point too (2.4.0 price turns had it): a separate cue was dropped in live runs.
+      const valueCue = `Obligatorio: la respuesta empieza con una frase de valor (lo que incluye, en palabras de cliente: noche allá, comidas, mina con guía, 4x4 del último tramo)${guidance.meetingPoint ? `, que también dice dónde empieza el plan (${guidance.meetingPoint})${arrivesOnOwn(collectedFields?.transporte) ? ' y que llegar es por cuenta del cliente' : ''}` : ''}, sin lista y sin cifras; no empieces con "Para N personas" ni con un precio. Las cifras van después de esa frase. `;
+      const dayCue = dayPlanRequested(latestCustomerMessage) && guidance.dayPlanNames.length > 0
+        ? `Obligatorio: menciona primero, sin precio: ${guidance.dayPlanNames.join(' | ')}, y di con esas palabras, en el idioma del cliente, que es un solo día sin noche; di también que es un día largo, con ida y regreso el mismo día. `
+        : '';
+      // Order: the recommended overnight plan first. No deposit % here: the payment guard strips any
+      // payment clause until a date is confirmed (reply-guard stripPaymentMoveWithoutDate).
+      const totals = priced.map(entry => `${shortPlanName(entry.name) ?? entry.name}: ${formatMoney(entry.total, entry.currency, moneyLang)} ${entry.currency}`).join(' | ');
+      runtime.push(`PRECIO PEDIDO SIN PLAN: el cliente pidió el precio y ya sabes el grupo. Un solo párrafo, máximo ${REPLY_CHAR_LIMIT.priceNoPlan} caracteres. ${startPointCue(guidance.meetingPoint, arrivesOnOwn(collectedFields?.transporte))}${valueCue}${dayCue}Totales para ${groupLabel}, sin transporte: ${totals}. Copia esas cifras; no sumes ni inventes otras; no menciones anticipo ni porcentajes de pago todavía. ${recommendedCue}En este turno no hagas la diagnosisQuestion del ENTRY_SEGMENT ni un menú sin precios: el cliente pidió el precio. Una pregunta: con cuál seguimos.`);
     } else {
       runtime.push('PRICE GATE ACTIVO: ya conoces el grupo, pero falta elegir plan. No escribas precios ni totales de planes; pregunta por el plan o la duracion. Si pregunta solo por transporte, responde su precio del CATALOGO por separado, sin sumarlo a un plan no elegido.');
     }
@@ -1091,7 +1126,12 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
       // Live 2026-11-11 (first run): with plain wording the model dropped the start point and
       // paraphrased the recommendation away, so both are stated as obligatory.
       const recommendedCue = guidance.recommendedName ? ` Obligatorio: escribe la palabra "${recommendedWord(lang)}" junto a ${guidance.recommendedName}, con su beneficio del CATALOGO.` : '';
-      const dayCue = guidance.dayPlanNames.length > 0 ? ` ${guidance.dayPlanNames.join(' | ')}: di que es un solo día, con ida y regreso el mismo día.` : '';
+      // 2.5.1: the day plan is named last and only as a choice; it is described as a single day only when asked for one.
+      const dayCue = guidance.dayPlanNames.length > 0
+        ? (dayPlanRequested(latestCustomerMessage)
+          ? ` ${guidance.dayPlanNames.join(' | ')}: di que es un solo día, con ida y regreso el mismo día.`
+          : ` ${guidance.dayPlanNames.join(' | ')} va al final, como opción sin noche; no lo presentes como el plan principal.`)
+        : '';
       const ownArrivalOptions = arrivesOnOwn(collectedFields?.transporte);
       const startCue = guidance.meetingPoint
         ? `${startPointCue(guidance.meetingPoint, ownArrivalOptions)}Obligatorio: abre la respuesta con ese punto de inicio${ownArrivalOptions ? ' y que llegar es por su cuenta' : ''}. `

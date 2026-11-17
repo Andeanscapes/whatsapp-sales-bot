@@ -1,0 +1,80 @@
+{
+  "id": "release251-day-trip-question-answered",
+  "source": "Bot export 2026-11-16 and reel L-01 comments: leads read the trip as a day trip (\"¿es solo un día?\").",
+  "tags": [
+    "release-2.5.1",
+    "live",
+    "objection"
+  ],
+  "lang": "en",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "answers-weekend",
+      "rule": "reply_must_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "weekend|Saturday to Sunday"
+      ]
+    },
+    {
+      "id": "night-named",
+      "rule": "reply_must_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "night"
+      ]
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    },
+    {
+      "id": "asks-group",
+      "rule": "reply_must_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "[^?.!\\n]*(?:alone|couple|group|by yourself|for two|how many)[^?.!\\n]*\\?"
+      ]
+    },
+    {
+      "id": "no-price-turn-1",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\$\\s?\\d|\\bCOP\\b|\\d{3}[.,]000|starting (?:at|from)"
+      ]
+    },
+    {
+      "id": "night-plan-named",
+      "rule": "reply_must_match",
+      "turn": 1,
+      "weight": 2,
+      "patterns": [
+        "night|weekend"
+      ]
+    }
+  ],
+  "turns": [
+    {
+      "user": "C01 Hi! Is it just one day, a round trip the same day?",
+      "mockReply": "No, it is a weekend, Saturday to Sunday, with a night at the hacienda so you do not drive back at midnight. How many people would it be?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

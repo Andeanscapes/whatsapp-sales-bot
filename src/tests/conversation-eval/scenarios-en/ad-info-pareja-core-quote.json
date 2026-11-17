@@ -44,7 +44,7 @@
       "id": "menu-day-plan-same-day",
       "rule": "reply_must_match",
       "patterns": [
-        "same day|round trip|there and back"
+        "same day|round trip|there and back|no night|without a night|single day|one day"
       ],
       "turn": 2,
       "weight": 2,

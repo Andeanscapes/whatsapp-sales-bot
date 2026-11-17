@@ -3,6 +3,7 @@ import { normalizeText, detectLanguageOrNull, detectExplicitLanguageSwitch, dete
 import type { FallbackReplies } from './skill-loader.js';
 import type { MergedQualification } from './types.js';
 import { getEquivalentPlan, getPlans, getSites, getUnavailableSites, type ActiveExperience } from './product-registry.js';
+import { parseEntryMarker } from './entry-marker.js';
 import { MONTH_NAMES } from './constants.js';
 import { env } from '../config/env.js';
 import { parseChildAges } from './qualification-format.js';
@@ -394,6 +395,14 @@ export function resolveSiteContext(
     const site = detectSiteChoice(body, experience)
       ?? (/[?¿]/.test(body) ? detectSite(body, experience) : null);
     if (site) return site;
+  }
+  // Only a vehicle ad (car/4x4 or motorbike: codes the catalog tags "car"/"bike", e.g. C02/C03/H02/H03)
+  // implies a destination, the site that carries that vehicle segment. Other codes (C01, R01, kids)
+  // run on videos from both regions, so the lead chooses (owner 2026-11-16). A named site above wins.
+  const markerCode = inboundBodies.map(body => parseEntryMarker(body)?.code).find((code): code is string => !!code);
+  if (markerCode) {
+    const vehicleSites = getSites(experience).filter(site => experience.sites?.[site.id]?.vehicleEntryCodes?.includes(markerCode));
+    if (vehicleSites.length === 1) return vehicleSites[0].id;
   }
   return undefined;
 }

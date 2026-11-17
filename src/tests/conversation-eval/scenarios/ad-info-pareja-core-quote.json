@@ -44,7 +44,7 @@
       "id": "menu-day-plan-same-day",
       "rule": "reply_must_match",
       "patterns": [
-        "mismo d[ií]a|ida y (?:vuelta|regreso)"
+        "mismo d[ií]a|ida y (?:vuelta|regreso)|sin noche|un solo d[ií]a"
       ],
       "turn": 2,
       "weight": 2,

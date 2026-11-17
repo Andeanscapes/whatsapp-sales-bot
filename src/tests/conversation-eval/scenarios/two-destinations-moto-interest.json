@@ -1,6 +1,6 @@
 {
   "id": "two-destinations-moto-interest",
-  "source": "Owner decision 2026-11-12: with two destinations the bot shows both (equally safe, same distance, unique experiences) and lets the customer choose; when the ad or the customer shows an off-road interest (moto, car, 4x4) it says Chivor is the most off-road one, without ruling Coscuez out. The C03 opener keeps the moto angle and asks only the group.",
+  "source": "Owner decision 2026-11-12: with two destinations the bot shows both (equally safe, same distance, unique experiences) and lets the customer choose; when the ad or the customer shows an off-road interest (moto, car, 4x4) it says Chivor is the most off-road one, without ruling Coscuez out. The C03 opener keeps the moto angle and asks only the group. | 2.5.1: opener cap 65 -> 70 words: the plan-clarity line (sábado a domingo, llegas por tu cuenta) is required in 2.5.1. | 2.5.1: C03 is a marked lead, Chivor is pre-selected: no two-region pitch and no destination question.",
   "tags": [
     "marker",
     "qualification",
@@ -56,17 +56,7 @@
       "turn": 1,
       "weight": 2,
       "critical": true,
-      "expected": 65
-    },
-    {
-      "id": "names-both-regions",
-      "rule": "reply_must_match",
-      "turn": 2,
-      "weight": 2,
-      "critical": true,
-      "patterns": [
-        "chivor[\\s\\S]{0,300}coscuez|coscuez[\\s\\S]{0,300}chivor"
-      ]
+      "expected": 70
     },
     {
       "id": "chivor-offroad",
@@ -76,16 +66,6 @@
       "critical": true,
       "patterns": [
         "chivor[^.?!]{0,140}(?:offroad|off-road|moto|4x4|ruta|destapad|trocha)|(?:offroad|off-road|moto|4x4|ruta|destapad|trocha)[^.?!]{0,140}chivor"
-      ]
-    },
-    {
-      "id": "customer-chooses",
-      "rule": "reply_must_match",
-      "turn": 2,
-      "weight": 2,
-      "critical": true,
-      "patterns": [
-        "[^¿.!?\\n]*(?:cu[aá]l|qu[eé] (?:regi[oó]n|destino)|les? (?:llama|interesa|gustar[ií]a))[^¿.!?\\n]*\\?"
       ]
     },
     {
@@ -105,6 +85,16 @@
       "weight": 2,
       "critical": true,
       "max": 1
+    },
+    {
+      "id": "chivor-named-turn-2",
+      "rule": "reply_must_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "Chivor"
+      ]
     }
   ],
   "turns": [

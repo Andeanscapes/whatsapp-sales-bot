@@ -1,0 +1,79 @@
+{
+  "id": "release251-opener-no-price-promise",
+  "source": "Bot export 2026-11-16: the 2.4.0 opener promised \"el valor exacto y las fechas\"; 25 of 39 price messages were never asked for. | 2.5.1: size limit adjusted for the required plan-clarity line (opener) or value line (price turn); EN runs longer than ES.",
+  "tags": [
+    "release-2.5.1",
+    "live",
+    "opener"
+  ],
+  "lang": "en",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    },
+    {
+      "id": "no-price-promise",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "exact price|the exact value|let me tell you the price|will arrive in your next message"
+      ]
+    },
+    {
+      "id": "no-price-turn-1",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\$\\s?\\d|\\bCOP\\b|\\d{3}[.,]000|starting (?:at|from)"
+      ]
+    },
+    {
+      "id": "plan-clarity",
+      "rule": "reply_must_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "weekend|Saturday to Sunday"
+      ]
+    },
+    {
+      "id": "asks-group",
+      "rule": "reply_must_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "[^?.!\\n]*(?:alone|couple|group|by yourself|for two)[^?.!\\n]*\\?"
+      ]
+    },
+    {
+      "id": "opener-words",
+      "rule": "reply_words_at_most",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "expected": 80
+    }
+  ],
+  "turns": [
+    {
+      "user": "C01 Hi! What is the mining experience about?",
+      "mockReply": "Hi, I'm Heinner, from Andean Scapes. It's a real emerald mine with local miners and a night at the hacienda: a weekend, Saturday to Sunday. Would it be for you alone, as a couple or for a group?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

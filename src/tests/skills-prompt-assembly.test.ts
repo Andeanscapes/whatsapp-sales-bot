@@ -191,7 +191,8 @@ describe('skills-prompt-assembly', () => {
     expect(options).toMatch(/PUNTO DE INICIO: inicia y termina en parque principal de Chivor/);
     expect(options).toMatch(/Obligatorio: escribe la palabra "recomendado"[^\n]*junto a CORE/);
     expect(options).toContain("Obligatorio: abre la respuesta con ese punto de inicio");
-    expect(options).toMatch(/BASIC[^:]*: di que es un solo día, con ida y regreso el mismo día/);
+    expect(options).toMatch(/BASIC[^:]*va al final, como opción sin noche/);
+    expect(options.indexOf('CORE')).toBeLessThan(options.indexOf('BASIC'));
     expect(options).toContain('Un solo párrafo, máximo 280 caracteres');
     expect(options).toContain('sin precios');
   });
@@ -1060,8 +1061,11 @@ describe('skills-prompt-assembly', () => {
     expect(solo).not.toMatch(/480\.000|740\.000/);
     expect(solo).toMatch(/PUNTO DE INICIO: [^\n]*Chivor/);
     expect(solo).toMatch(/Obligatorio: escribe la palabra "recomendado"[^\n]*junto a CORE/);
-    expect(solo).toMatch(/Obligatorio: menciona primero, sin precio:[^\n]*BASIC[^\n]*sin noche/);
-    expect(solo).toMatch(/Un solo párrafo, máximo 340 caracteres/);
+    expect(solo).not.toMatch(/menciona primero/);
+    expect(solo).toMatch(/Obligatorio: la respuesta empieza con una frase de valor \(lo que incluye/);
+    expect(solo).not.toMatch(/\(anticipo/);
+    expect(solo).toMatch(/no menciones anticipo/);
+    expect(solo).toMatch(/Un solo párrafo, máximo 420 caracteres/);
     const couple = line(2);
     expect(couple).toMatch(/CORE[^|]*\$950\.000/);
     expect(couple).toMatch(/PRIME[^|]*\$1\.700\.000/);

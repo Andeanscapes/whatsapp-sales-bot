@@ -1,6 +1,6 @@
 {
   "id": "ad-opener-c03-moto",
-  "source": "EN twin of ad-opener-c03-moto. Export 2026-11-07: ad leads replied 32% in 2.3.0 after a price/menu opener vs 62% in 2.0.x; owner plan 2026-11-07: intro + one value line + group question, no price/menu/dates. C03 opens with the ride to Chivor and the mine, not road conditions.",
+  "source": "EN twin of ad-opener-c03-moto. Export 2026-11-07: ad leads replied 32% in 2.3.0 after a price/menu opener vs 62% in 2.0.x; owner plan 2026-11-07: intro + one value line + group question, no price/menu/dates. C03 opens with the ride to Chivor and the mine, not road conditions. | 2.5.1: opener cap 65 -> 70 words: the plan-clarity line (sábado a domingo, llegas por tu cuenta) is required in 2.5.1. | 2.5.1: size limit adjusted for the required plan-clarity line (opener) or value line (price turn); EN runs longer than ES. | 2.5.1: \"are you riding with someone?\" is a valid group question.",
   "tags": [
     "marker",
     "live"
@@ -72,7 +72,7 @@
       "weight": 2,
       "critical": true,
       "patterns": [
-        "[^.!?\\n]*(?:alone|solo|by yourself|on your own|couple|partner|group)[^.!?\\n]*\\?"
+        "[^.!?\\n]*(?:alone|someone|with you|riding with|solo|by yourself|on your own|couple|partner|group)[^.!?\\n]*\\?"
       ]
     },
     {
@@ -111,7 +111,7 @@
       "turn": 1,
       "weight": 2,
       "critical": true,
-      "expected": 65
+      "expected": 80
     }
   ],
   "turns": [

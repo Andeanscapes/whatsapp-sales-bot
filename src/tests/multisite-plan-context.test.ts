@@ -116,11 +116,12 @@ describe('two-site catalog selection', () => {
     expect(runtime).toContain('DESTINO SIN ELEGIR');
     expect(runtime).not.toContain('SITIO PENDIENTE');
     expect(runtime).not.toContain('OPCIONES DE PLAN');
-    // The ad angle survives through the catalog default destination's segment.
-    expect(runtime).toContain('SEGMENT_DETECTED: C01');
+    // 2.5.1: C01 runs on videos from both regions, so no site's segment (hacienda, hotel) is borrowed.
+    expect(runtime).not.toContain('SEGMENT_DETECTED');
+    expect(runtime).toContain('no nombres Chivor, Coscuez, hacienda ni hotel');
     // The price depends on the destination chosen next turn: no "next message" promise.
-    expect(runtime).not.toContain('llegan en tu siguiente mensaje, apenas responda');
-    expect(runtime).toContain('no prometas que llegan en tu siguiente mensaje');
+    expect(runtime).not.toContain('llegan en tu siguiente mensaje');
+    expect(runtime).not.toMatch(/el valor exacto llega|te cuento el valor exacto/);
 
     const secondTurn = assembleSystemPrompt({
       skills, lang: 'es', entryMarker: { code: 'C01', temperature: 'cold' }, collectedFields: { personas: 2 }, pendingPriceQuestion: true,

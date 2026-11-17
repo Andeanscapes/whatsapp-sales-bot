@@ -1,0 +1,81 @@
+{
+  "id": "release251-safety-regional-wording",
+  "source": "Bot data 2026-11-16: safety is answered with \"región tranquila; el equipo valida las condiciones\", never an absolute claim (business.md §9).",
+  "tags": [
+    "release-2.5.1",
+    "live",
+    "objection"
+  ],
+  "lang": "es",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "regional-wording",
+      "rule": "reply_must_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "valida las condiciones|condiciones operativas"
+      ]
+    },
+    {
+      "id": "no-military-claim",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "militar|ejército|ejercito|armad[oa]s?|guerrilla"
+      ]
+    },
+    {
+      "id": "no-absolute-claim",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "100\\s?%\\s?seguro|totalmente seguro|completamente seguro|cero riesgo|garantizamos (?:la )?seguridad"
+      ]
+    },
+    {
+      "id": "asks-group",
+      "rule": "reply_must_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "[^¿.!?\\n]*(?:sol[oa]s?\\b|pareja|grupo)[^¿.!?\\n]*\\?"
+      ]
+    },
+    {
+      "id": "no-price-turn-1",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\$\\s?\\d|\\bCOP\\b|\\d{3}[.,]000|\\bdesde\\s*\\*?\\$"
+      ]
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    }
+  ],
+  "turns": [
+    {
+      "user": "C01 ¡Hola! ¿Es seguro? Escuché de grupos armados en la zona",
+      "mockReply": "Entiendo la duda. Es una región tranquila: el equipo valida las condiciones operativas antes de cada salida, y siempre entras con guía local y equipo de seguridad. ¿La experiencia sería para ti solo, en pareja o para un grupo?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

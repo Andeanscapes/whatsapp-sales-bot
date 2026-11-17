@@ -13,30 +13,43 @@ const ENTRIES = [
   { code: 'R01', temperature: 'retargeting' as const },
 ];
 
-function openerRuntime(skills: Skills, entryMarker: (typeof ENTRIES)[number]): string {
+// 2.5.1 (owner 2026-11-16): only vehicle codes (car/bike) arrive with the site set by the engine
+// (resolveSiteContext); C01/R01 run on videos from both regions and keep the destination open.
+const VEHICLE_CODES = new Set(['C02', 'C03']);
+
+function openerRuntime(skills: Skills, entryMarker: (typeof ENTRIES)[number], twoSites: boolean): string {
+  const site = twoSites && VEHICLE_CODES.has(entryMarker.code) ? { site: 'chivor' } : {};
   const prompt = assembleSystemPrompt({
-    skills, lang: 'es', entryMarker, entryOpeningTurn: true, adOpeningTurn: true, collectedFields: {},
+    skills, lang: 'es', entryMarker, entryOpeningTurn: true, adOpeningTurn: true, collectedFields: site,
   });
   return prompt.split('\nRUNTIME:').at(-1) ?? '';
 }
 
 describe.each([
-  ['two destinations on sale', (): Skills => useAllSitesActive()],
-  ['one destination on sale', (): Skills => usePausedCoscuez()],
-])('first ad turn (%s)', (_label, load) => {
+  ['two destinations on sale', (): Skills => useAllSitesActive(), true],
+  ['one destination on sale', (): Skills => usePausedCoscuez(), false],
+])('first ad turn (%s)', (_label, load, twoSites) => {
   let skills: Skills;
   beforeEach(() => {
     skills = load();
   });
 
   it.each(ENTRIES)('$code asks the group and nothing else', entry => {
-    const runtime = openerRuntime(skills, entry);
+    const runtime = openerRuntime(skills, entry, twoSites);
     expect(runtime).toContain('APERTURA DE ANUNCIO: primer mensaje');
     expect(runtime).toContain('solo, en pareja o para un grupo');
     expect(runtime).toContain('UNA SOLA PREGUNTA');
-    expect(runtime).toContain('Sin precios, sin $, sin "desde", sin menú de planes');
+    expect(runtime).toContain('Sin precios, sin $, sin "desde", sin "valor exacto", sin "te cuento el precio", sin menú de planes');
+    expect(runtime).toContain('claridad del plan');
+    expect(runtime).not.toMatch(/llegan en tu siguiente mensaje|el valor exacto llega/);
     expect(runtime).not.toMatch(/QUOTE LOCK|PRECIO PEDIDO SIN PLAN|OPCIONES DE PLAN|SITIO PENDIENTE/);
-    // The ad angle (route, moto, kids) reaches the opener in both catalog states.
-    expect(runtime).toContain(`SEGMENT_DETECTED: ${entry.code}`);
+    // The vehicle angle reaches the opener whenever the site is known; a shared code with two
+    // destinations open gets no site's segment (no hacienda/hotel for a video of either region).
+    if (twoSites && !VEHICLE_CODES.has(entry.code)) {
+      expect(runtime).not.toContain('SEGMENT_DETECTED');
+      expect(runtime).toContain('DESTINO SIN ELEGIR');
+    } else {
+      expect(runtime).toContain(`SEGMENT_DETECTED: ${entry.code}`);
+    }
   });
 });

@@ -1,6 +1,6 @@
 {
   "id": "ad-opener-price-asked-solo",
-  "source": "Export 2026-11-07: ad leads replied 32% in 2.3.0 after a price/menu opener vs 62% in 2.0.x; owner plan 2026-11-07: intro + one value line + group question, no price/menu/dates. A price asked on the opener is deferred to the group, then every plan is quoted for that group from the catalog. Price turn 2026-11-11: start point, three options (day plan named without price, CORE recommended), no private transport price. | 2026-11-12: Coscuez on sale, so the bot asks the destination after the group (SITIO PENDIENTE) and the customer answers Chivor; later criteria moved one turn down.",
+  "source": "Export 2026-11-07: ad leads replied 32% in 2.3.0 after a price/menu opener vs 62% in 2.0.x; owner plan 2026-11-07: intro + one value line + group question, no price/menu/dates. A price asked on the opener is deferred to the group, then every plan is quoted for that group from the catalog. Price turn 2026-11-11: start point, three options (day plan named without price, CORE recommended), no private transport price. | 2026-11-12: Coscuez on sale, so the bot asks the destination after the group (SITIO PENDIENTE) and the customer answers Chivor; later criteria moved one turn down. | 2.5.1: opener cap raised for the required plan-clarity line (EN runs longer). The day plan is not offered unless asked; it must not be the recommended one.",
   "tags": [
     "marker",
     "live"
@@ -144,13 +144,13 @@
       ]
     },
     {
-      "id": "day-option",
-      "rule": "reply_must_match",
+      "id": "day-not-recommended",
+      "rule": "reply_must_not_match",
       "turn": 3,
       "weight": 2,
       "critical": false,
       "patterns": [
-        "pasad[ií]a|un solo d[ií]a|d[ií]a sin noche"
+        "(BASIC|pasad[ií]a|un solo d[ií]a)[^.]{0,80}recomendad"
       ]
     },
     {
@@ -197,7 +197,7 @@
       "turn": 1,
       "weight": 2,
       "critical": true,
-      "expected": 65
+      "expected": 70
     }
   ],
   "turns": [

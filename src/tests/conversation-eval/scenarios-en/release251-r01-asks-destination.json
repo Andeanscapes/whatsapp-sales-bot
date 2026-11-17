@@ -1,0 +1,96 @@
+{
+  "id": "release251-r01-asks-destination",
+  "source": "Owner 2026-11-16: R01 (culture videos, retargeting) runs on videos from both regions; the bot asks which experience before any price.",
+  "tags": [
+    "release-2.5.1",
+    "live",
+    "two-destinations"
+  ],
+  "lang": "en",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "no-site-assumed-turn-1",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "Chivor|Coscuez|Borbur|hacienda|hotel"
+      ]
+    },
+    {
+      "id": "asks-group-turn-1",
+      "rule": "reply_must_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "[^?.!\\n]*(?:alone|couple|group|by yourself|for two|someone)[^?.!\\n]*\\?"
+      ]
+    },
+    {
+      "id": "no-price-turn-1",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\$\\s?\\d|\\bCOP\\b|\\d{3}[.,]000|starting (?:at|from)"
+      ]
+    },
+    {
+      "id": "one-question-turn-1",
+      "rule": "max_question_marks",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    },
+    {
+      "id": "names-both-sites-turn-2",
+      "rule": "reply_must_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "Chivor[\\s\\S]*Coscuez|Coscuez[\\s\\S]*Chivor"
+      ]
+    },
+    {
+      "id": "no-price-before-destination",
+      "rule": "reply_must_not_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\$\\s?\\d|\\bCOP\\b|\\d{3}[.,]000|starting (?:at|from)"
+      ]
+    },
+    {
+      "id": "one-question-turn-2",
+      "rule": "max_question_marks",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    }
+  ],
+  "turns": [
+    {
+      "user": "R01 Hi! I saw your videos about emerald culture and I want to know what going to the mine is like 💚",
+      "mockReply": "Glad you liked the story. I'm Heinner, from Andean Scapes: it's a weekend, Saturday to Sunday, at a real emerald mine with a night there. Would it be for you alone, as a couple or for a group?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "As a couple",
+      "mockReply": "Great. We have two different experiences: Chivor, with a 4x4 up to the mine and a night at the hacienda; or Coscuez, with a rural hotel in Borbur and a talk at Chacaro square. Which one appeals to you more?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

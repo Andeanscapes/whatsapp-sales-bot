@@ -1,6 +1,6 @@
 {
   "id": "price-three-options-budget",
-  "source": "Three options by budget and comfort: the day plan is named first without a price; CORE recommended; totals from simplest to most complete. | 2026-11-12: Coscuez on sale, so the bot asks the destination after the group (SITIO PENDIENTE) and the customer answers Chivor; later criteria moved one turn down.",
+  "source": "Three options by budget and comfort: the day plan is named first without a price; CORE recommended; totals from simplest to most complete. | 2026-11-12: Coscuez on sale, so the bot asks the destination after the group (SITIO PENDIENTE) and the customer answers Chivor; later criteria moved one turn down. | 2.5.1: the lead never asked for a day trip or a budget: BASIC must not come before the totals (2.5.1 menu order).",
   "tags": [
     "price",
     "live"
@@ -10,8 +10,8 @@
   "minLiveScore": 80,
   "criteria": [
     {
-      "id": "day-before-totals",
-      "rule": "reply_must_match",
+      "id": "day-not-before-totals-unasked",
+      "rule": "reply_must_not_match",
       "turn": 3,
       "weight": 2,
       "critical": false,
@@ -47,7 +47,7 @@
     },
     {
       "user": "Chivor",
-      "mockReply": "It starts and ends in the town of Chivor, 5-6 hours from Bogotá; you get there on your own. If you want one day without a night, a day trip is available. For 2 people: CORE (recommended), with a night at the hacienda, *$950,000*; PRIME, with two mines and horseback riding, *$1,700,000*. Which one shall we go with?",
+      "mockReply": "It starts and ends in the town of Chivor; you get there on your own. For 2 people: CORE (recommended), with a night at the hacienda, *$950,000*; PRIME, with two mines and horseback riding, *$1,700,000*. If you want one day without a night, a day trip is also available. Which one shall we go with?",
       "expect": {
         "shouldSendReply": true
       }

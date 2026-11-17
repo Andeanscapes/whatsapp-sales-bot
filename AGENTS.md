@@ -749,7 +749,8 @@ columns from the old feature remain in place and are ignored.
   ENV_FILE=/dev/null` plus the `conversation-eval-llm` job env from `ci.yml` and your
   `DEEPSEEK_API_KEY`, and `DYNAMIC_SKILL_URL` unset. Release 2.3.0: four local passes
   in a row, three CI failures, until the runs used the CI env.
-- `npm run eval:conversations` — deterministic conversation-eval pack (81 Spanish scenarios plus their 81 English twins, mocked).
+- `npm run eval:conversations` — deterministic conversation-eval pack (90 Spanish scenarios plus their 90 English twins, mocked).
+- `... eval:conversations:llm-bot -- --tag release-2.5.1` — runs only the scenarios with that tag (live, same CI env). `--scenario <id>` runs one; a full live pass is the release gate.
 - `npm run eval:conversations:llm-bot` — live LLM quality suite, Spanish (64 `live`-tagged
   scenarios, ~$2.00-2.30 per pass with retries, measured 2026-11-12; `EVAL_MAX_COST_USD` default 3.00). Local default.
 - `npm run eval:conversations:llm-bot -- --lang en` — live LLM quality suite, English

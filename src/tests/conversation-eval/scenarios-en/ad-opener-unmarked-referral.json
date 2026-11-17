@@ -1,6 +1,6 @@
 {
   "id": "ad-opener-unmarked-referral",
-  "source": "EN twin of ad-opener-unmarked-referral. Export 2026-11-07: ad leads replied 32% in 2.3.0 after a price/menu opener vs 62% in 2.0.x; owner plan 2026-11-07: intro + one value line + group question, no price/menu/dates. Meta default text with an ad referral and no campaign code is an ad entry too.",
+  "source": "EN twin of ad-opener-unmarked-referral. Export 2026-11-07: ad leads replied 32% in 2.3.0 after a price/menu opener vs 62% in 2.0.x; owner plan 2026-11-07: intro + one value line + group question, no price/menu/dates. Meta default text with an ad referral and no campaign code is an ad entry too. | 2.5.1: size limit adjusted for the required plan-clarity line (opener) or value line (price turn); EN runs longer than ES.",
   "tags": [
     "marker",
     "live"
@@ -23,7 +23,7 @@
       "turn": 1,
       "weight": 2,
       "critical": true,
-      "expected": 400
+      "expected": 440
     },
     {
       "id": "marker-hidden",

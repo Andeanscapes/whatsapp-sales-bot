@@ -85,8 +85,13 @@ async function main(): Promise<void> {
     console.log('[LLM_BOT_EVAL] no scenarios registered — nothing to run');
     process.exit(0);
   }
-  const selectedScenarios = allScenarios.filter(scenario => !selectedId || scenario.id === selectedId);
-  if (selectedScenarios.length === 0) throw new Error(`No scenario found for ${selectedId}`);
+  // --tag <name> runs only the scenarios carrying that tag (e.g. release-2.5.1), so a release
+  // can be checked without paying for the whole live pack.
+  const tag = option('--tag');
+  const selectedScenarios = allScenarios
+    .filter(scenario => !selectedId || scenario.id === selectedId)
+    .filter(scenario => !tag || scenario.tags?.includes(tag));
+  if (selectedScenarios.length === 0) throw new Error(`No scenario found for ${selectedId ?? ''}${tag ? ` with tag ${tag}` : ''}`);
   const includeAll = process.argv.includes('--all') || selectedId !== undefined;
   const { supported: scenarios, skipped, deselected } = partitionLiveScenarios(selectedScenarios, { includeAll });
   if (skipped.length > 0) {
