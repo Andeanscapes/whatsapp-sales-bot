@@ -293,6 +293,10 @@ describe('reservation closing regression', () => {
 
 
   it('selects only the day offered by assistant when another month shares the same day', async () => {
+    // Pinned clock: the fixture dates (14 Nov / 14 Dec 2026) must stay in the future, or the
+    // past-date guard answers instead and collected_date stays empty (failed from 2026-11-15).
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-01T12:00:00.000Z'));
     const db = new Database(':memory:');
     migrate(db);
     const repos = createRepositories(db);
@@ -324,6 +328,7 @@ describe('reservation closing regression', () => {
     } finally {
       restore();
       db.close();
+      vi.useRealTimers();
     }
   });
 
