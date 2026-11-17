@@ -230,7 +230,8 @@ describe('catalog quote contract', () => {
       expect(plan.included.join(' ')).toMatch(plan.duration === '1D/0N' ? /2 comidas/ : /4 comidas/);
       expect(`${plan.shortDescription} ${plan.benefits ?? ''}`).not.toMatch(/intens|tranquil|accesible|calma/i);
     }
-    expect(prompt).not.toMatch(/3 comidas/);
+    // Chivor overnight plans have four meals; "3 comidas" is Coscuez CORE (1 desayuno, 1 cena, 1 almuerzo).
+    expect(plans.flatMap(plan => plan.included).join(' ')).not.toMatch(/3 comidas/);
     expect(prompt).toMatch(/tiempo subterraneo varia/i);
   });
 });

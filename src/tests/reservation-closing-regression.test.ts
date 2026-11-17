@@ -1,3 +1,4 @@
+import { usePausedCoscuez } from './helpers/all-sites-catalog.js';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { migrate } from '../db/migrate.js';
@@ -52,7 +53,7 @@ import { paymentHandler } from '../commands/payment.command.js';
 import { env } from '../config/env.js';
 import { isDynamicDataFresh } from '../services/skill-loader.js';
 
-beforeAll(() => loadSkills());
+beforeAll(() => usePausedCoscuez());
 
 afterEach(() => {
   mockComplete.mockReset();
@@ -82,15 +83,22 @@ function llmResult(reply = 'Perfecto, revisemos el siguiente paso.'): LlmResult 
 }
 
 function withLimitedAvailability(dates: Array<{ date: string; status: 'available' | 'limited'; slotsApprox?: number }>): () => void {
-  const experience = getActiveExperience(getSkills());
+  const skills = getSkills();
+  const experience = getActiveExperience(skills);
+  const availableDates = dates.map(d => ({ date: d.date, status: d.status, slotsApprox: d.slotsApprox ?? 2 }));
+  const botRule = 'Availability is authoritative for this test.';
   const original = experience.availability;
-  experience.availability = {
-    ...original,
-    availableDates: dates.map(d => ({ date: d.date, status: d.status, slotsApprox: d.slotsApprox ?? 2 })),
-    botRule: 'Availability is authoritative for this test.',
-  };
+  experience.availability = { ...original, availableDates, botRule };
+  // A plan on a site reads its site availability first, so the override covers it too;
+  // otherwise the test depends on which dates the catalog fixture happens to publish.
+  const sites = skills.dynamicData?.experiences[experience.id]?.sites ?? {};
+  const originalSites = Object.entries(sites).map(([id, site]) => [id, site.availability] as const);
+  for (const site of Object.values(sites)) {
+    if (site.availability) site.availability = { ...site.availability, availableDates, botRule };
+  }
   return () => {
     experience.availability = original;
+    for (const [id, availability] of originalSites) sites[id].availability = availability;
   };
 }
 
@@ -285,6 +293,10 @@ describe('reservation closing regression', () => {
 
 
   it('selects only the day offered by assistant when another month shares the same day', async () => {
+    // Pinned clock: the fixture dates (14 Nov / 14 Dec 2026) must stay in the future, or the
+    // past-date guard answers instead and collected_date stays empty (failed from 2026-11-15).
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-01T12:00:00.000Z'));
     const db = new Database(':memory:');
     migrate(db);
     const repos = createRepositories(db);
@@ -316,6 +328,7 @@ describe('reservation closing regression', () => {
     } finally {
       restore();
       db.close();
+      vi.useRealTimers();
     }
   });
 

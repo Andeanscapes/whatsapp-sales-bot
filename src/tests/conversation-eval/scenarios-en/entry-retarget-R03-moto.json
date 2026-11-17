@@ -1,6 +1,6 @@
 {
   "id": "entry-retarget-R03-moto",
-  "source": "EN twin of entry-retarget-R03-moto (retargeting marker, motorcycle variant)",
+  "source": "EN twin of entry-retarget-R03-moto (retargeting marker, motorcycle variant) | 2026-11-12: with two destinations on sale a lead reaches the date question only after naming one, so the replayed history names Chivor.",
   "tags": [
     "marker",
     "live"
@@ -33,7 +33,7 @@
       "id": "diagnoses-blocker",
       "rule": "reply_must_match",
       "patterns": [
-        "what(?:'s| is| was)? (?:still )?(?:missing|holding|stopp|left)|what held|what stopped|what changed|what (?:do|would) you need|what can i (?:sort|solve|help)|what(?:'s| is) (?:still )?needed|what got in the way|what's in the way|what's holding"
+        "what(?:'s| is| was)? (?:still )?(?:missing|holding|stopp|left)|what held|what stopped|what changed|what (?:do|would) you need|what can i (?:sort|solve|help)|what(?:'s| is) (?:still )?needed|what got in the way|what's in the way|what's holding|what(?:'s| is) (?:still )?unresolved|what (?:would|do) you (?:like|want) to (?:resolve|sort out)|what(?:'s| is) (?:still )?(?:up in the air|open|pending)"
       ],
       "turn": 3,
       "weight": 2,
@@ -84,7 +84,7 @@
       }
     },
     {
-      "user": "Two of us, we're a couple; we're interested in the intense motorcycle route",
+      "user": "Two of us, we're a couple; we're interested in the intense motorcycle route to Chivor",
       "mockReply": "Perfect for two, with the motorcycle route as the priority. What date do you have in mind?",
       "replay": true,
       "expect": {

@@ -1,0 +1,65 @@
+{
+  "id": "release251-soft-next-step-after-price",
+  "source": "Bot export 2026-11-16: \"ok, gracias\" after a price was silence in 71 chats; the reply must offer one soft next step and not repeat the price. | 2.5.1: C02 so the price comes on turn 1 (C01 asks the destination first).",
+  "tags": [
+    "release-2.5.1",
+    "live",
+    "price"
+  ],
+  "lang": "en",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "no-repeated-price",
+      "rule": "reply_must_not_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\$\\s?\\d|\\d{3}[.,]000|COP\\s?\\d"
+      ]
+    },
+    {
+      "id": "one-soft-step",
+      "rule": "reply_must_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "Saturday|hold|book|which|dates|tell you|when"
+      ]
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    },
+    {
+      "id": "reply-short",
+      "rule": "reply_words_at_most",
+      "turn": 2,
+      "weight": 1,
+      "expected": 45
+    }
+  ],
+  "turns": [
+    {
+      "user": "C02 Hi! There are 2 of us, how much is it?",
+      "mockReply": "As a couple, CORE is COP 950,000, recommended, with a night at the hacienda, meals and a guided mine visit. Which Saturday shall we go with?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "ok thanks",
+      "mockReply": "Of course. If you like, I can hold the Saturday you prefer. Which one works for you?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+{
+  "id": "release251-emerald-keep-no-promise",
+  "source": "Public comment 2026-11-16 and bot data: emeralds are not guaranteed; if one appears it is agreed with the miners on the spot.",
+  "tags": [
+    "release-2.5.1",
+    "live",
+    "objection"
+  ],
+  "lang": "en",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "no-guarantee",
+      "rule": "reply_must_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "guarantee|not guaranteed|not part of the experience"
+      ]
+    },
+    {
+      "id": "no-promise-to-keep",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "you can take it|it's yours|you keep it|take it home\\b(?! is not)"
+      ]
+    },
+    {
+      "id": "asks-group",
+      "rule": "reply_must_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "[^?.!\\n]*(?:alone|couple|group|by yourself|for two|how many)[^?.!\\n]*\\?"
+      ]
+    },
+    {
+      "id": "no-price-turn-1",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\$\\s?\\d|\\bCOP\\b|\\d{3}[.,]000|starting (?:at|from)"
+      ]
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    }
+  ],
+  "turns": [
+    {
+      "user": "C01 Hi! If I find an emerald, can I take it home?",
+      "mockReply": "We don't guarantee it: an emerald is not part of the experience. If one turns up, it is agreed on the spot with the miners and the guide. How many people would it be?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

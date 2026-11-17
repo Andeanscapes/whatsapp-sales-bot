@@ -14,7 +14,7 @@
     { "id": "no-emoji-on-quote", "rule": "max_emojis", "max": 0, "turn": 2, "weight": 1 }
   ],
   "turns": [
-    { "user": "We're 5 and we want to go to the emerald mine", "mockReply": "Perfect, for 5 people I'll check the exact price for the plan. Which length of stay interests you?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 5 } },
+    { "user": "Hi, there are 5 of us and we would like to go to Chivor", "mockReply": "Perfect, for 5 people I'll check the exact price for the plan. Which length of stay interests you?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 5 } },
     { "user": "The CORE", "mockReply": "For 5 people, the exact price would be $2,250,000 COP according to the published formula. What date do you have in mind?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 5, "plan": "core_2d1n_chivor" } }
   ]
 }

@@ -762,7 +762,8 @@ export function extractEmojis(text: string): string[] {
  */
 export function stripPaymentMoveWithoutDate(reply: string): string {
   if (!reply.trim()) return reply;
-  const clause = /[^.!?\n]*(?:\banticipo\b|\bdep[oó]sito\b|\babono\b|\bnequi\b|\bmercado\s*pago\b|\bdeposit\b|\bdown\s+payment\b)[^.!?\n]*[.!?]?/gi;
+  // A "." between digits is a thousands separator ("$950.000"), not a sentence end: cutting there left "$950." in the reply (2.5.1).
+  const clause = /(?:[^.!?\n]|\.(?=\d))*(?:\banticipo\b|\bdep[oó]sito\b|\babono\b|\bnequi\b|\bmercado\s*pago\b|\bdeposit\b|\bdown\s+payment\b)(?:[^.!?\n]|\.(?=\d))*(?:[.!?](?!\d))?/gi;
   const stripped = reply
     .replace(clause, ' ')
     .replace(/[ \t]+\n/g, '\n')

@@ -7,6 +7,9 @@ import { PRICING_NOT_AVAILABLE, AVAILABILITY_NOT_AVAILABLE, transformDynamicData
 import { assertDynamicCatalogReady, dynamicDataSchema, planCalculationSchema, siteSelectionSchema, type DynamicData } from './dynamic-data-schema.js';
 import { existsSync } from 'fs';
 
+/** Media types that mark an ad about the drive itself; owner rule: only these imply a destination. */
+const VEHICLE_MEDIA_TYPES = ['car', 'bike'];
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const PERSONA_GENDER_RULES = {
@@ -119,6 +122,7 @@ const experienceSchema = z.object({
    plans: z.array(z.object({
      id: z.string(),
      tier: z.string().min(1).optional(),
+     recommended: z.boolean().optional(),
      legacyPlanIds: z.array(z.string().min(1)).optional(),
      depositPercentage: z.number().min(0).max(100).optional(),
      siteId: z.string().optional(),
@@ -146,6 +150,8 @@ const experienceSchema = z.object({
    sites: z.record(z.object({
      name: z.string().optional(),
      selectionAliases: z.array(z.string()).optional(),
+     meetingPoint: z.string().optional(),
+     vehicleEntryCodes: z.array(z.string()).optional(),
    }).strict()).optional(),
    siteSelection: siteSelectionSchema.optional(),
    unavailableSites: z.array(z.object({
@@ -479,6 +485,7 @@ function experienceFromDynamic(expId: string, dyn: InternalExperienceData): Expe
   const plans = dyn.plans.map(plan => ({
     id: plan.id,
     tier: plan.tier,
+    recommended: plan.recommended,
     legacyPlanIds: plan.legacyPlanIds,
     depositPercentage: plan.depositPercentage,
     siteId: plan.siteId,
@@ -525,6 +532,12 @@ function experienceFromDynamic(expId: string, dyn: InternalExperienceData): Expe
     sites: Object.fromEntries(Object.entries(dyn.sites).map(([id, site]) => [id, {
       name: site.name,
       selectionAliases: site.selectionAliases,
+      meetingPoint: site.meetingPoint,
+      // Entry codes whose ad is about the drive (car/4x4 or motorbike): the catalog tags them with
+      // the "car"/"bike" media types. Only these may pre-select a destination (owner 2026-11-16).
+      vehicleEntryCodes: Object.entries(site.entrySegments ?? {})
+        .filter(([, segment]) => (segment.contextualMediaTypes ?? []).some(type => VEHICLE_MEDIA_TYPES.includes(type)))
+        .map(([code]) => code),
     }])),
     siteSelection: dyn.siteSelection,
     unavailableSites: dyn.unavailableSites,

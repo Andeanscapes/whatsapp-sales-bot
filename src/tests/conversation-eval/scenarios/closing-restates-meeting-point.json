@@ -1,0 +1,109 @@
+{
+  "id": "closing-restates-meeting-point",
+  "source": "Close: meeting point and time before the 25% deposit. | 2026-11-12: Coscuez on sale, so the bot asks the destination after the group (SITIO PENDIENTE) and the customer answers Chivor; later criteria moved one turn down.",
+  "tags": [
+    "price",
+    "live"
+  ],
+  "lang": "es",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "deposit-25",
+      "rule": "reply_must_match",
+      "turn": 4,
+      "weight": 2,
+      "critical": false,
+      "patterns": [
+        "25 ?%"
+      ]
+    },
+    {
+      "id": "no-30-deposit",
+      "rule": "reply_must_not_match",
+      "turn": 4,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "30 ?%"
+      ]
+    },
+    {
+      "id": "meeting-point",
+      "rule": "reply_must_match",
+      "turn": 4,
+      "weight": 2,
+      "critical": false,
+      "patterns": [
+        "Chivor"
+      ]
+    },
+    {
+      "id": "time",
+      "rule": "reply_must_match",
+      "turn": 4,
+      "weight": 2,
+      "critical": false,
+      "patterns": [
+        "9:00|9 am"
+      ]
+    },
+    {
+      "id": "point-before-deposit",
+      "rule": "reply_must_match",
+      "turn": 4,
+      "weight": 2,
+      "critical": false,
+      "patterns": [
+        "Chivor[\\s\\S]{0,200}25 ?%"
+      ]
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "turn": 4,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    },
+    {
+      "id": "short-reply",
+      "rule": "reply_length_at_most",
+      "turn": 4,
+      "weight": 2,
+      "critical": true,
+      "expected": 320
+    }
+  ],
+  "turns": [
+    {
+      "user": "C01 ¡Hola! ¿Cuánto vale la experiencia minera?",
+      "mockReply": "¡Hola! Soy Heinner, cofundador de Andean Scapes con Alexandra. Es una mina real de esmeraldas en Chivor con mineros locales; el valor depende del grupo. ¿Sería para ti solo, en pareja o para un grupo?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Somos 2, ¿cuánto cuesta?",
+      "mockReply": "Buenísimo. En Colombia hay dos regiones esmeralderas y operamos en las dos: Chivor, en el oriente, con noche en hacienda, y Coscuez, en el occidente, con hotel rural en Borbur. ¿A cuál les gustaría ir?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Chivor",
+      "mockReply": "Inicia y termina en el pueblo de Chivor, a 5-6 h de Bogotá; llegan por su cuenta. Si quieren un solo día sin noche, hay pasadía. Para 2 personas: CORE recomendado, con noche en hacienda, *$950.000*; PRIME, con dos minas y cabalgata, *$1.700.000*. ¿Con cuál seguimos?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "El core, para el 28 de noviembre",
+      "mockReply": "El 28 de noviembre está entre las fechas planeadas; el equipo confirma el cupo. Nos vemos ese sábado a las 9:00 am en el pueblo de Chivor. Para apartarlo es un anticipo del 25%: $237.500. ¿A nombre de quién lo reservamos?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

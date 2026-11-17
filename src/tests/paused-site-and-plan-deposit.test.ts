@@ -1,8 +1,7 @@
-import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { assertDynamicCatalogReady, dynamicDataSchema } from '../services/dynamic-data-schema.js';
 import { transformDynamicData } from '../services/dynamic-data-service.js';
-import { loadSkills, setDynamicService } from '../services/skill-loader.js';
+import { loadSkills } from '../services/skill-loader.js';
 import {
   getActiveExperience,
   getEquivalentPlan,
@@ -14,24 +13,25 @@ import {
 import { assembleSystemPrompt, renderBusinessData } from '../services/skills-prompt-assembly.js';
 import { calculatePriceQuote, getQuoteFingerprint, isQuoteFingerprintStale, quoteFingerprintPlanId } from '../services/pricing-calculator.js';
 import { detectPlan } from '../services/qualification-engine.js';
+import { pausedCoscuezPayload, usePausedCoscuez } from './helpers/all-sites-catalog.js';
 
 const BASIC = 'basic_1d_chivor';
 const CORE = 'core_2d1n_chivor';
 const COSCUEZ_CORE = 'core_2d1n_coscuez';
 const COSCUEZ_PRIME = 'prime_2d1n_coscuez';
+const COSCUEZ_BASIC = 'basic_1d_coscuez';
 
 interface RawCatalog {
   experiences: Record<string, { sites: Record<string, { status?: string; unavailableNote?: string }> }>;
 }
 
 function rawFixture(): RawCatalog {
-  return JSON.parse(readFileSync(new URL('../../scripts/bot-dynamic.ci.json', import.meta.url), 'utf8')) as RawCatalog;
+  return pausedCoscuezPayload() as RawCatalog;
 }
 
-// The real fixture: Chivor on sale with BASIC/CORE/PRIME, Coscuez paused.
+// Chivor on sale with BASIC/CORE/PRIME, Coscuez paused (in memory, not the live sale state).
 beforeEach(() => {
-  setDynamicService(null);
-  loadSkills();
+  usePausedCoscuez();
 });
 
 describe('paused destination', () => {
@@ -59,7 +59,7 @@ describe('paused destination', () => {
     expect(internal.media?.planImages.some(image => image.siteId === 'coscuez')).toBe(false);
     expect(experience.unavailableSites).toEqual([expect.objectContaining({
       siteId: 'coscuez',
-      planIds: [COSCUEZ_CORE, COSCUEZ_PRIME],
+      planIds: [COSCUEZ_BASIC, COSCUEZ_CORE, COSCUEZ_PRIME],
     })]);
   });
 

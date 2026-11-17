@@ -78,6 +78,11 @@ Implementation: `src/services/skills-prompt-assembly.ts` — sole prompt builder
    Before selection, a known destination with more than two active plans gets
    `OPCIONES DE PLAN ESTE TURNO`: name every available option with a short distinction,
    rather than hiding options behind an essential/complete binary. No prices until choice.
+   Both that cue and QUOTE LOCK carry the site's `meetingPoint` (the plan starts and ends
+   there; getting there is the customer's own), the options cue marks the catalog's `recommended: true`
+   plan as recommended and the day plan as a same-day round trip, and QUOTE LOCK without a chosen
+   day recommends ONE published date (a list of three was the most common last message
+   before silence). Size guidance comes from `REPLY_CHAR_LIMIT`.
 
 ## Whitelist: legitimate deterministic interceptors
 
@@ -200,7 +205,8 @@ catalog holds the Coscuez placeholders, it cannot be mirrored.
   a plan, while an explicit choice plus a brochure request still does.
 - Destination-first entry carries `SITIO PENDIENTE` until a destination is chosen;
   campaign diagnosis blocks and site-specific gallery themes stay unadvertised.
-  `siteSelection` supplies regional context and explicitly marked coming-soon sites.
+  `siteSelection` supplies regional context, explicitly marked coming-soon sites and an
+  optional `defaultSiteId` (no-preference suggestion; must name a site of the experience).
   A destination choice carries the stored plan's catalog `tier` to a unique matching
   plan at that site and clears the previous quote. Missing or ambiguous tiers clear
   the plan; destination comparisons preserve the current selection.
@@ -320,8 +326,8 @@ keeps the worst run, so `0/2 passed` means both runs failed while the report sho
 only one representative transcript.
 
 Only `live`-tagged scenarios are sent by default (`partitionLiveScenarios`); `--all`
-or an explicit `--scenario` overrides that. `EVAL_MAX_COST_USD` (default `1.00`)
-aborts a runaway pass — raise it before running `--all`. Do not treat deterministic
+or an explicit `--scenario` overrides that. `EVAL_MAX_COST_USD` (default `2.00`)
+aborts a runaway pass — raise it before running `--all`. CI also sets it to `2.00` for the live packs (61 live scenarios each since 2026-11-11). When the cap is reached the run stops, still prints and writes the report for the scenarios it finished, lists the ones not run, and exits 1. Do not treat deterministic
 mock replies as proof of LLM copy quality: mock replies are authored to satisfy the
 criteria, so copy criteria only bite in live mode. Conversely, a `live`-only failure
 is often scenario fidelity (feed-dependent counts, seeded state with no visible

@@ -4,6 +4,7 @@ import { migrate } from '../db/migrate.js';
 import { createRepositories, type Repositories } from '../db/repositories/index.js';
 import { daysummaryHandler } from '../commands/daysummary.command.js';
 import { env } from '../config/env.js';
+import { inferNotBookedReason } from '../db/repositories/types.js';
 
 let repos: Repositories;
 let db: Database.Database;
@@ -53,6 +54,47 @@ describe('getDayActivity', () => {
     const now = new Date();
     return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
   }
+
+  // Weekly marketing export (owner brief 2026-11-12): bookings leave every audience, and the
+  // non-booking reason is inferred from the stored pain or silence after our last message.
+  it('exports bookedAt and an inferred notBookedReason per conversation', () => {
+    insertConversation('+311', todayMidnight(), 80, 'Booked');
+    insertMessage('+311', 'inbound', 'Pagué el anticipo', todayH(9));
+    db.prepare('UPDATE conversations SET converted_at = ? WHERE customer_phone = ?').run(todayH(9), '+311');
+    insertConversation('+312', todayMidnight(), 40, 'Pricey');
+    insertMessage('+312', 'inbound', 'Muy caro', todayH(9));
+    db.prepare('UPDATE conversations SET lead_pain = ? WHERE customer_phone = ?').run('price', '+312');
+    insertConversation('+313', todayMidnight(), 30, 'Silent');
+    insertMessage('+313', 'inbound', 'Hola', todayH(9));
+    insertMessage('+313', 'outbound', 'Para 2 personas queda en $950.000. ¿Les reviso cupo?', todayH(9));
+    insertConversation('+314', todayMidnight(), 30, 'Talking');
+    insertMessage('+314', 'outbound', '¿Vienen en pareja?', todayH(9));
+    insertMessage('+314', 'inbound', 'Sí', todayH(10));
+
+    const byName = new Map(repos.transcripts.getDayActivity(todayMidnight(), null).conversations.map(c => [c.name, c]));
+    expect(byName.get('Booked')).toMatchObject({ bookedAt: todayH(9), notBookedReason: null });
+    expect(byName.get('Pricey')).toMatchObject({ bookedAt: null, notBookedReason: 'price' });
+    expect(byName.get('Silent')).toMatchObject({ bookedAt: null, notBookedReason: 'no_reply' });
+    expect(byName.get('Talking')).toMatchObject({ bookedAt: null, notBookedReason: null });
+  });
+
+  it('does not read a team bridge message as the bot waiting for a reply', () => {
+    insertConversation('+315', todayMidnight(), 30, 'Bridged');
+    insertMessage('+315', 'outbound', '¿Les reviso cupo?', todayH(9));
+    insertMessage('+315', 'inbound', 'Sí', todayH(10));
+    insertMessage('+315', 'outbound', 'Te escribo ya con el cupo.', todayH(11), 'operator');
+    const bridged = repos.transcripts.getDayActivity(todayMidnight(), null).conversations.find(c => c.name === 'Bridged');
+    expect(bridged?.notBookedReason).toBeNull();
+  });
+
+  it('maps every stored pain to a marketing reason', () => {
+    expect(inferNotBookedReason(null, 'date_time', null)).toBe('date');
+    expect(inferNotBookedReason(null, 'logistics_4x4', null)).toBe('logistics');
+    expect(inferNotBookedReason(null, 'security', null)).toBe('security');
+    expect(inferNotBookedReason(null, 'partner_group', null)).toBe('shared_decision');
+    expect(inferNotBookedReason(null, 'not_interested', 'outbound')).toBe('other');
+    expect(inferNotBookedReason('2026-11-12T10:00:00Z', 'price', 'outbound')).toBeNull();
+  });
 
   it('counts bot deposit requests closed without the bridge, and bridge conversations', () => {
     insertConversation('+301', todayMidnight(), 50, 'Ana');

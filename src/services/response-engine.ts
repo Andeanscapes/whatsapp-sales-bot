@@ -131,6 +131,7 @@ function formatEntryPriorContext(conversation: ConversationRow): string {
   return fields.length > 0 ? `historial local disponible; ${fields.join(' · ')}` : 'historial local disponible; datos previos limitados';
 }
 
+/** Usable retarget history (claimable in CONTEXTO PREVIO) needs both group and plan. */
 function hasQualifiedRetargetingContext(conversation: ConversationRow | null | undefined): boolean {
   return conversation?.collected_plan != null && conversation.collected_people != null;
 }
@@ -748,7 +749,11 @@ function selectedDateFromAvailabilityReply(
   const affirmative = /^(?:s[ií]|sip|si claro|claro|dale|listo|perfecto|de una|por supuesto|yes|yeah|yep|sure|ok|okay|sounds good|great)(?:\b|$|[\s,!.])/i.test(message.trim());
   const bareDayAnswer = /^(?:el\s+|the\s+)?(?:[1-9]|[12]\d|3[01])(?:st|nd|rd|th)?(?:\s+(?:est[aá] bien|me sirve|nos sirve|perfecto|porfa|por favor|entonces|is fine|is good|is perfect|works(?: for (?:us|me))?|sounds good|please|then))?[\s.!]*$/i.test(normalizeForKeywordMatch(message).trim());
   if (!lastAssistantQuestion || (!affirmative && !bareDayAnswer)) return null;
-  if (!/(?:fecha|fin de semana|les sirve|te sirve|salida|available|date|weekend|departure|works? for you)/i.test(lastAssistantQuestion)) return null;
+  // "cupo": the quote close recommends ONE date ("¿Revisamos el cupo del 21 de noviembre?");
+  // without it a "sí" stored no date, so the next "sí" to the reservation question never
+  // reached the close-CTA gate and the team was never alerted (dev 2026-11-11). Bounded so
+  // "me ocupo" does not match; "availab" covers "available" and "availability".
+  if (!/(?:fecha|fin de semana|les sirve|te sirve|salida|\bcupos?\b|availab|date|weekend|departure|works? for you)/i.test(lastAssistantQuestion)) return null;
 
   const assistantNorm = normalizeForKeywordMatch(lastAssistantQuestion);
   const messageNorm = normalizeForKeywordMatch(message);
@@ -968,15 +973,25 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
   const storedMarker = storedConversation?.entry_marker
     ? parseEntryMarker(`${storedConversation.entry_marker} `)
     : null;
-  const previousInbound = repos.message.getLastInboundBodies(customerPhone, 2)
+  const recentInbound = repos.message.getRecentInbound(customerPhone, 2);
+  const previousInbound = recentInbound
     .map(item => item.body)
     .filter((body): body is string => typeof body === 'string');
   const entryMarker = storedMarker ?? findEntryMarker(message, previousInbound);
+  // The marker's own time. When it came on a previous inbound (findEntryMarker's fallback), that
+  // row is the marker, so it must not count as earlier history for retargetingWithHistory
+  // (hasMessageBefore is strictly before): use the time of the row that carried it.
+  const markerRowAt = parseEntryMarker(message) === null
+    ? recentInbound.find(row => typeof row.body === 'string' && parseEntryMarker(row.body) !== null)?.created_at
+    : undefined;
+  const entryMarkerAt = storedMarker
+    ? storedConversation?.entry_marker_at ?? null
+    : markerRowAt ?? new Date().toISOString();
   if (entryMarker && !storedMarker) {
     repos.conversation.upsert(customerPhone, {
       entry_marker: entryMarker.code,
       entry_temperature: entryMarker.temperature,
-      entry_marker_at: new Date().toISOString(),
+      entry_marker_at: entryMarkerAt,
     });
   }
 
@@ -1532,6 +1547,17 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
   // The permission ask is not a sales question: on a permission-answer turn it must
   // not seed reservation/gallery/date inference from the previous assistant turn.
   const lastAssistantQuestion = consentAnswerTurn ? null : getLastAssistantQuestion(repos, customerPhone);
+  // An answer that chooses a new destination ("sí", "dale, Chivor", "sí, me interesa" to "¿Te
+  // interesa empezar por Chivor?") is not a booking: "te interesa" is also a soft reservation
+  // frame, so the first quote after the destination choice paged the team as a handoff. Same
+  // predicate as the site switch (siteChoiceThisTurn); a "sí, Chivor" that confirms the stored
+  // destination keeps its booking meaning.
+  const siteBeforeTurn = storedPlan ? getPlans(activeExperience).find(plan => plan.id === storedPlan)?.siteId : undefined;
+  // A message that asks to book on its own ("mejor Chivor, quiero reservar el 14") keeps its
+  // booking meaning: only the destination answer itself is not a booking.
+  const destinationAnswerOnly = chosenSiteThisTurn != null && chosenSiteThisTurn !== siteBeforeTurn
+    && !detectsReservationIntent(message);
+  const reservationIntentOrConfirmation = !destinationAnswerOnly && isReservationIntentOrConfirmation(message, lastAssistantQuestion);
   const conversationMode = repos.conversation.getMode(customerPhone);
 
   const galleryShown = hasShownLlmGallery(repos, customerPhone);
@@ -1605,9 +1631,9 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
 
   const preLimitPriceRow = repos.conversation.getPriceGivenAt(customerPhone);
   const preLimitHandoffAllowed = isQualificationComplete(dbQualification) && !!preLimitPriceRow
-    && isReservationIntentOrConfirmation(message, lastAssistantQuestion);
+    && reservationIntentOrConfirmation;
 
-  const preLimitReservationIntent = !!preLimitPriceRow && isReservationIntentOrConfirmation(message, lastAssistantQuestion);
+  const preLimitReservationIntent = !!preLimitPriceRow && reservationIntentOrConfirmation;
 
   const limits = checkTimeWindow(repos, customerPhone);
   if (limits.isLimited) {
@@ -1724,10 +1750,15 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
       step: returningRow ? furthestReturningStep(returningRow, returningRow.collected_plan).label : null,
     }, '[RETURNING] returning customer turn');
   }
+  // History = this lead exchanged messages with us BEFORE the retargeting marker arrived,
+  // qualified or not (§T2 Retarget covers "sin plan"). Decided against the marker's own time so a
+  // NEW R01 lead from the videos stays a first contact on every later turn, not only the first.
+  const retargetingWithHistory = !returningContext && entryMarker?.temperature === 'retargeting'
+    && entryMarkerAt != null && repos.message.hasMessageBefore(customerPhone, entryMarkerAt);
   const priorContext = returningContext
     ? null
     : entryMarker?.temperature === 'retargeting'
-      ? isNewConversation || !hasQualifiedRetargetingContext(storedConversation)
+      ? !retargetingWithHistory || !hasQualifiedRetargetingContext(storedConversation)
         ? 'sin historial local; no inventes familiaridad ni conversaciones anteriores'
         : storedConversation
           ? formatEntryPriorContext(storedConversation)
@@ -1836,6 +1867,7 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     selectedExperienceId: resolvedExperienceId,
     entryMarker,
     entryOpeningTurn: isNewConversation,
+    retargetingWithHistory,
     priorContext,
     returning: returningContext,
     returningPriceQuestion: returningTurn && isPriceQuestion(message),
@@ -1844,6 +1876,7 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     // old and the PRECIO YA ENTREGADO cue would forbid the total they just asked for.
     priceGiven: repos.conversation.getPriceGivenAt(customerPhone) != null && !(returningTurn && isPriceQuestion(message)),
     latestCustomerMessage: message,
+    otherQuestionThisTurn: /[?¿]/.test(message) && !isPriceQuestion(message),
     dateSelectedThisTurn,
     planSelectedThisTurn,
     closeCtaAcceptedThisTurn,
@@ -1893,7 +1926,7 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
           ? (skills.fallbackReplies[lang].llmFailureWarm?.replace('{{name}}', String(collectedFields.nombre)) ?? skills.fallbackReplies[lang].aiFailureQualified)
           : skills.fallbackReplies[lang].aiFailureQualified));
     const failureReservationIntent = !!preLimitPriceRow
-      && isReservationIntentOrConfirmation(message, lastAssistantQuestion);
+      && reservationIntentOrConfirmation;
     const failureScore = failureReservationIntent
       ? Math.max(currentScore, skills.salesStrategy.urgentLeadThreshold)
       : currentScore;
@@ -2331,7 +2364,7 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
   let finalScore = hybrid.score;
 
   const qComplete = isQualificationComplete(merged);
-  const reservationIntent = !consentAnswerTurn && isReservationIntentOrConfirmation(message, lastAssistantQuestion);
+  const reservationIntent = !consentAnswerTurn && reservationIntentOrConfirmation;
   const recentReservation = recentMessages
     .filter(m => m.role === 'user')
     .slice(-6)

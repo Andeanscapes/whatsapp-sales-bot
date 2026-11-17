@@ -1,0 +1,106 @@
+{
+  "id": "expensive-to-basic-no-discount",
+  "source": "Expensive objection: the honest day option, never a discount. | 2026-11-12: Coscuez on sale, so the bot asks the destination after the group (SITIO PENDIENTE) and the customer answers Chivor; later criteria moved one turn down.",
+  "tags": [
+    "price",
+    "live"
+  ],
+  "lang": "en",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "no-discount-t3",
+      "rule": "reply_must_not_match",
+      "turn": 4,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "discount|cheaper deal|special offer|promo|i'll let you have"
+      ]
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "turn": 4,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    },
+    {
+      "id": "day-offered-t4",
+      "rule": "reply_must_match",
+      "turn": 5,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "day trip|one[- ]day|one day"
+      ]
+    },
+    {
+      "id": "no-discount-t4",
+      "rule": "reply_must_not_match",
+      "turn": 5,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "discount|cheaper deal|special offer|promo|i'll let you have"
+      ]
+    },
+    {
+      "id": "long-day-honest",
+      "rule": "reply_must_match",
+      "turn": 5,
+      "weight": 2,
+      "critical": false,
+      "patterns": [
+        "same day|that same evening|same evening"
+      ]
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "turn": 5,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    }
+  ],
+  "turns": [
+    {
+      "user": "C01 Hi! How much is the emerald mine experience?",
+      "mockReply": "Hi! I'm Heinner, co-founder of Andean Scapes with Alexandra. It's a real emerald mine in Chivor with local miners; the price depends on the group. Is it for you alone, as a couple, or as a group?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "We are 2, how much is it?",
+      "mockReply": "Great. Colombia has two emerald regions and we run trips in both: Chivor, in the east, with a night at a hacienda, and Coscuez, in the west, with a rural hotel in Borbur. Which one would you like to visit?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Chivor",
+      "mockReply": "It starts and ends in the town of Chivor, 5-6 hours from Bogotá; you get there on your own. If you want one day without a night, a day trip is available. For 2 people: CORE (recommended), with a night at the hacienda, *$950,000*; PRIME, with two mines and horseback riding, *$1,700,000*. Which one shall we go with?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "It's too expensive for us",
+      "mockReply": "I understand. Is it the price of the plan or the transport from your city that weighs more?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "The price is the real issue for us",
+      "mockReply": "I understand. If the price is the issue, the day trip is the option without a night: the same mine in one day, returning that same evening. What changes is the plan, not the experience. Would a date work for you?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

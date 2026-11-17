@@ -97,6 +97,7 @@ export class DeepSeekLlmClient implements LlmClient {
     if (!result) return null;
 
     const tokens = { prompt: result.promptTokens, completion: result.completionTokens };
+    if ((result.cachedPromptTokens ?? 0) > 0) logger.info({ cached: result.cachedPromptTokens, prompt: result.promptTokens }, '[LLM] prompt cache hit');
 
     if (result.finishReason === 'length') {
       logger.warn({ completionTokens: result.completionTokens }, '[LLM] response truncated by provider');

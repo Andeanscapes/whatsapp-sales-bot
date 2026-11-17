@@ -42,8 +42,10 @@ export function withSamePricing(payload: unknown, fromPlanId: string, toPlanId: 
  * destinations happen to be on sale today. Returned as plain JSON so callers can
  * edit it before parsing, as the fixture-reading tests already do.
  */
-export function allSitesActivePayload(): unknown {
-  const payload = JSON.parse(readFileSync(CI_FIXTURE, 'utf8')) as RawFixture;
+export function allSitesActivePayload(source?: unknown): unknown {
+  const payload = (source === undefined
+    ? JSON.parse(readFileSync(CI_FIXTURE, 'utf8'))
+    : structuredClone(source)) as RawFixture;
   for (const experience of Object.values(payload.experiences)) {
     for (const site of Object.values(experience.sites)) {
       delete site.status;
@@ -69,4 +71,27 @@ class SeededDynamicService extends DynamicDataService {
 export function useAllSitesActive(payload: unknown = allSitesActivePayload()): Skills {
   setDynamicService(new SeededDynamicService(transformDynamicData(dynamicDataSchema.parse(payload))));
   return loadSkills();
+}
+
+/**
+ * Coscuez paused in memory, so destination-pause tests do not depend on the live sale state.
+ * Defaults to the CI fixture; the live eval passes the served catalog instead (copied, never
+ * mutated in place).
+ */
+export function pausedCoscuezPayload(source?: unknown): unknown {
+  const payload = (source === undefined
+    ? JSON.parse(readFileSync(CI_FIXTURE, 'utf8'))
+    : structuredClone(source)) as RawFixture;
+  for (const experience of Object.values(payload.experiences)) {
+    const site = experience.sites.coscuez;
+    if (!site) continue;
+    site.status = 'inactive';
+    site.unavailableNote = 'Coscuez existe en nuestro catalogo, pero hoy no esta disponible.';
+  }
+  return payload;
+}
+
+/** Loads skills with Coscuez paused and Chivor on sale (CI fixture unless a catalog is given). */
+export function usePausedCoscuez(source?: unknown): Skills {
+  return useAllSitesActive(pausedCoscuezPayload(source));
 }

@@ -982,3 +982,18 @@ describe('business rules merge with dynamic pricing', () => {
     expect(pricing.botRules).not.toContain('PRICING_NOT_AVAILABLE');
   });
 });
+
+describe('recommended plan flag', () => {
+  it('accepts one recommended plan per site and rejects two', async () => {
+    const { allSitesActivePayload } = await import('./helpers/all-sites-catalog.js');
+    type Payload = { experiences: Record<string, { sites: Record<string, { plans: Record<string, { recommended?: boolean }> }> }> };
+    const payload = allSitesActivePayload() as Payload;
+    expect(dynamicDataSchema.safeParse(payload).success).toBe(true);
+    const chivor = Object.values(payload.experiences).flatMap(experience => Object.entries(experience.sites)).find(([id]) => id === 'chivor')?.[1];
+    if (!chivor) throw new Error('chivor site missing from the CI fixture');
+    chivor.plans.prime_2d1n_chivor.recommended = true;
+    const result = dynamicDataSchema.safeParse(payload);
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.some(issue => issue.message.startsWith('at most one recommended plan per site'))).toBe(true);
+  });
+});

@@ -1,0 +1,109 @@
+{
+  "id": "closing-restates-meeting-point",
+  "source": "Close: meeting point and time before the 25% deposit. | 2026-11-12: Coscuez on sale, so the bot asks the destination after the group (SITIO PENDIENTE) and the customer answers Chivor; later criteria moved one turn down.",
+  "tags": [
+    "price",
+    "live"
+  ],
+  "lang": "en",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "deposit-25",
+      "rule": "reply_must_match",
+      "turn": 4,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "25 ?%"
+      ]
+    },
+    {
+      "id": "no-30-deposit",
+      "rule": "reply_must_not_match",
+      "turn": 4,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "30 ?%"
+      ]
+    },
+    {
+      "id": "meeting-point",
+      "rule": "reply_must_match",
+      "turn": 4,
+      "weight": 2,
+      "critical": false,
+      "patterns": [
+        "Chivor"
+      ]
+    },
+    {
+      "id": "time",
+      "rule": "reply_must_match",
+      "turn": 4,
+      "weight": 2,
+      "critical": false,
+      "patterns": [
+        "9:00|9 am"
+      ]
+    },
+    {
+      "id": "point-before-deposit",
+      "rule": "reply_must_match",
+      "turn": 4,
+      "weight": 2,
+      "critical": false,
+      "patterns": [
+        "Chivor[\\s\\S]{0,200}25 ?%"
+      ]
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "turn": 4,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    },
+    {
+      "id": "short-reply",
+      "rule": "reply_length_at_most",
+      "turn": 4,
+      "weight": 2,
+      "critical": true,
+      "expected": 320
+    }
+  ],
+  "turns": [
+    {
+      "user": "C01 Hi! How much is the emerald mine experience?",
+      "mockReply": "Hi! I'm Heinner, co-founder of Andean Scapes with Alexandra. It's a real emerald mine in Chivor with local miners; the price depends on the group. Is it for you alone, as a couple, or as a group?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "We are 2, how much is it?",
+      "mockReply": "Great. Colombia has two emerald regions and we run trips in both: Chivor, in the east, with a night at a hacienda, and Coscuez, in the west, with a rural hotel in Borbur. Which one would you like to visit?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Chivor",
+      "mockReply": "It starts and ends in the town of Chivor, 5-6 hours from Bogotá; you get there on your own. If you want one day without a night, a day trip is available. For 2 people: CORE (recommended), with a night at the hacienda, *$950,000*; PRIME, with two mines and horseback riding, *$1,700,000*. Which one shall we go with?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "The core, for November 28",
+      "mockReply": "November 28 is one of the planned dates; the team confirms the spot. We meet that Saturday at 9:00 am in the town of Chivor. To reserve it, the deposit is 25%: $237,500. Whose name shall I put the booking under?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

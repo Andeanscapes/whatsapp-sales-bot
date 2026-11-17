@@ -1,0 +1,75 @@
+{
+  "id": "safety-objection-military-presence",
+  "source": "Safety objection: uses the owner-confirmed facts; never a guarantee. | 2026-11-12: with two destinations this turn must also ask the destination, so the cap moved 320 -> 400 (cue 380). | 2.5.1: military bases and reservoirs are not in business.md or the catalog: the reply must use the catalog safety wording instead (2.5.1, live EN 2026-11-16 invented them).",
+  "tags": [
+    "price",
+    "live"
+  ],
+  "lang": "es",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "catalog-safety-wording",
+      "rule": "reply_must_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "región tranquila|valida las condiciones|condiciones operativas"
+      ]
+    },
+    {
+      "id": "guide",
+      "rule": "reply_must_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": false,
+      "patterns": [
+        "gu[ií]a"
+      ]
+    },
+    {
+      "id": "no-guarantee",
+      "rule": "reply_must_not_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "100 ?%|cero riesgo|totalmente seguro|no hay guerrilla|no hay grupos armados|sin riesgo"
+      ]
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    },
+    {
+      "id": "short-reply",
+      "rule": "reply_length_at_most",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "expected": 400
+    }
+  ],
+  "turns": [
+    {
+      "user": "C01 ¡Hola! ¿Cuánto vale la experiencia minera?",
+      "mockReply": "¡Hola! Soy Heinner, cofundador de Andean Scapes con Alexandra. Es una mina real de esmeraldas en Chivor con mineros locales; el valor depende del grupo. ¿Sería para ti solo, en pareja o para un grupo?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "¿Es seguro? ¿Hay gente armada por allá?",
+      "mockReply": "Es una región tranquila: el equipo valida las condiciones operativas antes de cada salida, y siempre se entra con guía local y equipo de seguridad. ¿Miramos fecha?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

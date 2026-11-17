@@ -151,6 +151,7 @@ const criterionRuleSchema = z.enum([
   'max_question_marks',
   'max_emojis',
   'reply_length_at_most',
+  'reply_words_at_most',
   'output_question_count_at_most',
   'output_count_at_most',
 ]);
@@ -218,7 +219,7 @@ const criterionSchema = z.object({
   if ((criterion.rule === 'max_question_marks' || criterion.rule === 'max_emojis') && criterion.max === undefined) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${criterion.rule} requires max` });
   }
-  if (['reply_length_at_most', 'output_question_count_at_most', 'output_count_at_most'].includes(criterion.rule)
+  if (['reply_length_at_most', 'reply_words_at_most', 'output_question_count_at_most', 'output_count_at_most'].includes(criterion.rule)
     && typeof criterion.expected !== 'number') {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${criterion.rule} requires numeric expected` });
   }

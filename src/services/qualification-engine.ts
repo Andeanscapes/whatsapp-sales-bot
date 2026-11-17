@@ -3,6 +3,7 @@ import { normalizeText, detectLanguageOrNull, detectExplicitLanguageSwitch, dete
 import type { FallbackReplies } from './skill-loader.js';
 import type { MergedQualification } from './types.js';
 import { getEquivalentPlan, getPlans, getSites, getUnavailableSites, type ActiveExperience } from './product-registry.js';
+import { parseEntryMarker } from './entry-marker.js';
 import { MONTH_NAMES } from './constants.js';
 import { env } from '../config/env.js';
 import { parseChildAges } from './qualification-format.js';
@@ -261,12 +262,20 @@ export function detectSite(message: string, experience: ActiveExperience): strin
   return matches.length === 1 ? matches[0] : null;
 }
 
-const SITE_CHOICE_MARKER = /\b(?:quiero|queremos|mejor|prefiero|preferimos|me quedo con|nos quedamos con|vamos con|voy con|elijo|elegimos|dale|me interesa|nos interesa|me gustaria|nos gustaria|me llama|nos llama)\b/;
-const SITE_INQUIRY = /\b(?:saber|preguntar|consultar)\b/;
-const NEGATION_WORDS = new Set(['no', 'ni', 'tampoco', 'nunca']);
-const BARE_SITE_FILLER = new Set(['el', 'la', 'en', 'de', 'a', 'si', 'ok', 'pues', 'porfa', 'por', 'favor', 'entonces', 'dale', 'mejor']);
+// English forms: an English lead naming a destination ("we are interested in Chivor") stored
+// none, so a later "the basic one" stayed ambiguous between the two sites.
+const SITE_CHOICE_MARKER = /\b(?:quiero|queremos|mejor|prefiero|preferimos|me quedo con|nos quedamos con|vamos con|voy con|elijo|elegimos|dale|me interesa|nos interesa|me gustaria|nos gustaria|me llama|nos llama|interested in|(?:i|we) (?:want|d like|would like)|want to (?:visit|go to|see|do)|would like to (?:visit|go to|see|do)|d like to (?:visit|go to|see|do)|wanna (?:visit|go to|see)|let s do|lets do)\b/;
+// "go with" / "prefer" / "choose" choose only when the site follows directly ("we'll go with
+// Chivor"): "go with kids to Coscuez" and "I prefer to know how far Chivor is" are mentions.
+const EN_SITE_CHOICE_BEFORE_SITE = /\b(?:go with|prefer|choose)$/;
+// English twin of "saber" only with a question complement: "I want to know how far Chivor is"
+// asks, while "I want to know Chivor" / "know more about Chivor" / "check out Chivor" choose.
+const SITE_INQUIRY = /\b(?:saber|preguntar|consultar|ask|wondering)\b|\b(?:know|find out|check|learn|understand|see)\s+(?:if|whether|how|what|when|where|why|which)\b/;
+const NEGATION_WORDS = new Set(['no', 'ni', 'tampoco', 'nunca', 'not', 'don', 'dont', 'never']);
+const BARE_SITE_FILLER = new Set(['el', 'la', 'en', 'de', 'a', 'si', 'ok', 'pues', 'porfa', 'por', 'favor', 'entonces', 'dale', 'mejor', 'yes', 'the', 'in', 'please', 'then', 'okay']);
 // Bare affirmations to a site question: "si", "ok", "dale", "claro", "de una", "listo", "me interesa", "va"
-const BARE_AFFIRMATION = /^(?:si|ok|dale|claro|de una|listo|me interesa|va)\s*$/i;
+// "si, me interesa" / "ok dale": a leading yes before another affirmation is still bare.
+const BARE_AFFIRMATION = /^(?:(?:si|ok|dale|claro) )?(?:si|ok|dale|claro|de una|listo|me interesa|nos interesa|va)\s*$/i;
 
 function selectionClauses(message: string): string[] {
   return message.split(/[,;.!?¿¡\n]+/).flatMap(clause =>
@@ -293,17 +302,38 @@ export function detectSiteChoice(message: string, experience: ActiveExperience):
     const rest = words.filter((_, i) => i < start || i >= start + length);
     if (rest.every(word => BARE_SITE_FILLER.has(word))) return [id];
     const norm = words.join(' ');
-    return !SITE_INQUIRY.test(norm) && SITE_CHOICE_MARKER.test(norm) ? [id] : [];
+    if (EN_SITE_CHOICE_BEFORE_SITE.test(words.slice(0, start).join(' '))) return [id];
+    if (SITE_INQUIRY.test(norm)) return [];
+    return SITE_CHOICE_MARKER.test(norm) ? [id] : [];
   }));
   return choices.size === 1 ? [...choices][0] : null;
 }
 
 // The closing question must offer the site as a choice ("¿Te interesa Chivor…?"). A
 // "sí" to a media offer ("¿Te mando fotos de Chivor?") is not a destination choice.
-const SITE_INTEREST_FRAME = /\b(?:te|les) (?:interesa|llama|suena|gustaria|sirve|animas?|anima)\b|\b(?:se animan|prefieres|prefieren|preferis|quieres conocer|quieren conocer|vamos con)\b/;
-const SITE_PLAN_REVIEW_FRAME = /\b(?:quieres|quieren|te gustaria|les gustaria)\b.*\b(?:revisar|ver|conocer|cuente|contemos|explique|expliquemos)\b.*\b(?:plan(?:es)?|informacion|info|detalles)\b/;
-const SITE_MEDIA_OFFER = /\b(?:fotos?|imagen(?:es)?|videos?|brochure|folleto)\b/;
-const SITE_OPERATIONAL_QUESTION = /\b(?:fechas?|lunes|martes|miercoles|jueves|viernes|sabados?|domingos?|hoy|manana|reserv\w*|inici(?:ar|emos|amos)|confirm\w*|cupos?|pagos?|pagar|anticipo)\b/;
+// "parece" / "empezar por": the destination suggestion when the customer has no preference
+// ("¿Les parece empezar por Chivor?"). Date, media and booking guards below still apply.
+const SITE_INTEREST_FRAME = /\b(?:te|les) (?:interesa|llama|suena|gustaria|sirve|animas?|anima|parece)\b|\b(?:se animan|prefieres|prefieren|preferis|quieres conocer|quieren conocer|vamos con|empezamos por|empezar por|arrancamos (?:por|con))\b/;
+// English twin (live 2026-11-12: "Want me to go with Chivor and show you the plans?" → "yes"
+// chose nothing, so the deferred price was never quoted).
+const SITE_PLAN_REVIEW_FRAME = /\b(?:quieres|quieren|te gustaria|les gustaria)\b.*\b(?:revisar|ver|conocer|cuente|contemos|explique|expliquemos)\b.*\b(?:plan(?:es)?|informacion|info|detalles)\b|\b(?:want|would you like|shall i|should i)\b.*\b(?:show|tell|walk|go over|see|check out)\b.*\b(?:plans?|options)\b/;
+const SITE_MEDIA_OFFER = /\b(?:fotos?|imagen(?:es)?|videos?|brochure|folleto|photos?|pictures?|pics?|images?)\b/;
+// An offer to send or explain something about a site ("¿Les parece si les cuento cómo se llega a
+// Chivor?", "How about I send you the itinerary for Chivor?") is not a destination choice.
+// Offer forms only (a verb aimed at the customer), so "¿Te interesa la ruta 4x4 de Chivor?"
+// stays a site-interest question.
+const SITE_INFO_OFFER = /\b(?:(?:si )?(?:te|les) (?:cuento|cuente|contamos|explico|explique|envio|envie|mando|mande|paso|comparto)|como se llega|(?:i|we) (?:send|tell|explain|share|show)|send you|tell you|show you|share (?:the|an?) (?:itinerary|route)|(?:the|an) itinerary|(?:el|un) itinerario|how to get)\b/;
+const SITE_OPERATIONAL_QUESTION = /\b(?:fechas?|lunes|martes|miercoles|jueves|viernes|sabados?|domingos?|hoy|manana|reserv\w*|inici(?:ar|emos|amos)|confirm\w*|cupos?|pagos?|pagar|anticipo|dates?|days?|weekend|monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|book\w*|spots?|availability|pay\w*|deposit)\b/;
+
+// English: the same suggestion and interest frames ("Shall we start with Chivor?",
+// "Are you interested in Chivor?"). The guards above apply unchanged.
+const EN_SITE_INTEREST_FRAME = /\b(?:interested in|sound good|sounds good|would you like to (?:go|start|visit|explore)|want to (?:go|start|visit|explore)|shall we (?:go|start)|start with|go with|how about|prefer)\b/;
+const EN_BARE_AFFIRMATION = /^(?:yes|yeah|yep|yup|sure|ok|okay|sounds good|lets do it|let s do it|great|perfect|of course)\s*$/i;
+
+/** Last question of the outbound: Spanish "¿…?" first, else the last English "…?" sentence. */
+function closingSiteQuestion(outboundText: string): string | null {
+  return closingQuestion(outboundText) ?? outboundText.match(/[^.!?\n]*\?/g)?.at(-1)?.trim() ?? null;
+}
 
 /**
  * A bare affirmation ("si", "ok", "dale"…) chooses the single site the bot's closing
@@ -315,18 +345,22 @@ export function resolveSiteAnswer(
   lastOutboundText: string | null,
   experience: ActiveExperience,
 ): string | null {
-  if (!lastOutboundText || !BARE_AFFIRMATION.test(normalizeText(message))) return null;
+  const normMessage = normalizeText(message);
+  if (!lastOutboundText || (!BARE_AFFIRMATION.test(normMessage) && !EN_BARE_AFFIRMATION.test(normMessage))) return null;
   if (mentionedSites(message, experience).length > 0) return null;
-  const question = closingQuestion(lastOutboundText);
+  const question = closingSiteQuestion(lastOutboundText);
   if (!question) return null;
   const normQuestion = normalizeText(question);
   // A date/booking/media question still owns its yes even when it names a site.
-  if (SITE_MEDIA_OFFER.test(normQuestion) || SITE_OPERATIONAL_QUESTION.test(normQuestion)
+  // The plan-review offer ("¿te cuente el plan de Chivor?") is a documented site switch.
+  const infoOffer = SITE_INFO_OFFER.test(normQuestion) && !SITE_PLAN_REVIEW_FRAME.test(normQuestion);
+  if (SITE_MEDIA_OFFER.test(normQuestion) || infoOffer || SITE_OPERATIONAL_QUESTION.test(normQuestion)
     || isDateAskQuestion(question)
     || MONTH_NAMES.some(month => normQuestion.split(' ').includes(month))
     || /\b(?:el|para|este) \d{1,2}\b/.test(normQuestion)
+    || /\b(?:the|on) \d{1,2}(?:st|nd|rd|th)?\b/.test(normQuestion)
     || /\b\d{1,2}[/-]\d{1,2}\b/.test(question)) return null;
-  if (!SITE_INTEREST_FRAME.test(normQuestion) && !SITE_PLAN_REVIEW_FRAME.test(normQuestion)) return null;
+  if (!SITE_INTEREST_FRAME.test(normQuestion) && !SITE_PLAN_REVIEW_FRAME.test(normQuestion) && !EN_SITE_INTEREST_FRAME.test(normQuestion)) return null;
   const sites = mentionedSites(question, experience);
   return sites.length === 1 ? sites[0] : null;
 }
@@ -361,6 +395,14 @@ export function resolveSiteContext(
     const site = detectSiteChoice(body, experience)
       ?? (/[?¿]/.test(body) ? detectSite(body, experience) : null);
     if (site) return site;
+  }
+  // Only a vehicle ad (car/4x4 or motorbike: codes the catalog tags "car"/"bike", e.g. C02/C03/H02/H03)
+  // implies a destination, the site that carries that vehicle segment. Other codes (C01, R01, kids)
+  // run on videos from both regions, so the lead chooses (owner 2026-11-16). A named site above wins.
+  const markerCode = inboundBodies.map(body => parseEntryMarker(body)?.code).find((code): code is string => !!code);
+  if (markerCode) {
+    const vehicleSites = getSites(experience).filter(site => experience.sites?.[site.id]?.vehicleEntryCodes?.includes(markerCode));
+    if (vehicleSites.length === 1) return vehicleSites[0].id;
   }
   return undefined;
 }
@@ -721,7 +763,8 @@ export function extractBookingFields(text: string, experience?: ActiveExperience
   // `normalized` strips punctuation, so "we're" arrives as "we re". "we are 2" counts
   // only when nothing but a people word follows ("we are 2 days away" is not a group).
   // Both forms must be the whole answer, so "2 of us are vegetarian" is not a headcount.
-  const englishGroupMatch = normalized.trim().match(/^(?:(?:just\s+)?(?:there\s+(?:are|will\s+be)\s+)?(\d+|two|three|four|five|six|seven|eight|nine|ten)\s+of\s+us|we\s+(?:are|re)\s+(\d+|two|three|four|five|six|seven|eight|nine|ten)(?:\s+(?:people|persons|travell?ers|adults))?)$/);
+  // Only a trailing price question may follow ("we are 2, how much is it?"), like "somos 2, ¿cuánto?".
+  const englishGroupMatch = normalized.trim().match(/^(?:(?:just\s+)?(?:there\s+(?:are|will\s+be)\s+)?(\d+|two|three|four|five|six|seven|eight|nine|ten)\s+of\s+us|we\s+(?:are|re)\s+(\d+|two|three|four|five|six|seven|eight|nine|ten)(?:\s+(?:people|persons|travell?ers|adults))?)(?:\s+how\s+much\b.*)?$/);
   const englishGroup = englishGroupMatch ? parseCountWord(englishGroupMatch[1] ?? englishGroupMatch[2]) : null;
   if (englishGroup != null && englishGroup > 0 && !fields.collected_people && !mixedAdultsAndChildren) {
     fields.collected_people = englishGroup;
@@ -873,7 +916,10 @@ export function contextAwareExtract(message: string, repos: Repositories, phone:
   const norm = message.trim();
 
   if (lastQuestion && !fields.collected_people) {
-    const askedPeople = normQuestion != null && /cu[aá]ntas personas|cu[aá]ntos ser[ií]an|how many people/i.test(normQuestion);
+    // The ad opener asks the group ("¿solo, en pareja o para un grupo?"); "para 2" answers it as a
+    // headcount. Without this, "Quiero el pasadía para 2" stored no people and no T3b close ran.
+    const askedPeople = normQuestion != null && (/cu[aá]ntas personas|cu[aá]ntos ser[ií]an|how many people/i.test(normQuestion)
+      || /sol[oa]s?\b.{0,40}\bpareja|pareja.{0,40}\bgrupo|\balone\b.{0,40}\bcouple|\bcouple\b.{0,40}\bgroup|just you.{0,40}\b(?:couple|group)/i.test(normQuestion));
     if (askedPeople) {
       const people = extractPeopleFromReply(norm);
       if (people != null) fields.collected_people = people;
@@ -1024,13 +1070,17 @@ export function reconstructFromHistory(repos: Repositories, phone: string, curre
   };
   let scannedPlan: string | null = null;
   let planScanDone = false;
+  let afterSiteChoice = false;
   for (const [index, row] of allInbound.entries()) {
     if (!row.body || (!need.nombre && !need.personas && !need.fecha && !need.transporte && !need.mascota
       && !need.adultos && !need.ninos && !need.edadesNinos && !need.origen && !scannedPlan)) continue;
     const extracted = extractBookingFields(row.body, experience);
     if (experience) {
+      // A plan named before the destination ("quiero el pasadía", then "Chivor") takes the site chosen
+      // later in the chat: the older slice alone has no site, and detectPlan needs one with two sites.
       const siteId = resolveSiteContext(experience, typeof current.plan === 'string' ? current.plan : null,
-        allInbound.slice(index).map(item => item.body ?? ''));
+        allInbound.slice(index).map(item => item.body ?? ''))
+        ?? resolveSiteContext(experience, null, allInbound.map(item => item.body ?? ''));
       const planId = detectPlan(row.body, experience, siteId);
       if (planId) extracted.collected_plan = planId;
       else delete extracted.collected_plan;
@@ -1056,8 +1106,14 @@ export function reconstructFromHistory(repos: Repositories, phone: string, curre
       && (isPlanBrochureRequest(row.body) || !isPlanReference(row.body));
     if (!planScanDone && !comparedPlans) {
       if (typeof extracted.collected_plan === 'string') {
-        scannedPlan = extracted.collected_plan;
+        // Past a destination choice, only a plan named without a site ("quiero el pasadía", then
+        // "Chivor") is the lead's plan (2.5.1). One tied to the other site ("prime en Chivor", then
+        // "mejor en Coscuez") is not carried over.
+        if (!afterSiteChoice || (experience && detectSite(row.body, experience) == null)) scannedPlan = extracted.collected_plan;
         planScanDone = true;
+      } else if (experience && typeof fields.plan !== 'string' && !isPlanReference(row.body)
+        && detectSiteChoice(row.body, experience) !== null) {
+        afterSiteChoice = true;
       } else if (isPlanReference(row.body) || (experience && detectSiteChoice(row.body, experience) !== null)) {
         // Newest-first: a plan reference newer than any keyword mention means the
         // stored plan came from that switch; older keyword mentions must not revert it.

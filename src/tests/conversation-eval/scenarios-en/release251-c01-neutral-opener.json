@@ -1,0 +1,96 @@
+{
+  "id": "release251-c01-neutral-opener",
+  "source": "Owner 2026-11-16: C01 ads run on videos from Chivor and Coscuez; the bot must not assume a hacienda or a site, and must ask which experience.",
+  "tags": [
+    "release-2.5.1",
+    "live",
+    "two-destinations"
+  ],
+  "lang": "en",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "no-site-assumed-turn-1",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "Chivor|Coscuez|Borbur|hacienda|hotel"
+      ]
+    },
+    {
+      "id": "asks-group-turn-1",
+      "rule": "reply_must_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "[^?.!\\n]*(?:alone|couple|group|by yourself|for two|someone)[^?.!\\n]*\\?"
+      ]
+    },
+    {
+      "id": "no-price-turn-1",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\$\\s?\\d|\\bCOP\\b|\\d{3}[.,]000|starting (?:at|from)"
+      ]
+    },
+    {
+      "id": "one-question-turn-1",
+      "rule": "max_question_marks",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    },
+    {
+      "id": "names-both-sites-turn-2",
+      "rule": "reply_must_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "Chivor[\\s\\S]*Coscuez|Coscuez[\\s\\S]*Chivor"
+      ]
+    },
+    {
+      "id": "no-price-before-destination",
+      "rule": "reply_must_not_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\$\\s?\\d|\\bCOP\\b|\\d{3}[.,]000|starting (?:at|from)"
+      ]
+    },
+    {
+      "id": "one-question-turn-2",
+      "rule": "max_question_marks",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    }
+  ],
+  "turns": [
+    {
+      "user": "C01 Hi! I want to know what the emerald mining experience is about",
+      "mockReply": "Hi, I'm Heinner, from Andean Scapes. It's a real emerald mine with local miners and guides: a weekend, Saturday to Sunday, with a night there. Would it be for you alone, as a couple or for a group?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "We are 2",
+      "mockReply": "Great. We have two different experiences: Chivor, with a 4x4 up to the mine and a night at the hacienda; or Coscuez, with a rural hotel in Borbur and a talk at Chacaro square. Which one appeals to you more?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

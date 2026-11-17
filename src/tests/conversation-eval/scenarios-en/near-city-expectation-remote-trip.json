@@ -1,0 +1,75 @@
+{
+  "id": "near-city-expectation-remote-trip",
+  "source": "Expectation check: the lead thinks it is a short mine tour; the bot explains the overnight trip.",
+  "tags": [
+    "price",
+    "live"
+  ],
+  "lang": "en",
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "not-short",
+      "rule": "reply_must_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "not (?:that |very |quite |exactly |really )?(close|near|a short|a two-hour)|two-day|overnight"
+      ]
+    },
+    {
+      "id": "hours",
+      "rule": "reply_must_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": false,
+      "patterns": [
+        "5[-–]6 hours|5[-–]6 h"
+      ]
+    },
+    {
+      "id": "no-price",
+      "rule": "reply_must_not_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\$\\s?\\d|\\d{3},000"
+      ]
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    },
+    {
+      "id": "short-reply",
+      "rule": "reply_length_at_most",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "expected": 320
+    }
+  ],
+  "turns": [
+    {
+      "user": "C01 Hi! How much is the emerald mine experience?",
+      "mockReply": "Hi! I'm Heinner, co-founder of Andean Scapes with Alexandra. It's a real emerald mine in Chivor with local miners; the price depends on the group. Is it for you alone, as a couple, or as a group?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Is it a mine close to Bogotá, like a two-hour tour?",
+      "mockReply": "It's not a two-hour visit: it's a two-day adventure with a night, 5-6 hours from Bogotá, and the last stretch is unpaved. You enter a real mine with a guide and sleep at the hacienda. Shall I tell you about the plans?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

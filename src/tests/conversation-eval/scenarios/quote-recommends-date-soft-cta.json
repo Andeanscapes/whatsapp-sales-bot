@@ -79,7 +79,7 @@
   "turns": [
     {
       "user": "Y cual fecha me recomiendas para el CORE?",
-      "mockReply": "Para 2 personas el CORE tiene salida publicada el 14 de noviembre y el 28 de noviembre. ¿Quieres que revisemos el cupo del 14?",
+      "mockReply": "Para 2 personas el CORE tiene salida publicada el 21 de noviembre y el 28 de noviembre. ¿Quieres que revisemos el cupo del 21?",
       "expect": {
         "shouldSendReply": true
       }

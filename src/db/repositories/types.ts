@@ -452,6 +452,14 @@ export interface MessageRepository {
   getLastInboundBodies(phone: string, limit?: number): { body: string | null }[];
   getLastInboundBody(phone: string): string | null;
   getLastInboundAt(phone: string): string | null;
+  /** Newest inbound rows, newest first, with their time. */
+  getRecentInbound(phone: string, limit: number): { body: string | null; created_at: string }[];
+  /**
+   * True when this customer exchanged any message with us before `iso` (an earlier conversation).
+   * `messages.created_at` and `iso` are both `toISOString()` values, so the text comparison is
+   * chronological.
+   */
+  hasMessageBefore(phone: string, iso: string): boolean;
   /** Newest inbound before the current turn. `currentStored` = the current inbound is already persisted. */
   getPreviousInboundAt(phone: string, currentStored: boolean): string | null;
   /** Like getRecentMessages but keeps template rows, for the operator replay only. */
@@ -826,6 +834,34 @@ export interface DayMessage {
   appVersion?: string | null;
 }
 
+/**
+ * Why a lead has not booked, for the weekly marketing export. INFERRED, not stated by the
+ * customer: from the stored lead pain, else silence after our last message. Null when booked
+ * or when nothing supports a reason.
+ */
+export type NotBookedReason = 'price' | 'date' | 'logistics' | 'security' | 'shared_decision' | 'no_reply' | 'other';
+
+/** Pure mapping behind `notBookedReason` (exported for tests). */
+export function inferNotBookedReason(
+  bookedAt: string | null,
+  leadPain: LeadPain | null,
+  lastDirection: 'inbound' | 'outbound' | null,
+): NotBookedReason | null {
+  if (bookedAt) return null;
+  switch (leadPain) {
+    case 'price': return 'price';
+    case 'date_time': return 'date';
+    case 'logistics_4x4': return 'logistics';
+    case 'security': return 'security';
+    case 'partner_group': return 'shared_decision';
+    case 'not_interested':
+    case 'experience_clarity':
+    case 'other': return 'other';
+    default: break;
+  }
+  return lastDirection === 'outbound' ? 'no_reply' : null;
+}
+
 export interface DayConversationSummary {
   customerPhone: string;
   name: string | null;
@@ -857,6 +893,10 @@ export interface DayConversationSummary {
   aiUsageBreakdown: AiUsageBreakdown;
   /** Messages the team sent through the bridge in this window. */
   operatorMessages: number;
+  /** Deposit confirmed (payment approved or /booking). */
+  bookedAt: string | null;
+  /** Inferred, see `inferNotBookedReason`. */
+  notBookedReason: NotBookedReason | null;
   followUps: DayFollowUpSummary[];
   messages: DayMessage[];
 }
