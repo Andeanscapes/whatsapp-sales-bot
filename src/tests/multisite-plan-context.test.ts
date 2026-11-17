@@ -88,6 +88,15 @@ describe('two-site catalog selection', () => {
     expect(reconstructFromHistory(repos, phone, {}, experience).plan).toBe('basic_1d_chivor');
   });
 
+  // EN twin: "day trip" is the catalog alias of the day plan (live EN basic-chosen-long-day-deposit got the full menu).
+  it('assigns an English day trip named before the destination to the site chosen later', () => {
+    const experience = getActiveExperience(loadSkills());
+    const t0 = Date.now() - 60_000;
+    repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'I want the day trip for 2', created_at: new Date(t0).toISOString() });
+    repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'Chivor', created_at: new Date(t0 + 30_000).toISOString() });
+    expect(reconstructFromHistory(repos, phone, {}, experience).plan).toBe('basic_1d_chivor');
+  });
+
   it('resolves context from a choice that follows a declined hesitation', () => {
     const experience = getActiveExperience(loadSkills());
     expect(resolveSiteContext(experience, null, ['no sé, me interesa coscuez'])).toBe('coscuez');

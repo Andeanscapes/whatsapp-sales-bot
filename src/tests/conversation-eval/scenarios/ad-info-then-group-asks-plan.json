@@ -1,6 +1,6 @@
 {
   "id": "ad-info-then-group-asks-plan",
-  "source": "history: 106 info+date openings; 97 pareja replies. Diagnosis-first funnel: group → diagnosis → plan recommendation. C02 diagnosis copy from entrySegments feed. Turn 3 answers BOTH diagnosis axes on purpose: `diagnosis-question-turn2` and `reflects-diagnosis-turn3` both accept either a transport question (vehiculo/traslado/ruta) or a scope one (alcance/completo/esencial), but a turn-3 reply of only \"Traslado local\" is a non-sequitur when the model picked the scope axis. On that path the diagnosis is unanswered, so §8 correctly forbids a plan and `plan-recommendation-turn3` must receive a compliant reply. Keep both axes answered so the plan is genuinely due whichever question the model asked. | 2026-10-28: C02 diagnosis is the plan-options question since cffe48c. | 2026-11-12: Coscuez on sale, so the bot asks the destination after the group (SITIO PENDIENTE) and the customer answers Chivor; later criteria moved one turn down.",
+  "source": "history: 106 info+date openings; 97 pareja replies. Diagnosis-first funnel: group → diagnosis → plan recommendation. C02 diagnosis copy from entrySegments feed. Turn 3 answers BOTH diagnosis axes on purpose: `diagnosis-question-turn2` and `reflects-diagnosis-turn3` both accept either a transport question (vehiculo/traslado/ruta) or a scope one (alcance/completo/esencial), but a turn-3 reply of only \"Traslado local\" is a non-sequitur when the model picked the scope axis. On that path the diagnosis is unanswered, so §8 correctly forbids a plan and `plan-recommendation-turn3` must receive a compliant reply. Keep both axes answered so the plan is genuinely due whichever question the model asked. | 2026-10-28: C02 diagnosis is the plan-options question since cffe48c. | 2026-11-12: Coscuez on sale, so the bot asks the destination after the group (SITIO PENDIENTE) and the customer answers Chivor; later criteria moved one turn down. | 2.5.1: the C02 marker pre-selects Chivor, so the bot no longer asks the destination; the \"Chivor\" turn is removed and the criteria move back one turn; the menu lists CORE first and BASIC last (menuOrder), both orders accepted.",
   "tags": [
     "opening",
     "qualification",
@@ -15,9 +15,9 @@
       "id": "diagnosis-question-turn2",
       "rule": "reply_must_match",
       "patterns": [
-        "BASIC[\\s\\S]{0,120}CORE[\\s\\S]{0,120}PRIME|veh[ií]culo|traslado|ruta|preparad|alcance|complet[ao]|esencial|objetivo|qu[eé] busc"
+        "BASIC[\\s\\S]{0,120}CORE[\\s\\S]{0,120}PRIME|CORE[\\s\\S]{0,200}PRIME[\\s\\S]{0,200}BASIC|veh[ií]culo|traslado|ruta|preparad|alcance|complet[ao]|esencial|objetivo|qu[eé] busc"
       ],
-      "turn": 3,
+      "turn": 2,
       "weight": 2,
       "critical": true
     },
@@ -27,7 +27,7 @@
       "patterns": [
         "carro|veh[ií]culo|ruta|destapad|4x4|traslado"
       ],
-      "turn": 3,
+      "turn": 2,
       "weight": 2,
       "critical": true
     },
@@ -37,7 +37,7 @@
       "patterns": [
         "intens|tranquil|relaj|calma"
       ],
-      "turn": 3,
+      "turn": 2,
       "weight": 2,
       "critical": true
     },
@@ -47,7 +47,7 @@
       "patterns": [
         "2\\s*d[ií]as|3\\s*d[ií]as|2\\s*noche|3\\s*noche|plan de|plan corto|plan largo"
       ],
-      "turn": 3,
+      "turn": 2,
       "weight": 2,
       "critical": true
     },
@@ -62,7 +62,7 @@
       "id": "one-question-turn2",
       "rule": "max_question_marks",
       "max": 1,
-      "turn": 3,
+      "turn": 2,
       "weight": 1
     },
     {
@@ -79,7 +79,7 @@
       "patterns": [
         "plan|d[ií]as|noche|recomiend|\\bCORE\\b|\\bPRIME\\b"
       ],
-      "turn": 4,
+      "turn": 3,
       "weight": 2,
       "critical": true
     },
@@ -89,7 +89,7 @@
       "patterns": [
         "traslado|veh[ií]culo|ruta|alcance|complet[ao]|esencial|acceso|4x4|c[oó]mod|local|movam|llevan|PRIME|dos minas|lo tiene todo"
       ],
-      "turn": 4,
+      "turn": 3,
       "weight": 1,
       "critical": false
     }
@@ -104,13 +104,6 @@
     },
     {
       "user": "Pareja",
-      "mockReply": "Buenísimo. En Colombia hay dos regiones esmeralderas y operamos en las dos: Chivor, en el oriente, con noche en hacienda, y Coscuez, en el occidente, con hotel rural en Borbur. ¿A cuál les gustaría ir?",
-      "expect": {
-        "shouldSendReply": true
-      }
-    },
-    {
-      "user": "Chivor",
       "mockReply": "Perfecto para ustedes dos. ¿Vienen con vehículo preparado o prefieren el traslado local al sitio?",
       "expect": {
         "shouldSendReply": true
