@@ -916,7 +916,10 @@ export function contextAwareExtract(message: string, repos: Repositories, phone:
   const norm = message.trim();
 
   if (lastQuestion && !fields.collected_people) {
-    const askedPeople = normQuestion != null && /cu[aá]ntas personas|cu[aá]ntos ser[ií]an|how many people/i.test(normQuestion);
+    // The ad opener asks the group ("¿solo, en pareja o para un grupo?"); "para 2" answers it as a
+    // headcount. Without this, "Quiero el pasadía para 2" stored no people and no T3b close ran.
+    const askedPeople = normQuestion != null && (/cu[aá]ntas personas|cu[aá]ntos ser[ií]an|how many people/i.test(normQuestion)
+      || /sol[oa]s?\b.{0,40}\bpareja|pareja.{0,40}\bgrupo|\balone\b.{0,40}\bcouple|\bcouple\b.{0,40}\bgroup|just you.{0,40}\b(?:couple|group)/i.test(normQuestion));
     if (askedPeople) {
       const people = extractPeopleFromReply(norm);
       if (people != null) fields.collected_people = people;
@@ -1067,13 +1070,17 @@ export function reconstructFromHistory(repos: Repositories, phone: string, curre
   };
   let scannedPlan: string | null = null;
   let planScanDone = false;
+  let afterSiteChoice = false;
   for (const [index, row] of allInbound.entries()) {
     if (!row.body || (!need.nombre && !need.personas && !need.fecha && !need.transporte && !need.mascota
       && !need.adultos && !need.ninos && !need.edadesNinos && !need.origen && !scannedPlan)) continue;
     const extracted = extractBookingFields(row.body, experience);
     if (experience) {
+      // A plan named before the destination ("quiero el pasadía", then "Chivor") takes the site chosen
+      // later in the chat: the older slice alone has no site, and detectPlan needs one with two sites.
       const siteId = resolveSiteContext(experience, typeof current.plan === 'string' ? current.plan : null,
-        allInbound.slice(index).map(item => item.body ?? ''));
+        allInbound.slice(index).map(item => item.body ?? ''))
+        ?? resolveSiteContext(experience, null, allInbound.map(item => item.body ?? ''));
       const planId = detectPlan(row.body, experience, siteId);
       if (planId) extracted.collected_plan = planId;
       else delete extracted.collected_plan;
@@ -1099,8 +1106,14 @@ export function reconstructFromHistory(repos: Repositories, phone: string, curre
       && (isPlanBrochureRequest(row.body) || !isPlanReference(row.body));
     if (!planScanDone && !comparedPlans) {
       if (typeof extracted.collected_plan === 'string') {
-        scannedPlan = extracted.collected_plan;
+        // Past a destination choice, only a plan named without a site ("quiero el pasadía", then
+        // "Chivor") is the lead's plan (2.5.1). One tied to the other site ("prime en Chivor", then
+        // "mejor en Coscuez") is not carried over.
+        if (!afterSiteChoice || (experience && detectSite(row.body, experience) == null)) scannedPlan = extracted.collected_plan;
         planScanDone = true;
+      } else if (experience && typeof fields.plan !== 'string' && !isPlanReference(row.body)
+        && detectSiteChoice(row.body, experience) !== null) {
+        afterSiteChoice = true;
       } else if (isPlanReference(row.body) || (experience && detectSiteChoice(row.body, experience) !== null)) {
         // Newest-first: a plan reference newer than any keyword mention means the
         // stored plan came from that switch; older keyword mentions must not revert it.

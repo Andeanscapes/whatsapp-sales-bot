@@ -1,6 +1,6 @@
 {
   "id": "basic-chosen-long-day-deposit",
-  "source": "Day plan chosen: total and long day first; the 30% deposit (not the 25% of the overnight plans) only once a date is picked. | 2026-11-12: Coscuez on sale, so the bot asks the destination after the group (SITIO PENDIENTE) and the customer answers Chivor; later criteria moved one turn down.",
+  "source": "Day plan chosen: total and long day first; the 30% deposit (not the 25% of the overnight plans) only once a date is picked. | 2026-11-12: Coscuez on sale, so the bot asks the destination after the group (SITIO PENDIENTE) and the customer answers Chivor; later criteria moved one turn down. | 2.5.1: \"back the same night\" accepted (same meaning).",
   "tags": [
     "price",
     "live"
@@ -36,7 +36,7 @@
       "weight": 2,
       "critical": false,
       "patterns": [
-        "that same evening|same day|same evening"
+        "that same evening|same day|same evening|same night|back that night"
       ]
     },
     {

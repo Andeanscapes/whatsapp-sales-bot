@@ -72,6 +72,22 @@ describe('two-site catalog selection', () => {
     },
   );
 
+  // 2.5.1: "para 2" answers the opener's group question, and a plan named before the destination
+  // takes the site chosen later. Without both, no T3b close ran (live basic-chosen-long-day-deposit).
+  it('stores the headcount answered to the group question', () => {
+    const experience = getActiveExperience(loadSkills());
+    repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: '¿La experiencia sería para ti solo, en pareja o para un grupo?', created_at: new Date().toISOString() });
+    expect(contextAwareExtract('Quiero el pasadía para 2', repos, phone, {}, experience).collected_people).toBe(2);
+  });
+
+  it('assigns a plan named before the destination to the site chosen later', () => {
+    const experience = getActiveExperience(loadSkills());
+    const t0 = Date.now() - 60_000;
+    repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'Quiero el pasadía para 2', created_at: new Date(t0).toISOString() });
+    repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'Chivor', created_at: new Date(t0 + 30_000).toISOString() });
+    expect(reconstructFromHistory(repos, phone, {}, experience).plan).toBe('basic_1d_chivor');
+  });
+
   it('resolves context from a choice that follows a declined hesitation', () => {
     const experience = getActiveExperience(loadSkills());
     expect(resolveSiteContext(experience, null, ['no sé, me interesa coscuez'])).toBe('coscuez');

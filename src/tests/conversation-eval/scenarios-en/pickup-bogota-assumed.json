@@ -1,6 +1,6 @@
 {
   "id": "pickup-bogota-assumed",
-  "source": "Bogotá pickup assumption: starts in Chivor; private 4x4 price only when asked, as a separate line. | 2026-11-12: with two destinations the start point is the town of the chosen region; the check accepts either word order and \"the town\" (it judged wording, not the fact).",
+  "source": "Bogotá pickup assumption: starts in Chivor; private 4x4 price only when asked, as a separate line. | 2026-11-12: with two destinations the start point is the town of the chosen region; the check accepts either word order and \"the town\" (it judged wording, not the fact). | 2.5.1: \"getting there is on you\" accepted (same meaning).",
   "tags": [
     "price",
     "live"
@@ -36,7 +36,7 @@
       "weight": 2,
       "critical": false,
       "patterns": [
-        "on your own|by car, motorbike or bus"
+        "on your own|by car, motorbike or bus|is on you|up to you|on your own account"
       ]
     },
     {
