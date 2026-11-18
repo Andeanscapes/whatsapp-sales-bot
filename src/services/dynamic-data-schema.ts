@@ -234,6 +234,29 @@ export const siteSelectionSchema = z.object({
 }).strict();
 
 /**
+ * Facts true at every active site, used by the prompt cues that run before or
+ * regardless of the destination (ad opener, day-trip answer, safety, quote value line).
+ * Each field is optional: when absent the prompt uses the 2.5.1 production wording.
+ * Write them in Spanish, as fragments; the model translates.
+ */
+export const sharedFactsSchema = z.object({
+  /** Trip length, e.g. "fin de semana (sábado a domingo) con noche allá". */
+  tripLength: z.string().min(1).optional(),
+  /** How the customer reaches the start, e.g. "llega al pueblo por su cuenta y desde ahí lo lleva el equipo". */
+  arrival: z.string().min(1).optional(),
+  /** Where the one-day option stands, e.g. "el pasadía existe solo como opción de un día largo". */
+  dayOption: z.string().min(1).optional(),
+  /** What every destination shares, said before one is chosen. */
+  highlights: z.string().min(1).optional(),
+  /** Words tied to a single destination (lodging names, etc.), banned before one is chosen. */
+  siteOnlyTerms: z.array(z.string().min(1)).min(1).optional(),
+  /** Inclusions named before the totals on a price turn. */
+  quoteValue: z.string().min(1).optional(),
+  /** The only safety answer allowed. */
+  safetyAnswer: z.string().min(1).optional(),
+}).strict();
+
+/**
  * Site-owned narrative. Logistics, climate, mine, inclusions, and copy that only
  * apply at one location (e.g. Chivor) live here — never on the experience root —
  * so a second site cannot inherit Chivor facts by accident.
@@ -242,6 +265,8 @@ const v11SiteNarrativeSchema = z.object({
   name: z.string().min(1).optional(),
   location: z.string().min(1).optional(),
   meetingPoint: z.string().min(1).optional(),
+  /** Inclusions named before the totals on this site's price turn; overrides `sharedFacts.quoteValue`. */
+  quoteValue: z.string().min(1).optional(),
   route: routeSchema.optional(),
   shortDescription: z.string().min(1).optional(),
   fullDescription: z.string().min(1).optional(),
@@ -445,6 +470,7 @@ const dynamicExperienceSitesSchema = z.object({
   // Multi-site context and coming-soon destinations. Present only if the
   // experience spans 2+ locations.
   siteSelection: siteSelectionSchema.optional(),
+  sharedFacts: sharedFactsSchema.optional(),
 }).merge(v11ExperienceNarrativeSchema).strict().superRefine((experience, ctx) => {
   const defaultSiteId = experience.siteSelection?.defaultSiteId;
   if (defaultSiteId && !experience.sites[defaultSiteId]) {

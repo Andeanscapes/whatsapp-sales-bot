@@ -71,6 +71,10 @@ export function getSiteSelection(exp: ActiveExperience): ActiveExperience['siteS
   return exp.siteSelection;
 }
 
+export function getSharedFacts(exp: ActiveExperience): ActiveExperience['sharedFacts'] {
+  return exp.sharedFacts;
+}
+
 /**
  * The current plan a stored id refers to. A current id maps to itself, a paused plan
  * maps to itself (its site decides, see `isPlanPaused`), and a retired id maps to the

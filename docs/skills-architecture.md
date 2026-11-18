@@ -203,6 +203,17 @@ catalog holds the Coscuez placeholders, it cannot be mirrored.
   Site comparisons do not replace a stored destination. Brochure references and
   quoted-price card matching use the resolved site; a brochure alone does not choose
   a plan, while an explicit choice plus a brochure request still does.
+- Experience `sharedFacts` (all optional, Spanish fragments): `tripLength`, `arrival`,
+  `dayOption`, `highlights`, `siteOnlyTerms`, `quoteValue`, `safetyAnswer`. They feed the
+  cues that run before or regardless of the destination (ad opener, day-trip answer,
+  `DESTINO SIN ELEGIR`, safety, quote value line). A missing field keeps the 2.5.1
+  production wording (`SHARED_FACTS_FALLBACK`). Destination names in those cues come from
+  the site names. A site `quoteValue` overrides the shared one on that site's price turn;
+  without either, the fallback names the last-stretch 4x4 only when every quoted plan at
+  the site lists a 4x4 in its inclusions (Coscuez CORE does not). The "video" reason in
+  `DESTINO SIN ELEGIR` goes to ad leads only. Deploy code before a catalog that sets the field (strict schema): an
+  older bot rejects the feed and stops quoting. `dynamic:push --target prod` refuses it
+  until `--bot-deployed`. Delete the fallback once the CDN feed sets every field.
 - With multiple active sites, an opener without a destination asks about the group
   first. `SITIO PENDIENTE` asks for a destination on later turns. Only a vehicle code
   listed in exactly one active site's `vehicleEntryCodes` infers a site from a marker;

@@ -94,6 +94,7 @@ export interface InternalSiteData {
   location?: string;
   selectionAliases?: string[];
   meetingPoint?: string;
+  quoteValue?: string;
   route?: {
     fromBogota?: string;
     alternateRoute?: string;
@@ -199,6 +200,7 @@ export interface InternalUnavailableSite {
 
 export interface InternalExperienceData {
   siteSelection?: DynamicData['experiences'][string]['siteSelection'];
+  sharedFacts?: DynamicData['experiences'][string]['sharedFacts'];
   unavailableSites?: InternalUnavailableSite[];
   status?: 'active' | 'inactive';
   /** Catalog SSoT narrative from dynamic payload (optional on legacy v10). */
@@ -608,6 +610,7 @@ export function transformDynamicData(data: DynamicData): InternalDynamicData {
         selectionAliases: site.selectionAliases,
         location: site.location,
         meetingPoint: site.meetingPoint,
+        quoteValue: site.quoteValue,
         route: site.route,
         shortDescription: site.shortDescription,
         fullDescription: site.fullDescription,
@@ -647,6 +650,7 @@ export function transformDynamicData(data: DynamicData): InternalDynamicData {
 
     experiences[expId] = {
       siteSelection: dynExp.siteSelection,
+      sharedFacts: dynExp.sharedFacts,
       ...(unavailableSites.length > 0 ? { unavailableSites } : {}),
       status: dynExp.status,
       name: dynExp.name,
