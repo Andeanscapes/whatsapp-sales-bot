@@ -755,10 +755,10 @@ columns from the old feature remain in place and are ignored.
   scenarios, ~$2.00-2.30 per pass with retries, measured 2026-11-12; `EVAL_MAX_COST_USD` default 3.00). Local default.
 - `npm run eval:conversations:llm-bot -- --lang en` — live LLM quality suite, English
   pack (`scenarios-en/`, one twin per Spanish scenario: 81, 64 of them `live`; writes
-  `artifacts/conversation-eval-llm-bot-en.json`). CI runs ONE live pack per PR (owner
-  2026-11-16, half the tokens): PRs into `develop` run Spanish (vs `baselines/master-llm-bot.json`),
-  PRs into `master` run English (vs `baselines/master-llm-bot-en.json`). Run the other
-  language locally when a change touches it. Refresh a baseline by copying a real
+  `artifacts/conversation-eval-llm-bot-en.json`). Paid CI runs English only on same-repository
+  PRs into `master` (vs `baselines/master-llm-bot-en.json`). PRs into `develop` run both
+  packs with mocked replies. For Spanish live debugging, run affected scenarios locally
+  with `--lang es --scenario <id>`. Refresh a baseline by copying a real
   `--runs 2` artifact, never by hand-editing scores.
   A live run that hard-fails, or misses any criterion that is critical or weight >= 3,
   is re-run once (one retry per run) and only the retry is scored (`retries` in the

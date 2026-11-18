@@ -28,7 +28,9 @@ function main(): void {
     const after = currentMap.get(id);
     const retried = after?.retries ? ` (retried ${after.retries}x)` : '';
     if (!before) {
-      console.log(`NEW     ${id} ${after!.score}${retried}`);
+      if (!after) continue;
+      const state = after.hardFail ? 'NEW-FAIL' : 'NEW';
+      console.log(`${state.padEnd(7)} ${id} ${after.score}${retried}`);
       continue;
     }
     if (!after) {
