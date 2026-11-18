@@ -407,6 +407,28 @@ export function resolveSiteContext(
   return undefined;
 }
 
+/** Whole-word phrase match against an already normalized message. */
+function phraseMatcher(normalizedMessage: string): (value: string) => boolean {
+  const words = normalizedMessage.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  return value => {
+    const tokens = normalizeText(value).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+    if (tokens.length === 0) return false;
+    return words.some((_, index) => tokens.every((token, offset) => words[index + offset] === token));
+  };
+}
+
+/**
+ * Plans of `siteId` the message names by a catalog selection alias. Used when the
+ * customer asks the price of several plans at once ("CORE y PRIME para 2"): detectPlan
+ * returns null on that tie by design, because naming two plans is not choosing one.
+ */
+export function detectNamedPlans(message: string, experience: ActiveExperience, siteId: string): string[] {
+  const matches = phraseMatcher(normalizeText(message));
+  return getPlans(experience)
+    .filter(plan => plan.siteId === siteId && (plan.selectionAliases ?? []).some(matches))
+    .map(plan => plan.id);
+}
+
 export function detectPlan(message: string, experience: ActiveExperience, preferredSiteId?: string | null): string | null {
   if (mentionedSites(message, experience).length > 1) return null;
   const norm = normalizeText(message);
@@ -417,14 +439,9 @@ export function detectPlan(message: string, experience: ActiveExperience, prefer
   const plans = getPlans(experience).filter(plan => !siteId || plan.siteId === siteId);
   if (!plans.length) return null;
 
-  const words = norm.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  const matches = phraseMatcher(norm);
   const siteAliases = new Set(getSites(experience).flatMap(site =>
     [site.id, ...(site.selectionAliases ?? [])].map(normalizeText)));
-  const matches = (value: string): boolean => {
-    const tokens = normalizeText(value).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
-    if (tokens.length === 0) return false;
-    return words.some((_, index) => tokens.every((token, offset) => words[index + offset] === token));
-  };
   let best: { id: string; score: number } | null = null;
   let tied = false;
 
@@ -768,6 +785,20 @@ export function extractBookingFields(text: string, experience?: ActiveExperience
   const englishGroup = englishGroupMatch ? parseCountWord(englishGroupMatch[1] ?? englishGroupMatch[2]) : null;
   if (englishGroup != null && englishGroup > 0 && !fields.collected_people && !mixedAdultsAndChildren) {
     fields.collected_people = englishGroup;
+  }
+  // A bare count in a price question: "¿cuánto vale cada uno para 2?", "how much for 2?".
+  // Live 2026-11-18 (two-plan-narrow-quotes-both ES) "para 2" stayed unknown. Only a number
+  // that ends the clause counts: "para el 2", "para 2 de noviembre", "para 2 noches" and
+  // "for 2 days" are dates or durations, and without a price word the number is ignored.
+  const priceAsk = /\b(?:cuanto|vale|valen|cuesta|cuestan|precio|precios|valor|costo|how much|price|prices|cost)\b/.test(normalized);
+  // "y/and" may follow only when a question word follows it: "para 15 y 16 de noviembre",
+  // "for 2 and 3 nights" and "para 2 y mi mamá" are date ranges or an incomplete headcount.
+  const bareCountMatch = priceAsk
+    ? normalized.match(/\b(?:para|for)\s+(\d{1,2})(?=\s*$|\s+(?:cuanto|how|porfa|por favor|please)\b|\s+(?:y|and)\s+(?:que|cuanto|what|how)\b)/)
+    : null;
+  const bareCount = bareCountMatch ? Number(bareCountMatch[1]) : null;
+  if (bareCount != null && bareCount > 0 && bareCount <= 30 && !fields.collected_people && !mixedAdultsAndChildren) {
+    fields.collected_people = bareCount;
   }
 
   const couplePattern = /\b(?:couple|pareja|dos personas|2 personas|dos pilotos|mi esposo y yo|mi esposa y yo|mi novio y yo|mi novia y yo|mi pareja y yo|mi hija y yo|mi hijo y yo|mi (?:mam[aá]|madre|made) y yo|vamos dos|somos dos|somos 2|vamos 2|por ahora dos)\b/i;

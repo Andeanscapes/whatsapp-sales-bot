@@ -27,6 +27,7 @@ import {
   isConfirmedDate,
   isConcreteDayDate,
   isQualificationComplete,
+  detectNamedPlans,
   detectPlan,
   isPlanQuestion,
   detectSite,
@@ -1851,8 +1852,20 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
   // Ad leads only: a price question still unanswered in recent history (the opener
   // defers it to the group answer) is quoted once the group is known. Other leads keep
   // the existing price gate.
-  const pendingPriceQuestion = adEntry && repos.conversation.getPriceGivenAt(customerPhone) == null
-    && (isPriceQuestion(message) || recentMessages.some(m => m.role === 'user' && isPriceQuestion(m.content)));
+  // Any lead (2026-11-18): a price question naming 2+ plans, in this inbound or the previous
+  // customer inbound (typically the one our destination question answered), is quoted for
+  // those plans once the destination is known. Older questions do not reopen it.
+  // Live EN two-plan-narrow-quotes-both: "CORE and PRIME for 2?" → "Chivor" got a priceless menu.
+  const priorCustomerText = previousCustomerIndex >= 0 ? recentMessages[previousCustomerIndex].content : null;
+  const namedPlanPriceAsk = [message, priorCustomerText].find((text): text is string => !!text && isPriceQuestion(text));
+  const namedPlans = namedPlanPriceAsk && conversationSiteId
+    ? detectNamedPlans(namedPlanPriceAsk, activeExperience, conversationSiteId)
+    : [];
+  const requestedPlanIds = namedPlans.length >= 2 ? namedPlans : undefined;
+  const pendingPriceQuestion = repos.conversation.getPriceGivenAt(customerPhone) == null && (
+    (adEntry && (isPriceQuestion(message) || recentMessages.some(m => m.role === 'user' && isPriceQuestion(m.content))))
+    || !!requestedPlanIds
+  );
   // Pre-LLM half of the greeting photo gate; the post-LLM half drops it on guarded turns.
   // canSendPlanImage = images on and no `owner_intro` send in the last 72h (same claim
   // id the webhook uses), so a lead who already got the photo gets no photo cue.
@@ -1895,6 +1908,7 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     pauseSummaryAlreadySent: isPauseSummaryAlreadySent(),
     adOpeningTurn,
     pendingPriceQuestion,
+    requestedPlanIds,
     greetingPhotoTurn: greetingPhotoCandidate,
     replyLanguage: turnLanguage.replyLanguage,
     languageSwitchedThisTurn: turnLanguage.switched,

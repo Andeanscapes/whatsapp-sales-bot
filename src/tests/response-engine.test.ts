@@ -2671,6 +2671,95 @@ describe('processMessage', () => {
     expect(prompt).toContain('PRICE GATE ACTIVO:');
   });
 
+  // Live EN 2026-11-18 (two-plan-narrow-quotes-both, 0/2): "CORE and PRIME for 2?" → destination
+  // question → "Chivor" got a priceless three-plan menu. The named plans are quoted, and only those.
+  describe('named two-plan price question across the destination question', () => {
+    const runTwoTurns = async (phone: string, ask: string, second: string, payload: unknown = allSitesActivePayload()): Promise<string> => {
+      useAllSitesActive(payload);
+      mockLlmComplete.mockReset();
+      vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+      vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+      mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'Depende del destino. ¿Chivor o Coscuez?' } }));
+      await processMessage({ repos, customerPhone: phone, message: ask });
+      mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'Listo. ¿Con cuál seguimos?' } }));
+      await processMessage({ repos, customerPhone: phone, message: second });
+      return mockLlmComplete.mock.calls.at(-1)?.[0].systemPrompt ?? '';
+    };
+
+    it.each([
+      ['es', '573001118811', 'Core y prime, cuánto vale cada uno para 2 personas?'],
+      ['en', '573001118812', 'Hi, what is the price of CORE and PRIME for 2 people?'],
+    ])('%s: quotes exactly the named plans once the destination is chosen', async (_lang, phone, ask) => {
+      const prompt = await runTwoTurns(phone, ask, 'Chivor');
+      const cue = prompt.match(/PRECIO PEDIDO SIN PLAN:[^\n]*/)?.[0] ?? '';
+      expect(cue).toMatch(/CORE: \$950[.,]000 COP \| PRIME: \$1[.,]700[.,]000 COP\./);
+      expect(cue).not.toContain('BASIC');
+      const runtime = prompt.split('\nRUNTIME:').at(-1) ?? '';
+      expect(runtime).not.toContain('OPCIONES DE PLAN ESTE TURNO');
+      expect(runtime).not.toContain('PRICE GATE ACTIVO:');
+    });
+
+    it('names a plan the chosen site lacks: quotes nothing rather than a partial comparison', async () => {
+      const prompt = await runTwoTurns('573001118816', 'Basic y core, cuánto vale cada uno para 2 personas?', 'Coscuez',
+        withoutPlans(allSitesActivePayload(), ['basic_1d_coscuez']));
+      expect(prompt).not.toMatch(/PRECIO PEDIDO SIN PLAN:[^\n]*\$/);
+    });
+
+    it('a bare "para 2" in the price question is the group, so the comparison is quoted', async () => {
+      const prompt = await runTwoTurns('573001118817', 'Core y prime, cuanto vale cada uno para 2?', 'Chivor');
+      expect(prompt).toMatch(/PRECIO PEDIDO SIN PLAN:[^\n]*CORE: \$950\.000 COP \| PRIME: \$1\.700\.000 COP\./);
+    });
+
+    // A date range is not a group: "para 15 y 16" once read as 15 people → large-group handoff.
+    it('a date range in the first price question is not read as a group', async () => {
+      useAllSitesActive();
+      mockLlmComplete.mockReset();
+      vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+      vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+      mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'Depende del destino. ¿Chivor o Coscuez?' } }));
+      const phone = '573001118820';
+      const result = await processMessage({ repos, customerPhone: phone, message: '¿Cuánto vale para 15 y 16 de noviembre?' });
+      expect(result.reply).not.toMatch(/^Para 15 personas debemos validar/);
+      expect(repos.conversation.getByPhone(phone)?.collected_people ?? null).toBeNull();
+    });
+
+    // Also covers a price objection: priceObjectionThisTurn requires a price on record.
+    it('does not re-quote once a price was already given', async () => {
+      useAllSitesActive();
+      const phone = '573001118818';
+      repos.conversation.upsert(phone, { collected_people: 2 });
+      repos.conversation.setPriceGiven(phone);
+      expect(repos.conversation.getPriceGivenAt(phone)).not.toBeNull();
+      const prompt = await runTwoTurns(phone, 'Core y prime, cuánto vale cada uno para 2 personas?', 'Chivor');
+      expect(prompt).not.toContain('PRECIO PEDIDO SIN PLAN:');
+    });
+
+
+    it('a destination mention without a plan price question keeps the menu', async () => {
+      const prompt = await runTwoTurns('573001118813', 'Somos 2, ¿qué planes tienen?', 'Chivor');
+      expect(prompt).not.toContain('PRECIO PEDIDO SIN PLAN:');
+    });
+
+    it('a price question naming one plan does not open the comparison path', async () => {
+      const prompt = await runTwoTurns('573001118814', 'Somos 2, ¿cuánto vale el core?', 'Chivor');
+      expect(prompt).not.toMatch(/PRECIO PEDIDO SIN PLAN:[^\n]*PRIME/);
+    });
+
+    it('a named-plan price question older than the previous inbound does not reopen the quote', async () => {
+      useAllSitesActive();
+      const phone = '573001118815';
+      mockLlmComplete.mockReset();
+      vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+      vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+      mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'Depende del destino. ¿Chivor o Coscuez?' } }));
+      await processMessage({ repos, customerPhone: phone, message: 'Core y prime, cuanto vale cada uno para 2?' });
+      await processMessage({ repos, customerPhone: phone, message: 'y es seguro?' });
+      mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'Listo. ¿Con cuál seguimos?' } }));
+      await processMessage({ repos, customerPhone: phone, message: 'Chivor' });
+      expect(mockLlmComplete.mock.calls.at(-1)?.[0].systemPrompt ?? '').not.toContain('PRECIO PEDIDO SIN PLAN:');
+    });
+  });
+
   it('a funnel (H) opener gets the group-first APERTURA cue', async () => {
     useSingleDestinationCatalog();
     mockLlmComplete.mockReset();

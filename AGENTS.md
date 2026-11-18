@@ -495,6 +495,23 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
       match in `vehicleEntryCodes` infers a destination. Shared codes keep the opener
       neutral, using only shared catalog facts. Deploy code before a catalog
       that sets `defaultSiteId` or a plan `recommended` flag (strict schema).
+      **Opener, safety and quote-value facts come from catalog `sharedFacts`.** Until the
+      feed sets them, `SHARED_FACTS_FALLBACK` keeps the 2.5.1 wording byte-for-byte: a
+      cue without "fin de semana (sábado a domingo)" made the live opener offer "planes de
+      un día y de dos días" (2026-11-18). Never drop a field without putting its fact in
+      the feed; `first-turn-guard` and `shared-facts` tests pin both paths.
+      Owner sign-off 2026-11-18: the fallback wording is approved as-is, including the
+      safety answer "región tranquila; el equipo valida…" (production 2.5.1), until the
+      feed carries `sharedFacts.safetyAnswer`. Also approved in the same review: the
+      `pickup-bogota-assumed` quote cap 320 → 390 (the prompt asks 380) and
+      `release251-coscuez-switch-after-marker` banning Chivor facts on Coscuez instead of
+      the word "Chivor" (the choice question may name it). Reasons are in each `source`.
+      **A catalog field the running bot does not know stops it quoting.** The schema is
+      strict: bot 2.5.1 rejects a feed with `sharedFacts` or a site `quoteValue`, keeps its last copy with
+      `lastFetchOk=false`, and answers price/date/booking with `dynamicDataUnavailable`.
+      `dynamic:push --target prod` refuses any field in `FIELDS_NEWER_THAN_PROD_BOT`
+      (`src/scripts/lib/catalog-compat.ts`) until `--bot-deployed`. Order: deploy the bot,
+      then publish the catalog. Add every new catalog field to that list.
     - **R01 is not "returning" by itself.** The culture-video ads also bring NEW people
       with the R01 marker. QUOTE LOCK diagnoses the blocker only with real history
       (`retargetingWithHistory` or `returning`); a new R01 lead is a first contact, and
@@ -755,7 +772,10 @@ columns from the old feature remain in place and are ignored.
   scenarios, ~$2.00-2.30 per pass with retries, measured 2026-11-12; `EVAL_MAX_COST_USD` default 3.00). Local default.
 - `npm run eval:conversations:llm-bot -- --lang en` — live LLM quality suite, English
   pack (`scenarios-en/`, one twin per Spanish scenario: 81, 64 of them `live`; writes
-  `artifacts/conversation-eval-llm-bot-en.json`). Paid CI runs exactly one live pack per
+  `artifacts/conversation-eval-llm-bot-en.json`). The paid PR gate runs the named `pr` pack from
+  `src/tests/conversation-eval/live-packs.json` (37 scenarios, shared IDs, ~130 live turns per language,
+  chosen from the 2.4.0/2.5.1 export by entry marker and topic);
+  the full pack is for release or investigation runs (`--all` or `--tag`). Paid CI runs exactly one live pack per
   same-repository PR: Spanish into `develop` (vs `baselines/master-llm-bot.json`), English
   into `master` (vs `baselines/master-llm-bot-en.json`). For live debugging, run affected
   scenarios locally with `--lang <es|en> --scenario <id>`. Refresh a baseline by copying a real

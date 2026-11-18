@@ -1066,7 +1066,13 @@ describe('skills-prompt-assembly', () => {
     expect(solo).toMatch(/Obligatorio: la respuesta empieza con una frase de valor \(lo que incluye/);
     expect(solo).not.toMatch(/\(anticipo/);
     expect(solo).toMatch(/no menciones anticipo/);
-    expect(solo).toMatch(/Un solo párrafo, máximo 420 caracteres/);
+    expect(solo).toMatch(/Un solo párrafo, máximo 380 caracteres/);
+    expect(solo).toContain('Tras cada total, a lo sumo media frase con su diferencia');
+    // Named plans are quoted as asked; one missing at the site quotes nothing (never a partial comparison).
+    const named = line(2, { requestedPlanIds: ['prime_2d1n_chivor', 'core_2d1n_chivor'] });
+    expect(named).toMatch(/PRIME: \$1\.700\.000 COP \| CORE: \$950\.000 COP\./);
+    expect(named).not.toContain('BASIC');
+    expect(line(2, { requestedPlanIds: ['core_2d1n_chivor', 'prime_2d1n_coscuez'] })).toBe('');
     const couple = line(2);
     expect(couple).toMatch(/CORE[^|]*\$950\.000/);
     expect(couple).toMatch(/PRIME[^|]*\$1\.700\.000/);
