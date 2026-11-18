@@ -13,7 +13,7 @@ import { DeepSeekLlmClient } from './llm/deepseek-llm-client.js';
 import { runLeadAnalysis } from './lead-analysis-runner.js';
 import type { LlmTurn } from './llm/llm-client.js';
 import type { MergedQualification, OutboundDateAction, ProcessMessageInput, ProcessMessageOutput } from './types.js';
-import { getActiveExperience, getSiteCommonQuestions, getFutureAvailableDatesForPlan, getGalleryImages, getPlans, hasPublicPaymentFacts, isPlanPaused, isPricingAvailable, getPublicPaymentFactsForPlan, hasMultipleExperiences, getExperiences, scopeSkillsToExperience, getDynamicPlanImages, getOwnerImage, getSiteFallbackGalleryTheme, scopeGalleryToPlan, resolveCurrentPlanId } from './product-registry.js';
+import { getActiveExperience, getSiteCommonQuestions, getFutureAvailableDatesForPlan, getGalleryImages, getPlans, hasPublicPaymentFacts, isPlanPaused, isPricingAvailable, getPublicPaymentFactsForPlan, hasMultipleExperiences, getExperiences, scopeSkillsToExperience, getDynamicPlanImages, getOwnerImage, getSiteFallbackGalleryTheme, scopeGalleryToPlan, resolveCurrentPlanId, getCultureVideoLinks, getPlanVideoLinks } from './product-registry.js';
 import type { ActiveExperience, PublicPaymentFacts } from './product-registry.js';
 import { calculatePerPersonEquivalent, calculatePriceQuote, findQuotedAlternative, getQuoteFingerprint, isQuoteFingerprintStale, quoteFingerprintPlanId, listCheaperPlanQuotes, formatCop, type TransportNeed } from './pricing-calculator.js';
 import {
@@ -92,6 +92,7 @@ import { detectRequestedGalleryThemes, selectContextualImage } from './contextua
 import { assignLine, isReferralLine } from './lead-routing.js';
 import { MONTH_NAMES } from './constants.js';
 import { normalizeText } from './language-service.js';
+import { isVideoRequest, selectVideoLinks, unapprovedVideoUrls, videoLinkId } from './video-links.js';
 import { estimateDeepSeekCost } from './deepseek-cost.js';
 import type { ConversationRow, RecentMessage, LeadPain } from '../db/repositories/types.js';
 
@@ -570,7 +571,9 @@ export type HardSafetyReason =
   /** `[[FOTOS` syntax survived stripping — a malformed marker, not a prompt leak. */
   | 'media_marker_malformed'
   /** Well-formed marker the engine could not honour: no reply text left, or no photos resolved. */
-  | 'media_marker_unhonoured';
+  | 'media_marker_unhonoured'
+  /** An Instagram post/reel link that was not selected from the catalog for this chat. */
+  | 'unapproved_video_link';
 
 /**
  * Post-LLM safety verdict. Returns a reason when the model's reply must not go out
@@ -1849,9 +1852,8 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
   // which got fewer replies than a group question (export 2026-11-07).
   const adEntry = !!entryMarker || !!storedConversation?.ad_referral_json;
   const adOpeningTurn = isNewConversation && adEntry && typeof safeCollected.personas !== 'number';
-  // Ad leads only: a price question still unanswered in recent history (the opener
-  // defers it to the group answer) is quoted once the group is known. Other leads keep
-  // the existing price gate.
+  // Ad leads: a price question still unanswered in recent history (the opener defers it to
+  // the group answer) is quoted once the group is known.
   // Any lead (2026-11-18): a price question naming 2+ plans, in this inbound or the previous
   // customer inbound (typically the one our destination question answered), is quoted for
   // those plans once the destination is known. Older questions do not reopen it.
@@ -1862,13 +1864,27 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     ? detectNamedPlans(namedPlanPriceAsk, activeExperience, conversationSiteId)
     : [];
   const requestedPlanIds = namedPlans.length >= 2 ? namedPlans : undefined;
+  // Other leads since 2026-11-18: the first turn no longer guesses a total before the group is
+  // known (cold-info-handler), so a price asked in this or the previous inbound is quoted on the
+  // group answer. Older questions do not reopen it.
   const pendingPriceQuestion = repos.conversation.getPriceGivenAt(customerPhone) == null && (
     (adEntry && (isPriceQuestion(message) || recentMessages.some(m => m.role === 'user' && isPriceQuestion(m.content))))
+    || !!namedPlanPriceAsk
     || !!requestedPlanIds
   );
   // Pre-LLM half of the greeting photo gate; the post-LLM half drops it on guarded turns.
   // canSendPlanImage = images on and no `owner_intro` send in the last 72h (same claim
   // id the webhook uses), so a lead who already got the photo gets no photo cue.
+  // Request-only video links (owner 2026-11-18): the shared culture link plus the stored
+  // plan's own link, never another plan's. Sent as text in the model's reply.
+  const videoLinkSent = (url: string): boolean => repos.message.hasOutboundContaining(customerPhone, videoLinkId(url));
+  const videoRequested = isVideoRequest(message) && !pausedPlanThisTurn;
+  const videoLinks = videoRequested
+    ? selectVideoLinks({
+      culture: getCultureVideoLinks(skills, activeExperience),
+      plan: getPlanVideoLinks(skills, activeExperience, activePlanId),
+    }, videoLinkSent)
+    : [];
   const greetingPhotoCandidate = env.PERSONA_GREETING_IMAGE_ENABLED && isNewConversation
     && getOwnerImage(skills) != null && canSendPlanImage(repos, customerPhone, 'owner_intro');
   const promptInput = {
@@ -1910,6 +1926,8 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     pendingPriceQuestion,
     requestedPlanIds,
     greetingPhotoTurn: greetingPhotoCandidate,
+    videoRequested,
+    videoLinks,
     replyLanguage: turnLanguage.replyLanguage,
     languageSwitchedThisTurn: turnLanguage.switched,
   };
@@ -2291,7 +2309,11 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
   // them to a curated fallback send.
   const unhonourableMediaMarker = mediaMarkerParsed != null
     && (!strippedReplyText || (mediaMarkerUnresolved && !mediaMarkerBlockedByOps));
+  // An Instagram post link the catalog did not approve for this turn (nor already sent in this
+  // chat) is an invented or unsolicited link: never sent.
+  const unapprovedVideoLinks = unapprovedVideoUrls(strippedReplyText, videoLinks.map(link => link.url), videoLinkSent);
   const safetyFailReason = hardSafetyFail(strippedReplyText, isPricingAvailable(exp), hasHoldableDate)
+    ?? (unapprovedVideoLinks.length > 0 ? 'unapproved_video_link' : null)
     ?? (unhonourableMediaMarker ? 'media_marker_unhonoured' : null);
   if (safetyFailReason === 'price_without_pricing') {
     logger.warn({ phone: customerPhone }, '[BOT] LLM priced while pricing unavailable — curated fallback sent');
@@ -2503,8 +2525,10 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
   // Greeting photo (owner decision 2026-11-09): the first reply of a new conversation
   // rides on media.ownerImage as its caption. The webhook gives a gallery or plan card
   // priority, and sends plain text when the photo cannot carry the reply.
+  // A reply carrying video links goes as plain text: a photo caption shows no link preview.
+  const videoLinkReply = videoLinks.length > 0;
   const greetingImageTurn = greetingPhotoCandidate
-    && !needsHumanEffective && !softUnsafePhrasing && !pausedPlanThisTurn;
+    && !needsHumanEffective && !softUnsafePhrasing && !pausedPlanThisTurn && !videoLinkReply;
   const mediaReplyFailure = persistentUnmarkedPhotoPromise || persistentMissingExplicitMarker;
   const shouldAlertOwner = needsHumanEffective || (hybrid.isHot && pricePresented) || mediaReplyFailure;
   const ownerAlertType = mediaReplyFailure
@@ -2536,6 +2560,7 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     && !outputPriceJustGiven
     && !planSwitchedAfterQuote
     && !needsHumanEffective
+    && !videoLinkReply
     && requestedGalleryImageUrls.length === 0;
   const contextualImage = contextualImagesAllowed
     ? selectContextualImage(

@@ -162,6 +162,17 @@ const planItineraryDaySchema = z.object({
   notes: z.string().min(1).optional(),
 }).strict();
 
+/**
+ * Approved public Instagram reel or post, shared as a text link only when the customer
+ * asks for a video (the WhatsApp line cannot attach large videos). `description` says
+ * what the customer will see, in catalog terms; the model writes the reply around it.
+ */
+export const INSTAGRAM_MEDIA_URL = /^https:\/\/www\.instagram\.com\/(?:reels?|p)\/[A-Za-z0-9_-]+\/?$/;
+export const videoLinkSchema = z.object({
+  url: z.string().regex(INSTAGRAM_MEDIA_URL, 'Video link must be an https://www.instagram.com/reel|reels|p/<id>/ permalink'),
+  description: z.string().trim().min(1),
+}).strict();
+
 /** Shared optional plan narrative fields (sites-native plans only). */
 const v11PlanNarrativeSchema = z.object({
   tier: z.string().min(1).optional(),
@@ -187,6 +198,8 @@ const v11PlanNarrativeSchema = z.object({
   status: z.enum(['active', 'inactive']).optional(),
   selectionAliases: z.array(z.string().min(1)).optional(),
   includedAddonIds: z.array(z.string().min(1)).optional(),
+  /** Video links for this plan only; sent on request, never for another plan. */
+  reels: z.array(videoLinkSchema).optional(),
 }).strict();
 
 /** Shared optional experience narrative fields (sites-native experiences only). */
@@ -232,6 +245,7 @@ export const siteSelectionSchema = z.object({
     shortDescription: z.string().min(1).optional(),
   }).strict()).optional(),
 }).strict();
+
 
 /**
  * Facts true at every active site, used by the prompt cues that run before or
@@ -471,6 +485,8 @@ const dynamicExperienceSitesSchema = z.object({
   // experience spans 2+ locations.
   siteSelection: siteSelectionSchema.optional(),
   sharedFacts: sharedFactsSchema.optional(),
+  /** Emerald-culture video links valid for every site of the experience. */
+  cultureReels: z.array(videoLinkSchema).optional(),
 }).merge(v11ExperienceNarrativeSchema).strict().superRefine((experience, ctx) => {
   const defaultSiteId = experience.siteSelection?.defaultSiteId;
   if (defaultSiteId && !experience.sites[defaultSiteId]) {

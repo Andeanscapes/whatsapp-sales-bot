@@ -605,6 +605,10 @@ Historical Meta template copy: see `docs/meta-template-submission.local.md` (arc
 There are exactly **four** live media paths, all on the inbound reply path. No
 automated follow-up gallery nudge exists.
 
+Video is not one of them: a video request gets approved Instagram links as plain text in
+the model's reply (catalog `cultureReels` / plan `reels`, AGENTS.md invariant 15). Nothing
+is attached and neither media ledger records it.
+
 | Path | Trigger | Shape |
 |---|---|---|
 | LLM gallery | explicit photo request or first concrete plan selection | up to `MAX_GALLERY_IMAGES_PER_SEND` (hard-capped at 5) photos; the last claimed one captions the reply |

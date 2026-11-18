@@ -585,7 +585,8 @@ export function getLastAssistantQuestion(repos: Repositories, phone: string): st
  * prompt's T3b cue and the engine's close-turn flags must read the same test.
  */
 export function isConcreteDayDate(value: unknown): boolean {
-  return typeof value === 'string' && (/\b\d{1,2}\b/.test(value) || /\b\d{4}-\d{2}-\d{2}\b/.test(value));
+  // English ordinals count ("november 28th"): live EN closes re-quoted when plan and day came together.
+  return typeof value === 'string' && (/\b\d{1,2}(?:st|nd|rd|th)?\b/i.test(value) || /\b\d{4}-\d{2}-\d{2}\b/.test(value));
 }
 
 export function isConfirmedDate(value: unknown): boolean {

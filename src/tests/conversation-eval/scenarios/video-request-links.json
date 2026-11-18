@@ -1,0 +1,88 @@
+{
+  "id": "video-request-links",
+  "source": "Owner direction 2026-11-18 (first-time lead handoff): the CRM/Meta line blocks large video attachments, so a video request gets approved Instagram links as text in the same reply, each under a reason to watch, with no permission question. Culture link for both destinations; the Chivor link for CORE and PRIME (PRIME: two mines and horseback riding). A location question in the same message is answered too.",
+  "tags": [
+    "media",
+    "live"
+  ],
+  "lang": "es",
+  "liveRuns": 1,
+  "minLiveScore": 85,
+  "seedSystem": {
+    "reopenPausedSites": true
+  },
+  "seedConversation": {
+    "phase": "value",
+    "qualification": {
+      "people": 2,
+      "plan": "prime_2d1n_chivor"
+    }
+  },
+  "criteria": [
+    {
+      "id": "culture-link",
+      "rule": "reply_must_match",
+      "patterns": [
+        "instagram\\.com/reels?/DeCSQOhRmlT"
+      ],
+      "turn": 2,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "plan-link",
+      "rule": "reply_must_match",
+      "patterns": [
+        "instagram\\.com/p/DTNu3O4Efj4"
+      ],
+      "turn": 2,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "location-answered",
+      "rule": "reply_must_match",
+      "patterns": [
+        "Boyac[aá]|Valle de Tenza|parque principal|pueblo de Chivor"
+      ],
+      "turn": 2,
+      "weight": 2
+    },
+    {
+      "id": "no-permission-ask",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "¿\\s*(?:te|les)\\s+(?:los\\s+|las\\s+)?(?:mando|env[ií]o|paso|comparto)"
+      ],
+      "turn": 2,
+      "weight": 2
+    },
+    {
+      "id": "no-media-attachment",
+      "rule": "output_flag_equals",
+      "flag": "shouldSendGalleryImages",
+      "expected": false,
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Hola, somos 2 y nos interesa el PRIME en Chivor",
+      "mockReply": "¡Buenísimo! PRIME son dos minas guiadas y cabalgata hasta la segunda, con noche en la Hacienda El Recuerdo. ¿Tienen alguna fecha en mente?",
+      "replay": true,
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "¿Tienen videos del plan? ¿y dónde queda exactamente?",
+      "mockReply": "Queda en Chivor, en el oriente de Boyacá (Valle de Tenza); el plan empieza en el parque principal del pueblo. Por aquí no puedo adjuntar videos pesados, te dejo dos de Instagram.\nPor qué la cultura esmeraldera es importante para la gente de la región:\nhttps://www.instagram.com/reels/DeCSQOhRmlT/\nCómo se vive la experiencia en Chivor, con noche en la Hacienda El Recuerdo; en PRIME son dos minas y cabalgata:\nhttps://www.instagram.com/p/DTNu3O4Efj4/\n¿Les reviso cupo para una fecha?",
+      "expect": {
+        "shouldSendReply": true,
+        "shouldSendGalleryImages": false
+      }
+    }
+  ]
+}

@@ -151,9 +151,10 @@ export { isPlanBrochureRequest };
 
 export function isGalleryRequest(text: string): boolean {
   const norm = normalizeText(text);
-  return /\b(foto|fotos|imagen|imagenes|im[aá]genes|photo|photos|picture|pictures)\b/i.test(norm)
-    || isPlanBrochureRequest(norm)
-    || VISUAL_REQUEST_VERB.test(norm);
+  if (/\b(foto|fotos|imagen|imagenes|im[aá]genes|photo|photos|picture|pictures)\b/i.test(norm)) return true;
+  // "muéstrame un video" asks for a video link, not photos (video-links.ts).
+  if (/\b(videos?|reels?|clips?)\b/.test(norm)) return false;
+  return isPlanBrochureRequest(norm) || VISUAL_REQUEST_VERB.test(norm);
 }
 
 /** A claim about the wrong destination, not a question about a photo's provenance. */

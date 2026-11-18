@@ -179,6 +179,13 @@ export interface InternalPlanNarrative {
   selectionAliases?: string[];
   includedAddonIds?: string[];
   calculation?: 'pairs_plus_single' | 'couple_half_from_five' | 'per_person';
+  reels?: InternalVideoLink[];
+}
+
+/** Approved Instagram link, shared as text on a video request. */
+export interface InternalVideoLink {
+  url: string;
+  description: string;
 }
 
 export interface InternalSafetyFaq {
@@ -201,6 +208,7 @@ export interface InternalUnavailableSite {
 export interface InternalExperienceData {
   siteSelection?: DynamicData['experiences'][string]['siteSelection'];
   sharedFacts?: DynamicData['experiences'][string]['sharedFacts'];
+  cultureReels?: InternalVideoLink[];
   unavailableSites?: InternalUnavailableSite[];
   status?: 'active' | 'inactive';
   /** Catalog SSoT narrative from dynamic payload (optional on legacy v10). */
@@ -524,6 +532,7 @@ export function transformDynamicData(data: DynamicData): InternalDynamicData {
           selectionAliases: plan.selectionAliases,
           includedAddonIds: plan.includedAddonIds,
           calculation: plan.pricing?.calculation,
+          reels: plan.reels,
         });
 
         if (plan.pricing?.individual != null) {
@@ -651,6 +660,7 @@ export function transformDynamicData(data: DynamicData): InternalDynamicData {
     experiences[expId] = {
       siteSelection: dynExp.siteSelection,
       sharedFacts: dynExp.sharedFacts,
+      cultureReels: dynExp.cultureReels,
       ...(unavailableSites.length > 0 ? { unavailableSites } : {}),
       status: dynExp.status,
       name: dynExp.name,

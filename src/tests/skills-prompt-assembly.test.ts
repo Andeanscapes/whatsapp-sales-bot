@@ -6,6 +6,7 @@ import { loadSkills, type Skills } from '../services/skill-loader.js';
 import { allSitesActivePayload, useAllSitesActive } from './helpers/all-sites-catalog.js';
 import {
   assembleSystemPrompt,
+  dayPlanRequested,
   renderBusinessData,
   renderCatalog,
   USED_EMOJIS_RUNTIME_LABEL,
@@ -191,10 +192,40 @@ describe('skills-prompt-assembly', () => {
     expect(options).toMatch(/PUNTO DE INICIO: inicia y termina en parque principal de Chivor/);
     expect(options).toMatch(/Obligatorio: escribe la palabra "recomendado"[^\n]*junto a CORE/);
     expect(options).toContain("Obligatorio: abre la respuesta con ese punto de inicio");
-    expect(options).toMatch(/BASIC[^:]*va al final, como opción sin noche/);
-    expect(options.indexOf('CORE')).toBeLessThan(options.indexOf('BASIC'));
+    // Handoff 2026-11-18: the day plan only when asked for; then last, said as a single day.
+    expect(options).not.toContain('BASIC');
+    const asked = /OPCIONES DE PLAN ESTE TURNO:[^\n]*/.exec(assembleSystemPrompt({ skills: loadSkills(), lang: 'es', collectedFields: { site: 'chivor', personas: 2 }, latestCustomerMessage: '¿tienen pasadía?' }))?.[0] ?? '';
+    expect(asked).toMatch(/BASIC: di que es un solo día, con ida y regreso el mismo día; va al final/);
+    expect(asked.indexOf('CORE')).toBeLessThan(asked.indexOf('BASIC'));
     expect(options).toContain('Un solo párrafo, máximo 280 caracteres');
     expect(options).toContain('sin precios');
+  });
+
+  it('a generic destination comparison compares by place, not by vehicle', () => {
+    const cue = /SITIO PENDIENTE:[^\n]*/.exec(assembleSystemPrompt({ skills: useAllSitesActive(), lang: 'es', collectedFields: { personas: 2 } }))?.[0] ?? '';
+    useAllSitesActive();
+    expect(cue).toContain('Compara por el lugar');
+    expect(cue).toContain('no describas ningún destino por su vía, el 4x4 o lo offroad');
+  });
+
+  // Live EN 2026-11-18: a Chivor CORE close stated the Coscuez 50% deposit.
+  it.each([
+    ['core_2d1n_chivor', '25%'], ['basic_1d_chivor', '30%'], ['core_2d1n_coscuez', '50%'],
+  ])('the T3b close carries the anticipo of %s only', (plan, deposit) => {
+    const prompt = assembleSystemPrompt({ skills: useAllSitesActive(), lang: 'es', priceGiven: true, collectedFields: { personas: 2, plan, fecha: '28 de noviembre' } });
+    useAllSitesActive();
+    const t3b = /ESTADO DE TURNO: T3b[^\n]*/.exec(prompt)?.[0] ?? '';
+    expect(t3b).toContain(`ANTICIPO DE ESTE PLAN: ${deposit};`);
+  });
+
+  it('QUOTE LOCK with no published date says the team verifies, never a held spot', () => {
+    const payload = allSitesActivePayload() as { experiences: Record<string, { sites: Record<string, { availability: { dates: unknown[] } }> }> };
+    for (const experience of Object.values(payload.experiences)) experience.sites.chivor.availability.dates = [];
+    const lock = /QUOTE LOCK:[^\n]*/.exec(assembleSystemPrompt({ skills: useAllSitesActive(payload), lang: 'es', collectedFields: { personas: 2, plan: 'core_2d1n_chivor' } }))?.[0] ?? '';
+    useAllSitesActive();
+    expect(lock).toContain('Para 2 personas');
+    expect(lock).toContain('el equipo verifica la disponibilidad; no prometas ni apartes cupo');
+    expect(lock).not.toContain('Sin dia elegido');
   });
 
   it('QUOTE LOCK without a chosen day recommends one published date', () => {
@@ -1030,11 +1061,23 @@ describe('skills-prompt-assembly', () => {
     expect(shared).toMatch(/\bCORE\b/);
     expect(shared).toMatch(/\bPRIME\b/);
     expect(shared).not.toMatch(/\bBASIC\b/);
-    expect(alternative).toMatch(/\bBASIC\b/);
+    // Handoff 2026-11-18: the day plan is an alternative only when the customer asked for one.
+    expect(alternative).not.toMatch(/\bBASIC\b/);
+    expect(cue('quiero el 2D/1N o algo de un solo día').split('Obligatorio en esta misma respuesta')[1] ?? '').toMatch(/\bBASIC\b/);
     expect(cue('Quiero algo de 2 días y 1 noche')).toMatch(/\bPRIME\b/);
     expect(cue('quiero el pasadía 1D/0N')).toBe('');
     expect(cue('quiero el 2D/1N', { site: 'chivor', plan: 'core_2d1n_chivor' })).toBe('');
     expect(cue('Hola, quiero información')).toBe('');
+  });
+
+  // A bare "día" used to count as a day-trip request, so a date question brought BASIC back.
+  it.each([
+    ['¿hay pasadía?', true], ['algo sin noche', true], ['solo tenemos un día', false], ['ida y vuelta el mismo día?', true],
+    ['está muy caro', true], ['is there a day trip?', true], ['something cheaper', true], ['one-day option?', true],
+    ['¿qué día salen?', false], ['el día 28 nos sirve', false], ['buen día', false], ['what day do you leave?', false],
+    ['somos 2', false], [null, false],
+  ] as const)('day-plan intent in %j is %s', (message, expected) => {
+    expect(dayPlanRequested(message)).toBe(expected);
   });
 
   it('first reply to an ad lead carries the APERTURA cue and never a price anchor', () => {
@@ -1044,6 +1087,7 @@ describe('skills-prompt-assembly', () => {
     const cold = line({ ...base, entryMarker: { code: 'C01', temperature: 'cold' }, adOpeningTurn: true });
     expect(cold).toMatch(/solo, en pareja o para un grupo/);
     expect(cold).toMatch(/Sin precios/);
+    expect(cold).toContain('no hace falta que sepa de esmeraldas');
     expect(line({ ...base, entryMarker: { code: 'R01', temperature: 'retargeting' }, adOpeningTurn: true })).not.toBe('');
     expect(line({ ...base, entryMarker: null, adOpeningTurn: true })).not.toBe('');
     expect(line({ ...base, entryMarker: { code: 'C01', temperature: 'cold' } })).toBe('');

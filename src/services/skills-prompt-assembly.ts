@@ -12,6 +12,7 @@ import {
   getGalleryImages,
   getPaymentInfo,
   getPlans,
+  getPublicPaymentFactsForPlan,
   getUnavailableSites,
   isPlanPaused,
   getSites,
@@ -36,6 +37,7 @@ import type { EntryMarker } from './entry-marker.js';
 import { calculatePerPersonEquivalent, calculatePriceQuote, listCheaperPlanQuotes, type TransportNeed } from './pricing-calculator.js';
 import { AVAILABILITY_NOT_AVAILABLE, type InternalExperienceData, type InternalSiteData } from './dynamic-data-service.js';
 import type { LeadPain } from '../db/repositories/types.js';
+import type { SelectedVideoLink } from './video-links.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROMPTS_DIR = join(__dirname, '..', 'prompts');
@@ -670,6 +672,10 @@ export interface AssembleSystemPromptInput {
   requestedPlanIds?: string[];
   /** First reply of a new conversation that ships as the caption of the persona's photo. */
   greetingPhotoTurn?: boolean;
+  /** The customer asked for a video this turn (video-links.ts). */
+  videoRequested?: boolean;
+  /** Approved Instagram links selected for this turn; the only ones the reply may carry. */
+  videoLinks?: SelectedVideoLink[];
   /** A returning customer asked the price this turn: answer it (fresh QUOTE LOCK), not the blocker question. */
   returningPriceQuestion?: boolean;
   /** Language the reply must be written in (any detected code); defaults to `lang`. */
@@ -687,9 +693,23 @@ function menuOrder<T extends { duration?: string; recommended?: boolean }>(plans
 
 // Asked for one day or a lower budget: only then the day plan is named first (2.5.1).
 const SECURITY_QUESTION = /segur|peligr|armad|guerrill|militar|ej[eé]rcito|orden p[uú]blico|riesgo|safe|danger|armed|military|troops/i;
-const DAY_PLAN_ASKED = /\b(d[ií]a|pasad[ií]a|sin noche|un solo d[ií]a|presupuesto|barat[oa]|econ[oó]mic[oa]|caro|cara|no me alcanza|menos plata|one day|day trip|budget|cheap|expensive|afford|no overnight|no night)\b/i;
-function dayPlanRequested(message: string | null | undefined): boolean {
+// A bare "día" is not a day-trip request: "¿qué día salen?" is a date question (handoff 2026-11-18).
+const DAY_PLAN_ASKED = /\b(pasad[ií]as?|sin noche|sin dormir|sin hospedaje|(?:un|1) solo d[ií]a|de un d[ií]a|d[ií]a de ida y (?:vuelta|regreso)|ida y (?:vuelta|regreso) el mismo d[ií]a|mismo d[ií]a|b[aá]sic[oa]?|presupuesto|barat[oa]|econ[oó]mic[oa]|caro|cara|no me alcanza|menos plata|one[- ]day|day[- ]?trip|single day|same day|budget|cheap|cheaper|expensive|afford|no overnight|no night)\b/i;
+export function dayPlanRequested(message: string | null | undefined): boolean {
   return typeof message === 'string' && DAY_PLAN_ASKED.test(message);
+}
+
+// The customer asked to see every option: the day plan is part of the answer.
+const FULL_MENU_ASKED = /\b(todos los planes|todas las opciones|todas las alternativas|qu[eé] planes|cu[aá]les (?:son los )?planes|qu[eé] opciones|cu[aá]ntos planes|compar\w* (?:los|todos los) planes|all (?:the |your )?(?:plans|options)|what (?:plans|options)|which plans|compare (?:the |all )?plans)\b/i;
+
+/**
+ * Plans named on an options or duration turn (handoff 2026-11-18): the overnight plans.
+ * The day plan joins only when the customer asked for one day, a lower budget or every
+ * option, or when the site sells nothing else. A recommendation never selects a plan.
+ */
+function displayedPlans<T extends { duration?: string }>(plans: T[], message: string | null | undefined): T[] {
+  if (dayPlanRequested(message) || (typeof message === 'string' && FULL_MENU_ASKED.test(message))) return plans;
+  return quotablePlans(plans);
 }
 
 /**
@@ -791,7 +811,7 @@ function arrivesOnOwn(transport: unknown): boolean {
 }
 
 export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
-   const { skills, lang, collectedFields, salesPhase, customerContext, selectedExperienceId, entryMarker, priorContext, retargetingWithHistory, entryOpeningTurn, returning, leadPain, priceGiven, latestCustomerMessage, otherQuestionThisTurn, dateSelectedThisTurn, planSelectedThisTurn, closeCtaAcceptedThisTurn, reservationRequestedThisTurn, proactiveMode, consentAskRetryInstruction, reaskAfterOptOut, consentAcceptedThisTurn, followupReopenedThisTurn, usedEmojis, galleryShown, galleryRequestThemes, galleryImagesRemaining, galleryRetryInstruction, advanceQuestionRetryInstruction, brochurePlanId, otherSitePhotoRequest, photoSiteCorrection, priceObjectionThisTurn, transportObjectionThisTurn, pauseSummaryAlreadySent, adOpeningTurn, pendingPriceQuestion, requestedPlanIds, greetingPhotoTurn, replyLanguage, languageSwitchedThisTurn, returningPriceQuestion } = input;
+   const { skills, lang, collectedFields, salesPhase, customerContext, selectedExperienceId, entryMarker, priorContext, retargetingWithHistory, entryOpeningTurn, returning, leadPain, priceGiven, latestCustomerMessage, otherQuestionThisTurn, dateSelectedThisTurn, planSelectedThisTurn, closeCtaAcceptedThisTurn, reservationRequestedThisTurn, proactiveMode, consentAskRetryInstruction, reaskAfterOptOut, consentAcceptedThisTurn, followupReopenedThisTurn, usedEmojis, galleryShown, galleryRequestThemes, galleryImagesRemaining, galleryRetryInstruction, advanceQuestionRetryInstruction, brochurePlanId, otherSitePhotoRequest, photoSiteCorrection, priceObjectionThisTurn, transportObjectionThisTurn, pauseSummaryAlreadySent, adOpeningTurn, pendingPriceQuestion, requestedPlanIds, greetingPhotoTurn, videoRequested, videoLinks, replyLanguage, languageSwitchedThisTurn, returningPriceQuestion } = input;
 
   const personality = substituteTokens(readPrompt('seller-personality.skill.md'));
   // entry-strategy must precede cold-info-handler: the first-turn handler reads the
@@ -899,12 +919,12 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
     runtime.push(
       'APERTURA DE ANUNCIO: primer mensaje de un lead de anuncio y aún no conoces el grupo. El anuncio prometió que quien fundó Andean Scapes le cuenta en persona. '
       + 'En 2 o 3 líneas y máximo 60 palabras, sin viñetas: (1) preséntate en primera persona con tu identidad de PERSONA; '
-      + '(2) una frase de valor: parafrasea el valueHook del ENTRY_SEGMENT conservando el detalle concreto que lo distingue (cómo llega o con quién viaja); si el segmento no trae valueHook, toma ese ángulo de su diagnosisQuestion o planMatch (ruta 4x4, moto, niños); sin segmento, una frase vivida del CATALOGO; '
+      + '(2) una frase de valor: parafrasea el valueHook del ENTRY_SEGMENT conservando el detalle concreto que lo distingue (cómo llega o con quién viaja); si el segmento no trae valueHook, toma ese ángulo de su diagnosisQuestion o planMatch (ruta 4x4, moto, niños); sin segmento, una imagen concreta de la mina con los guías de la región; no hace falta que sepa de esmeraldas; '
       // Facts come from catalog `sharedFacts` (SHARED_FACTS_FALLBACK until the feed sets them).
       // Clarity before price (2.5.1): the first message says what the experience is (a weekend,
       // with a night there) so the lead does not read it as a day trip or a pickup from Bogotá.
       // It never promises the price: the price comes once the lead answers the group question.
-      + `(3) una frase de claridad del plan: es un ${facts.tripLength}; solo si no preguntó por transporte, ${facts.arrival}; `
+      + `(3) obligatoria, una frase de claridad del plan: es un ${facts.tripLength}; solo si no preguntó por transporte, ${facts.arrival}; `
       + '(4) una única pregunta: si la experiencia sería para él/ella solo, en pareja o para un grupo, con el motivo "para recomendarte el plan" '
       + '(si el cliente o el ENTRY_SEGMENT hablan de niños: cuántos van y qué edades tienen los niños). '
       + 'Aunque diga que ya consultó antes, sin historial no preguntes qué lo frenó: eso va en el turno siguiente. '
@@ -1007,9 +1027,11 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
       // Live 2026-11-12 (release 2.5.0 eval): "is it close?" / "is it safe?" / "can you pick me
       // up?" got the answer plus the full two-region pitch (340-460 chars). The answer comes
       // first and the destination is asked by name only; the regions are explained next turn.
+      // Owner 2026-11-18: a generic comparison called Chivor "la más offroad", which can read as
+      // "needs an off-road vehicle"; places are compared by place, vehicles only on interest.
       const regionsCue = otherQuestionThisTurn
         ? ' El cliente hizo otra pregunta: respóndela primero en 1 o 2 frases con hechos del CATALOGO (si hablas del punto de inicio, identifica el pueblo y su destino; si aún no eligió, distingue los destinos sin asumir uno; planes y precios esperan al destino); luego pregunta a cuál de las regiones quiere ir, en una sola frase que solo las nombre con su ubicación, sin describirlas.'
-        : ' Explica las regiones según SITE_SELECTION, con una diferencia real de cada destino tomada de SITE_SELECTION y CATALOGO; si el cliente o el anuncio ya mostraron un interés, conéctalo con la región que más lo cumple según SITE_SELECTION, sin descartar la otra: elige el cliente. Si el cliente hizo otra pregunta, respóndela en una frase antes.';
+        : ' Explica las regiones según SITE_SELECTION, con una diferencia real de cada destino tomada de SITE_SELECTION y CATALOGO; si el cliente o el anuncio ya mostraron un interés, conéctalo con la región que más lo cumple según SITE_SELECTION, sin descartar la otra: elige el cliente. Compara por el lugar: sin un interés en moto, carro, 4x4 o ruta, no describas ningún destino por su vía, el 4x4 o lo offroad. Si el cliente hizo otra pregunta, respóndela en una frase antes.';
       // The answer plus the destination question needs more room than the question alone
       // (live safety answer: 4 required facts + destination = 340-380 chars).
       const siteLimit = otherQuestionThisTurn ? REPLY_CHAR_LIMIT.siteQuestionWithAnswer : REPLY_CHAR_LIMIT.siteQuestion;
@@ -1100,6 +1122,12 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
       );
     }
   }
+  // Live EN 2026-11-18 (closing-restates-meeting-point): a Chivor CORE close stated 50%, the
+  // Coscuez deposit, read from deposit_by_plan. The close cues carry this plan's own anticipo.
+  const planDepositPercent = lockedPlanId ? getPublicPaymentFactsForPlan(skills, activeExperience, lockedPlanId).depositPercent : null;
+  const depositCue = planDepositPercent != null
+    ? ` ANTICIPO DE ESTE PLAN: ${planDepositPercent}%; si nombras el anticipo, usa solo ese porcentaje.`
+    : '';
   const missingOperationalField = collectedFields?.nombre == null
     ? 'nombre'
     : collectedFields?.transporte == null
@@ -1107,15 +1135,15 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
       : 'ninguno';
   if (t3bCloseTurn && reservationRequestedThisTurn) {
     runtime.push(
-      `ESTADO DE TURNO: T3b RESERVA PEDIDA. Hay fecha concreta, el precio ya fue entregado y el cliente ya pidió reservar en este inbound. Aplica whatsapp-sales.skill.md §T3b (variante reserva pedida): sin preguntar si quiere iniciar la reserva. DATO OPERATIVO FALTANTE: ${missingOperationalField}.`,
+      `ESTADO DE TURNO: T3b RESERVA PEDIDA. Hay fecha concreta, el precio ya fue entregado y el cliente ya pidió reservar en este inbound. Aplica whatsapp-sales.skill.md §T3b (variante reserva pedida): sin preguntar si quiere iniciar la reserva. DATO OPERATIVO FALTANTE: ${missingOperationalField}.${depositCue}`,
     );
   } else if (t3bCloseTurn) {
     runtime.push(
-      'ESTADO DE TURNO: T3b. Hay fecha concreta y el precio ya fue entregado. Aplica whatsapp-sales.skill.md §T3b.',
+      `ESTADO DE TURNO: T3b. Hay fecha concreta y el precio ya fue entregado. Aplica whatsapp-sales.skill.md §T3b.${depositCue}`,
     );
   }
   if (closeCtaAcceptedThisTurn) {
-    runtime.push(`ESTADO DE TURNO: POST-CTA. El cliente aceptó iniciar la validación y la alerta al equipo ya está en curso. Aplica whatsapp-sales.skill.md §POST-CTA. DATO OPERATIVO FALTANTE: ${missingOperationalField}.`);
+    runtime.push(`ESTADO DE TURNO: POST-CTA. El cliente aceptó iniciar la validación y la alerta al equipo ya está en curso. Aplica whatsapp-sales.skill.md §POST-CTA. DATO OPERATIVO FALTANTE: ${missingOperationalField}.${depositCue}`);
   }
   const asksHowToReserve = typeof latestCustomerMessage === 'string'
     && /\b(?:c[oó]mo\s+reservo|como\s+reservo|c[oó]mo\s+pago|como\s+pago|c[oó]mo\s+se\s+reserva|quiero\s+reservar|how\s+(?:do\s+i\s+)?(?:book|reserve|pay)|what(?:'s|\s+is)\s+next\s+to\s+book)\b/i.test(latestCustomerMessage);
@@ -1156,7 +1184,7 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
       // Clarity before number (2.5.1): one line of what the trip includes, in outcomes, before the
       // totals. The day plan is named only when the lead asked for one day or a lower budget.
       // The first sentence carries the start point too (2.4.0 price turns had it): a separate cue was dropped in live runs.
-      const valueCue = `Obligatorio: la respuesta empieza con una frase de valor (lo que incluye, en palabras de cliente: ${quoteValueFor(activeExperience, selectedSiteId, plansToQuote, facts)})${guidance.meetingPoint ? `, que también dice dónde empieza el plan (${guidance.meetingPoint})${arrivesOnOwn(collectedFields?.transporte) ? ' y que llegar es por cuenta del cliente (díselo en segunda persona)' : ''}` : ''}, sin lista y sin cifras; no empieces con "Para N personas" ni con un precio. Las cifras van después de esa frase. `;
+      const valueCue = `Obligatorio: la respuesta empieza con una frase de valor (lo que incluye, en palabras de cliente: ${quoteValueFor(activeExperience, selectedSiteId, plansToQuote, facts)})${guidance.meetingPoint ? `, que también dice dónde empieza el plan (${guidance.meetingPoint})${arrivesOnOwn(collectedFields?.transporte) ? ' y que llegar es por cuenta del cliente (díselo en segunda persona)' : ''}` : ''}, sin lista y sin cifras; no empieces con "Para N personas" ni con un precio, ni con un acuse ("Perfecto", "Chivor entonces", "Chivor it is"). Las cifras van después de esa frase. `;
       const dayCue = dayPlanRequested(latestCustomerMessage) && guidance.dayPlanNames.length > 0
         ? `Obligatorio: menciona primero, sin precio: ${guidance.dayPlanNames.join(' | ')}, y di con esas palabras, en el idioma del cliente, que es un solo día sin noche; di también que es un día largo, con ida y regreso el mismo día. `
         : '';
@@ -1190,11 +1218,12 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
       // Live 2026-11-11 (first run): with plain wording the model dropped the start point and
       // paraphrased the recommendation away, so both are stated as obligatory.
       const recommendedCue = guidance.recommendedName ? ` Obligatorio: escribe la palabra "${recommendedWord(lang)}" junto a ${guidance.recommendedName}, con su beneficio del CATALOGO.` : '';
-      // 2.5.1: the day plan is named last and only as a choice; it is described as a single day only when asked for one.
-      const dayCue = guidance.dayPlanNames.length > 0
-        ? (dayPlanRequested(latestCustomerMessage)
-          ? ` ${guidance.dayPlanNames.join(' | ')}: di que es un solo día, con ida y regreso el mismo día.`
-          : ` ${guidance.dayPlanNames.join(' | ')} va al final, como opción sin noche; no lo presentes como el plan principal.`)
+      // Handoff 2026-11-18: BASIC appeared unasked in 9/27 2.5.1 threads on weekend-ad traffic.
+      // The day plan is shown only when asked for (displayedPlans), and then said as a single day.
+      const shownPlans = displayedPlans(sitePlans, latestCustomerMessage);
+      const shownDayPlans = guidance.dayPlanNames.filter(name => shownPlans.some(plan => (shortPlanName(plan.name) ?? plan.name) === name));
+      const dayCue = shownDayPlans.length > 0
+        ? ` ${shownDayPlans.join(' | ')}: di que es un solo día, con ida y regreso el mismo día${shownPlans.length > shownDayPlans.length ? '; va al final, no como plan principal' : ''}.`
         : '';
       const ownArrivalOptions = arrivesOnOwn(collectedFields?.transporte);
       const startCue = guidance.meetingPoint
@@ -1203,7 +1232,7 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
       // Short names only: with "CORE — 2 Dias / 1 Noche (2D/1N)" in the cue the model copied the
       // duration into the menu (release 2.5.0 eval, no-plan-offer-turn2 1/2). The day plan's
       // single day is still said through dayCue.
-      runtime.push(`OPCIONES DE PLAN ESTE TURNO: ${sitePlans.map(plan => shortPlanName(plan.name) ?? plan.name).join(' | ')}. No escribas duraciones como "2 días / 1 noche"; del plan de un día di solo que es un solo día. ${startCue}${segmentAngle}Presenta todas estas opciones por nombre y una diferencia breve de CATALOGO, sin precios. No reduzcas la eleccion a esencial/completa.${recommendedCue}${dayCue} Un solo párrafo, máximo ${REPLY_CHAR_LIMIT.planOptions} caracteres. Una sola pregunta para elegir.`);
+      runtime.push(`OPCIONES DE PLAN ESTE TURNO: ${shownPlans.map(plan => shortPlanName(plan.name) ?? plan.name).join(' | ')}. No escribas duraciones como "2 días / 1 noche"; del plan de un día di solo que es un solo día. ${startCue}${segmentAngle}Presenta todas estas opciones por nombre y una diferencia breve de CATALOGO, sin precios. No reduzcas la eleccion a esencial/completa.${recommendedCue}${dayCue} Un solo párrafo, máximo ${REPLY_CHAR_LIMIT.planOptions} caracteres. Una sola pregunta para elegir.`);
     }
   }
   // Live 2026-11-01/02: "quiero el plan 2D/1N" was answered "el 2D/1N es CORE" four
@@ -1215,9 +1244,10 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
       && plan.duration.toLowerCase().replace(/\s+/g, '') === askedDuration)
     : [];
   if (sameDurationPlans.length > 1 && !proactiveMode && !consentAcceptedThisTurn) {
-    // Owner 2026-11-02: also name the site's other plans (e.g. the day plan) as an
-    // alternative, so a "2D/1N" lead still learns the shorter option exists.
-    const otherPlans = activePlans.filter(plan => plan.siteId === selectedSiteId && !sameDurationPlans.includes(plan));
+    // Owner 2026-11-02: also name the site's other plans as an alternative of another
+    // duration. Since 2026-11-18 the day plan is one only when the customer asked for it.
+    const otherPlans = displayedPlans(activePlans.filter(plan => plan.siteId === selectedSiteId), latestCustomerMessage)
+      .filter(plan => !sameDurationPlans.includes(plan));
     const alternative = otherPlans.length > 0
       ? ` Obligatorio en esta misma respuesta: nombra también, en una frase corta, ${otherPlans.map(plan => `${plan.name} (${plan.duration})`).join(' | ')} como alternativa de otra duración.`
       : '';
@@ -1296,7 +1326,9 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
       // message before silence (~136 leads). One recommended date gives a single easy answer.
       const noDayClose = offerDates.length > 0
         ? ` Sin dia elegido: recomienda solo esta fecha publicada (${offerDates[0]}) y cierra con una pregunta suave para revisar cupo en ella. No listes varias fechas. Prohibido cerrar con "alguna fecha en mente", "que mes", "te suena" u ofrecer otro plan que no pidio.`
-        : '';
+        : !hasConcreteDate && !diagnosisTurn
+          ? ' Sin fecha publicada que recomendar: di que el equipo verifica la disponibilidad; no prometas ni apartes cupo.'
+          : '';
       const sizeCue = diagnosisTurn ? '' : ` Máximo ${REPLY_CHAR_LIMIT.quote} caracteres.`;
       // The quoted sentence is copied verbatim, so it must be in the customer's
       // language: a Spanish-only sentence made English leads get Spanish quotes.
@@ -1367,7 +1399,7 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
     const planTheme = selectedPlan?.galleryTheme;
     if (planTheme && galleryThemes.includes(planTheme)) {
       runtime.push(
-        `ESTADO DE TURNO: PLAN ELEGIDO. Primera elección de plan (§GALERIA): conserva el turno que corresponda y termina literalmente con [[FOTOS:${planTheme}]] en su propia línea, después de la pregunta. No anuncies el envío.`,
+        `ESTADO DE TURNO: PLAN ELEGIDO. Primera elección de plan (§GALERIA): conserva el turno que corresponda${t3bCloseTurn ? ' (T3b: el precio ya se dio; no lo repitas)' : ''} y termina literalmente con [[FOTOS:${planTheme}]] en su propia línea, después de la pregunta. No anuncies el envío.`,
       );
     }
   }
@@ -1386,6 +1418,13 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
   }
   if (galleryImagesRemaining !== undefined) {
     runtime.push(`CUPO_FOTOS_RESTANTE: ${galleryImagesRemaining}.`);
+  }
+  // Owner 2026-11-18: the line cannot attach large videos, so a video request gets approved
+  // Instagram links as text. Links and what each shows come from the catalog.
+  if (videoRequested && !proactiveMode) {
+    runtime.push(videoLinks && videoLinks.length > 0
+      ? `VIDEOS PEDIDOS: di en media frase que por aquí no puedes adjuntar videos pesados y comparte en este mismo mensaje estos enlaces de Instagram, sin pedir permiso. Cada enlace en su propia línea, debajo de una frase que diga qué va a ver, tomada de su descripción: ${videoLinks.map(link => `"${link.description}" ${link.url}`).join(' | ')}. Copia los enlaces exactos; ningún otro enlace de Instagram. Si además preguntó otra cosa (dónde queda, precio, fechas), respóndela en el mismo mensaje.`
+      : 'VIDEO PEDIDO SIN ENLACE: no hay video aprobado para esto. No escribas enlaces de Instagram ni prometas enviar un video después; dilo en media frase y sigue con lo que necesite el turno.');
   }
   if (galleryRetryInstruction && galleryRequestThemes && galleryRequestThemes.length > 0) {
     const exactMarker = `[[FOTOS:${galleryRequestThemes.join(',')}]]`;

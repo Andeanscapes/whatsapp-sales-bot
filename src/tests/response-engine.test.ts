@@ -327,6 +327,51 @@ describe('processMessage', () => {
     }
   });
 
+  describe('request-only video links (owner 2026-11-18)', () => {
+    const CULTURE = 'https://www.instagram.com/reels/DeCSQOhRmlT/';
+    const CHIVOR = 'https://www.instagram.com/p/DTNu3O4Efj4/';
+    const ask = async (phone: string, message: string, reply: string, plan: string | null = 'prime_2d1n_chivor') => {
+      repos.conversation.upsert(phone, { language: 'es', collected_people: 2, ...(plan ? { collected_plan: plan } : {}) });
+      repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'hola', created_at: new Date(Date.now() - 120_000).toISOString() });
+      repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: '¿Te cuento más del plan?', created_at: new Date(Date.now() - 60_000).toISOString() });
+      mockLlmComplete.mockReset();
+      mockLlmComplete.mockResolvedValue(fromOld({ response: { reply } }));
+      vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+      vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+      const result = await processMessage({ repos, customerPhone: phone, message });
+      return { result, prompt: mockLlmComplete.mock.calls[0]?.[0].systemPrompt ?? '' };
+    };
+
+    it('a stored Chivor plan gets the culture link and its own link, sent as plain text', async () => {
+      const reply = `Por aquí no puedo adjuntar videos pesados. Por qué importa la cultura esmeraldera:\n${CULTURE}\nCómo se vive el plan:\n${CHIVOR}\n¿Cuál te gustaría ver primero?`;
+      const { result, prompt } = await ask('573007719001', '¿tienen videos del plan?', reply);
+      expect(prompt).toContain('VIDEOS PEDIDOS');
+      expect(prompt).toContain(CULTURE);
+      expect(prompt).toContain(CHIVOR);
+      expect(result.reply).toBe(reply);
+      expect(result.shouldSendOwnerImage).toBe(false);
+      expect(result.contextualImage).toBeUndefined();
+    });
+
+    it('a Coscuez plan gets the culture link only, never the Chivor one', async () => {
+      const { prompt } = await ask('573007719002', 'mándame un video', '¿Te cuento más?', 'core_2d1n_coscuez');
+      expect(prompt).toContain(CULTURE);
+      expect(prompt).not.toContain(CHIVOR);
+    });
+
+    it('an invented Instagram post link is never sent', async () => {
+      const { result } = await ask('573007719003', '¿tienen videos?', 'Mira: https://www.instagram.com/p/INVENTED99/ ¿Te gusta?');
+      expect(result.reply).not.toContain('instagram.com');
+      expect(result.shouldAlertOwner).toBe(true);
+    });
+
+    it('"vi el video" is how ad leads open, not a request: no cue and no link', async () => {
+      const { prompt } = await ask('573007719004', 'Hola, vi el video, ¿cuánto vale?', '¿Cuántos viajan?', null);
+      expect(prompt).not.toMatch(/VIDEOS? PEDIDO/);
+      expect(prompt).not.toContain(CHIVOR);
+    });
+  });
+
   describe('bare day answer to our own date list', () => {
     const answer = async (phone: string, message: string): Promise<string> => {
       repos.conversation.upsert(phone, { language: 'es', collected_people: 2, collected_plan: 'core_2d1n_chivor' });
@@ -400,6 +445,39 @@ describe('processMessage', () => {
       vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
       await processMessage({ repos, customerPhone: phone, message: 'si' });
       expect(repos.conversation.getByPhone(phone)?.collected_date ?? null).toBeNull();
+    });
+
+    // Handoff 2026-11-18: plan and an exact Saturday in one message after a two-plan quote.
+    it.each([
+      ['573007710961', 'es', 'Para 2 personas: CORE queda en $950.000 COP y PRIME en $1.400.000 COP. ¿Con cuál seguimos?', 'el core para el 28 de noviembre'],
+      ['573007710962', 'en', 'For 2 people: CORE comes to $950,000 COP and PRIME to $1,400,000 COP. Which one should we go with?', 'CORE for November 28th'],
+    ])('plan + exact day in one message stores both and closes, not re-quotes (%s)', async (phone, language, quote, message) => {
+      repos.conversation.upsert(phone, { language, collected_people: 2, price_given_at: new Date().toISOString() });
+      repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'text', body: language === 'en' ? 'how much for 2 in Chivor?' : 'cuánto vale para 2 en Chivor?', created_at: new Date(Date.now() - 120_000).toISOString() });
+      repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: quote, created_at: new Date(Date.now() - 60_000).toISOString() });
+      mockLlmComplete.mockReset();
+      mockLlmComplete.mockResolvedValueOnce(fromOld({ response: { reply: 'Listo. ¿Quieres que iniciemos la reserva?' } }));
+      vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+      vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+      await processMessage({ repos, customerPhone: phone, message });
+      const row = repos.conversation.getByPhone(phone);
+      expect(row?.collected_plan).toBe('core_2d1n_chivor');
+      expect(String(row?.collected_date ?? '')).toMatch(/28/);
+      const prompt = mockLlmComplete.mock.calls[0]?.[0].systemPrompt ?? '';
+      expect(prompt).toContain('ESTADO DE TURNO: T3b');
+      expect(prompt).not.toContain('QUOTE LOCK: escribe');
+    });
+
+    it('a month-only answer is not a concrete day: no close', async () => {
+      const phone = '573007710963';
+      repos.conversation.upsert(phone, { language: 'es', collected_people: 2, collected_plan: 'core_2d1n_chivor', price_given_at: new Date().toISOString() });
+      repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: 'Para 2 personas, el plan queda en $950.000 COP. ¿Revisamos el cupo del 28 de noviembre?', created_at: new Date(Date.now() - 60_000).toISOString() });
+      mockLlmComplete.mockReset();
+      mockLlmComplete.mockResolvedValueOnce(fromOld({ response: { reply: '¿Qué fecha de diciembre les sirve?' } }));
+      vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+      vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+      await processMessage({ repos, customerPhone: phone, message: 'mejor en diciembre, somos 2' });
+      expect(mockLlmComplete.mock.calls[0]?.[0].systemPrompt ?? '').not.toContain('ESTADO DE TURNO: T3b');
     });
 
     it('a yes after a cupo question naming two dates stores none', async () => {
@@ -2656,7 +2734,9 @@ describe('processMessage', () => {
     expect(mockLlmComplete.mock.calls.at(-1)?.[0].systemPrompt ?? '').not.toContain('PRECIO PEDIDO SIN PLAN:');
   });
 
-  it('an organic lead that asked the price keeps the price gate when it gives the group', async () => {
+  // Handoff 2026-11-18: the organic first turn no longer guesses a total before the group is
+  // known, so the group answer carries the totals (it used to get the price gate).
+  it('an organic lead that asked the price gets the totals when it gives the group', async () => {
     useSingleDestinationCatalog();
     mockLlmComplete.mockReset();
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
@@ -2667,8 +2747,8 @@ describe('processMessage', () => {
     mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'Buenísimo. ¿Les encaja más CORE o PRIME?' } }));
     await processMessage({ repos, customerPhone: phone, message: 'Somos 2' });
     const prompt = mockLlmComplete.mock.calls.at(-1)?.[0].systemPrompt ?? '';
-    expect(prompt).not.toContain('PRECIO PEDIDO SIN PLAN:');
-    expect(prompt).toContain('PRICE GATE ACTIVO:');
+    expect(prompt).toContain('PRECIO PEDIDO SIN PLAN:');
+    expect(prompt).not.toContain('PRICE GATE ACTIVO:');
   });
 
   // Live EN 2026-11-18 (two-plan-narrow-quotes-both, 0/2): "CORE and PRIME for 2?" → destination

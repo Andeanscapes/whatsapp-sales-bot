@@ -76,8 +76,11 @@ Implementation: `src/services/skills-prompt-assembly.ts` — sole prompt builder
    never the solo rate. Non-integral equivalents are rounded and labelled approximate;
    the payable group total is unchanged. The diagnostic accepts that same calculation.
    Before selection, a known destination with more than two active plans gets
-   `OPCIONES DE PLAN ESTE TURNO`: name every available option with a short distinction,
+   `OPCIONES DE PLAN ESTE TURNO`: name every option it lists with a short distinction,
    rather than hiding options behind an essential/complete binary. No prices until choice.
+   The day plan is listed only when the customer asked for one day, a lower budget or every
+   option, or the site sells nothing else (`displayedPlans`, 2026-11-18); the recommended
+   plan is not a selection.
    Both that cue and QUOTE LOCK carry the site's `meetingPoint` (the plan starts and ends
    there; getting there is the customer's own), the options cue marks the catalog's `recommended: true`
    plan as recommended and the day plan as a same-day round trip, and QUOTE LOCK without a chosen
@@ -214,6 +217,14 @@ catalog holds the Coscuez placeholders, it cannot be mirrored.
   `DESTINO SIN ELEGIR` goes to ad leads only. Deploy code before a catalog that sets the field (strict schema): an
   older bot rejects the feed and stops quoting. `dynamic:push --target prod` refuses it
   until `--bot-deployed`. Delete the fallback once the CDN feed sets every field.
+- Experience `cultureReels` and plan `reels` (`{url, description}`, Instagram permalinks
+  only) are the approved video links: sent as text only on a video request, culture links
+  for every site, a plan's links only to that plan (AGENTS.md invariant 15). Deploy code
+  before publishing them; `catalog-compat.ts` lists both fields.
+- `siteSelection.context` compares destinations by place (Chivor: Valle de Tenza, a landscape
+  surrounded by water; Coscuez: western Boyacá, home of the Fura and Tena legend, whose
+  excursion is PRIME only). 4x4 is said only to a vehicle-interested lead or as Chivor's local
+  transfer when asked how to get there.
 - With multiple active sites, an opener without a destination asks about the group
   first. `SITIO PENDIENTE` asks for a destination on later turns. Only a vehicle code
   listed in exactly one active site's `vehicleEntryCodes` infers a site from a marker;

@@ -607,6 +607,27 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
     mode and assignment: a team-held lead never drops back to the bot. Templates resolve the same way and
     fall back to the experience name, never to a retired plan's card.
 
+15. **Video links are request-only text, from the catalog** (owner 2026-11-18: the line
+    cannot attach large videos). Catalog `experiences.*.cultureReels` (every site) and
+    `sites.*.plans.*.reels` (that plan only) hold approved `{url, description}` Instagram
+    permalinks (schema-checked). On a video request (`isVideoRequest`; "vi el video" is how ad
+    leads open and never counts) the engine picks one culture link and the stored plan's link,
+    unseen in the chat first (`hasOutboundContaining`), random among equals, max two, never
+    another plan's. Only those reach `VIDEOS PEDIDOS`; the model writes the reply. A reply
+    carrying an Instagram post link that was neither selected nor sent before in the chat is
+    `unapproved_video_link` (curated fallback + owner alert). No attachment, no photo ledger,
+    no greeting/contextual photo on that turn, never in openers or follow-ups (the consent ask
+    already rejects any link). A video noun keeps a message out of the photo matcher.
+    New catalog fields: deploy the bot before publishing them (`catalog-compat.ts`).
+
+16. **The day plan is named only when asked for** (handoff 2026-11-18: BASIC appeared unasked
+    in 9/27 2.5.1 threads on weekend-ad traffic). `displayedPlans` keeps it out of
+    `OPCIONES DE PLAN` and `DURACION COMPARTIDA` unless the customer asked for one day, a lower
+    budget or every option, or the site sells nothing else; a bare "día" is a date, not a
+    day-trip request (`dayPlanRequested`). A price asked before the group is known is never
+    guessed: the first turn asks the group, and the group answer gets `PRECIO PEDIDO SIN PLAN`
+    (ad leads from any earlier inbound, others from this or the previous inbound).
+
 ### Multi-Agent Guardrails
 
 - One phase per PR. Never combine phases.
