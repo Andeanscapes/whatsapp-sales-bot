@@ -107,7 +107,7 @@ jobs:
       AI_ENABLED: "true"
       MIN_CONVERSATION_SCORE: "90"
       MAX_SCORE_DROP: "8"
-      # One pack per PR: ~$1.80-2.30 with retries (measured 2026-11-16). Same as the script default cap (3.00).
+      # `pr` pack (37 scenarios, ~130 live turns). Full pack measured ~$1.80-2.30 (2026-11-16); re-measure after the first pack run.
       EVAL_MAX_COST_USD: "3.00"
       EVAL_LANG: ${{ github.base_ref == 'master' && 'en' || 'es' }}
       EVAL_ARTIFACT: ${{ github.base_ref == 'master' && 'artifacts/conversation-eval-llm-bot-en.json' || 'artifacts/conversation-eval-llm-bot.json' }}
@@ -122,9 +122,9 @@ jobs:
           cache: npm
       - run: npm ci
       - id: live-eval
-        run: npm run eval:conversations:llm-bot -- --lang "$EVAL_LANG"
+        run: npm run eval:conversations:llm-bot -- --lang "$EVAL_LANG" --pack pr
       - if: ${{ !cancelled() && (steps.live-eval.outcome == 'success' || steps.live-eval.outcome == 'failure') }}
-        run: npm run eval:conversations:compare -- --baseline "$EVAL_BASELINE" --current "$EVAL_ARTIFACT" --min-average "$MIN_CONVERSATION_SCORE" --max-drop "$MAX_SCORE_DROP" --require-complete
+        run: npm run eval:conversations:compare -- --baseline "$EVAL_BASELINE" --current "$EVAL_ARTIFACT" --min-average "$MIN_CONVERSATION_SCORE" --max-drop "$MAX_SCORE_DROP" --pack pr --require-complete
       - uses: actions/upload-artifact@v4
         if: always()
         with:

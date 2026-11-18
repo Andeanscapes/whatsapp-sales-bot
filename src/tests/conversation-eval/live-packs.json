@@ -1,0 +1,43 @@
+{
+  "pr": {
+    "scenarioIds": [
+      "two-destinations-group-first",
+      "ad-opener-price-asked-solo",
+      "ad-opener-price-asked-couple",
+      "ad-info-pareja-core-quote",
+      "ad-opener-c03-moto",
+      "ad-opener-r01-videos",
+      "entry-retarget-R01-with-history",
+      "release251-r01-asks-destination",
+      "release251-c01-neutral-opener",
+      "release251-coscuez-switch-after-marker",
+      "release251-day-trip-question-answered",
+      "release251-opener-no-price-promise",
+      "release251-price-value-before-number",
+      "release251-soft-next-step-after-price",
+      "chivor-three-plans-per-person",
+      "group-of-5-math",
+      "two-plan-narrow-quotes-both",
+      "price-objection-downsell-coscuez",
+      "basic-chosen-long-day-deposit",
+      "closing-restates-meeting-point",
+      "date-pick-price-then-close-T3b",
+      "vacation-motive-discovery-baredate",
+      "two-doubts-then-cupo-offer",
+      "reserve-request-skips-cta",
+      "buying-signal-payment-facts",
+      "pickup-bogota-assumed",
+      "near-city-expectation-remote-trip",
+      "safety-objection-military-presence",
+      "consecutive-gallery-requests",
+      "plan-selection-gallery",
+      "consent-granted-ack",
+      "language-switch-mid-chat",
+      "emerald-ownership-honest",
+      "two-destinations-moto-interest",
+      "release251-organic-two-destinations",
+      "release251-marker-c02-no-destination-question",
+      "kids-price-sensitivity-downsell"
+    ]
+  }
+}
