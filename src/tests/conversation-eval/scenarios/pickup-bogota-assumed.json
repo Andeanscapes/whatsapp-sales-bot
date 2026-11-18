@@ -1,6 +1,6 @@
 {
   "id": "pickup-bogota-assumed",
-  "source": "Bogotá pickup assumption: starts in Chivor; private 4x4 price only when asked, as a separate line. | 2026-11-12: with two destinations the start point is the town of the chosen region; the check accepts either word order and \"the town\" (it judged wording, not the fact).",
+  "source": "Bogotá pickup assumption: starts in Chivor; private 4x4 price only when asked, as a separate line. | 2026-11-12: with two destinations the start point is the town of the chosen region; the check accepts either word order and \"the town\" (it judged wording, not the fact). | 2026-11-18: turn 2 is the deferred price quote (start point + value line + two totals); short-reply 320 -> 390 to match the sibling quote turns (the prompt cue asks for 380; the test allows 390 for model variance). Live: 344 chars, all content correct.",
   "tags": [
     "price",
     "live"
@@ -53,7 +53,7 @@
       "turn": 2,
       "weight": 2,
       "critical": true,
-      "expected": 320
+      "expected": 390
     },
     {
       "id": "no-pickup-claim-t3",
