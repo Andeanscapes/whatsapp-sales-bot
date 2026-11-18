@@ -90,10 +90,8 @@ jobs:
     environment: llm-evaluation
     # Paid DeepSeek eval: one pack per same-repository PR, based on the target branch.
     # develop runs Spanish; master runs English.
-    # Blocking with drop-tolerance: fails only if a scenario drops more than
-    # MAX_SCORE_DROP vs its committed master LLM baseline, or the average falls below the
-    # low absolute floor MIN_CONVERSATION_SCORE. LLM output is non-deterministic,
-    # so the gate tolerates run-to-run variance instead of a hard >=80 check.
+    # Block on runner errors, incomplete reports, hard failures after retries,
+    # and score regressions beyond the configured tolerances.
     if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || github.base_ref == 'master') && github.event.pull_request.head.repo.full_name == github.repository
     env:
       NODE_ENV: test
@@ -123,9 +121,10 @@ jobs:
           node-version: 24.18.0
           cache: npm
       - run: npm ci
-      - run: npm run eval:conversations:llm-bot -- --lang "$EVAL_LANG"
-        continue-on-error: true
-      - run: npm run eval:conversations:compare -- --baseline $EVAL_BASELINE --current $EVAL_ARTIFACT --min-average $MIN_CONVERSATION_SCORE --max-drop $MAX_SCORE_DROP
+      - id: live-eval
+        run: npm run eval:conversations:llm-bot -- --lang "$EVAL_LANG"
+      - if: ${{ !cancelled() && (steps.live-eval.outcome == 'success' || steps.live-eval.outcome == 'failure') }}
+        run: npm run eval:conversations:compare -- --baseline "$EVAL_BASELINE" --current "$EVAL_ARTIFACT" --min-average "$MIN_CONVERSATION_SCORE" --max-drop "$MAX_SCORE_DROP" --require-complete
       - uses: actions/upload-artifact@v4
         if: always()
         with:

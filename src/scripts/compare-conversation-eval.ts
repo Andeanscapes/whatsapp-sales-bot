@@ -7,7 +7,7 @@ function option(name: string, fallback: string): string {
 }
 
 function load(path: string): EvalReport {
-  if (!existsSync(path)) throw new Error(`Baseline not found: ${path}`);
+  if (!existsSync(path)) throw new Error(`Evaluation report not found: ${path}`);
   return evalReportSchema.parse(JSON.parse(readFileSync(path, 'utf8')));
 }
 
@@ -20,7 +20,12 @@ function main(): void {
   const maxDrop = Number(option('--max-drop', process.env.MAX_SCORE_DROP ?? '5'));
   const baselineMap = new Map(baseline.scenarios.map(scenario => [scenario.id, scenario]));
   const currentMap = new Map(current.scenarios.map(scenario => [scenario.id, scenario]));
-  let failed = false;
+  const requireComplete = process.argv.includes('--require-complete');
+  let failed = requireComplete && (
+    current.scenarios.length === 0 || current.suite.count !== current.scenarios.length
+    || currentMap.size !== current.scenarios.length || current.suite.hardFails > 0
+    || current.scenarios.some(scenario => scenario.hardFail)
+  );
 
   console.log('\nConversation Eval V2 Compare');
   for (const id of [...new Set([...baselineMap.keys(), ...currentMap.keys()])].sort()) {
@@ -35,6 +40,7 @@ function main(): void {
     }
     if (!after) {
       console.log(`REMOVED ${id}`);
+      if (requireComplete) failed = true;
       continue;
     }
     const state = after.hardFail ? 'FAIL' : after.score >= before.score ? 'PASS' : 'DOWN';

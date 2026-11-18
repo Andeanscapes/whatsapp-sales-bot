@@ -143,7 +143,8 @@ describe('two-site catalog selection', () => {
     expect(runtime).not.toContain('OPCIONES DE PLAN');
     // 2.5.1: C01 runs on videos from both regions, so no site's segment (hacienda, hotel) is borrowed.
     expect(runtime).not.toContain('SEGMENT_DETECTED');
-    expect(runtime).toContain('no nombres Chivor, Coscuez, hacienda ni hotel');
+    expect(runtime).toContain('no nombres ni atribuyas detalles de un destino al anuncio');
+    expect(runtime).not.toMatch(/Chivor|Coscuez|sábado a domingo/i);
     // The price depends on the destination chosen next turn: no "next message" promise.
     expect(runtime).not.toContain('llegan en tu siguiente mensaje');
     expect(runtime).not.toMatch(/el valor exacto llega|te cuento el valor exacto/);

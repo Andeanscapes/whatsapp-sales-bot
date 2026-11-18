@@ -203,8 +203,11 @@ catalog holds the Coscuez placeholders, it cannot be mirrored.
   Site comparisons do not replace a stored destination. Brochure references and
   quoted-price card matching use the resolved site; a brochure alone does not choose
   a plan, while an explicit choice plus a brochure request still does.
-- Destination-first entry carries `SITIO PENDIENTE` until a destination is chosen;
-  campaign diagnosis blocks and site-specific gallery themes stay unadvertised.
+- With multiple active sites, an opener without a destination asks about the group
+  first. `SITIO PENDIENTE` asks for a destination on later turns. Only a vehicle code
+  listed in exactly one active site's `vehicleEntryCodes` infers a site from a marker;
+  shared codes use a neutral opener. Site-specific gallery themes stay unadvertised
+  while the destination is unresolved.
   `siteSelection` supplies regional context, explicitly marked coming-soon sites and an
   optional `defaultSiteId` (no-preference suggestion; must name a site of the experience).
   A destination choice carries the stored plan's catalog `tier` to a unique matching

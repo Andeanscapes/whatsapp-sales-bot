@@ -491,9 +491,9 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
       **The destination is the customer's choice** (owner 2026-11-12): both regions are
       presented as safe, at a similar distance and unique; an off-road interest (moto, car,
       4x4) is matched to Chivor without ruling Coscuez out; no preference → the catalog
-      `siteSelection.defaultSiteId`. That default also lends its campaign segment to the
-      opening turn, so C02/C03/C04 keep their angle while the destination is open
-      (`DESTINO SIN ELEGIR` still bans its lodging and plans). Deploy code before a catalog
+      `siteSelection.defaultSiteId`. Only a vehicle marker with a unique active-site
+      match in `vehicleEntryCodes` infers a destination. Shared codes keep the opener
+      neutral, using only shared catalog facts. Deploy code before a catalog
       that sets `defaultSiteId` or a plan `recommended` flag (strict schema).
     - **R01 is not "returning" by itself.** The culture-video ads also bring NEW people
       with the R01 marker. QUOTE LOCK diagnoses the blocker only with real history
@@ -760,6 +760,7 @@ columns from the old feature remain in place and are ignored.
   into `master` (vs `baselines/master-llm-bot-en.json`). For live debugging, run affected
   scenarios locally with `--lang <es|en> --scenario <id>`. Refresh a baseline by copying a real
   `--runs 2` artifact, never by hand-editing scores.
+  CI fails on runner errors, hard failures after retry, incomplete reports, or score regressions beyond the configured tolerances.
   A live run that hard-fails, or misses any criterion that is critical or weight >= 3,
   is re-run once (one retry per run) and only the retry is scored (`retries` in the
   report, printed by the compare step). With 44+ live scenarios, a single LLM miss

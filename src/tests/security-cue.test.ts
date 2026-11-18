@@ -15,7 +15,8 @@ describe('security question cue', () => {
   it('adds the catalog-only security wording for a security question', () => {
     const runtime = runtimeFor('¿Es seguro? Escuché de grupos armados en la zona');
     expect(runtime).toContain('SEGURIDAD: si pregunta por seguridad');
-    expect(runtime).toContain('región tranquila');
+    expect(runtime).toContain('medidas operativas documentadas en SAFETY_DETAILS');
+    expect(runtime).not.toContain('región tranquila');
     expect(runtime).toContain('No menciones bases militares');
   });
 

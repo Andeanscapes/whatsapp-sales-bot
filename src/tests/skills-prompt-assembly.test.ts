@@ -782,6 +782,7 @@ describe('skills-prompt-assembly', () => {
     expect(prompt).toContain('ESTADO DE TURNO: T3b RESERVA PEDIDA');
     expect(prompt).toContain('DATO OPERATIVO FALTANTE: nombre');
     expect(prompt).not.toContain('ESTADO DE TURNO: T3b. Hay fecha concreta');
+    expect(prompt).not.toContain('pregunta si inicias la reserva');
   });
 
   it('ignores the reservation-requested flag outside a T3b turn', () => {

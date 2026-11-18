@@ -82,8 +82,7 @@ async function main(): Promise<void> {
   console.log(`[LLM_BOT_EVAL] language=${language} scenarios=${pack.scenariosDir}`);
   const allScenarios = loadScenarios(pack.scenariosDir);
   if (allScenarios.length === 0) {
-    console.log('[LLM_BOT_EVAL] no scenarios registered — nothing to run');
-    process.exit(0);
+    throw new Error(`No scenarios registered for ${language}`);
   }
   // --tag <name> runs only the scenarios carrying that tag (e.g. release-2.5.1), so a release
   // can be checked without paying for the whole live pack.
@@ -102,8 +101,7 @@ async function main(): Promise<void> {
   }
   if (scenarios.length === 0) {
     if (selectedId) throw new Error(`Scenario ${selectedId} uses an unsupported synthetic runner`);
-    console.log('[LLM_BOT_EVAL] no live message scenarios to run');
-    return;
+    throw new Error(`No live message scenarios selected for ${language}`);
   }
 
   requireLiveLlmConfig();
@@ -215,6 +213,7 @@ async function main(): Promise<void> {
   const path = writeReport(report, pack.reportFile);
   console.log(`Report written to: ${path}`);
   if (costCapMessage) throw new Error(`${costCapMessage} Partial report: ${results.length}/${scenarios.length} scenarios.`);
+  if (results.length !== scenarios.length) throw new Error(`Incomplete live report: ${results.length}/${scenarios.length} scenarios`);
   if (report.suite.hardFails > 0) throw new Error(`Conversation eval hard failures: ${report.suite.hardFails}`);
   const minScore = Number(process.env.MIN_CONVERSATION_SCORE ?? 70);
   if (report.suite.average < minScore) throw new Error(`Conversation eval average ${report.suite.average} below ${minScore}`);
