@@ -949,17 +949,21 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
     } else {
       const siteList = sites.map(site => `${site.id} (${site.name ?? site.id})`)
         .join(' | ');
+      const meetingPoints = sites.flatMap(site => {
+        const point = activeExperience.sites?.[site.id]?.meetingPoint;
+        return point ? [`${site.name ?? site.id}: ${point}`] : [];
+      }).join(' | ');
       const priceNote = pendingPriceQuestion ? ' Pidió precio: dile en media frase que depende del destino y lo das apenas elija.' : '';
       // Live 2026-11-12 (release 2.5.0 eval): "is it close?" / "is it safe?" / "can you pick me
       // up?" got the answer plus the full two-region pitch (340-460 chars). The answer comes
       // first and the destination is asked by name only; the regions are explained next turn.
       const regionsCue = otherQuestionThisTurn
-        ? ' El cliente hizo otra pregunta: respóndela primero en 1 o 2 frases con hechos del CATALOGO (si un hecho es de un solo destino, di de cuál; planes y precios esperan al destino); luego pregunta a cuál de las dos regiones quiere ir, en una sola frase que solo las nombre con su ubicación, sin describirlas.'
+        ? ' El cliente hizo otra pregunta: respóndela primero en 1 o 2 frases con hechos del CATALOGO (si hablas del punto de inicio, identifica el pueblo y su destino; si aún no eligió, distingue los destinos sin asumir uno; planes y precios esperan al destino); luego pregunta a cuál de las dos regiones quiere ir, en una sola frase que solo las nombre con su ubicación, sin describirlas.'
         : ' Explica las regiones según SITE_SELECTION, con una diferencia real de cada destino tomada de SITE_SELECTION y CATALOGO; si el cliente o el anuncio ya mostraron un interés, conéctalo con la región que más lo cumple según SITE_SELECTION, sin descartar la otra: elige el cliente. Si el cliente hizo otra pregunta, respóndela en una frase antes.';
       // The answer plus the destination question needs more room than the question alone
       // (live safety answer: 4 required facts + destination = 340-380 chars).
       const siteLimit = otherQuestionThisTurn ? REPLY_CHAR_LIMIT.siteQuestionWithAnswer : REPLY_CHAR_LIMIT.siteQuestion;
-      runtime.push(`SITIO PENDIENTE: ${siteList}. Confirma destino antes de plan o precio; esa es la única pregunta de este turno.${regionsCue}${priceNote} Máximo ${siteLimit} caracteres en total.`);
+      runtime.push(`SITIO PENDIENTE: ${siteList}. Confirma destino antes de plan o precio; esa es la única pregunta de este turno.${regionsCue}${otherQuestionThisTurn && meetingPoints ? ` Si pregunta dónde inicia o por salida desde otra ciudad, indica los puntos de inicio según el destino: ${meetingPoints}. No digas solo "el pueblo"; explica que llegar es por cuenta del cliente salvo que pida transporte privado.` : ''}${priceNote} Máximo ${siteLimit} caracteres en total.`);
     }
   }
 
