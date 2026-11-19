@@ -589,6 +589,7 @@ export interface AssembleSystemPromptInput {
   depositQuestion?: boolean;
   closeAcknowledgment?: boolean;
   availabilityPending?: boolean;
+  postQuoteDoubtFollowup?: boolean;
   skills: Skills;
   lang?: string;
   collectedFields?: Record<string, unknown>;
@@ -1526,6 +1527,12 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
   if (t3bCloseTurn && planSelectedThisTurn && !reservationRequestedThisTurn && !proactiveMode) {
     const point = planGuidance(activeExperience, [], selectedSiteId).meetingPoint;
     runtime.push(`CIERRE T3b: acaba de elegir plan y día después de ver el precio. No recotices. Indica fecha, punto de encuentro${point ? ` (${point})` : ''} y hora de inicio del plan según CATALOGO; luego el anticipo${planDepositPercent != null ? ` del ${planDepositPercent}%` : ''} condicionado a confirmar cupo. Cierra con una sola pregunta para iniciar la reserva.`);
+  }
+  if (input.postQuoteDoubtFollowup && priceGiven && lockedPlanId && !pausedPlan && !hasConcreteDate
+    && !informationalCloseTurn && !priceObjectionThisTurn && !quoteRequestedThisTurn
+    && !reservationRequestedThisTurn && !closeCtaAcceptedThisTurn && !returning && !proactiveMode) {
+    const [date] = datesToOfferAfterQuote(skills, activeExperience, lockedPlanId, knownDate, replyCode ?? lang ?? 'es');
+    if (date) runtime.push(`DUDAS RESUELTAS: responde primero la duda actual con CATALOGO. Luego haz una sola pregunta ofreciendo revisar el cupo para esta fecha publicada: ${date}. Nombra día y mes. Sin recotizar, confirmar cupo ni iniciar reserva.`);
   }
   // Last so this inbound-only contract takes precedence over general close/CTA guidance.
   if (!proactiveMode && informationalCloseTurn) {

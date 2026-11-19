@@ -1818,6 +1818,41 @@ describe('processMessage', () => {
   });
 
   it.each([
+    ['two answered questions', true, '¿Y la comida admite dieta especial?', true],
+    ['only one question after the quote', false, '¿Y la comida admite dieta especial?', false],
+    ['date request interrupts the sequence', true, '¿Tienen fechas?', false],
+  ])('post-quote availability cue: %s', async (_name, quoteBeforeFirstQuestion, secondQuestion, expectedCue) => {
+    mockLlmComplete.mockReset();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-19T15:00:00Z'));
+    try {
+      vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
+      vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
+      const phone = '573001112308';
+      const at = (secondsAgo: number) => new Date(Date.now() - secondsAgo * 1000).toISOString();
+      repos.conversation.upsert(phone, {
+        collected_people: 2,
+        collected_plan: 'core_2d1n_chivor',
+        price_given_at: at(quoteBeforeFirstQuestion ? 60 : 30),
+      });
+      repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'text', body: '¿Los niños pagan igual?', created_at: at(50) });
+      repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: 'Cada persona cuenta como cupo completo.', created_at: at(40) });
+      repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'text', body: secondQuestion, created_at: at(20) });
+      repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: 'Sí, si nos avisan con tiempo.', created_at: at(10) });
+      mockLlmComplete.mockResolvedValueOnce(fromOld({ response: { reply: 'Sí, sale del pueblo. ¿Revisamos cupo para el 21 de noviembre?' } }));
+
+      await processMessage({ repos, customerPhone: phone, message: '¿Y el 4x4 local sale desde el pueblo?' });
+
+      const runtime = mockLlmComplete.mock.calls[0]?.[0].systemPrompt.split('\nRUNTIME:\n').at(-1);
+      expect(runtime).toBeDefined();
+      if (expectedCue) expect(runtime).toMatch(/DUDAS RESUELTAS:.*21 de noviembre/);
+      else expect(runtime).not.toContain('DUDAS RESUELTAS:');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
     'quiero el otro plan',
     'y el otro plan que incluye?',
     'cual es el presupuesto para 4?',

@@ -392,6 +392,29 @@ function isPriceDateOrReservationMessage(text: string): boolean {
     || norm.includes('mercado pago');
 }
 
+function isPostQuoteDoubt(text: string): boolean {
+  return /[?¿]/.test(text) && !isPriceDateOrReservationMessage(text)
+    && !isPriceQuestion(text) && !isGalleryRequest(text) && !isVideoRequest(text);
+}
+
+function hasTwoAnsweredPostQuoteDoubts(history: readonly RecentMessage[], priceGivenAt: string): boolean {
+  const quotedAt = Date.parse(priceGivenAt);
+  let answered = false;
+  let doubts = 0;
+  for (let i = history.length - 1; i >= 0; i--) {
+    const row = history[i];
+    if (!(Date.parse(row.createdAt ?? '') >= quotedAt)) break;
+    if (row.role === 'assistant') {
+      answered ||= Boolean(row.content.trim());
+    } else {
+      if (!answered || !isPostQuoteDoubt(row.content)) break;
+      if (++doubts === 2) return true;
+      answered = false;
+    }
+  }
+  return false;
+}
+
 /**
  * Did this inbound mean "I am still in this conversation"?
  *
@@ -1584,7 +1607,8 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     && !detectsReservationIntent(message);
   const reservationIntentOrConfirmation = !destinationAnswerOnly && isReservationIntentOrConfirmation(message, lastAssistantQuestion);
   const conversationMode = repos.conversation.getMode(customerPhone);
-  const quotedBeforeTurn = repos.conversation.getPriceGivenAt(customerPhone) != null;
+  const priceGivenAt = repos.conversation.getPriceGivenAt(customerPhone);
+  const quotedBeforeTurn = priceGivenAt != null;
   const requestedDate = availabilityDay && !consentAnswerTurn && !hasSafetyOverride && isDynamicDataFresh()
     && quotedBeforeTurn && typeof collectedFields.plan === 'string'
     && getPlans(activeExperience).some(plan => plan.id === collectedFields.plan)
@@ -1943,6 +1967,10 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     priceGiven: repos.conversation.getPriceGivenAt(customerPhone) != null && !(returningTurn && isPriceQuestion(message)),
     latestCustomerMessage: message,
     otherQuestionThisTurn: /[?¿]/.test(message) && !isPriceQuestion(message),
+    postQuoteDoubtFollowup: priceGivenAt != null && !!storedPlan && safeCollected.plan === storedPlan
+      && conversationMode === 'bot' && !returningTurn && !consentAnswerTurn && !reservationIntentOrConfirmation
+      && !otherSitePhotoRequest && isDynamicDataFresh()
+      && isPostQuoteDoubt(message) && hasTwoAnsweredPostQuoteDoubts(recentMessages, priceGivenAt),
     dateSelectedThisTurn,
     planSelectedThisTurn,
     closeCtaAcceptedThisTurn,

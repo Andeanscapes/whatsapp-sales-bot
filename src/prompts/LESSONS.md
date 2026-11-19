@@ -911,3 +911,9 @@ context: Opt-out phrasing is compliance-sensitive. Keep the rule owner-visible: 
 - Follow-up 2: a retarget/REGRESO turn that neither asks the price nor chooses a plan gets no QUOTE LOCK at all (`quoteRequestedThisTurn`); the cue's "usa este total solo si pide el precio" still let the model price the return. English `PRECIO PEDIDO SIN PLAN` asks 350 characters (EN ran 389-404 at 380). Final live (CI env, `--pack pr`): ES 99 / 0 hard fails, EN 99 / 0, both compares pass.
 - Not done: Cloudflare sync. Deploy the bot before publishing `cultureReels`/`reels` (dev, then prod with `--bot-deployed`).
 - Metrics to watch (2 weeks, matched cohorts): first-reply rate (~60%), reply within 24h of first real quote, unasked BASIC mentions (target 0), concrete dates, correct close with the plan's deposit.
+
+## 2026-11-19 — One published date after two answered post-quote questions
+
+- `two-doubts-then-cupo-offer` reproduced in CI settings: ES 62, EN 85. The skill relied on the model counting questions, and the replay did not show the quote it seeded.
+- The engine checks two consecutive answered questions since the recorded quote. For another eligible question, assembly supplies one published departure for the current plan in the reply language, if one exists. Booking and availability inquiry cues keep priority.
+- Both eval replays now include the quote and require a day and month checked against the catalog. Targeted live result: ES and EN 100, 2/2 each.
