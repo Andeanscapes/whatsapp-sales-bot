@@ -88,15 +88,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: llm-evaluation
-    # REAL DeepSeek eval, one language pack per target branch to halve token spend
-    # (owner 2026-11-16): PRs into develop run the Spanish pack (scenarios/), PRs into
-    # master run the English pack (scenarios-en/). Both packs keep running for free in
-    # the deterministic job above. Burns tokens.
-    # Blocking with drop-tolerance: fails only if a scenario drops more than
-    # MAX_SCORE_DROP vs its committed master LLM baseline, or the average falls below the
-    # low absolute floor MIN_CONVERSATION_SCORE. LLM output is non-deterministic,
-    # so the gate tolerates run-to-run variance instead of a hard >=80 check.
-    if: github.event_name == 'pull_request' && (github.base_ref == 'master' || github.base_ref == 'develop') && github.event.pull_request.head.repo.full_name == github.repository
+    # Paid DeepSeek eval: one pack per same-repository PR, based on the target branch.
+    # develop runs Spanish; master runs English.
+    # Block on runner errors, incomplete reports, hard failures after retries,
+    # and score regressions beyond the configured tolerances.
+    if: github.event_name == 'pull_request' && (github.base_ref == 'develop' || github.base_ref == 'master') && github.event.pull_request.head.repo.full_name == github.repository
     env:
       NODE_ENV: test
       OWNER_NAME: TestOwner
@@ -111,9 +107,8 @@ jobs:
       AI_ENABLED: "true"
       MIN_CONVERSATION_SCORE: "90"
       MAX_SCORE_DROP: "8"
-      # One pack per PR: ~$1.80-2.30 with retries (measured 2026-11-16). Same as the script default cap (3.00).
+      # `pr` pack (37 scenarios, ~130 live turns). Full pack measured ~$1.80-2.30 (2026-11-16); re-measure after the first pack run.
       EVAL_MAX_COST_USD: "3.00"
-      # develop -> es (scenarios/, baseline master-llm-bot.json); master -> en (scenarios-en/).
       EVAL_LANG: ${{ github.base_ref == 'master' && 'en' || 'es' }}
       EVAL_ARTIFACT: ${{ github.base_ref == 'master' && 'artifacts/conversation-eval-llm-bot-en.json' || 'artifacts/conversation-eval-llm-bot.json' }}
       EVAL_BASELINE: ${{ github.base_ref == 'master' && 'src/tests/conversation-eval/baselines/master-llm-bot-en.json' || 'src/tests/conversation-eval/baselines/master-llm-bot.json' }}
@@ -126,9 +121,10 @@ jobs:
           node-version: 24.18.0
           cache: npm
       - run: npm ci
-      - run: npm run eval:conversations:llm-bot -- --lang $EVAL_LANG
-        continue-on-error: true
-      - run: npm run eval:conversations:compare -- --baseline $EVAL_BASELINE --current $EVAL_ARTIFACT --min-average $MIN_CONVERSATION_SCORE --max-drop $MAX_SCORE_DROP
+      - id: live-eval
+        run: npm run eval:conversations:llm-bot -- --lang "$EVAL_LANG" --pack pr
+      - if: ${{ !cancelled() && (steps.live-eval.outcome == 'success' || steps.live-eval.outcome == 'failure') }}
+        run: npm run eval:conversations:compare -- --baseline "$EVAL_BASELINE" --current "$EVAL_ARTIFACT" --min-average "$MIN_CONVERSATION_SCORE" --max-drop "$MAX_SCORE_DROP" --pack pr --require-complete
       - uses: actions/upload-artifact@v4
         if: always()
         with:

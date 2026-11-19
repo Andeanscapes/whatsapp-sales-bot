@@ -2,6 +2,7 @@
   "id": "ad-info-then-group-asks-plan",
   "source": "EN twin of ad-info-then-group-asks-plan (history: info+date openings and couple replies; diagnosis-first funnel: group -> diagnosis -> plan recommendation; turn 3 answers both diagnosis axes so the plan is due whichever question the model asked) | 2026-11-12: Coscuez on sale, so the bot asks the destination after the group (SITIO PENDIENTE) and the customer answers Chivor; later criteria moved one turn down. | 2.5.1: the C02 marker pre-selects Chivor, so the bot no longer asks the destination; the \"Chivor\" turn is removed and the criteria move back one turn; the menu lists CORE first and BASIC last (menuOrder), both orders accepted.",
   "tags": [
+    "handoff-2026-11-18",
     "opening",
     "qualification",
     "diagnosis",

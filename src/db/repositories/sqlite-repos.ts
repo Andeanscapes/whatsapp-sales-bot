@@ -3,6 +3,7 @@ import type {
   ConversationRepository,
   ConversationRow,
   MetaAudienceLead,
+  MessageAfterRow,
   MessageRepository,
   OutboundMediaRepository,
   OutboundMediaRow,
@@ -828,6 +829,16 @@ export class SqliteMessageRepo implements MessageRepository {
     return row !== undefined;
   }
 
+  listMessagesAfterMessage(phone: string, whatsappMessageId: string, limit: number): MessageAfterRow[] {
+    return this.db.prepare(
+      `SELECT later.direction, later.body, later.whatsapp_message_id, later.created_at FROM messages later
+       JOIN messages anchor ON anchor.customer_phone = later.customer_phone
+       WHERE anchor.customer_phone = ? AND anchor.whatsapp_message_id = ? AND later.id > anchor.id
+       ORDER BY later.id
+       LIMIT ?`
+    ).all(phone, whatsappMessageId, limit) as MessageAfterRow[];
+  }
+
   getLastOutboundTextBody(phone: string): string | null {
     // message_type = 'text' so an image caption (e.g. owner intro photo) never
     // becomes "the last thing the bot asked" for qualification context — the
@@ -836,6 +847,15 @@ export class SqliteMessageRepo implements MessageRepository {
       "SELECT body FROM messages WHERE customer_phone = ? AND direction = 'outbound' AND message_type = 'text' ORDER BY created_at DESC, id DESC LIMIT 1"
     ).get(phone) as { body: string | null } | undefined;
     return row?.body ?? null;
+  }
+
+  hasOutboundContaining(phone: string, needle: string): boolean {
+    if (!needle) return false;
+    // instr, not LIKE: `_` and `%` are wildcards there and appear in link ids.
+    const row = this.db.prepare(
+      "SELECT 1 FROM messages WHERE customer_phone = ? AND direction = 'outbound' AND instr(body, ?) > 0 LIMIT 1"
+    ).get(phone, needle);
+    return row !== undefined;
   }
 
   getRecentMessages(phone: string, limit: number = 12): RecentMessage[] {

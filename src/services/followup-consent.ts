@@ -76,8 +76,10 @@ const TRAILING_COURTESY = new Set(['gracias', 'thanks', 'please', 'porfa', 'porf
  */
 function stripCourtesyFrame(norm: string): string {
   // Strip leading greetings iteratively because a single pass leaves dangling tokens.
+  // "que tal si me escriben…" proposes something ("how about…"), so "que tal" is a
+  // greeting there only when the "si" is followed by a courtesy or nothing else.
   let text = norm;
-  const GREETING_PATTERN = /^(buenos dias|buen dia|buenas tardes|buenas noches|buenos|buenas|hola|hi|hello|hey)(?:\s+|$)/;
+  const GREETING_PATTERN = /^(?:muy\s+)?(buenos dias|buen dia|buenas tardes|buenas noches|buenos|buenas|hola|que tal(?! si (?!por\b|porfa\b|x\b|claro\b|gracias\b))|good morning|good afternoon|good evening|hi|hello|hey)(?:\s+|$)/;
   for (;;) {
     const newText = text.replace(GREETING_PATTERN, '');
     if (newText === text) break;
@@ -97,7 +99,8 @@ function stripCourtesyFrame(norm: string): string {
     // "no gracias" / "no thanks" — the courtesy carries the refusal.
     if (BARE_NEGATIONS.has(previous)) break;
 
-    if ((last === 'favor' || last === 'fa') && previous === 'por') {
+    // "x favor" is the WhatsApp shorthand of "por favor" (live 2026-11: "Si x favor").
+    if ((last === 'favor' || last === 'fa') && (previous === 'por' || previous === 'x')) {
       // "no por favor" is equally a refusal; keep it intact.
       if (count >= 3 && BARE_NEGATIONS.has(words[count - 3])) break;
       words = words.slice(0, count - 2);
@@ -161,7 +164,7 @@ const AFFIRM = [
   'me avisas', 'si mas adelante', 'mas adelante si',
   'yes', 'yes please', 'yeah', 'yep', 'yup', 'sure', 'sure thing', 'of course',
   'okay', 'alright', 'fine', 'go ahead', 'sounds good', 'please do', 'i accept',
-  'that works', 'no problem',
+  'that works', 'no problem', 'no hay problema',
 ];
 
 const DECLINE = [
@@ -248,6 +251,53 @@ const CONSENT_QUESTION_CONTINUATION =
 const COMMERCIAL_OBJECT_VETO =
   /pago|pagar|pagos|pague|anticip|deposit|transferenc|consign|cotizac|factur|precio|abono|saldo|comprobante|reserv|\bcuenta\b|\bplata\b|dinero/;
 
+/**
+ * The customer says THEY will make the next contact ("claro yo te escribo", "te aviso",
+ * "I'll text you"). That is not permission for us to write later, so it is never a
+ * yes. Live 2026-11-09 "Claro yo te escribo" read as consent through `escrib`.
+ */
+const CUSTOMER_WILL_CONTACT =
+  /\b(?:yo\s+)?(?:te|le|les)\s+(?:escribo|aviso|confirmo|contacto|marco)\b|\bi(?:'ll|ll| will)\s+(?:text|write|message|contact|let you know)\b/;
+
+/**
+ * A message that is only a greeting ("Buenas tardes", "Muy buenos días", "hola qué tal").
+ * It opens the customer's turn; the answer usually follows seconds later, so it must
+ * neither defer a pending consent ask nor count as the customer moving on from it.
+ */
+export function isGreetingOnly(text: string): boolean {
+  const norm = normalizeAffirmatives(normalize(text));
+  return norm.length > 0 && stripCourtesyFrame(norm).length === 0;
+}
+
+/**
+ * Whether the rows stored after a consent ask (oldest first) moved the conversation
+ * past it, so a bare yes/no no longer answers it. Any outbound does, except our reply
+ * to a greeting-only turn ("Buenas tardes") that asks no new question or repeats the
+ * permission question. A reply asking anything else ("¿Les cuento el PRIME?") owns
+ * the next "si": counting it as marketing consent is the 2026-10-14 bug.
+ * Shared by the webhook (`isConsentAskSuperseded`) and the consent backfill.
+ */
+export function isAskSupersededBy(later: readonly { direction: 'inbound' | 'outbound'; body: string | null }[]): boolean {
+  let inboundRun: (string | null)[] = [];
+  // Consecutive outbound rows (photo + text) belong to the same reply turn.
+  let greetingTurn = false;
+  for (const row of later) {
+    if (row.direction === 'inbound') {
+      inboundRun.push(row.body);
+      continue;
+    }
+    if (inboundRun.length > 0) {
+      greetingTurn = inboundRun.every(body => body !== null && isGreetingOnly(body));
+      inboundRun = [];
+    }
+    const asksSomethingNew = row.body !== null
+      && row.body.includes('?')
+      && !isFollowupPermissionQuestion(row.body);
+    if (!greetingTurn || asksSomethingNew) return true;
+  }
+  return false;
+}
+
 export type ConsentDecision = 'affirm' | 'decline' | 'ambiguous';
 
 /**
@@ -298,6 +348,8 @@ export function classifyConsentReply(text: string): ConsentDecision {
   const firstTwo = words.slice(0, 2).join(' ');
 
   if (DECLINE.includes(firstTwo)) return 'decline';
+
+  if (CUSTOMER_WILL_CONTACT.test(stripped)) return 'ambiguous';
 
   // How many leading words form a known affirmative: "de acuerdo" (2), "si" (1), or
   // none. The longer prefix wins so the remainder under test is the smallest.

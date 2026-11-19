@@ -156,6 +156,16 @@ describe('two-site catalog selection', () => {
     expect(secondTurn).toContain('depende del destino');
     expect(secondTurn).not.toContain('PRECIO PEDIDO SIN PLAN');
 
+    // The price gate must not ask for the plan while the destination is the turn's question
+    // (live 2026-11-18, R01: "¿esencial o completa?" instead of the destination).
+    const r01Second = assembleSystemPrompt({
+      skills, lang: 'es', entryMarker: { code: 'R01', temperature: 'retargeting' }, collectedFields: { personas: 2 },
+    }).split('\nRUNTIME:').at(-1) ?? '';
+    expect(r01Second).toContain('SITIO PENDIENTE');
+    expect(r01Second).toContain('PRICE GATE ACTIVO');
+    expect(r01Second).toContain('la única pregunta de este turno es la de SITIO PENDIENTE');
+    expect(r01Second).not.toContain('pregunta por el plan o la duracion');
+
     const organic = assembleSystemPrompt({ skills, lang: 'es', entryOpeningTurn: true, collectedFields: {} }).split('\nRUNTIME:').at(-1) ?? '';
     expect(organic).toContain('DESTINO SIN ELEGIR');
     expect(organic).not.toContain('SITIO PENDIENTE');

@@ -1,7 +1,7 @@
 {
   "name": "Andean Scapes English conversation pack (twins of the Spanish pack)",
   "version": "2026-11-12-en-curated-language-switch-returning-two-destinations+release-2.5.1-marker-destination",
-  "totalTests": 92,
+  "totalTests": 94,
   "scenarioIds": [
     "ad-info-pareja-core-quote",
     "ad-info-then-group-asks-plan",
@@ -79,6 +79,7 @@
     "release251-r01-asks-destination",
     "release251-safety-regional-wording",
     "release251-soft-next-step-after-price",
+    "reservation-availability-ack",
     "reserve-request-skips-cta",
     "returning-r01-after-c01",
     "returning-r01-after-quote",
@@ -94,6 +95,7 @@
     "two-doubts-then-cupo-offer",
     "two-plan-narrow-quotes-both",
     "vacation-motive-discovery-baredate",
+    "video-request-links",
     "where-is-chivor-region"
   ]
 }

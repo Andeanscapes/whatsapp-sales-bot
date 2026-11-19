@@ -1,24 +1,25 @@
 {
   "id": "consecutive-gallery-requests",
-  "source": "EN twin of consecutive-gallery-requests (regression 2026-08-20: second consecutive photo request delivered the text and zero photos once the close flipped needsHumanEffective. Photo counts are deliberately not asserted; shouldSendGalleryImages already covers the empty-list defect)",
+  "source": "EN twin of consecutive-gallery-requests (regression 2026-08-20: second consecutive photo request delivered the text and zero photos once the close flipped needsHumanEffective. Photo counts are deliberately not asserted; shouldSendGalleryImages already covers the empty-list defect). A replayed turn earns the seeded plan and quote: with zero prior inbound, turn 1 was a first contact and skipped the missing-marker correction (CI EN 2026-11-19).",
   "tags": ["marker", "gallery", "live"],
   "lang": "en",
   "liveRuns": 2,
   "minLiveScore": 80,
   "seedConversation": { "priceGiven": true, "qualification": { "people": 2, "plan": "core_2d1n_chivor" } },
   "criteria": [
-    { "id": "first-request-ships", "rule": "output_flag_equals", "flag": "shouldSendGalleryImages", "expected": true, "turn": 1, "weight": 2, "critical": true },
-    { "id": "second-request-ships", "rule": "output_flag_equals", "flag": "shouldSendGalleryImages", "expected": true, "turn": 2, "weight": 2, "critical": true },
-    { "id": "repeat-request-ships", "rule": "output_flag_equals", "flag": "shouldSendGalleryImages", "expected": true, "turn": 3, "weight": 2, "critical": true },
-    { "id": "multi-theme-request-ships", "rule": "output_flag_equals", "flag": "shouldSendGalleryImages", "expected": true, "turn": 4, "weight": 2, "critical": true },
-    { "id": "marker-hidden-first", "rule": "reply_must_not_match", "patterns": ["\\[\\[\\s*FOTOS|FOTOS\\s*:|\\bmarker\\b"], "turn": 1, "weight": 2, "critical": true },
-    { "id": "marker-hidden-second", "rule": "reply_must_not_match", "patterns": ["\\[\\[\\s*FOTOS|FOTOS\\s*:|\\bmarker\\b"], "turn": 2, "weight": 2, "critical": true },
-    { "id": "no-announcement-first", "rule": "reply_must_not_match", "patterns": ["here (?:are|they are|you go)|i'?m sending|i'?ll send|sending you|i'?m sharing|i'?ll share"], "turn": 1, "weight": 1 },
-    { "id": "no-announcement-second", "rule": "reply_must_not_match", "patterns": ["here (?:are|they are|you go)|i'?m sending|i'?ll send|sending you|i'?m sharing|i'?ll share"], "turn": 2, "weight": 1 },
-    { "id": "one-question-first", "rule": "max_question_marks", "max": 1, "turn": 1, "weight": 1, "critical": true },
-    { "id": "one-question-second", "rule": "max_question_marks", "max": 1, "turn": 2, "weight": 1, "critical": true }
+    { "id": "first-request-ships", "rule": "output_flag_equals", "flag": "shouldSendGalleryImages", "expected": true, "turn": 2, "weight": 2, "critical": true },
+    { "id": "second-request-ships", "rule": "output_flag_equals", "flag": "shouldSendGalleryImages", "expected": true, "turn": 3, "weight": 2, "critical": true },
+    { "id": "repeat-request-ships", "rule": "output_flag_equals", "flag": "shouldSendGalleryImages", "expected": true, "turn": 4, "weight": 2, "critical": true },
+    { "id": "multi-theme-request-ships", "rule": "output_flag_equals", "flag": "shouldSendGalleryImages", "expected": true, "turn": 5, "weight": 2, "critical": true },
+    { "id": "marker-hidden-first", "rule": "reply_must_not_match", "patterns": ["\\[\\[\\s*FOTOS|FOTOS\\s*:|\\bmarker\\b"], "turn": 2, "weight": 2, "critical": true },
+    { "id": "marker-hidden-second", "rule": "reply_must_not_match", "patterns": ["\\[\\[\\s*FOTOS|FOTOS\\s*:|\\bmarker\\b"], "turn": 3, "weight": 2, "critical": true },
+    { "id": "no-announcement-first", "rule": "reply_must_not_match", "patterns": ["here (?:are|they are|you go)|i'?m sending|i'?ll send|sending you|i'?m sharing|i'?ll share"], "turn": 2, "weight": 1 },
+    { "id": "no-announcement-second", "rule": "reply_must_not_match", "patterns": ["here (?:are|they are|you go)|i'?m sending|i'?ll send|sending you|i'?m sharing|i'?ll share"], "turn": 3, "weight": 1 },
+    { "id": "one-question-first", "rule": "max_question_marks", "max": 1, "turn": 2, "weight": 1, "critical": true },
+    { "id": "one-question-second", "rule": "max_question_marks", "max": 1, "turn": 3, "weight": 1, "critical": true }
   ],
   "turns": [
+    { "user": "Hi, we're 2 and interested in Chivor, how much is the CORE?", "replay": true, "mockReply": "For 2 people, CORE comes to $950,000 COP, with lodging, 4 meals and the guided mine included.\n\nWhat would you like to know about the plan?", "expect": { "shouldSendReply": true } },
     {
       "user": "Do you have photos of the mine?",
       "mockReply": "You go down into the tunnel with a guide and full safety gear. What date do you have in mind?\n[[FOTOS:mine]]",

@@ -41,6 +41,10 @@ describe.each([
     expect(runtime).toContain('UNA SOLA PREGUNTA');
     expect(runtime).toContain('Sin precios, sin $, sin "desde", sin "valor exacto", sin "te cuento el precio", sin menú de planes');
     expect(runtime).toContain('claridad del plan');
+    // 2.5.1 production wording (live gate 2026-11-18): replacing it with "duration from CATALOGO"
+    // made the opener offer "planes de un día y de dos días", the day-trip confusion 2.5.1 fixed.
+    expect(runtime).toContain('es un fin de semana (sábado a domingo) con noche allá');
+    expect(runtime).toContain('llega al pueblo por su cuenta');
     expect(runtime).not.toMatch(/llegan en tu siguiente mensaje|el valor exacto llega/);
     expect(runtime).not.toMatch(/QUOTE LOCK|PRECIO PEDIDO SIN PLAN|OPCIONES DE PLAN|SITIO PENDIENTE/);
     // The vehicle angle reaches the opener whenever the site is known; a shared code with two

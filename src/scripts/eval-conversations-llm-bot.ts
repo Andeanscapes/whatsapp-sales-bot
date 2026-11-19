@@ -11,6 +11,7 @@ import type { Scenario, ScenarioResult } from '../tests/conversation-eval/schema
 import { aggregateRuns } from '../tests/conversation-eval/aggregate-runs.js';
 import { loadScenarios, partitionLiveScenarios } from '../tests/conversation-eval/scenario-loader.js';
 import { validateTurnExpectations } from '../tests/conversation-eval/turn-expectations.js';
+import { loadLivePackIds } from '../tests/conversation-eval/live-packs.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const conversationEvalDir = join(__dirname, '..', 'tests', 'conversation-eval');
@@ -82,16 +83,24 @@ async function main(): Promise<void> {
   console.log(`[LLM_BOT_EVAL] language=${language} scenarios=${pack.scenariosDir}`);
   const allScenarios = loadScenarios(pack.scenariosDir);
   if (allScenarios.length === 0) {
-    console.log('[LLM_BOT_EVAL] no scenarios registered — nothing to run');
-    process.exit(0);
+    throw new Error(`No scenarios registered for ${language}`);
   }
   // --tag <name> runs only the scenarios carrying that tag (e.g. release-2.5.1), so a release
   // can be checked without paying for the whole live pack.
   const tag = option('--tag');
+  // --pack <name> runs the named subset from live-packs.json (the PR gate uses `pr`).
+  const packName = option('--pack');
+  const packIds = packName ? loadLivePackIds(packName) : null;
+  if (packIds) {
+    const missing = packIds.filter(id => !allScenarios.some(scenario => scenario.id === id));
+    if (missing.length > 0) throw new Error(`Live pack ${packName} references unknown scenarios: ${missing.join(', ')}`);
+    console.log(`[LLM_BOT_EVAL] pack=${packName} scenarios=${packIds.length}`);
+  }
   const selectedScenarios = allScenarios
     .filter(scenario => !selectedId || scenario.id === selectedId)
+    .filter(scenario => !packIds || packIds.includes(scenario.id))
     .filter(scenario => !tag || scenario.tags?.includes(tag));
-  if (selectedScenarios.length === 0) throw new Error(`No scenario found for ${selectedId ?? ''}${tag ? ` with tag ${tag}` : ''}`);
+  if (selectedScenarios.length === 0) throw new Error(`No scenario found for ${selectedId ?? ''}${packName ? ` in pack ${packName}` : ''}${tag ? ` with tag ${tag}` : ''}`);
   const includeAll = process.argv.includes('--all') || selectedId !== undefined;
   const { supported: scenarios, skipped, deselected } = partitionLiveScenarios(selectedScenarios, { includeAll });
   if (skipped.length > 0) {
@@ -102,8 +111,7 @@ async function main(): Promise<void> {
   }
   if (scenarios.length === 0) {
     if (selectedId) throw new Error(`Scenario ${selectedId} uses an unsupported synthetic runner`);
-    console.log('[LLM_BOT_EVAL] no live message scenarios to run');
-    return;
+    throw new Error(`No live message scenarios selected for ${language}`);
   }
 
   requireLiveLlmConfig();
@@ -215,6 +223,7 @@ async function main(): Promise<void> {
   const path = writeReport(report, pack.reportFile);
   console.log(`Report written to: ${path}`);
   if (costCapMessage) throw new Error(`${costCapMessage} Partial report: ${results.length}/${scenarios.length} scenarios.`);
+  if (results.length !== scenarios.length) throw new Error(`Incomplete live report: ${results.length}/${scenarios.length} scenarios`);
   if (report.suite.hardFails > 0) throw new Error(`Conversation eval hard failures: ${report.suite.hardFails}`);
   const minScore = Number(process.env.MIN_CONVERSATION_SCORE ?? 70);
   if (report.suite.average < minScore) throw new Error(`Conversation eval average ${report.suite.average} below ${minScore}`);

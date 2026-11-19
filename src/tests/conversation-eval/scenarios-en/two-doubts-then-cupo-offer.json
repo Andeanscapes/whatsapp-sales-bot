@@ -10,7 +10,6 @@
   "minLiveScore": 80,
   "seedConversation": {
     "phase": "pricing",
-    "priceGiven": true,
     "qualification": {
       "people": 2,
       "plan": "core_2d1n_chivor"
@@ -27,7 +26,7 @@
       "patterns": [
         "cupo|spot|space|availability|check|confirm|book|reserve"
       ],
-      "turn": 3,
+      "turn": 4,
       "weight": 3,
       "critical": true
     },
@@ -35,9 +34,9 @@
       "id": "published-date",
       "rule": "reply_must_match",
       "patterns": [
-        "november|december|january|\\bnov\\b|\\bdec\\b|\\bjan\\b|21|28|14|\\b5\\b|\\b12\\b"
+        "\\b(?:(?:january|february|march|april|may|june|july|august|september|october|november|december)\\s+\\d{1,2}(?:st|nd|rd|th)?|\\d{1,2}(?:st|nd|rd|th)?\\s+of\\s+(?:january|february|march|april|may|june|july|august|september|october|november|december))\\b"
       ],
-      "turn": 3,
+      "turn": 4,
       "weight": 2
     },
     {
@@ -46,14 +45,14 @@
       "patterns": [
         "does that work\\s*\\?|is that clear\\s*\\?|what else (?:worries|concerns) you"
       ],
-      "turn": 3,
+      "turn": 4,
       "weight": 2,
       "critical": true
     },
     {
       "id": "no-unpublished-date",
       "rule": "no_unpublished_date",
-      "turn": 3,
+      "turn": 4,
       "weight": 2,
       "critical": true
     },
@@ -61,7 +60,7 @@
       "id": "one-question",
       "rule": "max_question_marks",
       "max": 1,
-      "turn": 3,
+      "turn": 4,
       "weight": 2,
       "critical": true
     },
@@ -71,14 +70,21 @@
       "patterns": [
         "instagram|https?://|wa\\.me"
       ],
-      "turn": 3,
+      "turn": 4,
       "weight": 2,
       "critical": true
     }
   ],
   "turns": [
     {
-      "user": "Hi, how much is it? Do the kids pay the same?",
+      "user": "Hi, there are two of us. How much is CORE in Chivor?",
+      "replay": true,
+      "mockReply": "For two people, CORE in Chivor comes to $950,000 COP.",
+      "expect": { "shouldSendReply": true }
+    },
+    {
+      "user": "Hi, do children count as full group members?",
+      "seedPriceGiven": true,
       "replay": true,
       "mockReply": "Each person counts as a full spot, so the total stays the same. Does that help?",
       "expect": {

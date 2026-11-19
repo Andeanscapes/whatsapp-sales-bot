@@ -1052,6 +1052,7 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
                 customerPhone: msg.from,
                 score: result.leadScore,
                 intent: result.ownerAlertType ?? 'lead',
+                availabilityRequest: result.availabilityRequest,
                 message: msg.text,
                 name: String(conversation?.collected_name ?? 'unknown'),
                 date: String(conversation?.collected_date ?? 'unknown'),

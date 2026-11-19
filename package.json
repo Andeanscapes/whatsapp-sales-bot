@@ -40,6 +40,7 @@
     "media:restructure": "tsx src/scripts/media-restructure.ts",
     "dynamic:pull": "tsx src/scripts/dynamic-sync.ts pull",
     "dynamic:push": "dotenv -e .env.wrangler -- tsx src/scripts/dynamic-sync.ts push",
+    "followup:backfill-consent": "tsx src/scripts/backfill-followup-consent.ts",
     "export:transcripts": "bash scripts/export-prod-transcripts.sh",
     "export:meta-leads": "bash scripts/export-meta-leads.sh",
     "export:debug-bundle": "bash scripts/export-prod-debug-bundle.sh",
