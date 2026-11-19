@@ -1,6 +1,6 @@
 {
   "id": "ad-opener-r01-videos",
-  "source": "EN twin of ad-opener-r01-videos. Export 2026-11-07: ad leads replied 32% in 2.3.0 after a price/menu opener vs 62% in 2.0.x; owner plan 2026-11-07: intro + one value line + group question, no price/menu/dates. R01 video viewers have no history: no blocker question, no fake memory.",
+  "source": "EN twin of ad-opener-r01-videos. Export 2026-11-07: ad leads replied 32% in 2.3.0 after a price/menu opener vs 62% in 2.0.x; owner plan 2026-11-07: intro + one value line + group question, no price/menu/dates. R01 video viewers have no history: no blocker question, no fake memory. | 2.5.1: size limit adjusted for the required plan-clarity line (opener) or value line (price turn); EN runs longer than ES.",
   "tags": [
     "marker",
     "live"
@@ -111,7 +111,7 @@
       "turn": 1,
       "weight": 2,
       "critical": true,
-      "expected": 65
+      "expected": 80
     }
   ],
   "turns": [

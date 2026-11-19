@@ -651,12 +651,42 @@
                 "sl": 5
               },
               {
+                "d": "2027-02-06",
+                "s": "limited",
+                "sl": 5
+              },
+              {
                 "d": "2027-02-13",
                 "s": "limited",
                 "sl": 5
               },
               {
+                "d": "2027-02-20",
+                "s": "limited",
+                "sl": 5
+              },
+              {
                 "d": "2027-02-27",
+                "s": "limited",
+                "sl": 5
+              },
+              {
+                "d": "2027-03-06",
+                "s": "limited",
+                "sl": 5
+              },
+              {
+                "d": "2027-03-13",
+                "s": "limited",
+                "sl": 5
+              },
+              {
+                "d": "2027-03-20",
+                "s": "limited",
+                "sl": 5
+              },
+              {
+                "d": "2027-03-27",
                 "s": "limited",
                 "sl": 5
               }
@@ -715,7 +745,8 @@
                 "basica",
                 "basico",
                 "pasadia",
-                "pasadía"
+                "pasadía",
+                "day trip"
               ],
               "includedAddonIds": []
             },
@@ -779,7 +810,13 @@
                 "esencial",
                 "essential"
               ],
-              "includedAddonIds": []
+              "includedAddonIds": [],
+              "reels": [
+                {
+                  "url": "https://www.instagram.com/p/DTNu3O4Efj4/",
+                  "description": "Como se vive la experiencia en Chivor, con noche en la Hacienda El Recuerdo."
+                }
+              ]
             },
             "prime_2d1n_chivor": {
               "pricing": {
@@ -852,6 +889,12 @@
               ],
               "includedAddonIds": [
                 "horseback_riding"
+              ],
+              "reels": [
+                {
+                  "url": "https://www.instagram.com/p/DTNu3O4Efj4/",
+                  "description": "Como se vive la experiencia en Chivor, con noche en la Hacienda El Recuerdo. En PRIME, ademas, son dos minas guiadas y cabalgata hasta la segunda mina."
+                }
               ]
             }
           },
@@ -860,7 +903,7 @@
               "label": "Familiar Adventure / General",
               "description": "Usuario que busca aventura familiar o grupal sin transporte específico.",
               "valueHook": "Es una inmersión real en la zona esmeraldera: mina con guías locales, noche en hacienda y desconexión total. Adaptamos el ritmo para tu grupo.",
-              "diagnosisQuestion": "¿Qué les encaja más: BASIC pasadía sin noche, CORE con una mina y noche, o PRIME con dos minas y cabalgata?",
+              "diagnosisQuestion": "¿Qué les encaja más: CORE con una mina y noche, PRIME con dos minas y cabalgata, o BASIC pasadía sin noche?",
               "planMatch": "BASIC (pasadia), CORE o PRIME segun alcance y tiempo buscado.",
               "contextualMediaTypes": [
                 "mine"
@@ -870,7 +913,7 @@
               "label": "4x4 / Off-Road Adventure",
               "description": "Usuario entusiasta de 4x4 y off-road.",
               "valueHook": "Es un viaje en carro o 4x4 hasta Chivor para entrar a una mina real de esmeraldas con mineros locales y pasar la noche en la hacienda.",
-              "diagnosisQuestion": "¿Qué les encaja más para la ruta 4x4: BASIC pasadía sin noche, CORE con una mina y noche, o PRIME con dos minas y cabalgata?",
+              "diagnosisQuestion": "¿Qué les encaja más para la ruta 4x4: CORE con una mina y noche, PRIME con dos minas y cabalgata, o BASIC pasadía sin noche?",
               "planMatch": "2D/1N con énfasis en ruta desafiante. Si vienen en vehículo propio, confirmamos compatibilidad.",
               "contextualMediaTypes": [
                 "car",
@@ -881,7 +924,7 @@
               "label": "Moto / Bike Adventure",
               "description": "Usuario interesado en rutas en motocicleta.",
               "valueHook": "Es una rodada en moto hasta Chivor para entrar a una mina real de esmeraldas con mineros locales y pasar la noche en la hacienda.",
-              "diagnosisQuestion": "¿Qué les encaja más para la ruta en moto: BASIC pasadía sin noche, CORE con una mina y noche, o PRIME con dos minas y cabalgata?",
+              "diagnosisQuestion": "¿Qué les encaja más para la ruta en moto: CORE con una mina y noche, PRIME con dos minas y cabalgata, o BASIC pasadía sin noche?",
               "planMatch": "2D/1N diseñado para moto riders. Confirmamos que traen equipamiento adecuado.",
               "contextualMediaTypes": [
                 "bike",
@@ -892,7 +935,7 @@
               "label": "Kids / Family Mining Education",
               "description": "Familia con niños interesada en experiencia educativa y minería.",
               "valueHook": "Los niños aman las minas (¡Minecraft es real aquí!). Tenemos guías especializados en niños, comidas adaptadas y actividades como apicultura que los encantarán.",
-              "diagnosisQuestion": "¿Qué edades tienen los niños? Según eso les digo si encaja BASIC pasadía sin noche, CORE con una mina y noche, o PRIME con dos minas y cabalgata.",
+              "diagnosisQuestion": "¿Qué edades tienen los niños? Según eso les digo si encaja CORE con una mina y noche, PRIME con dos minas y cabalgata, o BASIC pasadía sin noche.",
               "planMatch": "2D/1N con enfoque family-friendly, CORE o PRIME según edades. Ajustamos ritmo y comidas según necesidades.",
               "contextualMediaTypes": [
                 "kids",
@@ -903,7 +946,7 @@
               "label": "Hot Lead - General",
               "description": "Lead con alto intent desde funnel, sin transporte específico.",
               "valueHook": "",
-              "diagnosisQuestion": "¿Qué les encaja más: BASIC pasadía sin noche, CORE con una mina y noche, o PRIME con dos minas y cabalgata?",
+              "diagnosisQuestion": "¿Qué les encaja más: CORE con una mina y noche, PRIME con dos minas y cabalgata, o BASIC pasadía sin noche?",
               "planMatch": "BASIC, CORE o PRIME. Confirmamos fechas disponibles.",
               "contextualMediaTypes": [
                 "mine"
@@ -913,7 +956,7 @@
               "label": "Hot Lead - 4x4",
               "description": "Lead con alto intent desde funnel, interesado en ruta 4x4.",
               "valueHook": "",
-              "diagnosisQuestion": "¿Qué les encaja más para la ruta 4x4: BASIC pasadía sin noche, CORE con una mina y noche, o PRIME con dos minas y cabalgata?",
+              "diagnosisQuestion": "¿Qué les encaja más para la ruta 4x4: CORE con una mina y noche, PRIME con dos minas y cabalgata, o BASIC pasadía sin noche?",
               "planMatch": "2D/1N con énfasis en ruta 4x4. Confirmamos transporte y fechas.",
               "contextualMediaTypes": [
                 "car",
@@ -924,7 +967,7 @@
               "label": "Hot Lead - Moto",
               "description": "Lead con alto intent desde funnel, interesado en ruta moto.",
               "valueHook": "",
-              "diagnosisQuestion": "¿Qué les encaja más para la ruta en moto: BASIC pasadía sin noche, CORE con una mina y noche, o PRIME con dos minas y cabalgata?",
+              "diagnosisQuestion": "¿Qué les encaja más para la ruta en moto: CORE con una mina y noche, PRIME con dos minas y cabalgata, o BASIC pasadía sin noche?",
               "planMatch": "2D/1N diseñado para moto riders. Confirmamos equipamiento y fechas.",
               "contextualMediaTypes": [
                 "bike",
@@ -935,7 +978,7 @@
               "label": "Hot Lead - Kids",
               "description": "Lead con alto intent desde funnel, interesado en experiencia para niños.",
               "valueHook": "",
-              "diagnosisQuestion": "¿Qué edades traen? Según eso les digo si encaja BASIC pasadía sin noche, CORE con una mina y noche, o PRIME con dos minas y cabalgata.",
+              "diagnosisQuestion": "¿Qué edades traen? Según eso les digo si encaja CORE con una mina y noche, PRIME con dos minas y cabalgata, o BASIC pasadía sin noche.",
               "planMatch": "2D/1N family-friendly, CORE o PRIME según edades. Ajustamos según preferencias.",
               "contextualMediaTypes": [
                 "kids",
@@ -1020,7 +1063,7 @@
               "Validar antes de viajar: punto de encuentro, inicio segun plan y margen de salida, ferry o represa, vehiculo y parqueadero, regreso del bus y condiciones operativas. No garantizar seguridad absoluta ni afirmar una verificacion de hoy sin confirmacion."
             ]
           },
-          "shortDescription": "Aventura Minera en Hacienda El Recuerdo, Chivor (Boyaca). Elige BASIC (pasadia de un dia, sin noche), CORE (1 mina + caminata, 2 dias / 1 noche) o PRIME (2 minas + cabalgata, 2 dias / 1 noche). Experiencia inmersiva de aventura real — no es un plan turistico convencional. Mina con lodo y agua, actividades rurales, comunidad local. Pet-friendly: en Chivor los perros pueden entrar a la mina con el grupo.",
+          "shortDescription": "Aventura Minera en Hacienda El Recuerdo, Chivor (Boyaca), en el Valle de Tenza: un paisaje magico rodeado de agua. Experiencia inmersiva de aventura real — no es un plan turistico convencional. Mina con lodo y agua, actividades rurales, comunidad local. Pet-friendly: en Chivor los perros pueden entrar a la mina con el grupo.",
           "fullDescription": "Para que lo tengas claro: esta NO es una experiencia de descanso con piscina. Los planes CORE y PRIME son aventuras reales de 2 dias y 1 noche con caminatas, esfuerzo fisico, terrenos rurales, lodo y humedad dentro de la mina (CORE) o dos minas (PRIME). El ultimo tramo de via es en carretera terciaria (destapada). Si vienes en carro propio, debe estar preparado para via sin pavimentar. No es un plan para quien busca un tour facil de pocas horas — es para quienes quieren vivir algo genuino al lado de la comunidad esmeraldera. Elige segun lo que quieras vivir: BASIC es el pasadia (1 mina + caminata, mismo dia), CORE la experiencia esencial con noche (1 mina + caminata) y PRIME la mas completa (2 minas + cabalgata, con noche). Somos pet-friendly: en Chivor, en todos los planes, los perros pueden acompanar al grupo dentro de la mina. Edad minima: 5 anios. Ideal para personas que les gusta caminar y las aventuras. La Hacienda El Recuerdo es una finca dedicada a la ganaderia y apicultura, con ambiente rural comodo para descansar. Tiene WiFi para trabajar remotamente si se requiere. La distancia desde Bogota hace necesario el hospedaje. Para mina el dia de llegada, BASIC y CORE inician a las 9:00 am y PRIME a las 8:00 am. La salida debe ajustarse al plan y a las 5-6 horas orientativas de viaje; PRIME tiene referencia de salida 3:00 am, con confirmacion del margen necesario. Para llegada en la tarde y mina al dia siguiente, se recomienda estar fuera de Bogota al mediodia o antes, previa coordinacion del itinerario. La experiencia minera en CORE dura ~2.5h y en PRIME ~5h; en ambos termina en la tarde, por eso se incluye alojamiento con 4 comidas. Menu local estandar, se tienen en cuenta restricciones alimentarias. Para vehiculo propio, la opcion mas segura y cercana es llegar por Chivor. Si el cliente tiene carro que no es 4x4, debe llegar a Chivor pueblo, dejarlo en un lugar seguro y nosotros lo transportamos a las minas en vehiculo 4x4 (~45 min). La ruta por Ubala solo aplica para moto o carro 4x4; desde Ubala hasta la Hacienda son ~35 km por via rural. Si el cliente viaja en bus publico, debe comprarlo directamente por su cuenta en la terminal que corresponda segun su ciudad de origen (Bogota, Tunja u otra). El costo del bus NO se suma al precio final del plan; solo se orienta al cliente y se validan horarios para cumplir el itinerario. Si se necesita transporte privado 4x4 desde Bogota, tiene costo adicional de $1.700.000 COP para hasta 4 personas.",
           "included": [
             "CORE y PRIME: 1 noche de alojamiento en Hacienda El Recuerdo (BASIC es pasadia, sin noche)",
@@ -1409,12 +1452,42 @@
                 "sl": 5
               },
               {
+                "d": "2027-02-06",
+                "s": "limited",
+                "sl": 5
+              },
+              {
                 "d": "2027-02-13",
                 "s": "limited",
                 "sl": 5
               },
               {
+                "d": "2027-02-20",
+                "s": "limited",
+                "sl": 5
+              },
+              {
                 "d": "2027-02-27",
+                "s": "limited",
+                "sl": 5
+              },
+              {
+                "d": "2027-03-06",
+                "s": "limited",
+                "sl": 5
+              },
+              {
+                "d": "2027-03-13",
+                "s": "limited",
+                "sl": 5
+              },
+              {
+                "d": "2027-03-20",
+                "s": "limited",
+                "sl": 5
+              },
+              {
+                "d": "2027-03-27",
                 "s": "limited",
                 "sl": 5
               }
@@ -1486,7 +1559,8 @@
                 "pasadia",
                 "pasadía",
                 "la de una mina sin noche",
-                "sin noche"
+                "sin noche",
+                "day trip"
               ],
               "includedAddonIds": []
             },
@@ -1780,7 +1854,7 @@
               "Coordinar pin exacto y parqueadero; el destino es el parque central de Borbur, no la mina ni una hacienda. Confirmar via, seguridad actual, compatibilidad de carro o moto y logistica el dia anterior y antes de salir. No afirmar verificacion de hoy ni copiar presencia militar de Chivor. Para llegada previa, validar alojamiento adicional y costo: no esta incluido."
             ]
           },
-          "shortDescription": "Aventura minera en Coscuez, San Pablo de Borbur: BASIC pasadia de 1 dia, CORE de 2 dias/1 noche con una mina y caminata al mirador, y PRIME que agrega Fura y Tena el segundo dia. Tour en espanol.",
+          "shortDescription": "Aventura minera en Coscuez, San Pablo de Borbur, en el occidente de Boyaca: la tierra de donde viene la leyenda de Fura y Tena, patrimonio de la region. La excursion a los cerros de Fura y Tena va solo en PRIME. Tour en espanol.",
           "fullDescription": "Experiencia en el occidente de Boyaca. Los tres planes incluyen charla esmeraldera y plaza Chacaro, una entrada guiada a mina con equipo de seguridad y seguro de asistencia medica, traslados locales Borbur - Coscuez - Borbur y guias de la region. BASIC es un pasadia de 1 dia sin alojamiento, con 1 almuerzo tipico. CORE y PRIME son de 2 dias y 1 noche en hotel rural de Borbur con habitacion y bano privados; CORE incluye 3 comidas y agrega caminata al mirador a cielo abierto e hidratacion. PRIME incluye 5 comidas y agrega el segundo dia la excursion 4x4 a Fura y Tena con caminata corta en Chanares. El transporte desde Bogota es opcional y se cobra aparte. Llegada recomendada sabado 9:00 am; regreso domingo despues del mediodia (CORE y PRIME) o el mismo dia en la tarde (BASIC). Anticipo 50%.",
           "included": [
             "Charla esmeraldera y visita a plaza Chacaro (~1h)",
@@ -1841,7 +1915,7 @@
         }
       },
       "siteSelection": {
-        "context": "En Colombia hay dos regiones esmeralderas y operamos en las dos. Las dos son seguras, quedan a una distancia parecida de Bogota (unas 5-6 horas) y cada una es una experiencia unica: no hay una mejor que la otra. Las dos tienen mina real de esmeraldas con guias de la region, naturaleza y caminata, pero la experiencia minera es distinta. Chivor, en el oriente de Boyaca (Valle de Tenza): noche en la Hacienda El Recuerdo y subida en 4x4 hasta la mina; es la que mas se disfruta en plan offroad, en moto o en carro, y en PRIME suma dos minas y cabalgata. Coscuez, en el occidente de Boyaca (San Pablo de Borbur): hotel rural en el pueblo, charla esmeraldera en la plaza Chacaro y, en PRIME, excursion a los cerros de Fura y Tena. Muestra las dos y deja que el cliente elija segun lo que le interesa; si menciona moto, carro, 4x4 o ruta, cuentale que Chivor es la mas offroad, sin descartar Coscuez. Si no tiene preferencia, sugiere Chivor como punto de partida.",
+        "context": "En Colombia hay dos regiones esmeralderas y operamos en las dos. En las dos el equipo valida las condiciones operativas antes de cada salida. Quedan a una distancia parecida de Bogota (unas 5-6 horas) y cada una es una experiencia unica: no hay una mejor que la otra. Las dos tienen mina real de esmeraldas con guias de la region, naturaleza y caminata. Chivor, en el oriente de Boyaca (Valle de Tenza): un paisaje rodeado de agua y noche en la Hacienda El Recuerdo. Coscuez, en el occidente de Boyaca (San Pablo de Borbur): la tierra de la leyenda de Fura y Tena, hotel rural en el pueblo y charla esmeraldera en la plaza Chacaro; la excursion a los cerros de Fura y Tena va solo en PRIME. Compara por el lugar: si el cliente no hablo de moto, carro, 4x4 o ruta, no llames offroad a Chivor ni menciones 4x4. Si hablo de eso, cuentale que Chivor es la mas offroad, sin descartar Coscuez; el 4x4 de Chivor es el traslado local desde el pueblo, no un vehiculo que deba traer. Deja que el cliente elija. Si no tiene preferencia, sugiere Chivor como punto de partida.",
         "defaultSiteId": "chivor"
       },
       "name": "Emerald Mining Tour",
@@ -1862,7 +1936,13 @@
       "emeraldPolicy": {
         "guaranteed": false,
         "notes": "Encontrar una esmeralda no esta garantizado: puede pasar, pero la experiencia vale por la cultura esmeraldera, la naturaleza y la gastronomia de la zona. Si se halla alguna piedra, se maneja en el momento con los mineros y el guia, que comparten lo encontrado. No prometer hallazgos ni explicar la operacion de las minas."
-      }
+      },
+      "cultureReels": [
+        {
+          "url": "https://www.instagram.com/reels/DeCSQOhRmlT/",
+          "description": "Por que la cultura esmeraldera es importante para la gente de la region; vale para Chivor y para Coscuez."
+        }
+      ]
     }
   }
 }

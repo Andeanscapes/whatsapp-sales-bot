@@ -1,7 +1,8 @@
 {
   "id": "duration-shared-by-two-plans",
-  "source": "prod exports 2026-11-01/02: D04/M04 \"plan 2D/1N\" openers answered \"el 2D/1N es CORE\" 4 times, hiding PRIME (same duration)",
+  "source": "prod exports 2026-11-01/02: D04/M04 \"plan 2D/1N\" openers answered \"el 2D/1N es CORE\" 4 times, hiding PRIME (same duration) | 2026-11-18 (first-time lead handoff): the day plan is named only when the customer asks for one day, a lower budget or every option; mentions-shorter-option inverted.",
   "tags": [
+    "handoff-2026-11-18",
     "entry",
     "live"
   ],
@@ -30,10 +31,10 @@
       "critical": true
     },
     {
-      "id": "mentions-shorter-option",
-      "rule": "reply_must_match",
+      "id": "no-unasked-day-option",
+      "rule": "reply_must_not_match",
       "patterns": [
-        "\\bBASIC\\b|pasad[ií]a|sin noche|un d[ií]a"
+        "\\bBASIC\\b|pasad[ií]a"
       ],
       "turn": 1,
       "weight": 2
@@ -73,7 +74,7 @@
   "turns": [
     {
       "user": "D04 Hola, quiero ir en carro al plan 2D/1N en la mina de Chivor. ¿Fechas?",
-      "mockReply": "En 2 días y 1 noche tenemos dos planes: CORE, con una mina y caminata, y PRIME, con dos minas y cabalgata. Si prefieres algo sin noche, está BASIC, el pasadía. Fechas publicadas: 14 y 28 de noviembre. ¿Para cuántas personas sería?",
+      "mockReply": "En 2 días y 1 noche tenemos dos planes: CORE, con una mina y caminata, y PRIME, con dos minas y cabalgata. Fechas publicadas: 14 y 28 de noviembre. ¿Para cuántas personas sería?",
       "expect": {
         "shouldSendReply": true
       }

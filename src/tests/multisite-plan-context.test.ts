@@ -72,6 +72,31 @@ describe('two-site catalog selection', () => {
     },
   );
 
+  // 2.5.1: "para 2" answers the opener's group question, and a plan named before the destination
+  // takes the site chosen later. Without both, no T3b close ran (live basic-chosen-long-day-deposit).
+  it('stores the headcount answered to the group question', () => {
+    const experience = getActiveExperience(loadSkills());
+    repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: '¿La experiencia sería para ti solo, en pareja o para un grupo?', created_at: new Date().toISOString() });
+    expect(contextAwareExtract('Quiero el pasadía para 2', repos, phone, {}, experience).collected_people).toBe(2);
+  });
+
+  it('assigns a plan named before the destination to the site chosen later', () => {
+    const experience = getActiveExperience(loadSkills());
+    const t0 = Date.now() - 60_000;
+    repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'Quiero el pasadía para 2', created_at: new Date(t0).toISOString() });
+    repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'Chivor', created_at: new Date(t0 + 30_000).toISOString() });
+    expect(reconstructFromHistory(repos, phone, {}, experience).plan).toBe('basic_1d_chivor');
+  });
+
+  // EN twin: "day trip" is the catalog alias of the day plan (live EN basic-chosen-long-day-deposit got the full menu).
+  it('assigns an English day trip named before the destination to the site chosen later', () => {
+    const experience = getActiveExperience(loadSkills());
+    const t0 = Date.now() - 60_000;
+    repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'I want the day trip for 2', created_at: new Date(t0).toISOString() });
+    repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'Chivor', created_at: new Date(t0 + 30_000).toISOString() });
+    expect(reconstructFromHistory(repos, phone, {}, experience).plan).toBe('basic_1d_chivor');
+  });
+
   it('resolves context from a choice that follows a declined hesitation', () => {
     const experience = getActiveExperience(loadSkills());
     expect(resolveSiteContext(experience, null, ['no sé, me interesa coscuez'])).toBe('coscuez');
@@ -116,11 +141,12 @@ describe('two-site catalog selection', () => {
     expect(runtime).toContain('DESTINO SIN ELEGIR');
     expect(runtime).not.toContain('SITIO PENDIENTE');
     expect(runtime).not.toContain('OPCIONES DE PLAN');
-    // The ad angle survives through the catalog default destination's segment.
-    expect(runtime).toContain('SEGMENT_DETECTED: C01');
+    // 2.5.1: C01 runs on videos from both regions, so no site's segment (hacienda, hotel) is borrowed.
+    expect(runtime).not.toContain('SEGMENT_DETECTED');
+    expect(runtime).toContain('no nombres Chivor, Coscuez, hacienda ni hotel');
     // The price depends on the destination chosen next turn: no "next message" promise.
-    expect(runtime).not.toContain('llegan en tu siguiente mensaje, apenas responda');
-    expect(runtime).toContain('no prometas que llegan en tu siguiente mensaje');
+    expect(runtime).not.toContain('llegan en tu siguiente mensaje');
+    expect(runtime).not.toMatch(/el valor exacto llega|te cuento el valor exacto/);
 
     const secondTurn = assembleSystemPrompt({
       skills, lang: 'es', entryMarker: { code: 'C01', temperature: 'cold' }, collectedFields: { personas: 2 }, pendingPriceQuestion: true,
@@ -129,6 +155,16 @@ describe('two-site catalog selection', () => {
     expect(secondTurn).toContain('Explica las regiones según SITE_SELECTION');
     expect(secondTurn).toContain('depende del destino');
     expect(secondTurn).not.toContain('PRECIO PEDIDO SIN PLAN');
+
+    // The price gate must not ask for the plan while the destination is the turn's question
+    // (live 2026-11-18, R01: "¿esencial o completa?" instead of the destination).
+    const r01Second = assembleSystemPrompt({
+      skills, lang: 'es', entryMarker: { code: 'R01', temperature: 'retargeting' }, collectedFields: { personas: 2 },
+    }).split('\nRUNTIME:').at(-1) ?? '';
+    expect(r01Second).toContain('SITIO PENDIENTE');
+    expect(r01Second).toContain('PRICE GATE ACTIVO');
+    expect(r01Second).toContain('la única pregunta de este turno es la de SITIO PENDIENTE');
+    expect(r01Second).not.toContain('pregunta por el plan o la duracion');
 
     const organic = assembleSystemPrompt({ skills, lang: 'es', entryOpeningTurn: true, collectedFields: {} }).split('\nRUNTIME:').at(-1) ?? '';
     expect(organic).toContain('DESTINO SIN ELEGIR');

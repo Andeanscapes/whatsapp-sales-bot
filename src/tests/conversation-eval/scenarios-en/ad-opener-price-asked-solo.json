@@ -1,6 +1,6 @@
 {
   "id": "ad-opener-price-asked-solo",
-  "source": "EN twin of ad-opener-price-asked-solo. Export 2026-11-07: ad leads replied 32% in 2.3.0 after a price/menu opener vs 62% in 2.0.x; owner plan 2026-11-07: intro + one value line + group question, no price/menu/dates. A price asked on the opener is deferred to the group, then every plan is quoted for that group from the catalog. Price turn 2026-11-11: start point, three options (day plan named without price, CORE recommended), no private transport price. | 2026-11-12: Coscuez on sale, so the bot asks the destination after the group (SITIO PENDIENTE) and the customer answers Chivor; later criteria moved one turn down.",
+  "source": "EN twin of ad-opener-price-asked-solo. Export 2026-11-07: ad leads replied 32% in 2.3.0 after a price/menu opener vs 62% in 2.0.x; owner plan 2026-11-07: intro + one value line + group question, no price/menu/dates. A price asked on the opener is deferred to the group, then every plan is quoted for that group from the catalog. Price turn 2026-11-11: start point, three options (day plan named without price, CORE recommended), no private transport price. | 2026-11-12: Coscuez on sale, so the bot asks the destination after the group (SITIO PENDIENTE) and the customer answers Chivor; later criteria moved one turn down. | 2.5.1: opener cap raised for the required plan-clarity line (EN runs longer). The day plan is not offered unless asked; it must not be the recommended one.",
   "tags": [
     "marker",
     "live"
@@ -130,7 +130,7 @@
       "weight": 2,
       "critical": true,
       "patterns": [
-        "(starts|begins|start)[^.]{0,60}(Chivor|Borbur)"
+        "(starts|begins|start)[^.]{0,60}(Chivor|Borbur)|(Chivor|Borbur)[^.]{0,60}(starts|begins)"
       ]
     },
     {
@@ -144,13 +144,13 @@
       ]
     },
     {
-      "id": "day-option",
-      "rule": "reply_must_match",
+      "id": "day-not-recommended",
+      "rule": "reply_must_not_match",
       "turn": 3,
       "weight": 2,
       "critical": false,
       "patterns": [
-        "day trip|one[- ]day|one day|single day|same day"
+        "(BASIC|day trip|single day|one day)[^.]{0,80}recommended"
       ]
     },
     {
@@ -197,7 +197,7 @@
       "turn": 1,
       "weight": 2,
       "critical": true,
-      "expected": 65
+      "expected": 80
     }
   ],
   "turns": [

@@ -164,4 +164,12 @@ describe('stripPaymentMoveWithoutDate', () => {
     expect(out.toLowerCase()).toContain('1.000.000');
     expect(out.toLowerCase()).not.toMatch(/anticipo|nequi/);
   });
+
+  // 2.5.1: a thousands separator is not a sentence end; the price must survive the strip.
+  it('keeps a price with thousands separators when a deposit is stripped from the same reply', () => {
+    const input = 'CORE queda en $620.000 COP por persona. El anticipo es 25% para reservar. ¿Con qué sábado seguimos?';
+    const out = stripPaymentMoveWithoutDate(input);
+    expect(out).toContain('$620.000 COP');
+    expect(out).not.toMatch(/anticipo/);
+  });
 });

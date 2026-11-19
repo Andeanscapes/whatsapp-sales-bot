@@ -104,6 +104,83 @@ function withLimitedAvailability(dates: Array<{ date: string; status: 'available
 
 describe('reservation closing regression', () => {
 
+  it.each([
+    { group: 'Somos una pareja', plan: 'Esencial', ask: 'Para el 28 tiene cupos', deposit: 'Con cuánto se hace la reserva', ack: 'Entiendo', quote: 'Para 2 personas, CORE queda en $950.000 COP. ¿Les reviso cupo para el 21 o el 28 de noviembre?', answer: 'Es el 25% del total si el equipo confirma cupo.' },
+    { group: 'There are two of us', plan: 'Essential', ask: 'Do you have spots for the 28th?', deposit: 'How much do we need to pay to book?', ack: 'I understand', quote: 'For 2 people, CORE is $950,000 COP. Should I check availability for November 28 or December 5?', answer: 'It is 25% of the total once the team confirms availability.' },
+  ])('routes a quoted $ask once and breaks the acknowledgment loop', async ({ group, plan, ask, deposit, ack, quote, answer }) => {
+    const db = new Database(':memory:');
+    migrate(db);
+    const repos = createRepositories(db);
+    const phone = '573001234555';
+    const year = new Date().getUTCFullYear() + 1;
+    const restore = withLimitedAvailability([{ date: `${year}-11-21`, status: 'limited' }, { date: `${year}-11-28`, status: 'limited' }, { date: `${year}-12-05`, status: 'limited' }]);
+    const turn = async (message: string, reply: string) => {
+      mockComplete.mockResolvedValue(llmResult(reply));
+      const result = await processMessage({ repos, customerPhone: phone, message });
+      if (result.shouldSendReply) repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: result.reply, created_at: new Date().toISOString() });
+      return result;
+    };
+    try {
+      await turn(group, '¿Prefieren la experiencia esencial en Chivor?');
+      await turn(plan, quote);
+      expect(repos.conversation.getByPhone(phone)?.collected_plan).toBe('core_2d1n_chivor');
+      expect(repos.conversation.getPriceGivenAt(phone)).not.toBeNull();
+      const result = await turn(ask, 'El equipo debe confirmar si hay cupo para esa fecha.');
+      expect(result.ownerAlertType).toBe('reservation_handoff');
+      expect(result.bookingIntent).toBe(false);
+      expect(result.availabilityRequest).toEqual({ planId: 'core_2d1n_chivor', date: `${year}-11-28` });
+      expect(repos.conversation.getByPhone(phone)?.collected_date).toBeNull();
+      expect(repos.conversation.getMode(phone)).toBe('human_pending');
+      expect(mockComplete.mock.lastCall?.[0].systemPrompt).toContain('CONSULTA DE CUPO:');
+      repos.conversation.setSelectedDate(phone, `${year}-11-21`);
+      repos.conversation.upsert(phone, { collected_name: 'Juan', collected_transport_need: 'own', lead_score: 99 });
+      repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: quote, created_at: new Date().toISOString() });
+      expect((await turn(ask, 'El cupo sigue por confirmar.')).availabilityRequest?.date).toBe(`${year}-11-28`);
+      expect(repos.conversation.getByPhone(phone)?.collected_date).toBe(`${year}-11-21`);
+      mockAnalyzeLead.mockResolvedValue({
+        intent: 'ready_to_book', scoreDelta: 0, confidence: 0.99, buyingSignals: [], blockers: [],
+        afterPriceInterest: true, reservationReadiness: 'strong', rationale: '', promptTokens: 1, completionTokens: 1,
+      });
+      const depositReply = await turn(deposit, answer);
+      expect(depositReply.reply).toContain('25%');
+      expect(depositReply.shouldAlertOwner).toBe(false);
+      expect(mockComplete.mock.lastCall?.[0].systemPrompt).toContain('CONSULTA DE ANTICIPO:');
+      for (const message of [ack, '???']) {
+        const calls = mockComplete.mock.calls.length;
+        const result = await turn(message, 'El cupo sigue pendiente de confirmación.');
+        expect(result.shouldAlertOwner).toBe(false);
+        expect(mockComplete.mock.calls).toHaveLength(calls + 1);
+        expect(mockComplete.mock.lastCall?.[0].systemPrompt).toContain('ACUSE DE CIERRE:');
+      }
+      expect(repos.paymentReservation.getPendingByCustomerPhone(phone)).toBeNull();
+      expect(mockCreatePreference).not.toHaveBeenCalled();
+    } finally {
+      restore();
+      db.close();
+    }
+  });
+
+  it('asks for clarification instead of paging the team when the offered day matches two months', async () => {
+    const db = new Database(':memory:');
+    migrate(db);
+    const repos = createRepositories(db);
+    const phone = '573001234555';
+    const year = new Date().getUTCFullYear() + 1;
+    const restore = withLimitedAvailability([{ date: `${year}-11-28`, status: 'limited' }, { date: `${year}-12-28`, status: 'limited' }]);
+    try {
+      repos.conversation.upsert(phone, { language: 'es', collected_people: 2, collected_plan: 'core_2d1n_chivor', price_given_at: new Date().toISOString() });
+      repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: 'Para 2 personas, CORE queda en $950.000 COP. ¿Reviso cupo para el 28 de noviembre o el 28 de diciembre?', created_at: new Date().toISOString() });
+      mockComplete.mockResolvedValue(llmResult('¿Te refieres a noviembre o diciembre?'));
+      const result = await processMessage({ repos, customerPhone: phone, message: 'Para el 28 tiene cupos' });
+      expect(result.shouldAlertOwner).toBe(false);
+      expect(repos.conversation.getByPhone(phone)?.collected_date).toBeNull();
+      expect(mockComplete.mock.lastCall?.[0].systemPrompt).toContain('CONSULTA DE CUPO SIN RESOLVER:');
+    } finally {
+      restore();
+      db.close();
+    }
+  });
+
   it('does not hand off or raise score for negated reservation intent', async () => {
     const db = new Database(':memory:');
     migrate(db);
@@ -293,6 +370,10 @@ describe('reservation closing regression', () => {
 
 
   it('selects only the day offered by assistant when another month shares the same day', async () => {
+    // Pinned clock: the fixture dates (14 Nov / 14 Dec 2026) must stay in the future, or the
+    // past-date guard answers instead and collected_date stays empty (failed from 2026-11-15).
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-01T12:00:00.000Z'));
     const db = new Database(':memory:');
     migrate(db);
     const repos = createRepositories(db);
@@ -324,6 +405,7 @@ describe('reservation closing regression', () => {
     } finally {
       restore();
       db.close();
+      vi.useRealTimers();
     }
   });
 

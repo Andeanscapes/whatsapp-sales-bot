@@ -1,6 +1,6 @@
 {
   "id": "basic-chosen-long-day-deposit",
-  "source": "Day plan chosen: total and long day first; the 30% deposit (not the 25% of the overnight plans) only once a date is picked. | 2026-11-12: Coscuez on sale, so the bot asks the destination after the group (SITIO PENDIENTE) and the customer answers Chivor; later criteria moved one turn down.",
+  "source": "Day plan chosen: total and long day first; the 30% deposit (not the 25% of the overnight plans) only once a date is picked. | 2026-11-12: Coscuez on sale, so the bot asks the destination after the group (SITIO PENDIENTE) and the customer answers Chivor; later criteria moved one turn down. | 2.5.1: the price turn opens with the value line and start point, so its cap is the release price cap (420), not 320.",
   "tags": [
     "price",
     "live"
@@ -53,7 +53,7 @@
       "turn": 3,
       "weight": 2,
       "critical": true,
-      "expected": 320
+      "expected": 420
     },
     {
       "id": "no-25-deposit",

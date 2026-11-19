@@ -10,7 +10,6 @@
   "minLiveScore": 80,
   "seedConversation": {
     "phase": "pricing",
-    "priceGiven": true,
     "qualification": {
       "people": 2,
       "plan": "core_2d1n_chivor"
@@ -27,7 +26,7 @@
       "patterns": [
         "cupo|reserv|validar|revis"
       ],
-      "turn": 3,
+      "turn": 4,
       "weight": 3,
       "critical": true
     },
@@ -35,9 +34,9 @@
       "id": "published-date",
       "rule": "reply_must_match",
       "patterns": [
-        "noviembre|diciembre|enero|21|28|14|5 de|12 de"
+        "\\b\\d{1,2}\\s+de\\s+(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\\b"
       ],
-      "turn": 3,
+      "turn": 4,
       "weight": 2
     },
     {
@@ -46,14 +45,14 @@
       "patterns": [
         "les sirve as[ií]\\s*\\?|te queda claro\\s*\\?|qu[eé] m[aá]s les preocupa"
       ],
-      "turn": 3,
+      "turn": 4,
       "weight": 2,
       "critical": true
     },
     {
       "id": "no-unpublished-date",
       "rule": "no_unpublished_date",
-      "turn": 3,
+      "turn": 4,
       "weight": 2,
       "critical": true
     },
@@ -61,7 +60,7 @@
       "id": "one-question",
       "rule": "max_question_marks",
       "max": 1,
-      "turn": 3,
+      "turn": 4,
       "weight": 2,
       "critical": true
     },
@@ -71,14 +70,21 @@
       "patterns": [
         "instagram|https?://|wa\\.me"
       ],
-      "turn": 3,
+      "turn": 4,
       "weight": 2,
       "critical": true
     }
   ],
   "turns": [
     {
+      "user": "Hola, somos dos. ¿Cuánto vale el CORE en Chivor?",
+      "replay": true,
+      "mockReply": "Para dos personas, el CORE en Chivor queda en $950.000 COP.",
+      "expect": { "shouldSendReply": true }
+    },
+    {
       "user": "Los niños pagan igual?",
+      "seedPriceGiven": true,
       "replay": true,
       "mockReply": "Cada persona cuenta como cupo completo, así que el total se mantiene. ¿Qué les parece?",
       "expect": {

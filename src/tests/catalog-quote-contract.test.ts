@@ -33,12 +33,21 @@ function experience() {
 }
 
 describe('catalog quote contract', () => {
-  it('lists all three active Chivor options before a plan is chosen', () => {
+  // Handoff 2026-11-18: the day plan is named only when the customer asks for one day,
+  // a lower budget or every option (BASIC appeared unasked in 9/27 2.5.1 threads).
+  it('lists the overnight Chivor options before a plan is chosen; the day plan only when asked', () => {
     const prompt = assembleSystemPrompt({
       skills: loadSkills(), collectedFields: { personas: 2, site: 'chivor' },
     });
     const options = prompt.match(/OPCIONES DE PLAN ESTE TURNO:[^\n]*/)?.[0] ?? '';
-    expect(options).toContain('BASIC');
+    expect(options).not.toContain('BASIC');
+    for (const asked of ['¿hay pasadía?', 'algo más económico', '¿qué planes tienen?', 'is there a day trip?']) {
+      const askedOptions = assembleSystemPrompt({
+        skills: loadSkills(), collectedFields: { personas: 2, site: 'chivor' }, latestCustomerMessage: asked,
+      }).match(/OPCIONES DE PLAN ESTE TURNO:[^\n]*/)?.[0] ?? '';
+      expect(askedOptions, asked).toContain('BASIC');
+      expect(askedOptions, asked).toContain('un solo día');
+    }
     expect(options).toContain('CORE');
     expect(options).toContain('PRIME');
     expect(options).not.toContain('Coscuez');
@@ -63,7 +72,7 @@ describe('catalog quote contract', () => {
   // Live 2026-10-28: after the C03 moto question the bot offered only "esencial / más
   // completa", hiding the day plan; "la básica" then stored the day plan while the
   // customer meant the essential overnight one.
-  it.each(['C02', 'C03', 'C04', 'H02'])('lists every Chivor plan for segment %s once its opening question is answered', code => {
+  it.each(['C02', 'C03', 'C04', 'H02'])('lists the overnight Chivor plans for segment %s once its opening question is answered', code => {
     const prompt = assembleSystemPrompt({
       skills: loadSkills(),
       collectedFields: { personas: 2, site: 'chivor' },
@@ -71,7 +80,7 @@ describe('catalog quote contract', () => {
       entryOpeningTurn: false,
     });
     const options = prompt.match(/OPCIONES DE PLAN ESTE TURNO:[^\n]*/)?.[0] ?? '';
-    expect(options).toContain('BASIC');
+    expect(options).not.toContain('BASIC');
     expect(options).toContain('CORE');
     expect(options).toContain('PRIME');
   });

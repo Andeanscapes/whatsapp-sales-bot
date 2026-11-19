@@ -1,6 +1,6 @@
 {
   "id": "ad-info-pareja-core-quote",
-  "source": "Live dev demo 2026-11-11 (C01 → pareja → CORE): the menu named three plans with no start point, recommendation or long-day note, and the quote called CORE 'la experiencia esencial' and closed with three dates + '¿Cuál les sirve?'. Export 2026-11-11: total + date list was the most common last message before silence (~136 leads); quotes of 400+ characters got a reply 37% of the time vs 47-52% under 350. The quote-turn esencial check is non-critical: the CORE catalog shortDescription itself says \"La experiencia esencial con noche\". 2026-11-11 (2): the quote states the trip scale (not an afternoon plan, 2 days all-inclusive from town): leads with a question before the price replied 65% vs 49%. 2026-11-11 (3): two obligatory opening ideas (not an afternoon plan; duration + all handled); start point optional on the quote; no 'familiar' for a couple.",
+  "source": "Live dev demo 2026-11-11 (C01 → pareja → CORE): the menu named three plans with no start point, recommendation or long-day note, and the quote called CORE 'la experiencia esencial' and closed with three dates + '¿Cuál les sirve?'. Export 2026-11-11: total + date list was the most common last message before silence (~136 leads); quotes of 400+ characters got a reply 37% of the time vs 47-52% under 350. The quote-turn esencial check is non-critical: the CORE catalog shortDescription itself says \"La experiencia esencial con noche\". 2026-11-11 (2): the quote states the trip scale (not an afternoon plan, 2 days all-inclusive from town): leads with a question before the price replied 65% vs 49%. 2026-11-11 (3): two obligatory opening ideas (not an afternoon plan; duration + all handled); start point optional on the quote; no 'familiar' for a couple. | 2026-11-18 (first-time lead handoff): the day plan is named only when asked for, so the menu turn no longer names it (menu-day-plan-same-day inverted).",
   "tags": [
     "pricing",
     "qualification",
@@ -41,14 +41,14 @@
       "critical": true
     },
     {
-      "id": "menu-day-plan-same-day",
-      "rule": "reply_must_match",
+      "id": "menu-no-unasked-day-plan",
+      "rule": "reply_must_not_match",
       "patterns": [
-        "mismo d[ií]a|ida y (?:vuelta|regreso)"
+        "\\bBASIC\\b|pasad[ií]a"
       ],
       "turn": 2,
       "weight": 2,
-      "critical": true
+      "critical": false
     },
     {
       "id": "menu-no-price",
@@ -219,7 +219,7 @@
     },
     {
       "user": "pareja",
-      "mockReply": "Arranca y termina en el parque principal de Chivor; llegar es por su cuenta. BASIC es un solo día, con ida y regreso el mismo día; CORE, el recomendado, es una mina, caminata y noche en la hacienda; PRIME suma otra mina y cabalgata. ¿Cuál les encaja?",
+      "mockReply": "Arranca y termina en el parque principal de Chivor; llegar es por su cuenta. CORE, el recomendado, es una mina, caminata y noche en la hacienda; PRIME suma otra mina y cabalgata. ¿Cuál les encaja?",
       "expect": {
         "shouldSendReply": true
       }

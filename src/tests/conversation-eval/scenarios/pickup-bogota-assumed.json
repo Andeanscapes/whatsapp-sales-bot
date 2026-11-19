@@ -1,6 +1,6 @@
 {
   "id": "pickup-bogota-assumed",
-  "source": "Bogotá pickup assumption: starts in Chivor; private 4x4 price only when asked, as a separate line.",
+  "source": "Bogotá pickup assumption: starts in Chivor; private 4x4 price only when asked, as a separate line. | 2026-11-12: with two destinations the start point is the town of the chosen region; the check accepts either word order and \"the town\" (it judged wording, not the fact). | 2026-11-18: turn 2 is the deferred price quote (start point + value line + two totals); short-reply 320 -> 390 to match the sibling quote turns (the prompt cue asks for 380; the test allows 390 for model variance). Live: 344 chars, all content correct.",
   "tags": [
     "price",
     "live"
@@ -16,7 +16,7 @@
       "weight": 2,
       "critical": true,
       "patterns": [
-        "(inicia|empieza)[^.]{0,60}Chivor"
+        "(?:inicia|empieza|arranca)[^.]{0,60}(?:Chivor|Borbur)|(?:Chivor|Borbur|pueblo de Chivor|Chivor pueblo)[^.]{0,60}(?:inicia|empieza|arranca)|(?:inicia|empieza|arranca)[^.]{0,60}pueblo[^.]*\\.\\s*(?:En )?(?:Chivor|Coscuez)[^.]{0,60}(?:parque|plaza)"
       ]
     },
     {
@@ -26,7 +26,7 @@
       "weight": 2,
       "critical": true,
       "patterns": [
-        "(te|los|le) (recogemos|pasamos a buscar)|recogida en Bogot|sale desde Bogot|salimos desde Bogot"
+        "(?<!no )(?:te|los|le) (?:recogemos|pasamos a buscar)|(?<!no hay )recogida en Bogot|(?<!no )sale desde Bogot|(?<!no )salimos desde Bogot"
       ]
     },
     {
@@ -36,7 +36,7 @@
       "weight": 2,
       "critical": false,
       "patterns": [
-        "por tu cuenta|en carro, moto o bus"
+        "por tu cuenta|en carro, moto o bus|(?:salida|llegada|viaje)[^.]{0,60}(?:coordinas|organizas) t[uú]"
       ]
     },
     {
@@ -53,7 +53,7 @@
       "turn": 2,
       "weight": 2,
       "critical": true,
-      "expected": 320
+      "expected": 390
     },
     {
       "id": "no-pickup-claim-t3",
@@ -62,7 +62,7 @@
       "weight": 2,
       "critical": true,
       "patterns": [
-        "(te|los|le) (recogemos|pasamos a buscar)|recogida en Bogot|sale desde Bogot|salimos desde Bogot"
+        "(?<!no )(?:te|los|le) (?:recogemos|pasamos a buscar)|(?<!no hay )recogida en Bogot|(?<!no )sale desde Bogot|(?<!no )salimos desde Bogot"
       ]
     },
     {
@@ -76,7 +76,7 @@
   ],
   "turns": [
     {
-      "user": "C01 ¡Hola! ¿Cuánto vale la experiencia minera?",
+      "user": "C01 ¡Hola! ¿Cuánto vale la experiencia minera en Chivor?",
       "mockReply": "¡Hola! Soy Heinner, cofundador de Andean Scapes con Alexandra. Es una mina real de esmeraldas en Chivor con mineros locales; el valor depende del grupo. ¿Sería para ti solo, en pareja o para un grupo?",
       "expect": {
         "shouldSendReply": true

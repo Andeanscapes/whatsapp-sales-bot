@@ -1,0 +1,105 @@
+{
+  "id": "release251-marker-c02-no-destination-question",
+  "source": "Bot export 2026-11-16: 2.4.0 asked the destination on turn 2 even for ad leads; 2.5.1 pre-selects Chivor from the marker (C02 = car/4x4).",
+  "tags": [
+    "release-2.5.1",
+    "live",
+    "marker"
+  ],
+  "lang": "es",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    },
+    {
+      "id": "no-destination-question",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "Coscuez|Borbur|occidente|dos destinos|dos regiones"
+      ]
+    },
+    {
+      "id": "plan-clarity",
+      "rule": "reply_must_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "fin de semana|sábado a domingo"
+      ]
+    },
+    {
+      "id": "no-price-turn-1",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\$\\s?\\d|\\bCOP\\b|\\d{3}[.,]000|\\bdesde\\s*\\*?\\$"
+      ]
+    },
+    {
+      "id": "opener-words",
+      "rule": "reply_words_at_most",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "expected": 70
+    },
+    {
+      "id": "asks-group",
+      "rule": "reply_must_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "[^¿.!?\\n]*(?:sol[oa]s?\\b|pareja|grupo)[^¿.!?\\n]*\\?"
+      ]
+    },
+    {
+      "id": "no-deposit-before-date",
+      "rule": "reply_must_not_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "anticipo|dep[oó]sito|\\b25\\s?%|\\b50\\s?%"
+      ]
+    },
+    {
+      "id": "no-day-plan-unasked",
+      "rule": "reply_must_not_match",
+      "turn": 2,
+      "weight": 2,
+      "patterns": [
+        "\\bBASIC\\b|pasad[ií]a"
+      ]
+    }
+  ],
+  "turns": [
+    {
+      "user": "C02 ¡Hola! Quiero saber de qué se trata la aventura minera en carro 🚙",
+      "mockReply": "Soy Heinner, de Andean Scapes. Es un fin de semana, sábado a domingo, con noche en la hacienda: llegas al pueblo por tu cuenta y de ahí subimos en 4x4 a la mina. ¿La experiencia sería para ti solo, en pareja o para un grupo?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Somos 2, ¿cuánto cuesta?",
+      "mockReply": "Para 2 personas, lo que incluye es la noche en la hacienda, las comidas y la mina con guía. CORE queda en $950.000 COP por pareja, recomendado. ¿Qué sábado les sirve?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

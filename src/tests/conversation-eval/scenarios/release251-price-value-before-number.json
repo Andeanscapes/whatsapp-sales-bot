@@ -1,0 +1,115 @@
+{
+  "id": "release251-price-value-before-number",
+  "source": "Bot export 2026-11-16: 41% of leads went silent right after a bare price message; the value line now comes before the totals. | 2.5.1 (owner 2026-11-16): C01 videos come from both regions, so the destination is asked before the price.",
+  "tags": [
+    "release-2.5.1",
+    "live",
+    "price"
+  ],
+  "lang": "es",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "asks-group-turn-1",
+      "rule": "reply_must_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "[^¿.!?\\n]*(?:sol[oa]s?\\b|pareja|grupo)[^¿.!?\\n]*\\?"
+      ]
+    },
+    {
+      "id": "no-price-turn-1",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\$\\s?\\d|\\bCOP\\b|\\d{3}[.,]000|\\bdesde\\s*\\*?\\$"
+      ]
+    },
+    {
+      "id": "value-before-number",
+      "rule": "reply_must_match",
+      "turn": 3,
+      "weight": 2,
+      "critical": false,
+      "patterns": [
+        "(?:incluy|incluid|cubiert)[\\s\\S]*\\$\\s?950\\.000"
+      ]
+    },
+    {
+      "id": "recommended-core",
+      "rule": "reply_must_match",
+      "turn": 3,
+      "weight": 1,
+      "patterns": [
+        "recomendado[\\s\\S]*CORE|CORE[\\s\\S]*recomendado"
+      ]
+    },
+    {
+      "id": "no-deposit-before-date",
+      "rule": "reply_must_not_match",
+      "turn": 3,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "anticipo|dep[oó]sito|\\b25\\s?%|\\b50\\s?%"
+      ]
+    },
+    {
+      "id": "no-day-plan-unasked",
+      "rule": "reply_must_not_match",
+      "turn": 3,
+      "weight": 2,
+      "patterns": [
+        "\\bBASIC\\b|pasad[ií]a"
+      ]
+    },
+    {
+      "id": "asks-destination-turn-2",
+      "rule": "reply_must_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "Chivor[\\s\\S]*Coscuez|Coscuez[\\s\\S]*Chivor"
+      ]
+    },
+    {
+      "id": "no-price-before-destination",
+      "rule": "reply_must_not_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\$\\s?\\d|\\bCOP\\b|\\d{3}[.,]000|\\bdesde\\s*\\*?\\$"
+      ]
+    }
+  ],
+  "turns": [
+    {
+      "user": "C01 ¡Hola! ¿Cuánto vale la experiencia minera?",
+      "mockReply": "Soy Heinner, de Andean Scapes. Es una mina real de esmeraldas con noche en la hacienda. ¿La experiencia sería para ti solo, en pareja o para un grupo?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Para 2, en pareja",
+      "mockReply": "Perfecto. Tenemos dos experiencias distintas: Chivor, con 4x4 hasta la mina y noche en la hacienda; o Coscuez, con hotel rural en Borbur y charla en la plaza Chacaro. ¿Cuál les llama más?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Chivor",
+      "mockReply": "En pareja, lo que incluye es la noche en la hacienda, las comidas, la mina con guía y el 4x4 del último tramo. CORE queda en $950.000 COP, recomendado. ¿Con qué sábado seguimos?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

@@ -3,6 +3,7 @@ import { normalizeText, detectLanguageOrNull, detectExplicitLanguageSwitch, dete
 import type { FallbackReplies } from './skill-loader.js';
 import type { MergedQualification } from './types.js';
 import { getEquivalentPlan, getPlans, getSites, getUnavailableSites, type ActiveExperience } from './product-registry.js';
+import { parseEntryMarker } from './entry-marker.js';
 import { MONTH_NAMES } from './constants.js';
 import { env } from '../config/env.js';
 import { parseChildAges } from './qualification-format.js';
@@ -395,7 +396,37 @@ export function resolveSiteContext(
       ?? (/[?¿]/.test(body) ? detectSite(body, experience) : null);
     if (site) return site;
   }
+  // Only a vehicle ad (car/4x4 or motorbike: codes the catalog tags "car"/"bike", e.g. C02/C03/H02/H03)
+  // implies a destination, the site that carries that vehicle segment. Other codes (C01, R01, kids)
+  // run on videos from both regions, so the lead chooses (owner 2026-11-16). A named site above wins.
+  const markerCode = inboundBodies.map(body => parseEntryMarker(body)?.code).find((code): code is string => !!code);
+  if (markerCode) {
+    const vehicleSites = getSites(experience).filter(site => experience.sites?.[site.id]?.vehicleEntryCodes?.includes(markerCode));
+    if (vehicleSites.length === 1) return vehicleSites[0].id;
+  }
   return undefined;
+}
+
+/** Whole-word phrase match against an already normalized message. */
+function phraseMatcher(normalizedMessage: string): (value: string) => boolean {
+  const words = normalizedMessage.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  return value => {
+    const tokens = normalizeText(value).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+    if (tokens.length === 0) return false;
+    return words.some((_, index) => tokens.every((token, offset) => words[index + offset] === token));
+  };
+}
+
+/**
+ * Plans of `siteId` the message names by a catalog selection alias. Used when the
+ * customer asks the price of several plans at once ("CORE y PRIME para 2"): detectPlan
+ * returns null on that tie by design, because naming two plans is not choosing one.
+ */
+export function detectNamedPlans(message: string, experience: ActiveExperience, siteId: string): string[] {
+  const matches = phraseMatcher(normalizeText(message));
+  return getPlans(experience)
+    .filter(plan => plan.siteId === siteId && (plan.selectionAliases ?? []).some(matches))
+    .map(plan => plan.id);
 }
 
 export function detectPlan(message: string, experience: ActiveExperience, preferredSiteId?: string | null): string | null {
@@ -408,14 +439,9 @@ export function detectPlan(message: string, experience: ActiveExperience, prefer
   const plans = getPlans(experience).filter(plan => !siteId || plan.siteId === siteId);
   if (!plans.length) return null;
 
-  const words = norm.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  const matches = phraseMatcher(norm);
   const siteAliases = new Set(getSites(experience).flatMap(site =>
     [site.id, ...(site.selectionAliases ?? [])].map(normalizeText)));
-  const matches = (value: string): boolean => {
-    const tokens = normalizeText(value).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
-    if (tokens.length === 0) return false;
-    return words.some((_, index) => tokens.every((token, offset) => words[index + offset] === token));
-  };
   let best: { id: string; score: number } | null = null;
   let tied = false;
 
@@ -559,7 +585,8 @@ export function getLastAssistantQuestion(repos: Repositories, phone: string): st
  * prompt's T3b cue and the engine's close-turn flags must read the same test.
  */
 export function isConcreteDayDate(value: unknown): boolean {
-  return typeof value === 'string' && (/\b\d{1,2}\b/.test(value) || /\b\d{4}-\d{2}-\d{2}\b/.test(value));
+  // English ordinals count ("november 28th"): live EN closes re-quoted when plan and day came together.
+  return typeof value === 'string' && (/\b\d{1,2}(?:st|nd|rd|th)?\b/i.test(value) || /\b\d{4}-\d{2}-\d{2}\b/.test(value));
 }
 
 export function isConfirmedDate(value: unknown): boolean {
@@ -760,6 +787,20 @@ export function extractBookingFields(text: string, experience?: ActiveExperience
   if (englishGroup != null && englishGroup > 0 && !fields.collected_people && !mixedAdultsAndChildren) {
     fields.collected_people = englishGroup;
   }
+  // A bare count in a price question: "¿cuánto vale cada uno para 2?", "how much for 2?".
+  // Live 2026-11-18 (two-plan-narrow-quotes-both ES) "para 2" stayed unknown. Only a number
+  // that ends the clause counts: "para el 2", "para 2 de noviembre", "para 2 noches" and
+  // "for 2 days" are dates or durations, and without a price word the number is ignored.
+  const priceAsk = /\b(?:cuanto|vale|valen|cuesta|cuestan|precio|precios|valor|costo|how much|price|prices|cost)\b/.test(normalized);
+  // "y/and" may follow only when a question word follows it: "para 15 y 16 de noviembre",
+  // "for 2 and 3 nights" and "para 2 y mi mamá" are date ranges or an incomplete headcount.
+  const bareCountMatch = priceAsk
+    ? normalized.match(/\b(?:para|for)\s+(\d{1,2})(?=\s*$|\s+(?:cuanto|how|porfa|por favor|please)\b|\s+(?:y|and)\s+(?:que|cuanto|what|how)\b)/)
+    : null;
+  const bareCount = bareCountMatch ? Number(bareCountMatch[1]) : null;
+  if (bareCount != null && bareCount > 0 && bareCount <= 30 && !fields.collected_people && !mixedAdultsAndChildren) {
+    fields.collected_people = bareCount;
+  }
 
   const couplePattern = /\b(?:couple|pareja|dos personas|2 personas|dos pilotos|mi esposo y yo|mi esposa y yo|mi novio y yo|mi novia y yo|mi pareja y yo|mi hija y yo|mi hijo y yo|mi (?:mam[aá]|madre|made) y yo|vamos dos|somos dos|somos 2|vamos 2|por ahora dos)\b/i;
   const soloPattern = /\b(?:sola|solo|voy sola|voy solo|ir[ií]a sola|ir[ií]a solo|yo sola|yo solo|una persona|1 persona|just me|only me|me alone|solo traveler)\b/i;
@@ -907,7 +948,10 @@ export function contextAwareExtract(message: string, repos: Repositories, phone:
   const norm = message.trim();
 
   if (lastQuestion && !fields.collected_people) {
-    const askedPeople = normQuestion != null && /cu[aá]ntas personas|cu[aá]ntos ser[ií]an|how many people/i.test(normQuestion);
+    // The ad opener asks the group ("¿solo, en pareja o para un grupo?"); "para 2" answers it as a
+    // headcount. Without this, "Quiero el pasadía para 2" stored no people and no T3b close ran.
+    const askedPeople = normQuestion != null && (/cu[aá]ntas personas|cu[aá]ntos ser[ií]an|how many people/i.test(normQuestion)
+      || /sol[oa]s?\b.{0,40}\bpareja|pareja.{0,40}\bgrupo|\balone\b.{0,40}\bcouple|\bcouple\b.{0,40}\bgroup|just you.{0,40}\b(?:couple|group)/i.test(normQuestion));
     if (askedPeople) {
       const people = extractPeopleFromReply(norm);
       if (people != null) fields.collected_people = people;
@@ -1058,13 +1102,17 @@ export function reconstructFromHistory(repos: Repositories, phone: string, curre
   };
   let scannedPlan: string | null = null;
   let planScanDone = false;
+  let afterSiteChoice = false;
   for (const [index, row] of allInbound.entries()) {
     if (!row.body || (!need.nombre && !need.personas && !need.fecha && !need.transporte && !need.mascota
       && !need.adultos && !need.ninos && !need.edadesNinos && !need.origen && !scannedPlan)) continue;
     const extracted = extractBookingFields(row.body, experience);
     if (experience) {
+      // A plan named before the destination ("quiero el pasadía", then "Chivor") takes the site chosen
+      // later in the chat: the older slice alone has no site, and detectPlan needs one with two sites.
       const siteId = resolveSiteContext(experience, typeof current.plan === 'string' ? current.plan : null,
-        allInbound.slice(index).map(item => item.body ?? ''));
+        allInbound.slice(index).map(item => item.body ?? ''))
+        ?? resolveSiteContext(experience, null, allInbound.map(item => item.body ?? ''));
       const planId = detectPlan(row.body, experience, siteId);
       if (planId) extracted.collected_plan = planId;
       else delete extracted.collected_plan;
@@ -1090,8 +1138,14 @@ export function reconstructFromHistory(repos: Repositories, phone: string, curre
       && (isPlanBrochureRequest(row.body) || !isPlanReference(row.body));
     if (!planScanDone && !comparedPlans) {
       if (typeof extracted.collected_plan === 'string') {
-        scannedPlan = extracted.collected_plan;
+        // Past a destination choice, only a plan named without a site ("quiero el pasadía", then
+        // "Chivor") is the lead's plan (2.5.1). One tied to the other site ("prime en Chivor", then
+        // "mejor en Coscuez") is not carried over.
+        if (!afterSiteChoice || (experience && detectSite(row.body, experience) == null)) scannedPlan = extracted.collected_plan;
         planScanDone = true;
+      } else if (experience && typeof fields.plan !== 'string' && !isPlanReference(row.body)
+        && detectSiteChoice(row.body, experience) !== null) {
+        afterSiteChoice = true;
       } else if (isPlanReference(row.body) || (experience && detectSiteChoice(row.body, experience) !== null)) {
         // Newest-first: a plan reference newer than any keyword mention means the
         // stored plan came from that switch; older keyword mentions must not revert it.

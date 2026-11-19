@@ -215,6 +215,7 @@ Copia esas personas y ese total; no recalcules ni redondees otra cifra.
 [+ "Nombra el plan como {plan}; con {N} opciones no lo llames esencial ni completa." — sitio con 3+ planes]
 [+ "Plan de un solo día: obligatorio en esta misma respuesta, di que es un día largo…" — solo cuando el plan elegido es de 1D/0N]
 [+ "Sin dia elegido: recomienda solo esta fecha publicada ({fecha})… No listes varias fechas." — sin día, no retorno]
+[+ "Sin fecha publicada que recomendar: di que el equipo verifica la disponibilidad…" — sin día ni fecha publicada, no retorno]
 [+ "Máximo 340 caracteres." — no en turno de retorno]
 ```
 
@@ -225,8 +226,21 @@ reply 37% of the time vs 47-52% under 350. Guidance only; no guard trims the rep
 ### OPCIONES DE PLAN ESTE TURNO (runtime, group known, no plan, site with 3+ plans)
 
 ```
-OPCIONES DE PLAN ESTE TURNO: {plan} ({duración}) | … [PUNTO DE INICIO: inicia y termina en {meetingPoint}; llegar es por cuenta del cliente. Obligatorio: abre la respuesta con ese punto de inicio…] [Usa el ángulo de ruta o vehículo del ENTRY_SEGMENT… solo si encaja con el grupo; nunca "familiar" si es pareja o viaja solo.] Presenta todas estas opciones… sin precios. … [Obligatorio: escribe la palabra "recomendado|recommended" junto a {plan con recommended: true en el catálogo}, con su beneficio del CATALOGO.] [{día sin noche}: di que es un solo día, con ida y regreso el mismo día.] Un solo párrafo, máximo 280 caracteres. Una sola pregunta para elegir.
+OPCIONES DE PLAN ESTE TURNO: {plan} ({duración}) | … [PUNTO DE INICIO: inicia y termina en {meetingPoint}; llegar es por cuenta del cliente. Obligatorio: abre la respuesta con ese punto de inicio…] [Usa el ángulo de ruta o vehículo del ENTRY_SEGMENT… solo si encaja con el grupo; nunca "familiar" si es pareja o viaja solo.] Presenta todas estas opciones… sin precios. … [Obligatorio: escribe la palabra "recomendado|recommended" junto a {plan con recommended: true en el catálogo}, con su beneficio del CATALOGO.] [{día sin noche}: di que es un solo día, con ida y regreso el mismo día; va al final, no como plan principal.] Un solo párrafo, máximo 280 caracteres. Una sola pregunta para elegir.
 ```
+
+The listed plans are `displayedPlans`: the day plan only when the customer asked for one day,
+a lower budget or every option, or the site sells nothing else. `DURACION COMPARTIDA` names
+the day plan as an alternative under the same rule.
+
+### VIDEOS PEDIDOS (runtime, video request)
+
+```
+VIDEOS PEDIDOS: … sin pedir permiso. Cada enlace en su propia línea, debajo de una frase que diga qué va a ver, tomada de su descripción: "{description}" {url} | … Copia los enlaces exactos; ningún otro enlace de Instagram. …
+```
+
+Links are the engine's selection from catalog `cultureReels` / plan `reels`; with none,
+`VIDEO PEDIDO SIN ENLACE` forbids inventing one. The cue is never added on other turns.
 
 ### PRECIO PEDIDO SIN PLAN (runtime, price asked before a plan is chosen, 2026-11-11)
 

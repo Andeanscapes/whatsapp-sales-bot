@@ -1,6 +1,6 @@
 {
   "id": "safety-objection-military-presence",
-  "source": "Safety objection: uses the owner-confirmed facts; never a guarantee.",
+  "source": "Safety objection: uses the owner-confirmed facts; never a guarantee. | 2026-11-12: with two destinations this turn must also ask the destination, so the cap moved 320 -> 400 (cue 380). | 2.5.1: military bases and reservoirs are not in business.md or the catalog: the reply must use the catalog safety wording instead (2.5.1, live EN 2026-11-16 invented them).",
   "tags": [
     "price",
     "live"
@@ -10,23 +10,13 @@
   "minLiveScore": 80,
   "criteria": [
     {
-      "id": "military",
+      "id": "catalog-safety-wording",
       "rule": "reply_must_match",
       "turn": 2,
       "weight": 2,
       "critical": true,
       "patterns": [
-        "militar"
-      ]
-    },
-    {
-      "id": "reservoir",
-      "rule": "reply_must_match",
-      "turn": 2,
-      "weight": 2,
-      "critical": false,
-      "patterns": [
-        "embalse"
+        "región tranquila|valida las condiciones|condiciones operativas"
       ]
     },
     {
@@ -63,7 +53,7 @@
       "turn": 2,
       "weight": 2,
       "critical": true,
-      "expected": 320
+      "expected": 400
     }
   ],
   "turns": [
@@ -76,7 +66,7 @@
     },
     {
       "user": "¿Es seguro? ¿Hay gente armada por allá?",
-      "mockReply": "Es de lo que más preguntan. Allí están los embalses La Esmeralda y el Guavio, que dan energía a las principales ciudades del centro del país, y hay bases militares que los protegen; también hay una base en la zona minera. A la mina siempre se entra con guía y equipo. ¿Miramos fecha?",
+      "mockReply": "Es una región tranquila: el equipo valida las condiciones operativas antes de cada salida, y siempre se entra con guía local y equipo de seguridad. ¿Miramos fecha?",
       "expect": {
         "shouldSendReply": true
       }

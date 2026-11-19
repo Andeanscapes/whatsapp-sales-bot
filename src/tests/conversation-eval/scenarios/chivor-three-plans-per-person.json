@@ -1,6 +1,6 @@
 {
   "id": "chivor-three-plans-per-person",
-  "source": "customer replay 2026-10-26: after pareja the bot hid the pasadia behind a binary essential/complete question; BASIC quote needs total plus per-person equivalent | 2026-11-12: Coscuez on sale, so a lead that names no destination is asked it after the group; the three Chivor options follow the destination.",
+  "source": "customer replay 2026-10-26: after pareja the bot hid the pasadia behind a binary essential/complete question; BASIC quote needs total plus per-person equivalent | 2026-11-12: Coscuez on sale, so a lead that names no destination is asked it after the group; the three Chivor options follow the destination. | 2026-11-18 (first-time lead handoff): the day plan is named only when the customer asks for one day, a lower budget or every option, so turn 3 asks for every plan.",
   "tags": [
     "plan",
     "live"
@@ -68,7 +68,7 @@
       "id": "pasadia-distinguished",
       "rule": "reply_must_match",
       "patterns": [
-        "pasad[ií]a|sin noche|sin alojamiento"
+        "pasad[ií]a|sin noche|sin alojamiento|BASIC[^.]{0,40}(?:un solo d[ií]a|mismo d[ií]a)"
       ],
       "turn": 3,
       "critical": true
@@ -142,7 +142,7 @@
       }
     },
     {
-      "user": "Chivor",
+      "user": "Chivor, ¿qué planes tienen?",
       "mockReply": "Tenemos BASIC pasadía sin noche, CORE con una mina y alojamiento, y PRIME con dos minas y cabalgata. ¿Cuál les encaja más?",
       "expect": {
         "shouldSendReply": true,

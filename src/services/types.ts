@@ -41,6 +41,7 @@ export interface ProcessMessageOutput {
   usedAi: boolean;
   shouldAlertOwner: boolean;
   ownerAlertType?: string;
+  availabilityRequest?: { planId: string; date: string };
   shouldSendImage: boolean;
   /** First reply of a new conversation: the webhook sends media.ownerImage with `reply` as its caption. */
   shouldSendOwnerImage: boolean;

@@ -1,6 +1,6 @@
 {
   "id": "safety-objection-military-presence",
-  "source": "Safety objection: uses the owner-confirmed facts; never a guarantee.",
+  "source": "Safety objection: uses the owner-confirmed facts; never a guarantee. | 2026-11-12: with two destinations this turn must also ask the destination, so the cap moved 320 -> 400 (cue 380). | 2.5.1: military bases and reservoirs are not in business.md or the catalog: the reply must use the catalog safety wording instead (2.5.1, live EN 2026-11-16 invented them).",
   "tags": [
     "price",
     "live"
@@ -10,23 +10,13 @@
   "minLiveScore": 80,
   "criteria": [
     {
-      "id": "military",
+      "id": "catalog-safety-wording",
       "rule": "reply_must_match",
       "turn": 2,
       "weight": 2,
       "critical": true,
       "patterns": [
-        "military"
-      ]
-    },
-    {
-      "id": "reservoir",
-      "rule": "reply_must_match",
-      "turn": 2,
-      "weight": 2,
-      "critical": false,
-      "patterns": [
-        "reservoir"
+        "calm region|operating conditions|checks the operating"
       ]
     },
     {
@@ -63,7 +53,7 @@
       "turn": 2,
       "weight": 2,
       "critical": true,
-      "expected": 320
+      "expected": 400
     }
   ],
   "turns": [
@@ -76,7 +66,7 @@
     },
     {
       "user": "Is it safe? Are there armed people there?",
-      "mockReply": "It's one of the most common questions. There are the La Esmeralda and Guavio reservoirs, which supply power to the main cities of central Colombia, and military bases protect them; there is also a base in the mining area. You always enter the mine with a guide and gear. Shall we look at dates?",
+      "mockReply": "It is a calm region: the team checks the operating conditions before every trip, and you always go in with a local guide and safety equipment. Shall we look at dates?",
       "expect": {
         "shouldSendReply": true
       }

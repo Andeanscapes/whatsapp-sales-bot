@@ -1,0 +1,105 @@
+{
+  "id": "release251-marker-c02-no-destination-question",
+  "source": "Bot export 2026-11-16: 2.4.0 asked the destination on turn 2 even for ad leads; 2.5.1 pre-selects Chivor from the marker (C02 = car/4x4). | 2.5.1: size limit adjusted for the required plan-clarity line (opener) or value line (price turn); EN runs longer than ES.",
+  "tags": [
+    "release-2.5.1",
+    "live",
+    "marker"
+  ],
+  "lang": "en",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    },
+    {
+      "id": "no-destination-question",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "Coscuez|Borbur|two destinations|two regions"
+      ]
+    },
+    {
+      "id": "plan-clarity",
+      "rule": "reply_must_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "weekend|Saturday.to.Sunday|Saturday and Sunday"
+      ]
+    },
+    {
+      "id": "no-price-turn-1",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\$\\s?\\d|\\bCOP\\b|\\d{3}[.,]000|starting (?:at|from)"
+      ]
+    },
+    {
+      "id": "opener-words",
+      "rule": "reply_words_at_most",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "expected": 80
+    },
+    {
+      "id": "asks-group",
+      "rule": "reply_must_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "[^?.!\\n]*(?:alone|couple|group|by yourself|for two)[^?.!\\n]*\\?"
+      ]
+    },
+    {
+      "id": "no-deposit-before-date",
+      "rule": "reply_must_not_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "deposit|\\b25\\s?%|\\b50\\s?%"
+      ]
+    },
+    {
+      "id": "no-day-plan-unasked",
+      "rule": "reply_must_not_match",
+      "turn": 2,
+      "weight": 2,
+      "patterns": [
+        "\\bBASIC\\b|day trip|one day|half day"
+      ]
+    }
+  ],
+  "turns": [
+    {
+      "user": "C02 Hi! I want to know what the mining adventure by car is about 🚙",
+      "mockReply": "Hi, I'm Heinner, from Andean Scapes. It's a weekend, Saturday to Sunday, with a night at the hacienda: you reach the town on your own and from there our 4x4 takes you up to the mine. Would it be for you alone, as a couple or for a group?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "We are 2, how much does it cost?",
+      "mockReply": "For 2 people, what it includes is the night at the hacienda, the meals and the guided mine visit. CORE is COP 950,000 for the couple, recommended. Which Saturday works for you?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

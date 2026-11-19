@@ -1,0 +1,96 @@
+{
+  "id": "release251-r01-asks-destination",
+  "source": "Owner 2026-11-16: R01 (culture videos, retargeting) runs on videos from both regions; the bot asks which experience before any price.",
+  "tags": [
+    "release-2.5.1",
+    "live",
+    "two-destinations"
+  ],
+  "lang": "es",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "no-site-assumed-turn-1",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "Chivor|Coscuez|Borbur|hacienda|hotel"
+      ]
+    },
+    {
+      "id": "asks-group-turn-1",
+      "rule": "reply_must_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "[^¿.!?\\n]*(?:sol[oa]s?\\b|pareja|grupo)[^¿.!?\\n]*\\?"
+      ]
+    },
+    {
+      "id": "no-price-turn-1",
+      "rule": "reply_must_not_match",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\$\\s?\\d|\\bCOP\\b|\\d{3}[.,]000|\\bdesde\\s*\\*?\\$"
+      ]
+    },
+    {
+      "id": "one-question-turn-1",
+      "rule": "max_question_marks",
+      "turn": 1,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    },
+    {
+      "id": "names-both-sites-turn-2",
+      "rule": "reply_must_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "Chivor[\\s\\S]*Coscuez|Coscuez[\\s\\S]*Chivor"
+      ]
+    },
+    {
+      "id": "no-price-before-destination",
+      "rule": "reply_must_not_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\$\\s?\\d|\\bCOP\\b|\\d{3}[.,]000|\\bdesde\\s*\\*?\\$"
+      ]
+    },
+    {
+      "id": "one-question-turn-2",
+      "rule": "max_question_marks",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    }
+  ],
+  "turns": [
+    {
+      "user": "R01 ¡Hola! Vi sus videos de la cultura esmeraldera y quiero saber cómo es ir a la mina 💚",
+      "mockReply": "Qué bueno que te gustó la historia. Soy Heinner, de Andean Scapes: es un fin de semana, sábado a domingo, en una mina real de esmeraldas con noche allá. ¿Sería para ti solo, en pareja o para un grupo?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "En pareja",
+      "mockReply": "Perfecto. Tenemos dos experiencias distintas: Chivor, con 4x4 hasta la mina y noche en la hacienda; o Coscuez, con hotel rural en Borbur y charla en la plaza Chacaro. ¿Cuál les llama más?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

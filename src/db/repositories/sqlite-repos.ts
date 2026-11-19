@@ -838,6 +838,15 @@ export class SqliteMessageRepo implements MessageRepository {
     return row?.body ?? null;
   }
 
+  hasOutboundContaining(phone: string, needle: string): boolean {
+    if (!needle) return false;
+    // instr, not LIKE: `_` and `%` are wildcards there and appear in link ids.
+    const row = this.db.prepare(
+      "SELECT 1 FROM messages WHERE customer_phone = ? AND direction = 'outbound' AND instr(body, ?) > 0 LIMIT 1"
+    ).get(phone, needle);
+    return row !== undefined;
+  }
+
   getRecentMessages(phone: string, limit: number = 12): RecentMessage[] {
     const rows = this.db.prepare(
       "SELECT direction, body, message_type, created_at, media_id FROM messages WHERE customer_phone = ? AND message_type != 'template' ORDER BY created_at DESC, id DESC LIMIT ?"

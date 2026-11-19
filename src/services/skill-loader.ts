@@ -4,8 +4,11 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import type { DynamicDataService, InternalDynamicData, InternalDynamicMedia, InternalExperienceData } from './dynamic-data-service.js';
 import { PRICING_NOT_AVAILABLE, AVAILABILITY_NOT_AVAILABLE, transformDynamicData } from './dynamic-data-service.js';
-import { assertDynamicCatalogReady, dynamicDataSchema, planCalculationSchema, siteSelectionSchema, type DynamicData } from './dynamic-data-schema.js';
+import { assertDynamicCatalogReady, dynamicDataSchema, planCalculationSchema, sharedFactsSchema, siteSelectionSchema, type DynamicData } from './dynamic-data-schema.js';
 import { existsSync } from 'fs';
+
+/** Media types that mark an ad about the drive itself; owner rule: only these imply a destination. */
+const VEHICLE_MEDIA_TYPES = ['car', 'bike'];
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -148,8 +151,11 @@ const experienceSchema = z.object({
      name: z.string().optional(),
      selectionAliases: z.array(z.string()).optional(),
      meetingPoint: z.string().optional(),
+     quoteValue: z.string().optional(),
+     vehicleEntryCodes: z.array(z.string()).optional(),
    }).strict()).optional(),
    siteSelection: siteSelectionSchema.optional(),
+   sharedFacts: sharedFactsSchema.optional(),
    unavailableSites: z.array(z.object({
      siteId: z.string(),
      siteName: z.string(),
@@ -529,8 +535,15 @@ function experienceFromDynamic(expId: string, dyn: InternalExperienceData): Expe
       name: site.name,
       selectionAliases: site.selectionAliases,
       meetingPoint: site.meetingPoint,
+      quoteValue: site.quoteValue,
+      // Entry codes whose ad is about the drive (car/4x4 or motorbike): the catalog tags them with
+      // the "car"/"bike" media types. Only these may pre-select a destination (owner 2026-11-16).
+      vehicleEntryCodes: Object.entries(site.entrySegments ?? {})
+        .filter(([, segment]) => (segment.contextualMediaTypes ?? []).some(type => VEHICLE_MEDIA_TYPES.includes(type)))
+        .map(([code]) => code),
     }])),
     siteSelection: dyn.siteSelection,
+    sharedFacts: dyn.sharedFacts,
     unavailableSites: dyn.unavailableSites,
     name: dyn.name ?? expId,
     status: dyn.status ?? 'active',

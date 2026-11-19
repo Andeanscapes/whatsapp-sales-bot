@@ -1,6 +1,6 @@
 {
   "id": "two-destinations-moto-interest",
-  "source": "EN twin of two-destinations-moto-interest. Owner decision 2026-11-12: with two destinations the bot shows both (equally safe, same distance, unique experiences) and lets the customer choose; when the ad or the customer shows an off-road interest (moto, car, 4x4) it says Chivor is the most off-road one, without ruling Coscuez out. The C03 opener keeps the moto angle and asks only the group.",
+  "source": "EN twin of two-destinations-moto-interest. Owner decision 2026-11-12: with two destinations the bot shows both (equally safe, same distance, unique experiences) and lets the customer choose; when the ad or the customer shows an off-road interest (moto, car, 4x4) it says Chivor is the most off-road one, without ruling Coscuez out. The C03 opener keeps the moto angle and asks only the group. | 2.5.1: opener cap 65 -> 70 words: the plan-clarity line (sábado a domingo, llegas por tu cuenta) is required in 2.5.1. | 2.5.1: C03 is a marked lead, Chivor is pre-selected: no two-region pitch and no destination question. | 2.5.1: size limit adjusted for the required plan-clarity line (opener) or value line (price turn); EN runs longer than ES. | 2.5.1: rider wording (\"riding with someone\", \"by bike\") accepted.",
   "tags": [
     "marker",
     "qualification",
@@ -27,7 +27,7 @@
       "weight": 2,
       "critical": true,
       "patterns": [
-        "[^.!?\\n]*(?:\\bsolo\\b|alone|by yourself|couple|partner|group)[^.!?\\n]*\\?"
+        "[^.!?\\n]*(?:\\bsolo\\b|alone|someone|riding with|by yourself|couple|partner|group)[^.!?\\n]*\\?"
       ]
     },
     {
@@ -56,17 +56,7 @@
       "turn": 1,
       "weight": 2,
       "critical": true,
-      "expected": 65
-    },
-    {
-      "id": "names-both-regions",
-      "rule": "reply_must_match",
-      "turn": 2,
-      "weight": 2,
-      "critical": true,
-      "patterns": [
-        "chivor[\\s\\S]{0,300}coscuez|coscuez[\\s\\S]{0,300}chivor"
-      ]
+      "expected": 80
     },
     {
       "id": "chivor-offroad",
@@ -75,17 +65,7 @@
       "weight": 2,
       "critical": true,
       "patterns": [
-        "chivor[^.?!]{0,140}(?:off-?road|motorcycle|motorbike|\\bmoto\\b|4x4|route|unpaved|dirt)|(?:off-?road|motorcycle|motorbike|\\bmoto\\b|4x4|route|unpaved|dirt)[^.?!]{0,140}chivor"
-      ]
-    },
-    {
-      "id": "customer-chooses",
-      "rule": "reply_must_match",
-      "turn": 2,
-      "weight": 2,
-      "critical": true,
-      "patterns": [
-        "[^.!?\\n]*(?:which|prefer|appeal|interest|sounds|catch)[^.!?\\n]*\\?"
+        "chivor[^.?!]{0,140}(?:off-?road|bike|ride|motorcycle|motorbike|\\bmoto\\b|4x4|route|unpaved|dirt)|(?:off-?road|bike|ride|motorcycle|motorbike|\\bmoto\\b|4x4|route|unpaved|dirt)[^.?!]{0,140}chivor"
       ]
     },
     {
@@ -105,6 +85,16 @@
       "weight": 2,
       "critical": true,
       "max": 1
+    },
+    {
+      "id": "chivor-named-turn-2",
+      "rule": "reply_must_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "Chivor"
+      ]
     }
   ],
   "turns": [

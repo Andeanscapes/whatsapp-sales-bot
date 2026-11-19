@@ -1,0 +1,78 @@
+{
+  "id": "release251-coscuez-switch-after-marker",
+  "source": "Owner 2026-11-16: Coscuez goes live. A Chivor-marked lead who names Coscuez must get Coscuez facts (50% deposit) and no Chivor facts. | 2.5.1: a vehicle code (C02) pre-selects Chivor; naming Coscuez must switch the destination. | 2026-11-18: \"¿Y en Coscuez también?\" is a question, not a choice (invariant: a mention keeps the stored site), so the bot may name Chivor in the choice question. The check bans Chivor facts attributed to Coscuez, not the word Chivor.",
+  "tags": [
+    "release-2.5.1",
+    "live",
+    "two-destinations"
+  ],
+  "lang": "en",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "criteria": [
+    {
+      "id": "names-coscuez",
+      "rule": "reply_must_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "Coscuez"
+      ]
+    },
+    {
+      "id": "coscuez-facts",
+      "rule": "reply_must_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "Borbur|Chacaro"
+      ]
+    },
+    {
+      "id": "no-chivor-facts-on-coscuez",
+      "rule": "reply_must_not_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "Hacienda El Recuerdo|4x4 up to the mine|Coscuez[^.?!\\n]{0,80}hacienda|hacienda[^.?!\\n]{0,80}Coscuez"
+      ]
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "max": 1
+    },
+    {
+      "id": "no-price-turn-2",
+      "rule": "reply_must_not_match",
+      "turn": 2,
+      "weight": 2,
+      "critical": true,
+      "patterns": [
+        "\\$\\s?\\d|\\bCOP\\b|\\d{3}[.,]000"
+      ]
+    }
+  ],
+  "turns": [
+    {
+      "user": "C02 Hi! I want to know what the mining adventure by car is about 🚙",
+      "mockReply": "Hi, I'm Heinner, from Andean Scapes. It is a real emerald mine in Chivor, with a night at the hacienda. Would it be for you alone, as a couple or for a group?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "And in Coscuez too?",
+      "mockReply": "Yes, Coscuez is the other experience: an emerald talk at Chacaro square and a rural hotel in Borbur. How many people would it be?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

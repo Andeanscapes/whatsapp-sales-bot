@@ -1,6 +1,6 @@
 {
   "id": "price-three-options-budget",
-  "source": "Three options by budget and comfort: the day plan is named first without a price; CORE recommended; totals from simplest to most complete. | 2026-11-12: Coscuez on sale, so the bot asks the destination after the group (SITIO PENDIENTE) and the customer answers Chivor; later criteria moved one turn down.",
+  "source": "Three options by budget and comfort: the day plan is named first without a price; CORE recommended; totals from simplest to most complete. | 2026-11-12: Coscuez on sale, so the bot asks the destination after the group (SITIO PENDIENTE) and the customer answers Chivor; later criteria moved one turn down. | 2.5.1: the lead never asked for a day trip or a budget: BASIC must not come before the totals (2.5.1 menu order).",
   "tags": [
     "price",
     "live"
@@ -10,8 +10,8 @@
   "minLiveScore": 80,
   "criteria": [
     {
-      "id": "day-before-totals",
-      "rule": "reply_must_match",
+      "id": "day-not-before-totals-unasked",
+      "rule": "reply_must_not_match",
       "turn": 3,
       "weight": 2,
       "critical": false,
@@ -47,7 +47,7 @@
     },
     {
       "user": "Chivor",
-      "mockReply": "Inicia y termina en el pueblo de Chivor, a 5-6 h de Bogotá; llegan por su cuenta. Si quieren un solo día sin noche, hay pasadía. Para 2 personas: CORE recomendado, con noche en hacienda, *$950.000*; PRIME, con dos minas y cabalgata, *$1.700.000*. ¿Con cuál seguimos?",
+      "mockReply": "Inicia y termina en el pueblo de Chivor; llegan por su cuenta. Para 2 personas: CORE recomendado, con noche en hacienda, *$950.000*; PRIME, con dos minas y cabalgata, *$1.700.000*. Si quieren un solo día sin noche, también hay pasadía. ¿Con cuál seguimos?",
       "expect": {
         "shouldSendReply": true
       }

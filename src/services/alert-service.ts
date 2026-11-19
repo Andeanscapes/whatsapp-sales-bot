@@ -15,6 +15,7 @@ const MAX_ALERT_LENGTH = 4_000;
 let startupWarned = false;
 
 export interface AlertRequest {
+  availabilityRequest?: { planId: string; date: string };
   customerPhone: string;
   score: number;
   intent: string;
@@ -86,9 +87,12 @@ export async function sendAlert(request: AlertRequest, repos: Repositories): Pro
     ? request.intent
     : request.score >= env.URGENT_LEAD_THRESHOLD ? 'urgent' : 'hot';
   const repeatableReservationAlert = alertType === 'reservation_handoff' || alertType === 'reservation_intent' || alertType === 'payment_received';
+  const ledgerType = request.availabilityRequest
+    ? `availability_check:${request.availabilityRequest.planId}:${request.availabilityRequest.date}`
+    : alertType;
   if (repeatableReservationAlert) {
     const sinceIso = new Date(Date.now() - RESERVATION_ALERT_COOLDOWN_MS).toISOString();
-    if (repos.ownerAlert.wasAlertedSince(request.customerPhone, alertType, sinceIso)) {
+    if (repos.ownerAlert.wasAlertedSince(request.customerPhone, ledgerType, sinceIso)) {
       logger.info({ customerPhone: request.customerPhone, alertType }, '[ALERT] skipped reservation alert within cooldown');
       return true;
     }
@@ -110,11 +114,12 @@ export async function sendAlert(request: AlertRequest, repos: Repositories): Pro
     .replaceAll('{{customerPhone}}', request.customerPhone)
     .replace('{{name}}', request.name ?? 'unknown')
     .replace('{{intent}}', request.intent)
-    .replace('{{date}}', request.date ?? 'unknown')
+    .replace('{{date}}', request.availabilityRequest?.date ?? request.date ?? 'unknown')
     .replace('{{people}}', request.people ?? 'unknown')
     .replace('{{transportNeed}}', request.transport ?? 'unknown')
     .replace('{{lastMessage}}', request.message);
   if (request.reason) body = `${body}\n\n⚠️ ${request.reason}`;
+  if (request.availabilityRequest) body = `${body}\n\nConsulta de cupo (sin reserva): ${request.availabilityRequest.planId} · ${request.availabilityRequest.date}`;
   const storedContext = storedLeadContext(repos, request.customerPhone);
   if (storedContext) body = `${body}\n\n${storedContext}`;
 
@@ -180,7 +185,7 @@ export async function sendAlert(request: AlertRequest, repos: Repositories): Pro
   }
 
   if (delivered) {
-    repos.ownerAlert.insert(request.customerPhone, env.ALERT_CHANNEL, request.score, alertType, body);
+    repos.ownerAlert.insert(request.customerPhone, env.ALERT_CHANNEL, request.score, ledgerType, body);
   }
   return delivered;
 }

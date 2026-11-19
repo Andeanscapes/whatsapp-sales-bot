@@ -1,6 +1,6 @@
 {
   "id": "two-destinations-group-first",
-  "source": "EN twin of two-destinations-group-first. Owner decision 2026-11-12: with Chivor and Coscuez both on sale, an ad lead that names no destination keeps the group question first (reply rate, export 2026-11-07). The destination is asked after the group, explaining the two emerald regions; with no preference the bot suggests Chivor while saying both are good, and a bare yes to that suggestion stores Chivor so the deferred price is quoted for that site only. | 2026-11-12: the customer chooses (owner rule), so the bot may answer \"no preference\" with a choice question instead of a single suggestion; the last turn names Chivor. A bare yes to a single-destination suggestion is pinned by unit tests (resolveSiteAnswer).",
+  "source": "EN twin of two-destinations-group-first. Owner decision 2026-11-12: with Chivor and Coscuez both on sale, an ad lead that names no destination keeps the group question first (reply rate, export 2026-11-07). The destination is asked after the group, explaining the two emerald regions; with no preference the bot suggests Chivor while saying both are good, and a bare yes to that suggestion stores Chivor so the deferred price is quoted for that site only. | 2026-11-12: the customer chooses (owner rule), so the bot may answer \"no preference\" with a choice question instead of a single suggestion; the last turn names Chivor. A bare yes to a single-destination suggestion is pinned by unit tests (resolveSiteAnswer). | 2.5.1: opener cap raised for the required plan-clarity line (EN runs longer).",
   "tags": [
     "marker",
     "qualification",
@@ -143,7 +143,7 @@
       "turn": 1,
       "weight": 2,
       "critical": true,
-      "expected": 65
+      "expected": 80
     }
   ],
   "turns": [
