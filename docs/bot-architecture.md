@@ -346,6 +346,7 @@ Bridge/handoff nuance:
 
 - Alerts assign an owner line, but bot usually continues.
 - Human bridge starts when agent runs `/chat`.
+- A quoted lead asking about one identifiable offered departure can alert the assigned team without selecting or confirming a booking date. Delivery cooldown is keyed by plan and requested departure; it does not suppress another departure or a separate reservation handoff.
 - `conversation_mode='bot'` means normal automated replies.
 - `conversation_mode='human_pending'` means close/reservation escalated: bot still replies (payment public facts, clarifications), assigned bridge agent is notified on further inbound, but exclusive control still requires `/chat`. Does **not** set `handed_off_at`. A `human_pending` lead receives no follow-up consent ask (`listConsentAskCandidates` requires `bot` mode; owner decision 2026-10-26); the one-shot and recurring templates still apply.
 - `conversation_mode='bridge_active'` means bot stays silent and forwards inbound customer messages to Telegram agent. `forwardBridgeMessage` still runs `bridge-lead-scoring.ts` on every inbound: it re-scores the lead (deterministic + DeepSeek analyzer, gated by the same budget guard) and updates `lead_score`/`lead_intent`, but never sends a reply or an owner alert. This keeps lead data current while the agent is chatting manually.

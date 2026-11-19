@@ -13,6 +13,7 @@ import {
   getPaymentInfo,
   getPlans,
   getPublicPaymentFactsForPlan,
+  hasPublicPaymentFacts,
   getUnavailableSites,
   isPlanPaused,
   getSites,
@@ -583,6 +584,11 @@ export function renderBusinessData(skills: Skills, entryMarkerCode?: string | nu
 }
 
 export interface AssembleSystemPromptInput {
+  /** ISO departure to check, null when ambiguous, undefined on other turns. */
+  requestedAvailabilityDate?: string | null;
+  depositQuestion?: boolean;
+  closeAcknowledgment?: boolean;
+  availabilityPending?: boolean;
   skills: Skills;
   lang?: string;
   collectedFields?: Record<string, unknown>;
@@ -1050,13 +1056,14 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
   // Day-level only ("14 de noviembre", "7 de agosto"). Month-only ("noviembre") is
   // still discovery — T3b would skip motive/date choice and jump to payment CTA.
   const hasConcreteDate = isConcreteDayDate(knownDate);
+  const informationalCloseTurn = input.requestedAvailabilityDate !== undefined || !!(input.depositQuestion || input.closeAcknowledgment);
   // Date accept without price: must deliver exact total first (T3a).
   // Date accept with price: close CTA + anticipo flow (T3b).
   const priceBeforeCloseTurn = Boolean(
-    !priceGiven && dateSelectedThisTurn && hasConcreteDate && typeof knownPeople === 'number' && lockedPlanId,
+    !informationalCloseTurn && !priceGiven && dateSelectedThisTurn && hasConcreteDate && typeof knownPeople === 'number' && lockedPlanId,
   );
   const t3bCloseTurn = Boolean(
-    !priceObjectionThisTurn && !closeCtaAcceptedThisTurn && priceGiven && hasConcreteDate && typeof knownPeople === 'number' && lockedPlanId,
+    !informationalCloseTurn && !priceObjectionThisTurn && !closeCtaAcceptedThisTurn && priceGiven && hasConcreteDate && typeof knownPeople === 'number' && lockedPlanId,
   );
   // Pushed here, not with the other phase cues, because its wording depends on
   // `t3bCloseTurn`. The generic tail ("Fechas/motivo → solo fechas + 1 pregunta") is right
@@ -1150,7 +1157,7 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
   }
   const asksHowToReserve = typeof latestCustomerMessage === 'string'
     && /\b(?:c[oó]mo\s+reservo|como\s+reservo|c[oó]mo\s+pago|como\s+pago|c[oó]mo\s+se\s+reserva|quiero\s+reservar|how\s+(?:do\s+i\s+)?(?:book|reserve|pay)|what(?:'s|\s+is)\s+next\s+to\s+book)\b/i.test(latestCustomerMessage);
-  if (!priceObjectionThisTurn && !priceBeforeCloseTurn && !closeCtaAcceptedThisTurn && (asksHowToReserve || salesPhase === 'closing')) {
+  if (!informationalCloseTurn && !priceObjectionThisTurn && !priceBeforeCloseTurn && !closeCtaAcceptedThisTurn && (asksHowToReserve || salesPhase === 'closing')) {
     runtime.push('INTENCION DE RESERVA: el cliente preguntó cómo continuar. Aplica el turno correspondiente de whatsapp-sales.skill.md según los datos conocidos.');
   }
   if (typeof knownPeople === 'number' && !lockedPlanId && activePlans.length > 1) {
@@ -1402,7 +1409,7 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
   if (advertisedThemes.length > 0) {
     runtime.push(`TEMAS DE GALERIA DISPONIBLES: ${advertisedThemes.join(', ')}.`);
   }
-  if (planSelectedThisTurn && !galleryShown && galleryImagesRemaining && galleryImagesRemaining > 0) {
+  if (planSelectedThisTurn && !videoRequested && !galleryShown && galleryImagesRemaining && galleryImagesRemaining > 0) {
     const selectedPlan = getPlans(activeExperience).find(plan => plan.id === collectedFields?.plan);
     const planTheme = selectedPlan?.galleryTheme;
     if (planTheme && galleryThemes.includes(planTheme)) {
@@ -1426,13 +1433,6 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
   }
   if (galleryImagesRemaining !== undefined) {
     runtime.push(`CUPO_FOTOS_RESTANTE: ${galleryImagesRemaining}.`);
-  }
-  // Owner 2026-11-18: the line cannot attach large videos, so a video request gets approved
-  // Instagram links as text. Links and what each shows come from the catalog.
-  if (videoRequested && !proactiveMode) {
-    runtime.push(videoLinks && videoLinks.length > 0
-      ? `VIDEOS PEDIDOS: di en media frase que por aquí no puedes adjuntar videos pesados y comparte en este mismo mensaje estos enlaces de Instagram, sin pedir permiso. Cada enlace en su propia línea, debajo de una frase que diga qué va a ver, tomada de su descripción: ${videoLinks.map(link => `"${link.description}" ${link.url}`).join(' | ')}. Copia los enlaces exactos; ningún otro enlace de Instagram. Si además preguntó otra cosa (dónde queda, precio, fechas), respóndela en el mismo mensaje.`
-      : 'VIDEO PEDIDO SIN ENLACE: no hay video aprobado para esto. No escribas enlaces de Instagram ni prometas enviar un video después; dilo en media frase y sigue con lo que necesite el turno.');
   }
   if (galleryRetryInstruction && galleryRequestThemes && galleryRequestThemes.length > 0) {
     const exactMarker = `[[FOTOS:${galleryRequestThemes.join(',')}]]`;
@@ -1516,6 +1516,30 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
   const replyCode = replyLanguage ?? lang;
   if (replyCode && replyCode !== 'es') {
     runtime.push(`IDIOMA DE ESTA RESPUESTA: ${languageName(replyCode)}. Escribe todo el mensaje en ${languageName(replyCode)}, aunque las instrucciones de arriba estén en español.`);
+  }
+  if (videoRequested && !proactiveMode) {
+    const photoInstruction = galleryRequestThemes?.length ? '' : ' No ofrezcas fotos ni emitas marcadores de galería.';
+    runtime.push((videoLinks?.length
+      ? `VIDEOS PEDIDOS: explica brevemente el límite de adjuntos y comparte ahora estos enlaces exactos. Pon cada URL debajo de su descripción: ${videoLinks.map(link => `"${link.description}" ${link.url}`).join(' | ')}. Responde también cualquier pregunta del mensaje.`
+      : 'VIDEO PEDIDO SIN ENLACE: no hay video aprobado. Dilo brevemente, sin inventar enlaces ni prometer un envío. Responde también cualquier pregunta del mensaje.') + photoInstruction);
+  }
+  if (t3bCloseTurn && planSelectedThisTurn && !reservationRequestedThisTurn && !proactiveMode) {
+    const point = planGuidance(activeExperience, [], selectedSiteId).meetingPoint;
+    runtime.push(`CIERRE T3b: acaba de elegir plan y día después de ver el precio. No recotices. Indica fecha, punto de encuentro${point ? ` (${point})` : ''} y hora de inicio del plan según CATALOGO; luego el anticipo${planDepositPercent != null ? ` del ${planDepositPercent}%` : ''} condicionado a confirmar cupo. Cierra con una sola pregunta para iniciar la reserva.`);
+  }
+  // Last so this inbound-only contract takes precedence over general close/CTA guidance.
+  if (!proactiveMode && informationalCloseTurn) {
+    if (input.requestedAvailabilityDate) {
+      runtime.push(`CONSULTA DE CUPO: fecha solicitada ${input.requestedAvailabilityDate}. No es una fecha elegida ni una reserva. Ignora T3b. En una frase, nombra el día y el mes en el idioma del cliente (no solo el número del día) y aclara que el cupo está por confirmar. Sin pregunta, anticipo, CTA ni afirmar que alguien ya lo está revisando.`);
+    } else if (input.requestedAvailabilityDate === null) {
+      runtime.push('CONSULTA DE CUPO SIN RESOLVER: no asumas fecha ni digas que ya se revisa. Pide el dato que falte para identificar la salida. No inicies reserva.');
+    } else if (input.depositQuestion) {
+      runtime.push(lockedPlanId && priceGiven && !pausedPlan && hasPublicPaymentFacts(skills)
+        ? `CONSULTA DE ANTICIPO: responde solo con el ${planDepositPercent}% del total y aclara que aplica únicamente si el equipo confirma el cupo. No uses las palabras anticipo, abono, depósito, deposit ni down payment; el cliente ya sabe a qué se refiere el porcentaje. Sin monto en dinero, métodos, pregunta ni solicitud de pago.`
+        : 'CONSULTA DE ANTICIPO: explica que se paga solo tras confirmar el cupo y pide el dato pendiente. No inventes montos ni porcentajes.');
+    } else {
+      runtime.push(`ACUSE DE CIERRE: este turno termina con punto. Una sola frase que ${input.availabilityPending ? 'aclare que el cupo sigue pendiente de confirmación por el equipo' : 'aclare el paso pendiente sin afirmar que el equipo ya lo está revisando'}. Quedan anuladas las instrucciones anteriores de formular preguntas o avanzar la venta. Sin pregunta, CTA, anticipo ni reserva.`);
+    }
   }
   if (runtime.length > 0) {
     parts.push('', '---', 'RUNTIME:', ...runtime);

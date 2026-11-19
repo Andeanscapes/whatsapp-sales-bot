@@ -75,6 +75,8 @@ import {
   isGalleryConfirmation,
   detectProactiveLeadPain,
   isPaymentMethodsQuestion,
+  isReservationDepositQuestion,
+  requestedAvailabilityDay,
   qualificationSummary,
   isReservationIntentNegated,
   extractEmojis,
@@ -740,6 +742,24 @@ function availabilityEntryForDate(skills: Skills, fecha: unknown, planId?: strin
 }
 
 /** Day+month (or ISO) required before reservation-close CTA; month-only is not enough. */
+function resolveAvailabilityInquiry(skills: Skills, planId: string, day: string, offer: string | null): string | null {
+  if (!offer || !/\b(?:cupo[s]?|salidas?|fechas?|availab\w*|departures?|spots?)\b/i.test(offer)) return null;
+  // Keep each date next to its month. A shared month can apply to a contiguous day list.
+  const dayToken = '(?:[1-9]|[12]\\d|3[01])(?:st|nd|rd|th)?';
+  const dayList = `${dayToken}(?:(?:,\\s*|\\s+(?:o|y|or|and)\\s+)(?:(?:el|the)\\s+)?${dayToken})*`;
+  const candidates = getFutureAvailableDatesForPlan(skills, getActiveExperience(skills), planId).filter(entry => {
+    const date = new Date(`${entry.date}T12:00:00Z`);
+    if (String(date.getUTCDate()) !== day) return false;
+    const month = new Intl.DateTimeFormat('es-CO', { month: 'long', timeZone: 'UTC' }).format(date);
+    const englishMonth = new Intl.DateTimeFormat('en-US', { month: 'long', timeZone: 'UTC' }).format(date);
+    const patterns = [new RegExp(`\\b(${dayList})\\s+de\\s+${month}\\b(?:\\s+de\\s+(20\\d{2}))?`, 'gi'),
+      new RegExp(`\\b${englishMonth}\\s+(?:the\\s+)?(${dayList})\\b(?:,?\\s+(20\\d{2}))?`, 'gi')];
+    return patterns.some(pattern => [...offer.matchAll(pattern)].some(match =>
+      (!match[2] || Number(match[2]) === date.getUTCFullYear()) && new RegExp(`\\b${day}(?:st|nd|rd|th)?\\b`, 'i').test(match[1])));
+  });
+  return candidates.length === 1 ? candidates[0].date : null;
+}
+
 function selectedDateFromAvailabilityReply(
   message: string,
   lastAssistantQuestion: string | null,
@@ -1340,13 +1360,14 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     };
   }
 
+  const availabilityDay = requestedAvailabilityDay(message);
   const bookingFields = extractBookingFields(message, activeExperience);
-  if (futureWindow) {
+  if (futureWindow || availabilityDay) {
     delete bookingFields.collected_date;
     delete bookingFields._relative_date_token;
   }
   const contextFields = contextAwareExtract(message, repos, customerPhone, bookingFields, activeExperience);
-  if (!contextFields.collected_date) {
+  if (!availabilityDay && !contextFields.collected_date) {
     const selectedPlan = typeof contextFields.collected_plan === 'string'
       ? contextFields.collected_plan
       : storedPlan;
@@ -1358,7 +1379,7 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     );
     if (selectedDate) contextFields.collected_date = selectedDate;
   }
-  if (futureWindow) {
+  if (futureWindow || availabilityDay) {
     delete contextFields.collected_date;
     delete contextFields._relative_date_token;
   }
@@ -1563,6 +1584,18 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     && !detectsReservationIntent(message);
   const reservationIntentOrConfirmation = !destinationAnswerOnly && isReservationIntentOrConfirmation(message, lastAssistantQuestion);
   const conversationMode = repos.conversation.getMode(customerPhone);
+  const quotedBeforeTurn = repos.conversation.getPriceGivenAt(customerPhone) != null;
+  const requestedDate = availabilityDay && !consentAnswerTurn && !hasSafetyOverride && isDynamicDataFresh()
+    && quotedBeforeTurn && typeof collectedFields.plan === 'string'
+    && getPlans(activeExperience).some(plan => plan.id === collectedFields.plan)
+    && typeof collectedFields.personas === 'number'
+    ? resolveAvailabilityInquiry(skills, collectedFields.plan, availabilityDay, lastAssistantQuestion) : null;
+  const availabilityRequest = requestedDate && typeof collectedFields.plan === 'string' ? { planId: collectedFields.plan, date: requestedDate } : undefined;
+  const notifyAvailabilityCheck = !!availabilityRequest;
+  const depositQuestion = !consentAnswerTurn && isReservationDepositQuestion(message);
+  const closeAcknowledgment = !consentAnswerTurn && quotedBeforeTurn
+    && (conversationMode === 'human_pending' || (lastAssistantQuestion != null && matchesCloseCtaQuestion(lastAssistantQuestion)))
+    && (/^(?:entiendo|entendido|i understand|understood|got it)$/.test(normalizeText(message)) || /^\?{2,}$/.test(message.trim()));
 
   const galleryShown = hasShownLlmGallery(repos, customerPhone);
   const photoSiteCorrection = isPhotoSiteCorrection(message, activeExperience,
@@ -1599,7 +1632,7 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     };
   }
 
-  if (!hasSafetyOverride && !isPlanPaused(activeExperience, typeof dbQualification.plan === 'string' ? dbQualification.plan : null) && conversationMode === 'human_pending' && isPaymentMethodsQuestion(message)) {
+  if (!hasSafetyOverride && !depositQuestion && !isPlanPaused(activeExperience, typeof dbQualification.plan === 'string' ? dbQualification.plan : null) && conversationMode === 'human_pending' && isPaymentMethodsQuestion(message)) {
     const facts = getPublicPaymentFactsForPlan(skills, activeExperience, typeof dbQualification.plan === 'string' ? dbQualification.plan : null);
     const reply = skills.fallbackReplies[lang].humanPendingPaymentAck
       .replaceAll('{{methods}}', formatMethods(facts.methodNames, lang))
@@ -1646,7 +1679,8 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
       return { reply: safetyOverrideReply, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: true, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
     }
     // Alert-only under limit: never auto-mute. Only /chat silences the bot.
-    if (preLimitHandoffAllowed || preLimitReservationIntent) {
+    if (preLimitHandoffAllowed || preLimitReservationIntent || notifyAvailabilityCheck) {
+      if (notifyAvailabilityCheck) enterHumanPending(repos, customerPhone);
       const overrideScore = Math.max(currentScore, skills.salesStrategy.urgentLeadThreshold);
       repos.conversation.upsert(customerPhone, { lead_score: overrideScore });
       const preLimitCloseStage = inferCloseStage(recentMessages);
@@ -1661,7 +1695,7 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
       } else {
         closing = skills.fallbackReplies[lang].aiFailureQualified;
       }
-      return { reply: closing, shouldSendReply: true, leadScore: overrideScore, usedAi: false, shouldAlertOwner: true, ownerAlertType: 'reservation_handoff', shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
+      return { reply: closing, shouldSendReply: true, leadScore: overrideScore, usedAi: false, shouldAlertOwner: true, ownerAlertType: 'reservation_handoff', availabilityRequest, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
     }
     if (currentScore >= skills.salesStrategy.hotLeadThreshold || (!!preLimitPriceRow && currentScore >= 20)) {
       return { reply: skills.fallbackReplies[lang].messageLimitHandoff, shouldSendReply: true, leadScore: currentScore, usedAi: false, shouldAlertOwner: true, shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false };
@@ -1692,6 +1726,7 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
       repos.conversation.setLeadIntent(customerPhone, 'ready_to_book');
     }
     activateHumanFallback(repos, customerPhone);
+    if (notifyAvailabilityCheck) enterHumanPending(repos, customerPhone);
     if (!preLimitReservationIntent && isNoReplyNeededPause(message)) {
       // Courtesy/deliberation has nothing to answer; the fallback would promise a
       // follow-up nobody owns. Stay silent and let the team pick it up.
@@ -1703,7 +1738,8 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
       leadScore: fallbackScore,
       usedAi: false,
       shouldAlertOwner: true,
-      ownerAlertType: preLimitReservationIntent ? 'reservation_handoff' : undefined,
+      ownerAlertType: preLimitReservationIntent || notifyAvailabilityCheck ? 'reservation_handoff' : undefined,
+      availabilityRequest,
       shouldSendOwnerImage: false,
       shouldSendGalleryImages: false,
       shouldSendImage: false,
@@ -1711,7 +1747,7 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     };
   }
 
-  if (!isDynamicDataFresh() && isPriceDateOrReservationMessage(message)) {
+  if (!isDynamicDataFresh() && (isPriceDateOrReservationMessage(message) || availabilityDay || depositQuestion)) {
     logger.warn({ phone: customerPhone }, '[BOT] dynamic data unavailable — blocking price/date reply');
     return {
       reply: skills.fallbackReplies[lang].dynamicDataUnavailable,
@@ -1879,6 +1915,7 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
   // plan's own link, never another plan's. Sent as text in the model's reply.
   const videoLinkSent = (url: string): boolean => repos.message.hasOutboundContaining(customerPhone, videoLinkId(url));
   const videoRequested = isVideoRequest(message) && !pausedPlanThisTurn;
+  const videoOnlyRequest = videoRequested && !isGalleryRequest(message);
   const videoLinks = videoRequested
     ? selectVideoLinks({
       culture: getCultureVideoLinks(skills, activeExperience),
@@ -1910,6 +1947,10 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     planSelectedThisTurn,
     closeCtaAcceptedThisTurn,
     reservationRequestedThisTurn,
+    requestedAvailabilityDate: consentAnswerTurn || !availabilityDay ? undefined : requestedDate,
+    depositQuestion,
+    closeAcknowledgment,
+    availabilityPending: conversationMode === 'human_pending',
     consentAcceptedThisTurn,
     followupReopenedThisTurn,
     usedEmojis,
@@ -1968,11 +2009,13 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
       repos.conversation.setLeadIntent(customerPhone, 'ready_to_book');
       enterHumanPending(repos, customerPhone);
     }
+    if (notifyAvailabilityCheck) enterHumanPending(repos, customerPhone);
     return {
       reply: fallbackText, shouldSendReply: true,
       leadScore: failureScore, usedAi: true,
-      shouldAlertOwner: failureReservationIntent || hasAnyQualificationData(dbQualification),
-      ownerAlertType: failureReservationIntent ? 'reservation_handoff' : undefined,
+      shouldAlertOwner: failureReservationIntent || notifyAvailabilityCheck || (!closeAcknowledgment && hasAnyQualificationData(dbQualification)),
+      ownerAlertType: failureReservationIntent || notifyAvailabilityCheck ? 'reservation_handoff' : undefined,
+      availabilityRequest,
       shouldSendOwnerImage: false, shouldSendGalleryImages: false, shouldSendImage: false, priceJustGiven: false,
     };
   }
@@ -1985,6 +2028,8 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     && collectedFields.nombre != null
     && collectedFields.transporte != null;
   const advanceQuestionRequired = !consentAnswerTurn
+    && !closeAcknowledgment && !notifyAvailabilityCheck
+    && !(depositQuestion && typeof safeCollected.plan === 'string' && quotedBeforeTurn && hasPublicPaymentFacts(skills))
     && !closeCtaAcceptedThisTurn
     && !reservationRequestNeedsNoQuestion
     && !isReviewPause(message)
@@ -2211,6 +2256,7 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
   const strippedReplyText = mediaMarkerParsed?.text ?? replyText;
   const mediaMarkerBlockedByOps = conversationMode === 'bridge_active'
     || !env.SEND_IMAGES_ENABLED
+    || videoOnlyRequest
     || galleryImagesRemaining <= 0
     || photoRequestForOtherSite
     || pausedPlanThisTurn;
@@ -2411,9 +2457,9 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
   // deterministic patterns miss (e.g. confirming the bot's own soft-close question).
   const llmReadyToBook = llmTurn.action === 'handoff' || llmTurn.lead.intent === 'ready_to_book';
 
-  const paymentQ = isPaymentMethodsQuestion(message);
+  const paymentQ = !depositQuestion && isPaymentMethodsQuestion(message);
   const rawAvailabilityConfirm = detectsAvailabilityConfirmRequest(message);
-  const currentCloseBlocker = consentAnswerTurn
+  const currentCloseBlocker = consentAnswerTurn || closeAcknowledgment || !!availabilityDay || depositQuestion
     || isReservationIntentNegated(message)
     || isReviewPause(message)
     || isSoftCloseMessage(message)
@@ -2442,11 +2488,11 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
   // them, but a recorded quote and confirmed date are required before a short
   // affirmation can page the owner.
   const explicitCloseCtaConsent = pricePresented && hasConfirmedDate && closeCtaAcceptedThisTurn;
-  const canEnterHumanPending = (qComplete && pricePresented && (shouldBridgeByScore || deterministicBridgeFallback))
+  const canEnterHumanPending = !closeAcknowledgment && !availabilityDay && !depositQuestion && ((qComplete && pricePresented && (shouldBridgeByScore || deterministicBridgeFallback))
       || strongAvailabilityConfirm
       || (reservationIntent && !explicitCloseCtaConfirmation && pricePresented && !hasConfirmedDate)
       || (reservationIntent && qComplete && pricePresented)
-      || explicitCloseCtaConsent;
+       || explicitCloseCtaConsent);
 
   // `hasSafetyOverride` is not re-checked here: a safety override returns pre-LLM,
   // so this path only runs for normal LLM turns.
@@ -2454,7 +2500,7 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     needsHumanEffective = true;
     finalScore = Math.max(hybrid.score, skills.salesStrategy.urgentLeadThreshold);
     repos.conversation.upsert(customerPhone, { lead_score: finalScore });
-  } else if (canEnterHumanPending && hasPublicPaymentFacts(skills)) {
+  } else if (notifyAvailabilityCheck || (canEnterHumanPending && hasPublicPaymentFacts(skills))) {
     needsHumanEffective = true;
     finalScore = Math.max(hybrid.score, skills.salesStrategy.urgentLeadThreshold);
     repos.conversation.upsert(customerPhone, { lead_score: finalScore });
@@ -2465,6 +2511,7 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
       readiness: analysis?.reservationReadiness,
       fallback: deterministicBridgeFallback,
       availabilityConfirm: strongAvailabilityConfirm,
+      specificAvailabilityCheck: notifyAvailabilityCheck,
       explicitCloseCtaConsent,
       skillsV2: true,
     }, '[BOT] reservation human_pending flagged (LLM reply kept)');
@@ -2527,11 +2574,11 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
   // rides on media.ownerImage as its caption. The webhook gives a gallery or plan card
   // priority, and sends plain text when the photo cannot carry the reply.
   // A reply carrying video links goes as plain text: a photo caption shows no link preview.
-  const videoLinkReply = videoLinks.length > 0;
+  const videoLinkReply = videoOnlyRequest || videoLinks.length > 0;
   const greetingImageTurn = greetingPhotoCandidate
     && !needsHumanEffective && !softUnsafePhrasing && !pausedPlanThisTurn && !videoLinkReply;
   const mediaReplyFailure = persistentUnmarkedPhotoPromise || persistentMissingExplicitMarker;
-  const shouldAlertOwner = needsHumanEffective || (hybrid.isHot && pricePresented) || mediaReplyFailure;
+  const shouldAlertOwner = needsHumanEffective || (!closeAcknowledgment && !availabilityDay && !depositQuestion && hybrid.isHot && pricePresented) || mediaReplyFailure;
   const ownerAlertType = mediaReplyFailure
     ? 'media_marker_unhonoured'
     : needsHumanEffective ? 'reservation_handoff' : 'hot_lead';
@@ -2584,7 +2631,7 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
   return {
     reply: strippedReplyText, shouldSendReply: true,
     leadScore: finalScore, usedAi: true,
-    shouldAlertOwner, ownerAlertType, shouldSendImage,
+    shouldAlertOwner, ownerAlertType, availabilityRequest, shouldSendImage,
     shouldSendOwnerImage: greetingImageTurn,
     shouldSendGalleryImages: requestedGalleryImageUrls.length > 0,
     requestedGalleryImages: requestedGalleryImageUrls.length > 0 ? requestedGalleryImageUrls : undefined,
@@ -2598,7 +2645,7 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     reservationReady: closeIntent && hasCoreBooking && pricePresented,
     mediaPlanId: typeof merged.plan === 'string' ? merged.plan : null,
     outboundDateAction: detectOutboundDateAction(strippedReplyText, merged),
-    bookingIntent: !!needsHumanEffective || (paymentQ && pricePresented),
+    bookingIntent: !availabilityDay && (!!needsHumanEffective || (paymentQ && pricePresented)),
     handoffCreated: false,
     leadLifecycle: needsHumanEffective ? 'human_pending' : undefined,
     suppressGenericFollowups: needsHumanEffective,

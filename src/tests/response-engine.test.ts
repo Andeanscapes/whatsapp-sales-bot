@@ -359,6 +359,24 @@ describe('processMessage', () => {
       expect(prompt).not.toContain(CHIVOR);
     });
 
+    it('does not send photos when a video-only request has no catalog links', async () => {
+      const skills = getSkills();
+      const catalog = skills.dynamicData?.experiences[getActiveExperience(skills).id];
+      if (!catalog) throw new Error('Expected fixture catalog');
+      const culture = catalog.cultureReels;
+      catalog.cultureReels = [];
+      try {
+        const { result, prompt } = await ask('573007719005', '¿Tienen videos del plan? ¿Dónde queda?',
+          'No tengo video del plan. El punto de encuentro es el parque principal. ¿Te sirve?\n[[FOTOS:mine]]', 'core_2d1n_coscuez');
+        expect(prompt).toContain('VIDEO PEDIDO SIN ENLACE');
+        expect(result.shouldSendGalleryImages).toBe(false);
+        expect(result.reply).toContain('El punto de encuentro');
+        expect(result.reply).not.toContain('[[FOTOS');
+      } finally {
+        catalog.cultureReels = culture;
+      }
+    });
+
     it('an invented Instagram post link is never sent', async () => {
       const { result } = await ask('573007719003', '¿tienen videos?', 'Mira: https://www.instagram.com/p/INVENTED99/ ¿Te gusta?');
       expect(result.reply).not.toContain('instagram.com');
@@ -465,6 +483,7 @@ describe('processMessage', () => {
       expect(String(row?.collected_date ?? '')).toMatch(/28/);
       const prompt = mockLlmComplete.mock.calls[0]?.[0].systemPrompt ?? '';
       expect(prompt).toContain('ESTADO DE TURNO: T3b');
+      expect(prompt).toContain('CIERRE T3b: acaba de elegir plan y día después de ver el precio. No recotices.');
       expect(prompt).not.toContain('QUOTE LOCK: escribe');
     });
 
