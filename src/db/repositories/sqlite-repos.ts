@@ -3,6 +3,7 @@ import type {
   ConversationRepository,
   ConversationRow,
   MetaAudienceLead,
+  MessageAfterRow,
   MessageRepository,
   OutboundMediaRepository,
   OutboundMediaRow,
@@ -826,6 +827,16 @@ export class SqliteMessageRepo implements MessageRepository {
        LIMIT 1`
     ).get(phone, whatsappMessageId);
     return row !== undefined;
+  }
+
+  listMessagesAfterMessage(phone: string, whatsappMessageId: string, limit: number): MessageAfterRow[] {
+    return this.db.prepare(
+      `SELECT later.direction, later.body, later.whatsapp_message_id, later.created_at FROM messages later
+       JOIN messages anchor ON anchor.customer_phone = later.customer_phone
+       WHERE anchor.customer_phone = ? AND anchor.whatsapp_message_id = ? AND later.id > anchor.id
+       ORDER BY later.id
+       LIMIT ?`
+    ).all(phone, whatsappMessageId, limit) as MessageAfterRow[];
   }
 
   getLastOutboundTextBody(phone: string): string | null {
