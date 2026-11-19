@@ -1,6 +1,6 @@
 {
   "id": "entry-retarget-R01-with-history",
-  "source": "EN twin of entry-retarget-R01-with-history (retargeting marker after an earlier local conversation; destination named since the second site)",
+  "source": "EN twin of entry-retarget-R01-with-history (retargeting marker after an earlier local conversation; destination named since the second site). Turn 3 seeds group + plan: replayed turns skip extraction, so without it CONTEXTO PREVIO said \"sin historial local\" next to RETORNO CON HISTORIAL (CI EN 2026-11-19).",
   "tags": ["marker", "live"],
   "lang": "en",
   "liveRuns": 2,
@@ -21,7 +21,7 @@
   "turns": [
     { "user": "Hi, I'm interested in Chivor", "mockReply": "Hi! Would you be traveling solo, as a couple, or in a group?", "replay": true, "expect": { "shouldSendReply": true } },
     { "user": "Solo", "mockReply": "Perfect. Are you after a more intense pace or a calmer one with more time on site?", "replay": true, "expect": { "shouldSendReply": true } },
-    { "user": "More intense, the PRIME", "mockReply": "Excellent, the PRIME with the 2 mines and a guided horseback ride. What date do you have in mind?", "replay": true, "expect": { "shouldSendReply": true } },
+    { "user": "More intense, the PRIME", "mockReply": "Excellent, the PRIME with the 2 mines and a guided horseback ride. What date do you have in mind?", "replay": true, "seedQualification": { "people": 1, "plan": "prime_2d1n_chivor" }, "expect": { "shouldSendReply": true } },
     { "user": "R01 hi", "mockReply": "You were traveling solo and liked the PRIME plan with the horseback ride. What's still missing for you: dates, transport, safety or budget?", "expect": { "shouldSendReply": true } }
   ]
 }

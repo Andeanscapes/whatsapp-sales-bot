@@ -1,6 +1,6 @@
 {
   "id": "entry-retarget-R01-with-history",
-  "source": "retargeting marker after an earlier local conversation; destination named since the second site (destination-first)",
+  "source": "retargeting marker after an earlier local conversation; destination named since the second site (destination-first). Turn 3 seeds group + plan: replayed turns skip extraction, so without it CONTEXTO PREVIO said \"sin historial local\" next to RETORNO CON HISTORIAL (CI EN 2026-11-19).",
   "tags": ["marker", "live"],
   "lang": "es",
   "liveRuns": 2,
@@ -21,7 +21,7 @@
   "turns": [
     { "user": "Hola, me interesa Chivor", "mockReply": "¡Hola! ¿Viajarías solo, en pareja o en grupo?", "replay": true, "expect": { "shouldSendReply": true } },
     { "user": "Solo", "mockReply": "Perfecto. ¿Buscas un ritmo más intenso o uno más calmado con más tiempo en el lugar?", "replay": true, "expect": { "shouldSendReply": true } },
-    { "user": "Más intenso, el PRIME", "mockReply": "Excelente, el PRIME con las 2 minas y cabalgata guiada. ¿Qué fecha tienes en mente?", "replay": true, "expect": { "shouldSendReply": true } },
+    { "user": "Más intenso, el PRIME", "mockReply": "Excelente, el PRIME con las 2 minas y cabalgata guiada. ¿Qué fecha tienes en mente?", "replay": true, "seedQualification": { "people": 1, "plan": "prime_2d1n_chivor" }, "expect": { "shouldSendReply": true } },
     { "user": "R01 hola", "mockReply": "Venías solo y te interesó el plan PRIME con cabalgata. ¿Qué te falta resolver: fecha, transporte, seguridad o presupuesto?", "expect": { "shouldSendReply": true } }
   ]
 }
