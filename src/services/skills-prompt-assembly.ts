@@ -918,7 +918,8 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
   if (adOpeningTurn && !returning && (!sitePending || siteQuestionDeferred) && !pausedPlan && !proactiveMode) {
     runtime.push(
       'APERTURA DE ANUNCIO: primer mensaje de un lead de anuncio y aún no conoces el grupo. El anuncio prometió que quien fundó Andean Scapes le cuenta en persona. '
-      + 'En 2 o 3 líneas y máximo 60 palabras, sin viñetas: (1) preséntate en primera persona con tu identidad de PERSONA; '
+      // 340 characters: live EN 2026-11-18 openers ran 365-401 against the 400 scenario cap.
+      + 'En 2 o 3 líneas, máximo 60 palabras y 340 caracteres, sin viñetas: (1) preséntate en primera persona con tu identidad de PERSONA; '
       + '(2) una frase de valor: parafrasea el valueHook del ENTRY_SEGMENT conservando el detalle concreto que lo distingue (cómo llega o con quién viaja); si el segmento no trae valueHook, toma ese ángulo de su diagnosisQuestion o planMatch (ruta 4x4, moto, niños); sin segmento, una imagen concreta de la mina con los guías de la región; no hace falta que sepa de esmeraldas; '
       // Facts come from catalog `sharedFacts` (SHARED_FACTS_FALLBACK until the feed sets them).
       // Clarity before price (2.5.1): the first message says what the experience is (a weekend,
