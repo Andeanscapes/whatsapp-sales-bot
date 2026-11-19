@@ -1058,6 +1058,10 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
   // still discovery — T3b would skip motive/date choice and jump to payment CTA.
   const hasConcreteDate = isConcreteDayDate(knownDate);
   const informationalCloseTurn = input.requestedAvailabilityDate !== undefined || !!(input.depositQuestion || input.closeAcknowledgment);
+  const englishBookingBeforeDay = (replyLanguage ?? lang) === 'en' && priceGiven && lockedPlanId
+    && !hasConcreteDate && !pausedPlan && !informationalCloseTurn && !priceObjectionThisTurn
+    && !closeCtaAcceptedThisTurn && !proactiveMode && hasPublicPaymentFacts(skills)
+    && /\bhow\s+(?:do|can|should)\s+(?:i|we)\s+(?:book|reserve)\b/i.test(latestCustomerMessage ?? '');
   // Date accept without price: must deliver exact total first (T3a).
   // Date accept with price: close CTA + anticipo flow (T3b).
   const priceBeforeCloseTurn = Boolean(
@@ -1112,7 +1116,8 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
           // 2.5.1: the quote now comes before the plan is chosen; when plan and date arrive together the model
           // re-quoted ("For 2 people, CORE comes to...") in ~half the live EN runs instead of closing.
           ? 'PRECIO YA ENTREGADO: no repitas el total ni $ ni COP, y no cotices otro plan, aunque el cliente elija el plan en este mismo mensaje: el total ya lo vio. No vuelvas a ofrecer fechas. Sigue la variante T3b indicada en ESTADO DE TURNO.'
-          : 'PRECIO YA ENTREGADO: no repitas $ ni COP del plan salvo que el cliente pida otra cotización. Fechas/motivo → solo fechas + 1 pregunta.',
+          : 'PRECIO YA ENTREGADO: no repitas $ ni COP del plan salvo que el cliente pida otra cotización.'
+            + (englishBookingBeforeDay ? '' : ' Fechas/motivo → solo fechas + 1 pregunta.'),
       );
       if (pauseSummaryAlreadySent && !t3bCloseTurn) {
         runtime.push('PAUSA CON RESUMEN YA ENVIADO: el plan y el precio ya están en tus mensajes anteriores. Aplica §T7 "una sola vez": valida la decisión en una frase, sin precio, sin $ ni COP y sin repetir el resumen.');
@@ -1161,6 +1166,7 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
   if (!informationalCloseTurn && !priceObjectionThisTurn && !priceBeforeCloseTurn && !closeCtaAcceptedThisTurn && (asksHowToReserve || salesPhase === 'closing')) {
     runtime.push('INTENCION DE RESERVA: el cliente preguntó cómo continuar. Aplica el turno correspondiente de whatsapp-sales.skill.md según los datos conocidos.');
   }
+  let compactEnglishQuote: string | undefined;
   if (typeof knownPeople === 'number' && !lockedPlanId && activePlans.length > 1) {
     const sitePlans = menuOrder(activePlans.filter(plan => plan.siteId === selectedSiteId));
     // The ad opener defers a price question until the group is known; once it is, the
@@ -1202,9 +1208,15 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
       // Order: the recommended overnight plan first. No deposit % here: the payment guard strips any
       // payment clause until a date is confirmed (reply-guard stripPaymentMoveWithoutDate).
       const totals = priced.map(entry => `${shortPlanName(entry.name) ?? entry.name}: ${formatMoney(entry.total, entry.currency, moneyLang)} ${entry.currency}`).join(' | ');
-      // English runs ~5% over the stated size (live EN 2026-11-18: 389-404 against the 390 cap at 380).
       const priceNoPlanLimit = lang === 'en' ? REPLY_CHAR_LIMIT.priceNoPlan - 30 : REPLY_CHAR_LIMIT.priceNoPlan;
-      runtime.push(`PRECIO PEDIDO SIN PLAN: el cliente pidió el precio y ya sabes el grupo. Un solo párrafo, máximo ${priceNoPlanLimit} caracteres. ${startPointCue(guidance.meetingPoint, arrivesOnOwn(collectedFields?.transporte))}${valueCue}${dayCue}Totales para ${groupLabel}, sin transporte: ${totals}. Tras cada total, a lo sumo media frase con su diferencia; no repitas lo que ya dijo la frase de valor. Copia esas cifras; no sumes ni inventes otras; no menciones anticipo ni porcentajes de pago todavía. ${recommendedCue}En este turno no hagas la diagnosisQuestion del ENTRY_SEGMENT ni un menú sin precios: el cliente pidió el precio. Una pregunta: con cuál seguimos.`);
+      if (lang === 'en' && !dayCue) {
+        const start = guidance.meetingPoint ? ` State that the plan starts at ${guidance.meetingPoint}, naming the town${arrivesOnOwn(collectedFields?.transporte) ? ', and that getting there is on your own' : ''}.` : '';
+        const recommendation = guidance.recommendedName && plansToQuote.some(plan => shortPlanName(plan.name) === guidance.recommendedName)
+          ? ` Label ${guidance.recommendedName} "recommended".` : '';
+        compactEnglishQuote = `PRECIO PEDIDO SIN PLAN: the customer already asked for a price and supplied their group and destination. Give all these totals now, even if the latest message only names the destination. Do not ask another discovery question. Maximum ${priceNoPlanLimit - 30} characters. First: one short sentence with logistics and one shared inclusion from CATALOGO.${start} Skip greetings and acknowledgments. Next: exact totals for ${groupLabel}: ${totals}.${recommendation} Use at most four words per plan to distinguish it. No other plans, amounts or deposits. End with one short plan-choice question.`;
+      } else {
+        runtime.push(`PRECIO PEDIDO SIN PLAN: el cliente pidió el precio y ya sabes el grupo. Un solo párrafo, máximo ${priceNoPlanLimit} caracteres. ${startPointCue(guidance.meetingPoint, arrivesOnOwn(collectedFields?.transporte))}${valueCue}${dayCue}Totales para ${groupLabel}, sin transporte: ${totals}. Tras cada total, a lo sumo media frase con su diferencia; no repitas lo que ya dijo la frase de valor. Copia esas cifras; no sumes ni inventes otras; no menciones anticipo ni porcentajes de pago todavía. ${recommendedCue}En este turno no hagas la diagnosisQuestion del ENTRY_SEGMENT ni un menú sin precios: el cliente pidió el precio. Una pregunta: con cuál seguimos.`);
+      }
     } else {
       // With the destination still open, SITIO PENDIENTE owns this turn's question. "Ask the plan"
       // here contradicted it: live 2026-11-18 (R01, 2 runs) asked esencial/completa, no destination.
@@ -1534,6 +1546,11 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
     const [date] = datesToOfferAfterQuote(skills, activeExperience, lockedPlanId, knownDate, replyCode ?? lang ?? 'es');
     if (date) runtime.push(`DUDAS RESUELTAS: responde primero la duda actual con CATALOGO. Luego haz una sola pregunta ofreciendo revisar el cupo para esta fecha publicada: ${date}. Nombra día y mes. Sin recotizar, confirmar cupo ni iniciar reserva.`);
   }
+  if (englishBookingBeforeDay) {
+    const { depositPercent, methodNames } = getPublicPaymentFactsForPlan(skills, activeExperience, lockedPlanId);
+    runtime.push(`T8 BEFORE DATE SELECTION: answer how to book first. Explain that the team checks availability and only then does a ${depositPercent}% deposit apply (method names only: ${methodNames.join(', ')}). Explain the process without asking for payment, sharing credentials, or claiming a booking. Use DATOS to ask which published departure works for this plan and month; if none is listed, ask for the preferred date for the team to check.`);
+  }
+  if (compactEnglishQuote) runtime.push(compactEnglishQuote);
   // Last so this inbound-only contract takes precedence over general close/CTA guidance.
   if (!proactiveMode && informationalCloseTurn) {
     if (input.requestedAvailabilityDate) {
