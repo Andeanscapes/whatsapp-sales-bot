@@ -670,6 +670,8 @@ export interface AssembleSystemPromptInput {
   pendingPriceQuestion?: boolean;
   /** Plans the pending price question named (2+, at the chosen site): only these are quoted. */
   requestedPlanIds?: string[];
+  /** The customer asked the price or chose a plan in this inbound: the turn owes a total. */
+  quoteRequestedThisTurn?: boolean;
   /** First reply of a new conversation that ships as the caption of the persona's photo. */
   greetingPhotoTurn?: boolean;
   /** The customer asked for a video this turn (video-links.ts). */
@@ -811,7 +813,7 @@ function arrivesOnOwn(transport: unknown): boolean {
 }
 
 export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
-   const { skills, lang, collectedFields, salesPhase, customerContext, selectedExperienceId, entryMarker, priorContext, retargetingWithHistory, entryOpeningTurn, returning, leadPain, priceGiven, latestCustomerMessage, otherQuestionThisTurn, dateSelectedThisTurn, planSelectedThisTurn, closeCtaAcceptedThisTurn, reservationRequestedThisTurn, proactiveMode, consentAskRetryInstruction, reaskAfterOptOut, consentAcceptedThisTurn, followupReopenedThisTurn, usedEmojis, galleryShown, galleryRequestThemes, galleryImagesRemaining, galleryRetryInstruction, advanceQuestionRetryInstruction, brochurePlanId, otherSitePhotoRequest, photoSiteCorrection, priceObjectionThisTurn, transportObjectionThisTurn, pauseSummaryAlreadySent, adOpeningTurn, pendingPriceQuestion, requestedPlanIds, greetingPhotoTurn, videoRequested, videoLinks, replyLanguage, languageSwitchedThisTurn, returningPriceQuestion } = input;
+   const { skills, lang, collectedFields, salesPhase, customerContext, selectedExperienceId, entryMarker, priorContext, retargetingWithHistory, entryOpeningTurn, returning, leadPain, priceGiven, latestCustomerMessage, otherQuestionThisTurn, dateSelectedThisTurn, planSelectedThisTurn, closeCtaAcceptedThisTurn, reservationRequestedThisTurn, proactiveMode, consentAskRetryInstruction, reaskAfterOptOut, consentAcceptedThisTurn, followupReopenedThisTurn, usedEmojis, galleryShown, galleryRequestThemes, galleryImagesRemaining, galleryRetryInstruction, advanceQuestionRetryInstruction, brochurePlanId, otherSitePhotoRequest, photoSiteCorrection, priceObjectionThisTurn, transportObjectionThisTurn, pauseSummaryAlreadySent, adOpeningTurn, pendingPriceQuestion, requestedPlanIds, greetingPhotoTurn, quoteRequestedThisTurn, videoRequested, videoLinks, replyLanguage, languageSwitchedThisTurn, returningPriceQuestion } = input;
 
   const personality = substituteTokens(readPrompt('seller-personality.skill.md'));
   // entry-strategy must precede cold-info-handler: the first-turn handler reads the
@@ -1192,7 +1194,9 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
       // Order: the recommended overnight plan first. No deposit % here: the payment guard strips any
       // payment clause until a date is confirmed (reply-guard stripPaymentMoveWithoutDate).
       const totals = priced.map(entry => `${shortPlanName(entry.name) ?? entry.name}: ${formatMoney(entry.total, entry.currency, moneyLang)} ${entry.currency}`).join(' | ');
-      runtime.push(`PRECIO PEDIDO SIN PLAN: el cliente pidió el precio y ya sabes el grupo. Un solo párrafo, máximo ${REPLY_CHAR_LIMIT.priceNoPlan} caracteres. ${startPointCue(guidance.meetingPoint, arrivesOnOwn(collectedFields?.transporte))}${valueCue}${dayCue}Totales para ${groupLabel}, sin transporte: ${totals}. Tras cada total, a lo sumo media frase con su diferencia; no repitas lo que ya dijo la frase de valor. Copia esas cifras; no sumes ni inventes otras; no menciones anticipo ni porcentajes de pago todavía. ${recommendedCue}En este turno no hagas la diagnosisQuestion del ENTRY_SEGMENT ni un menú sin precios: el cliente pidió el precio. Una pregunta: con cuál seguimos.`);
+      // English runs ~5% over the stated size (live EN 2026-11-18: 389-404 against the 390 cap at 380).
+      const priceNoPlanLimit = lang === 'en' ? REPLY_CHAR_LIMIT.priceNoPlan - 30 : REPLY_CHAR_LIMIT.priceNoPlan;
+      runtime.push(`PRECIO PEDIDO SIN PLAN: el cliente pidió el precio y ya sabes el grupo. Un solo párrafo, máximo ${priceNoPlanLimit} caracteres. ${startPointCue(guidance.meetingPoint, arrivesOnOwn(collectedFields?.transporte))}${valueCue}${dayCue}Totales para ${groupLabel}, sin transporte: ${totals}. Tras cada total, a lo sumo media frase con su diferencia; no repitas lo que ya dijo la frase de valor. Copia esas cifras; no sumes ni inventes otras; no menciones anticipo ni porcentajes de pago todavía. ${recommendedCue}En este turno no hagas la diagnosisQuestion del ENTRY_SEGMENT ni un menú sin precios: el cliente pidió el precio. Una pregunta: con cuál seguimos.`);
     } else {
       // With the destination still open, SITIO PENDIENTE owns this turn's question. "Ask the plan"
       // here contradicted it: live 2026-11-18 (R01, 2 runs) asked esencial/completa, no destination.
@@ -1274,7 +1278,10 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
         ? collectedFields.transporte as TransportNeed
         : undefined,
     });
-    if (quote) {
+    // A return that neither asks the price nor chooses a plan gets no total at all: with the total
+    // in the cue the model priced the return turn anyway (live ES 2026-11-18, entry-retarget-R01-with-history 47).
+    const returnWithoutPriceAsk = (!!retargetingWithHistory || !!returning) && !quoteRequestedThisTurn && !returningPriceQuestion;
+    if (quote && !returnWithoutPriceAsk) {
       const amount = quote.total ?? quote.planTotal;
       const transportNote = quote.requiresTransportConfirmation
         ? ' Transporte adicional pendiente de confirmacion; no inventes ese valor.'

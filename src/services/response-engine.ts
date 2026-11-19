@@ -1926,6 +1926,7 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     pendingPriceQuestion,
     requestedPlanIds,
     greetingPhotoTurn: greetingPhotoCandidate,
+    quoteRequestedThisTurn: isPriceQuestion(message) || planSelectedThisTurn || planChosenThisTurn,
     videoRequested,
     videoLinks,
     replyLanguage: turnLanguage.replyLanguage,

@@ -240,7 +240,10 @@ describe('skills-prompt-assembly', () => {
     const offered = /recomienda solo esta fecha publicada \(([^)]+)\)/.exec(december)?.[1] ?? '';
     expect(offered).toMatch(/^\d{1,2} de diciembre$/);
     expect(lockLine({ personas: 1, plan: 'core_2d1n_chivor' })).toContain('Para 1 persona,');
-    const retarget = /QUOTE LOCK:[^\n]*/.exec(assembleSystemPrompt({ skills: loadSkills(), lang: 'es', entryMarker: { code: 'R01', temperature: 'retargeting' }, retargetingWithHistory: true, collectedFields: { personas: 1, plan: 'prime_2d1n_chivor' } }))?.[0] ?? '';
+    const retargetLock = (quoteRequestedThisTurn: boolean): string => /QUOTE LOCK:[^\n]*/.exec(assembleSystemPrompt({ skills: loadSkills(), lang: 'es', entryMarker: { code: 'R01', temperature: 'retargeting' }, retargetingWithHistory: true, quoteRequestedThisTurn, collectedFields: { personas: 1, plan: 'prime_2d1n_chivor' } }))?.[0] ?? '';
+    // A return without a price question gets no total (live ES 2026-11-18: the model priced it anyway).
+    expect(retargetLock(false)).toBe('');
+    const retarget = retargetLock(true);
     expect(retarget).not.toContain('Sin dia elegido');
     expect(retarget).toContain('Turno de retorno: diagnostica el freno primero');
     expect(retarget).not.toContain('Este turno entrega ese total');
@@ -1111,6 +1114,8 @@ describe('skills-prompt-assembly', () => {
     expect(solo).not.toMatch(/\(anticipo/);
     expect(solo).toMatch(/no menciones anticipo/);
     expect(solo).toMatch(/Un solo párrafo, máximo 380 caracteres/);
+    const english = /PRECIO PEDIDO SIN PLAN:[^\n]*/.exec(assembleSystemPrompt({ skills: loadSkills(), lang: 'en', collectedFields: { site: 'chivor', personas: 1 }, pendingPriceQuestion: true, entryMarker: { code: 'C01', temperature: 'cold' } }))?.[0] ?? '';
+    expect(english).toMatch(/máximo 350 caracteres/);
     expect(solo).toContain('Tras cada total, a lo sumo media frase con su diferencia');
     // Named plans are quoted as asked; one missing at the site quotes nothing (never a partial comparison).
     const named = line(2, { requestedPlanIds: ['prime_2d1n_chivor', 'core_2d1n_chivor'] });
