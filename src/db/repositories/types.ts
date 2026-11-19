@@ -446,6 +446,8 @@ export interface MessageRepository {
   addMessage(msg: StoredMessage): void;
   getLastOutboundBody(phone: string): string | null;
   getLastOutboundTextBody(phone: string): string | null;
+  /** True when any outbound row to this customer contains `needle` (plain substring, no wildcards). */
+  hasOutboundContaining(phone: string, needle: string): boolean;
   /** True when we sent anything after the stored outbound with this WhatsApp id. Unknown id → false. */
   hasOutboundAfterMessage(phone: string, whatsappMessageId: string): boolean;
   getRecentMessages(phone: string, limit?: number): RecentMessage[];

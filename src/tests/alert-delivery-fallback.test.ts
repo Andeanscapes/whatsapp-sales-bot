@@ -201,6 +201,20 @@ describe('sendAlert — per-line delivery', () => {
     expect(repos.ownerAlert.wasAlertedToday(PHONE, 'reservation_handoff')).toBe(false);
   });
 
+  it('dedupes a delivered availability check by plan and departure, not by general handoff', async () => {
+    pinBridgeLine();
+    mockSendTelegram.mockResolvedValue(undefined);
+    const request = { customerPhone: PHONE, score: 95, intent: 'reservation_handoff', message: '¿Hay cupo?', date: '2027-02-20' };
+    const check = { ...request, availabilityRequest: { planId: 'core_2d1n_chivor', date: '2027-02-27' } };
+    await sendAlert(request, repos);
+    await sendAlert(check, repos);
+    await sendAlert(check, repos);
+    await sendAlert({ ...check, availabilityRequest: { ...check.availabilityRequest, date: '2027-03-06' } }, repos);
+    expect(mockSendTelegram).toHaveBeenCalledTimes(3);
+    expect(mockSendTelegram.mock.calls[1]?.[1]).toContain('core_2d1n_chivor · 2027-02-27');
+    expect(mockSendTelegram.mock.calls[2]?.[1]).toContain('core_2d1n_chivor · 2027-03-06');
+  });
+
   it('dedupes reservation_handoff within cooldown window', async () => {
     pinBridgeLine();
     mockSendTelegram.mockResolvedValue(undefined);

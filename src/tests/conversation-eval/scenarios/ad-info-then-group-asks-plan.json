@@ -2,6 +2,7 @@
   "id": "ad-info-then-group-asks-plan",
   "source": "history: 106 info+date openings; 97 pareja replies. Diagnosis-first funnel: group → diagnosis → plan recommendation. C02 diagnosis copy from entrySegments feed. Turn 3 answers BOTH diagnosis axes on purpose: `diagnosis-question-turn2` and `reflects-diagnosis-turn3` both accept either a transport question (vehiculo/traslado/ruta) or a scope one (alcance/completo/esencial), but a turn-3 reply of only \"Traslado local\" is a non-sequitur when the model picked the scope axis. On that path the diagnosis is unanswered, so §8 correctly forbids a plan and `plan-recommendation-turn3` must receive a compliant reply. Keep both axes answered so the plan is genuinely due whichever question the model asked. | 2026-10-28: C02 diagnosis is the plan-options question since cffe48c. | 2026-11-12: Coscuez on sale, so the bot asks the destination after the group (SITIO PENDIENTE) and the customer answers Chivor; later criteria moved one turn down. | 2.5.1: the C02 marker pre-selects Chivor, so the bot no longer asks the destination; the \"Chivor\" turn is removed and the criteria move back one turn; the menu lists CORE first and BASIC last (menuOrder), both orders accepted.",
   "tags": [
+    "handoff-2026-11-18",
     "opening",
     "qualification",
     "diagnosis",

@@ -1,7 +1,8 @@
 {
   "id": "duration-shared-by-two-plans",
-  "source": "EN twin of duration-shared-by-two-plans",
+  "source": "EN twin of duration-shared-by-two-plans | 2026-11-18 (first-time lead handoff): the day plan is named only when the customer asks for one day, a lower budget or every option; mentions-shorter-option inverted.",
   "tags": [
+    "handoff-2026-11-18",
     "entry",
     "live"
   ],
@@ -30,10 +31,10 @@
       "critical": true
     },
     {
-      "id": "mentions-shorter-option",
-      "rule": "reply_must_match",
+      "id": "no-unasked-day-option",
+      "rule": "reply_must_not_match",
       "patterns": [
-        "\\bBASIC\\b|day trip|same day|no overnight|one day"
+        "\\bBASIC\\b|day[- ]trip"
       ],
       "turn": 1,
       "weight": 2
@@ -73,7 +74,7 @@
   "turns": [
     {
       "user": "D04 Hi, I want to drive to the 2D/1N emerald mine plan in Chivor. Dates?",
-      "mockReply": "For 2 days and 1 night we have two plans: CORE, with one mine and a hike, and PRIME, with two mines and a horseback ride. If you'd rather skip the night, BASIC is the day trip. Published dates: November 21 and November 28. How many of you would be coming?",
+      "mockReply": "For 2 days and 1 night we have two plans: CORE, with one mine and a hike, and PRIME, with two mines and a horseback ride. Published dates: November 21 and November 28. How many of you would be coming?",
       "expect": {
         "shouldSendReply": true
       }

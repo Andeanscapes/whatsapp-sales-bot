@@ -1,0 +1,22 @@
+{
+  "id": "reservation-availability-ack",
+  "source": "Anonymized Nov 19 export: specific availability question after a quote, deposit clarification, then acknowledgment.",
+  "lang": "es",
+  "tags": ["live"],
+  "criteria": [
+    {"id":"alert-for-check","rule":"output_flag_equals","flag":"shouldAlertOwner","expected":true,"turn":2,"critical":true},
+    {"id":"check-not-booking","rule":"output_flag_equals","flag":"bookingIntent","expected":false,"turn":2,"critical":true},
+    {"id":"check-no-cta","rule":"max_question_marks","max":0,"turn":2,"critical":true},
+    {"id":"requested-departure","rule":"reply_must_match","patterns":["27 de febrero"],"turn":2,"critical":true},
+    {"id":"deposit-answered","rule":"reply_must_match","patterns":["25 ?%","(?:si|condicionad\\w* a que|una vez que|cuando).{0,70}confirm"],"turn":3,"critical":true},
+    {"id":"deposit-no-cta","rule":"max_question_marks","max":0,"turn":3,"critical":true},
+    {"id":"no-duplicate-alert","rule":"output_flag_equals","flag":"shouldAlertOwner","expected":false,"turn":4,"critical":true},
+    {"id":"no-repeated-cta","rule":"max_question_marks","max":0,"turn":4,"critical":true}
+  ],
+  "turns": [
+    {"user":"Somos una pareja y queremos el CORE en Chivor","mockReply":"El CORE para dos cuesta $950.000 COP. ¿Reviso cupo para el 20 o el 27 de febrero?","replay":true,"seedQualification":{"people":2,"plan":"core_2d1n_chivor"}},
+    {"user":"Para el 27 tiene cupos","mockReply":"El equipo debe confirmar si hay cupo para el 27 de febrero.","seedPriceGiven":true},
+    {"user":"Con cuánto se hace la reserva","mockReply":"Es el 25% del total si el equipo confirma cupo."},
+    {"user":"Entiendo","mockReply":"El cupo sigue pendiente de confirmación por el equipo."}
+  ]
+}

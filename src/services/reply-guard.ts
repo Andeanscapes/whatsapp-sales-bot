@@ -151,9 +151,10 @@ export { isPlanBrochureRequest };
 
 export function isGalleryRequest(text: string): boolean {
   const norm = normalizeText(text);
-  return /\b(foto|fotos|imagen|imagenes|im[aá]genes|photo|photos|picture|pictures)\b/i.test(norm)
-    || isPlanBrochureRequest(norm)
-    || VISUAL_REQUEST_VERB.test(norm);
+  if (/\b(foto|fotos|imagen|imagenes|im[aá]genes|photo|photos|picture|pictures)\b/i.test(norm)) return true;
+  // "muéstrame un video" asks for a video link, not photos (video-links.ts).
+  if (/\b(videos?|reels?|clips?)\b/.test(norm)) return false;
+  return isPlanBrochureRequest(norm) || VISUAL_REQUEST_VERB.test(norm);
 }
 
 /** A claim about the wrong destination, not a question about a photo's provenance. */
@@ -266,6 +267,20 @@ export function detectsAvailabilityConfirmRequest(text: string): boolean {
     || /(?:valida|validar|revisa|revisar)\s+(?:la\s+)?disponibilidad/i.test(norm)
     || /please\s+confirm\s+availability/i.test(norm)
     || /confirm\s+availability/i.test(norm);
+}
+
+/** Day-only question about a departure just offered, not acceptance of a booking. */
+export function requestedAvailabilityDay(text: string): string | null {
+  const norm = normalizeText(text);
+  return /^(?:para el )([1-9]|[12]\d|3[01]) (?:tiene[n]?|hay|queda[n]?) (?:algun )?cupos?$/.exec(norm)?.[1]
+    ?? /^(?:do you have|are there|any) (?:any )?(?:spots?|spaces?|availability)(?: left)? (?:for|on) (?:the )?([1-9]|[12]\d|3[01])(?:st|nd|rd|th)?$/.exec(norm)?.[1]
+    ?? null;
+}
+
+export function isReservationDepositQuestion(text: string): boolean {
+  const norm = normalizeText(text);
+  return /^(?:con )?cuanto (?:se hace la reserva|se reserva|hay que pagar para reservar)$/.test(norm)
+    || /^how much (?:do (?:we|i) (?:need to |have to )?pay to (?:book|reserve)|is (?:the )?deposit)$/.test(norm);
 }
 
 export function detectsOrganizerContactShare(text: string): boolean {

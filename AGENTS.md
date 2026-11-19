@@ -491,10 +491,27 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
       **The destination is the customer's choice** (owner 2026-11-12): both regions are
       presented as safe, at a similar distance and unique; an off-road interest (moto, car,
       4x4) is matched to Chivor without ruling Coscuez out; no preference → the catalog
-      `siteSelection.defaultSiteId`. That default also lends its campaign segment to the
-      opening turn, so C02/C03/C04 keep their angle while the destination is open
-      (`DESTINO SIN ELEGIR` still bans its lodging and plans). Deploy code before a catalog
+      `siteSelection.defaultSiteId`. Only a vehicle marker with a unique active-site
+      match in `vehicleEntryCodes` infers a destination. Shared codes keep the opener
+      neutral, using only shared catalog facts. Deploy code before a catalog
       that sets `defaultSiteId` or a plan `recommended` flag (strict schema).
+      **Opener, safety and quote-value facts come from catalog `sharedFacts`.** Until the
+      feed sets them, `SHARED_FACTS_FALLBACK` keeps the 2.5.1 wording byte-for-byte: a
+      cue without "fin de semana (sábado a domingo)" made the live opener offer "planes de
+      un día y de dos días" (2026-11-18). Never drop a field without putting its fact in
+      the feed; `first-turn-guard` and `shared-facts` tests pin both paths.
+      Owner sign-off 2026-11-18: the fallback wording is approved as-is, including the
+      safety answer "región tranquila; el equipo valida…" (production 2.5.1), until the
+      feed carries `sharedFacts.safetyAnswer`. Also approved in the same review: the
+      `pickup-bogota-assumed` quote cap 320 → 390 (the prompt asks 380) and
+      `release251-coscuez-switch-after-marker` banning Chivor facts on Coscuez instead of
+      the word "Chivor" (the choice question may name it). Reasons are in each `source`.
+      **A catalog field the running bot does not know stops it quoting.** The schema is
+      strict: bot 2.5.1 rejects a feed with `sharedFacts` or a site `quoteValue`, keeps its last copy with
+      `lastFetchOk=false`, and answers price/date/booking with `dynamicDataUnavailable`.
+      `dynamic:push --target prod` refuses any field in `FIELDS_NEWER_THAN_PROD_BOT`
+      (`src/scripts/lib/catalog-compat.ts`) until `--bot-deployed`. Order: deploy the bot,
+      then publish the catalog. Add every new catalog field to that list.
     - **R01 is not "returning" by itself.** The culture-video ads also bring NEW people
       with the R01 marker. QUOTE LOCK diagnoses the blocker only with real history
       (`retargetingWithHistory` or `returning`); a new R01 lead is a first contact, and
@@ -589,6 +606,27 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
     with the model answering. No fixed copy, no handoff. The clear (`clearRetiredPlan`) keeps
     mode and assignment: a team-held lead never drops back to the bot. Templates resolve the same way and
     fall back to the experience name, never to a retired plan's card.
+
+15. **Video links are request-only text, from the catalog** (owner 2026-11-18: the line
+    cannot attach large videos). Catalog `experiences.*.cultureReels` (every site) and
+    `sites.*.plans.*.reels` (that plan only) hold approved `{url, description}` Instagram
+    permalinks (schema-checked). On a video request (`isVideoRequest`; "vi el video" is how ad
+    leads open and never counts) the engine picks one culture link and the stored plan's link,
+    unseen in the chat first (`hasOutboundContaining`), random among equals, max two, never
+    another plan's. Only those reach `VIDEOS PEDIDOS`; the model writes the reply. A reply
+    carrying an Instagram post link that was neither selected nor sent before in the chat is
+    `unapproved_video_link` (curated fallback + owner alert). No attachment, no photo ledger,
+    no greeting/contextual photo on that turn, never in openers or follow-ups (the consent ask
+    already rejects any link). A video noun keeps a message out of the photo matcher.
+    New catalog fields: deploy the bot before publishing them (`catalog-compat.ts`).
+
+16. **The day plan is named only when asked for** (handoff 2026-11-18: BASIC appeared unasked
+    in 9/27 2.5.1 threads on weekend-ad traffic). `displayedPlans` keeps it out of
+    `OPCIONES DE PLAN` and `DURACION COMPARTIDA` unless the customer asked for one day, a lower
+    budget or every option, or the site sells nothing else; a bare "día" is a date, not a
+    day-trip request (`dayPlanRequested`). A price asked before the group is known is never
+    guessed: the first turn asks the group, and the group answer gets `PRECIO PEDIDO SIN PLAN`
+    (ad leads from any earlier inbound, others from this or the previous inbound).
 
 ### Multi-Agent Guardrails
 
@@ -755,11 +793,15 @@ columns from the old feature remain in place and are ignored.
   scenarios, ~$2.00-2.30 per pass with retries, measured 2026-11-12; `EVAL_MAX_COST_USD` default 3.00). Local default.
 - `npm run eval:conversations:llm-bot -- --lang en` — live LLM quality suite, English
   pack (`scenarios-en/`, one twin per Spanish scenario: 81, 64 of them `live`; writes
-  `artifacts/conversation-eval-llm-bot-en.json`). CI runs ONE live pack per PR (owner
-  2026-11-16, half the tokens): PRs into `develop` run Spanish (vs `baselines/master-llm-bot.json`),
-  PRs into `master` run English (vs `baselines/master-llm-bot-en.json`). Run the other
-  language locally when a change touches it. Refresh a baseline by copying a real
+  `artifacts/conversation-eval-llm-bot-en.json`). The paid PR gate runs the named `pr` pack from
+  `src/tests/conversation-eval/live-packs.json` (37 scenarios, shared IDs, ~130 live turns per language,
+  chosen from the 2.4.0/2.5.1 export by entry marker and topic);
+  the full pack is for release or investigation runs (`--all` or `--tag`). Paid CI runs exactly one live pack per
+  same-repository PR: Spanish into `develop` (vs `baselines/master-llm-bot.json`), English
+  into `master` (vs `baselines/master-llm-bot-en.json`). For live debugging, run affected
+  scenarios locally with `--lang <es|en> --scenario <id>`. Refresh a baseline by copying a real
   `--runs 2` artifact, never by hand-editing scores.
+  CI fails on runner errors, hard failures after retry, incomplete reports, or score regressions beyond the configured tolerances.
   A live run that hard-fails, or misses any criterion that is critical or weight >= 3,
   is re-run once (one retry per run) and only the retry is scored (`retries` in the
   report, printed by the compare step). With 44+ live scenarios, a single LLM miss

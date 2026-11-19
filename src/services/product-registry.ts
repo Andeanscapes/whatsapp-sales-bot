@@ -1,6 +1,6 @@
 import type { Skills, AndeanScapesSkill } from './skill-loader.js';
 import { PRICING_NOT_AVAILABLE, AVAILABILITY_NOT_AVAILABLE, mediaSiteKey } from './dynamic-data-service.js';
-import type { InternalPlanImage, InternalGalleryImage, InternalPaymentData, InternalEntrySegment } from './dynamic-data-service.js';
+import type { InternalPlanImage, InternalGalleryImage, InternalPaymentData, InternalEntrySegment, InternalVideoLink } from './dynamic-data-service.js';
 
 type Experience = AndeanScapesSkill['experiences'][number];
 
@@ -69,6 +69,21 @@ export function getSites(exp: ActiveExperience): Array<{ id: string; name?: stri
 
 export function getSiteSelection(exp: ActiveExperience): ActiveExperience['siteSelection'] {
   return exp.siteSelection;
+}
+
+export function getSharedFacts(exp: ActiveExperience): ActiveExperience['sharedFacts'] {
+  return exp.sharedFacts;
+}
+
+/** Emerald-culture video links valid at every active site. */
+export function getCultureVideoLinks(skills: Skills, exp: ActiveExperience): InternalVideoLink[] {
+  return skills.dynamicData?.experiences[exp.id]?.cultureReels ?? [];
+}
+
+/** Video links of one active plan; paused or retired plans have none. */
+export function getPlanVideoLinks(skills: Skills, exp: ActiveExperience, planId: string | null | undefined): InternalVideoLink[] {
+  if (!planId || isPlanPaused(exp, planId)) return [];
+  return skills.dynamicData?.experiences[exp.id]?.plans?.find(plan => plan.id === planId)?.reels ?? [];
 }
 
 /**

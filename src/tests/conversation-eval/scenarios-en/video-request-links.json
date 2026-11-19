@@ -1,0 +1,88 @@
+{
+  "id": "video-request-links",
+  "source": "EN twin of video-request-links (owner direction 2026-11-18: the CRM/Meta line blocks large video attachments, so a video request gets approved Instagram links as text in the same reply, each under a reason to watch, with no permission question; a location question in the same message is answered too).",
+  "tags": [
+    "media",
+    "live"
+  ],
+  "lang": "en",
+  "liveRuns": 1,
+  "minLiveScore": 85,
+  "seedSystem": {
+    "reopenPausedSites": true
+  },
+  "seedConversation": {
+    "phase": "value",
+    "qualification": {
+      "people": 2,
+      "plan": "prime_2d1n_chivor"
+    }
+  },
+  "criteria": [
+    {
+      "id": "culture-link",
+      "rule": "reply_must_match",
+      "patterns": [
+        "instagram\\.com/reels?/DeCSQOhRmlT"
+      ],
+      "turn": 2,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "plan-link",
+      "rule": "reply_must_match",
+      "patterns": [
+        "instagram\\.com/p/DTNu3O4Efj4"
+      ],
+      "turn": 2,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "location-answered",
+      "rule": "reply_must_match",
+      "patterns": [
+        "Boyac[aá]|Tenza Valley|Valle de Tenza|main square|Chivor town"
+      ],
+      "turn": 2,
+      "weight": 2
+    },
+    {
+      "id": "no-permission-ask",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "(?:shall|should|can|may) I (?:send|share)|want me to (?:send|share)"
+      ],
+      "turn": 2,
+      "weight": 2
+    },
+    {
+      "id": "no-media-attachment",
+      "rule": "output_flag_equals",
+      "flag": "shouldSendGalleryImages",
+      "expected": false,
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    }
+  ],
+  "turns": [
+    {
+      "user": "Hi, there are 2 of us and we're interested in PRIME in Chivor",
+      "mockReply": "Great! PRIME is two guided mines and a horseback ride to the second one, with a night at Hacienda El Recuerdo. Do you have a date in mind?",
+      "replay": true,
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Do you have videos of the plan? And where exactly is it?",
+      "mockReply": "It's in Chivor, in eastern Boyacá (Tenza Valley); the plan starts at the town's main square. I can't attach large videos here, so here are two on Instagram.\nWhy emerald culture matters to the people of the region:\nhttps://www.instagram.com/reels/DeCSQOhRmlT/\nWhat the Chivor experience is like, with a night at Hacienda El Recuerdo; PRIME adds two mines and horseback riding:\nhttps://www.instagram.com/p/DTNu3O4Efj4/\nWould you like me to check availability for a date?",
+      "expect": {
+        "shouldSendReply": true,
+        "shouldSendGalleryImages": false
+      }
+    }
+  ]
+}

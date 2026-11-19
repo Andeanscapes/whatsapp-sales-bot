@@ -2,7 +2,7 @@
  * Sync the bot's catalog JSON with the R2 bucket.
  *
  *   npm run dynamic:pull -- --target dev|prod [--force]
- *   npm run dynamic:push -- --target dev|prod [--dry-run] [--force] [--confirm]
+ *   npm run dynamic:push -- --target dev|prod [--dry-run] [--force] [--confirm] [--bot-deployed]
  *
  * Targets:
  *   dev   scripts/bot-dynamic-dev.json  -> whatsapp_bot/bot-dynamic-dev.json
@@ -16,6 +16,9 @@
  * was last synced from. A local edit with an unchanged live file pushes; a live
  * change with an unedited local file pulls; both changed is a conflict. `--force`
  * overrides the classification.
+ *
+ * A catalog field an older bot rejects (`FIELDS_NEWER_THAN_PROD_BOT`) blocks a prod
+ * push until `--bot-deployed` confirms the bot that knows it is live.
  *
  * Prod push requires `--confirm` and refuses placeholder photos (a site photo
  * byte-identical to another site's). R2 object versioning is off, so the backup in
@@ -45,12 +48,14 @@ import { checkCrossSiteDuplicates, describeCrossSiteDuplicates } from './lib/med
 import { assertDynamicCatalogReady, dynamicDataSchema } from '../services/dynamic-data-schema.js';
 import { requireMatchingPublishedMedia } from './lib/published-media.js';
 import { savePulledCatalog } from './lib/pulled-catalog.js';
+import { findFieldsNewerThanProdBot } from './lib/catalog-compat.js';
 
 const argv = process.argv.slice(2);
 const command = argv[0];
 const dryRun = argv.includes('--dry-run');
 const force = argv.includes('--force');
 const confirmed = argv.includes('--confirm');
+const botDeployed = argv.includes('--bot-deployed');
 
 function fail(message: string): never {
   console.error(`[dynamic:${command ?? '?'}] ${message}`);
@@ -186,6 +191,24 @@ function requireNoPlaceholders(json: unknown): void {
   }
 }
 
+/**
+ * The running bot must know every catalog field, or it rejects the whole feed and stops
+ * quoting. Prod refuses unless `--bot-deployed` confirms the new bot is live; dev warns.
+ */
+function requireFieldsKnownToRunningBot(target: CatalogTarget, json: unknown): void {
+  const newer = findFieldsNewerThanProdBot(json);
+  if (newer.length === 0) return;
+  const list = newer.map(entry => `  - ${entry}`).join('\n');
+  if (target === 'prod' && !botDeployed) {
+    fail(
+      `the catalog has fields the current production bot rejects:\n${list}\n` +
+        'An older bot would stop quoting (dynamicDataUnavailable). Deploy the bot first, then rerun ' +
+        'with --bot-deployed. Nothing was uploaded.',
+    );
+  }
+  console.warn(`[dynamic:push] fields an older bot would reject (make sure the ${target} bot is updated):\n${list}`);
+}
+
 function upload(key: string, location: string): void {
   // Never resolve a missing binary from the registry: this runs with R2 credentials loaded.
   execFileSync(
@@ -237,6 +260,7 @@ async function pushCommand(target: CatalogTarget): Promise<void> {
     return;
   }
 
+  requireFieldsKnownToRunningBot(target, json);
   if (target === 'prod') requireNoPlaceholders(json);
   await requirePublishedMedia(json);
   if (target === 'prod') await requireMatchingPublishedMedia(json);
@@ -268,7 +292,7 @@ async function pushCommand(target: CatalogTarget): Promise<void> {
 async function main(): Promise<void> {
   bucketName();
   if (command !== 'pull' && command !== 'push') {
-    fail('usage: dynamic-sync.ts <pull|push> --target dev|prod [--dry-run] [--force] [--confirm]');
+    fail('usage: dynamic-sync.ts <pull|push> --target dev|prod [--dry-run] [--force] [--confirm] [--bot-deployed]');
   }
   const target = parseTarget();
   if (command === 'pull') await pullCommand(target);

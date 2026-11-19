@@ -1,7 +1,8 @@
 {
   "id": "group-then-plan-quote",
-  "source": "couple → all available Chivor options → plan → quote; three-option presentation supersedes the old binary diagnosis | 2026-11-12: Coscuez on sale, so the bot asks the destination after the group (SITIO PENDIENTE) and the customer answers Chivor; later criteria moved one turn down.",
+  "source": "couple → all available Chivor options → plan → quote; three-option presentation supersedes the old binary diagnosis | 2026-11-12: Coscuez on sale, so the bot asks the destination after the group (SITIO PENDIENTE) and the customer answers Chivor; later criteria moved one turn down. | 2026-11-18 (first-time lead handoff): the day plan is named only when the customer asks for one day, a lower budget or every option.",
   "tags": [
+    "handoff-2026-11-18",
     "qualification",
     "live"
   ],
@@ -18,13 +19,21 @@
       "id": "all-options-after-group",
       "rule": "reply_must_match",
       "patterns": [
-        "BASIC",
         "CORE",
         "PRIME"
       ],
       "turn": 2,
       "weight": 2,
       "critical": true
+    },
+    {
+      "id": "no-unasked-day-option",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "\\bBASIC\\b|pasad[ií]a"
+      ],
+      "turn": 2,
+      "weight": 2
     },
     {
       "id": "no-intensity-framing",
@@ -109,7 +118,7 @@
     },
     {
       "user": "Chivor",
-      "mockReply": "Tenemos BASIC pasadía sin noche, CORE con una mina y noche, y PRIME con dos minas y cabalgata. ¿Cuál les encaja más?",
+      "mockReply": "Tenemos CORE con una mina y noche, y PRIME con dos minas y cabalgata. ¿Cuál les encaja más?",
       "expect": {
         "shouldSendReply": true
       },
