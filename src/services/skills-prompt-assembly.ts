@@ -1554,12 +1554,12 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
   // Last so this inbound-only contract takes precedence over general close/CTA guidance.
   if (!proactiveMode && informationalCloseTurn) {
     if (input.requestedAvailabilityDate) {
-      runtime.push(`CONSULTA DE CUPO: fecha solicitada ${input.requestedAvailabilityDate}. No es una fecha elegida ni una reserva. Ignora T3b. En una frase, nombra el día y el mes en el idioma del cliente (no solo el número del día) y aclara que el cupo está por confirmar. Sin pregunta, anticipo, CTA ni afirmar que alguien ya lo está revisando.`);
+      runtime.push(`CONSULTA DE CUPO: fecha solicitada ${input.requestedAvailabilityDate}. No es una fecha elegida ni una reserva. Ignora T3b. En una frase, nombra el día y el mes en el idioma del cliente (no solo el número del día) y aclara que el cupo está por confirmar. Este turno termina con punto. Sin pregunta, anticipo, CTA, ofrecer revisarlo ni afirmar que alguien ya lo está revisando.`);
     } else if (input.requestedAvailabilityDate === null) {
       runtime.push('CONSULTA DE CUPO SIN RESOLVER: no asumas fecha ni digas que ya se revisa. Pide el dato que falte para identificar la salida. No inicies reserva.');
     } else if (input.depositQuestion) {
       runtime.push(lockedPlanId && priceGiven && !pausedPlan && hasPublicPaymentFacts(skills)
-        ? `CONSULTA DE ANTICIPO: responde solo con el ${planDepositPercent}% del total y aclara que aplica únicamente si el equipo confirma el cupo. No uses las palabras anticipo, abono, depósito, deposit ni down payment; el cliente ya sabe a qué se refiere el porcentaje. Sin monto en dinero, métodos, pregunta ni solicitud de pago.`
+        ? `CONSULTA DE ANTICIPO: responde solo con el ${planDepositPercent}% del total y aclara que aplica únicamente si el equipo confirma el cupo. No uses las palabras anticipo, abono, depósito, deposit ni down payment; el cliente ya sabe a qué se refiere el porcentaje. Este turno termina con punto. Sin monto en dinero, métodos, pregunta, ofrecer revisar el cupo ni solicitud de pago.`
         : 'CONSULTA DE ANTICIPO: explica que se paga solo tras confirmar el cupo y pide el dato pendiente. No inventes montos ni porcentajes.');
     } else {
       runtime.push(`ACUSE DE CIERRE: este turno termina con punto. Una sola frase que ${input.availabilityPending ? 'aclare que el cupo sigue pendiente de confirmación por el equipo' : 'aclare el paso pendiente sin afirmar que el equipo ya lo está revisando'}. Quedan anuladas las instrucciones anteriores de formular preguntas o avanzar la venta. Sin pregunta, CTA, anticipo ni reserva.`);
