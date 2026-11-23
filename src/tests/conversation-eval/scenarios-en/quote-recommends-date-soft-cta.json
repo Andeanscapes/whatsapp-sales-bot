@@ -25,7 +25,7 @@
       "id": "recommends-published-date",
       "rule": "reply_must_match",
       "patterns": [
-        "november 21|november 28|december 5|nov(?:ember)? |december"
+        "november 21|november 28|december 5|nov(?:ember)? |december|january"
       ],
       "turn": 1,
       "weight": 3,
@@ -79,7 +79,7 @@
   "turns": [
     {
       "user": "Which date do you recommend for the CORE?",
-      "mockReply": "For 2 people, CORE has published departures on November 21 and November 28. Want me to check the spot for November 21?",
+      "mockReply": "For 2 people, CORE has published departures on January 9 and January 16. Want me to check the spot for January 9?",
       "expect": {
         "shouldSendReply": true
       }
