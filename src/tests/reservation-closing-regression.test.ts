@@ -131,7 +131,7 @@ describe('reservation closing regression', () => {
       expect(result.availabilityRequest).toEqual({ planId: 'core_2d1n_chivor', date: `${year}-11-28` });
       expect(repos.conversation.getByPhone(phone)?.collected_date).toBeNull();
       expect(repos.conversation.getMode(phone)).toBe('human_pending');
-      expect(mockComplete.mock.lastCall?.[0].systemPrompt).toContain('CONSULTA DE CUPO:');
+      expect(mockComplete.mock.lastCall?.[0].systemPrompt).toMatch(/CONSULTA DE CUPO:.*termina con punto.*ofrecer revisarlo/);
       repos.conversation.setSelectedDate(phone, `${year}-11-21`);
       repos.conversation.upsert(phone, { collected_name: 'Juan', collected_transport_need: 'own', lead_score: 99 });
       repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: quote, created_at: new Date().toISOString() });
@@ -144,7 +144,7 @@ describe('reservation closing regression', () => {
       const depositReply = await turn(deposit, answer);
       expect(depositReply.reply).toContain('25%');
       expect(depositReply.shouldAlertOwner).toBe(false);
-      expect(mockComplete.mock.lastCall?.[0].systemPrompt).toContain('CONSULTA DE ANTICIPO:');
+      expect(mockComplete.mock.lastCall?.[0].systemPrompt).toMatch(/CONSULTA DE ANTICIPO:.*termina con punto.*ofrecer revisar el cupo/);
       for (const message of [ack, '???']) {
         const calls = mockComplete.mock.calls.length;
         const result = await turn(message, 'El cupo sigue pendiente de confirmación.');

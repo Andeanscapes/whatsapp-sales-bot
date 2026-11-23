@@ -101,7 +101,7 @@
     },
     {
       "user": "Y el 4x4 local sale desde el pueblo?",
-      "mockReply": "Sí, el 4x4 local sube desde Chivor pueblo hasta la mina, ya incluido en el plan. ¿Revisamos el cupo del 21 de noviembre?",
+      "mockReply": "Sí, el 4x4 local sube desde Chivor pueblo hasta la mina, ya incluido en el plan. ¿Revisamos el cupo del 9 de enero?",
       "expect": {
         "shouldSendReply": true
       }
