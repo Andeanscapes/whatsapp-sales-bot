@@ -245,7 +245,7 @@ Links are the engine's selection from catalog `cultureReels` / plan `reels`; wit
 ### PRECIO PEDIDO SIN PLAN (runtime, price asked before a plan is chosen, 2026-11-11)
 
 ```
-PRECIO PEDIDO SIN PLAN: … Un solo párrafo, máximo 340 caracteres. [PUNTO DE INICIO: inicia y termina en {meetingPoint}; llegar es por cuenta del cliente.] [Menciona primero, sin precio: {día sin noche}, sin noche.] Totales para {N}, sin transporte: {plan}: {total} | … [Obligatorio: escribe la palabra "recomendado|recommended" junto a {plan con recommended: true}.] Una pregunta: con cuál seguimos.
+PRECIO PEDIDO SIN PLAN: … Un solo párrafo, máximo 340 caracteres. [PUNTO DE INICIO: inicia y termina en {meetingPoint}; llegar es por cuenta del cliente.] [Menciona primero, sin precio: {día sin noche}, sin noche.] Totales para {N}, sin transporte: {plan}: {total} | … [Obligatorio: escribe la palabra "recomendado|recommended" junto a {plan con recommended: true}.] Una sola pregunta que ayude a elegir por lo que busca (plan que encaja con lo que ya dijo, o qué diferencia le importa más); nunca un "¿con cuál seguimos?" genérico.
 ```
 
 The day plan is named without a total (`quotablePlans` still keeps it out of the totals).

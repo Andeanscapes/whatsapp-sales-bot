@@ -1,0 +1,75 @@
+{
+  "id": "price-compare-helps-choose",
+  "source": "Export 2026-11-23 (2.5.2): 3/11 comparison quotes ending with the generic \"¿Con cuál seguimos?\" got a reply within 24 h vs 4/8 with other closes (small samples; export 2026-11-02 saw 8/13 on an older version). Change: after the totals the close helps the customer choose by what they want (what matters most among the quoted differences), instead of a bare plan-choice question. Totals, single question and no-pressure rules unchanged. Not in the pr pack: run it alone with --scenario.",
+  "lang": "es",
+  "tags": [
+    "live"
+  ],
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "seedConversation": {
+    "phase": "discovery",
+    "qualification": {
+      "people": 2
+    }
+  },
+  "seedQualification": {
+    "people": 2
+  },
+  "criteria": [
+    {
+      "id": "both-totals",
+      "rule": "reply_must_match",
+      "patterns": [
+        "950[.,]000[\\s\\S]{0,200}1[.,]700[.,]000|1[.,]700[.,]000[\\s\\S]{0,200}950[.,]000"
+      ],
+      "turn": 2,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "no-generic-choice-close",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "con\\s+cu[aá]l\\s+(?:seguimos|vamos|nos\\s+quedamos)\\s*\\?"
+      ],
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "no-links-or-pressure",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "instagram|https?://|wa\\.me|[úu]ltimos? cupos|reserva ya|se va a acabar"
+      ],
+      "weight": 2,
+      "critical": true,
+      "turn": 2
+    }
+  ],
+  "turns": [
+    {
+      "user": "Hola, cuánto vale para 2 personas? Me interesan las opciones con noche",
+      "mockReply": "En Colombia hay dos regiones esmeralderas y operamos en las dos: Chivor, en el oriente, con noche en hacienda, y Coscuez, en el occidente, con hotel rural en Borbur. ¿A cuál les gustaría ir?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Chivor",
+      "mockReply": "Chivor empieza y termina en el parque principal; llegar es por cuenta de ustedes, y desde ahí van la noche en la hacienda, las comidas y la mina con guía. Para 2 personas, CORE recomendado queda en *$950.000 COP* y PRIME en *$1.700.000 COP*, con dos minas y cabalgata. ¿Qué les pesa más: una mina con calma o vivirlo todo con la cabalgata?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 {
   "name": "Andean Scapes golden conversation regression pack",
   "version": "2026-11-12-humanness-language-switch-returning-two-destinations+release-2.5.1-marker-destination",
-  "totalTests": 94,
+  "totalTests": 95,
   "scenarioIds": [
     "ad-info-pareja-core-quote",
     "ad-info-then-group-asks-plan",
@@ -62,6 +62,7 @@
     "plan-selection-gallery",
     "plan-switch-brochure",
     "price-asked-first",
+    "price-compare-helps-choose",
     "price-objection-downsell-coscuez",
     "price-objection-no-discount",
     "price-three-options-budget",

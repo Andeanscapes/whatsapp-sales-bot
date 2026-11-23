@@ -1,0 +1,75 @@
+{
+  "id": "price-compare-helps-choose",
+  "source": "EN twin of price-compare-helps-choose. Export 2026-11-23 (2.5.2): comparison quotes ending with a generic plan-choice question got fewer 24 h replies (small samples). The close now helps the customer choose by what matters to them. Not in the pr pack: run it alone with --scenario.",
+  "lang": "en",
+  "tags": [
+    "live"
+  ],
+  "liveRuns": 2,
+  "minLiveScore": 80,
+  "seedConversation": {
+    "phase": "discovery",
+    "qualification": {
+      "people": 2
+    }
+  },
+  "seedQualification": {
+    "people": 2
+  },
+  "criteria": [
+    {
+      "id": "both-totals",
+      "rule": "reply_must_match",
+      "patterns": [
+        "950[.,]000[\\s\\S]{0,200}1[.,]700[.,]000|1[.,]700[.,]000[\\s\\S]{0,200}950[.,]000"
+      ],
+      "turn": 2,
+      "weight": 3,
+      "critical": true
+    },
+    {
+      "id": "one-question",
+      "rule": "max_question_marks",
+      "max": 1,
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "no-generic-choice-close",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "which\\s+(?:one|plan)\\s+(?:shall|should|do|would)\\s+(?:we|you)\\s+(?:go\\s+with|pick|choose)\\s*\\?|which\\s+one\\s+(?:works|sounds)\\s+(?:best|better)\\s*\\?"
+      ],
+      "turn": 2,
+      "weight": 2,
+      "critical": true
+    },
+    {
+      "id": "no-links-or-pressure",
+      "rule": "reply_must_not_match",
+      "patterns": [
+        "instagram|https?://|wa\\.me|last (?:few )?spots?|book (?:it )?now|selling out"
+      ],
+      "weight": 2,
+      "critical": true,
+      "turn": 2
+    }
+  ],
+  "turns": [
+    {
+      "user": "Hi, how much is it for 2 people? We are interested in the options with an overnight stay",
+      "mockReply": "Colombia has two emerald regions and we operate in both: Chivor, in the east, with a night at the hacienda, and Coscuez, in the west, with a rural hotel in Borbur. Which one would you like to visit?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    },
+    {
+      "user": "Chivor",
+      "mockReply": "Chivor starts and ends at the town's main park; getting there is on your own, and from there the night at the hacienda, meals and the guided mine are covered. For 2 people, CORE, recommended, comes to *$950,000 COP* and PRIME to *$1,700,000 COP*, with two mines and horseback riding. What matters more to you: one mine at an easy pace, or living it all with the ride?",
+      "expect": {
+        "shouldSendReply": true
+      }
+    }
+  ]
+}
