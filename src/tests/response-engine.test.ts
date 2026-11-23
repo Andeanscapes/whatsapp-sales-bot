@@ -503,7 +503,7 @@ describe('processMessage', () => {
       const phone = '573007710953';
       repos.conversation.upsert(phone, { language: 'es', collected_people: 2, collected_plan: 'core_2d1n_chivor', price_given_at: new Date().toISOString() });
       repos.message.addMessage({ customer_phone: phone, direction: 'inbound', message_type: 'text', body: 'CORE', created_at: new Date(Date.now() - 120_000).toISOString() });
-      repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: 'Para 2 personas, el plan queda en $950.000 COP. ¿Revisamos cupo para el 21 o el 28 de noviembre?', created_at: new Date(Date.now() - 60_000).toISOString() });
+      repos.message.addMessage({ customer_phone: phone, direction: 'outbound', message_type: 'text', body: 'Para 2 personas, el plan queda en $950.000 COP. ¿Revisamos cupo para el 9 o el 16 de enero?', created_at: new Date(Date.now() - 60_000).toISOString() });
       mockLlmComplete.mockReset();
       mockLlmComplete.mockResolvedValueOnce(fromOld({ response: { reply: '¿Cuál de las dos fechas les sirve?' } }));
       vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
@@ -1828,7 +1828,9 @@ describe('processMessage', () => {
     try {
       vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
       vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
-      const phone = '573001112308';
+      // Own phone: the test above shares none of its history. Its real-clock rows sort after
+      // these fake-clock rows once the real date passes the pinned one.
+      const phone = '573001112318';
       const at = (secondsAgo: number) => new Date(Date.now() - secondsAgo * 1000).toISOString();
       repos.conversation.upsert(phone, {
         collected_people: 2,
@@ -1845,7 +1847,9 @@ describe('processMessage', () => {
 
       const runtime = mockLlmComplete.mock.calls[0]?.[0].systemPrompt.split('\nRUNTIME:\n').at(-1);
       expect(runtime).toBeDefined();
-      if (expectedCue) expect(runtime).toMatch(/DUDAS RESUELTAS:.*21 de noviembre/);
+      // The cue names the first published date still ahead of the real clock: the CI catalog
+      // drops past dates when it loads, before the fake timer above applies.
+      if (expectedCue) expect(runtime).toMatch(/DUDAS RESUELTAS:.*\b\d{1,2} de [a-záéíóú]+/);
       else expect(runtime).not.toContain('DUDAS RESUELTAS:');
     } finally {
       vi.useRealTimers();

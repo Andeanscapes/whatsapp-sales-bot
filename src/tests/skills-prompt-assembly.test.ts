@@ -1116,7 +1116,8 @@ describe('skills-prompt-assembly', () => {
     expect(solo).toMatch(/Un solo párrafo, máximo 380 caracteres/);
     const english = /PRECIO PEDIDO SIN PLAN:[^\n]*/.exec(assembleSystemPrompt({ skills: loadSkills(), lang: 'en', collectedFields: { site: 'chivor', personas: 1 }, pendingPriceQuestion: true, entryMarker: { code: 'C01', temperature: 'cold' } }))?.[0] ?? '';
     expect(english).toMatch(/Give all these totals now.*Maximum 320 characters/);
-    expect(solo).toContain('Tras cada total, a lo sumo media frase con su diferencia');
+    expect(solo).toContain('Tras cada total, a lo sumo cuatro palabras con su diferencia');
+    expect(solo).toContain('Esa pregunta va en máximo 8 palabras, sin repetir las diferencias');
     // Named plans are quoted as asked; one missing at the site quotes nothing (never a partial comparison).
     const named = line(2, { requestedPlanIds: ['prime_2d1n_chivor', 'core_2d1n_chivor'] });
     expect(named).toMatch(/PRIME: \$1\.700\.000 COP \| CORE: \$950\.000 COP\./);

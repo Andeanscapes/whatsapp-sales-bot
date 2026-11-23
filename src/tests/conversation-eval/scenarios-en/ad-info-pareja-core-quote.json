@@ -225,7 +225,7 @@
     },
     {
       "user": "CORE",
-      "mockReply": "It is not an afternoon plan: it is a 2-day adventure with everything handled from Chivor town (4x4, guide, hacienda, meals); getting there is on you. For 2 people, the plan comes to $950,000 COP, about $475,000 per person. Shall I check space for November 21?",
+      "mockReply": "It is not an afternoon plan: it is a 2-day adventure with everything handled from Chivor town (4x4, guide, hacienda, meals); getting there is on you. For 2 people, the plan comes to $950,000 COP, about $475,000 per person. Shall I check space for January 9?",
       "expect": {
         "shouldSendReply": true
       },

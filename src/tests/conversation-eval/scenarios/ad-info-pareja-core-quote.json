@@ -226,7 +226,7 @@
     },
     {
       "user": "CORE",
-      "mockReply": "No es un plan de una tarde: es una aventura de 2 días con todo resuelto desde el pueblo de Chivor (4x4, guía, hacienda, comidas); llegar es por su cuenta. Para 2 personas, el plan queda en $950.000 COP, unos $475.000 por persona. ¿Les reviso cupo para el 21 de noviembre?",
+      "mockReply": "No es un plan de una tarde: es una aventura de 2 días con todo resuelto desde el pueblo de Chivor (4x4, guía, hacienda, comidas); llegar es por su cuenta. Para 2 personas, el plan queda en $950.000 COP, unos $475.000 por persona. ¿Les reviso cupo para el 9 de enero?",
       "expect": {
         "shouldSendReply": true
       },
