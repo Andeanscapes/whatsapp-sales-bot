@@ -234,6 +234,26 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
       decides consent. Live 2026-10-14 a "si" to "¿Quieren que iniciemos la reserva?"
       was recorded as marketing consent, froze the score and paged no one. Webhook and
       `consentAnswerTurn` must use the same predicate. Unknown ask id keeps the old rule.
+      **A greeting is not a move-on.** A greeting-only inbound (`isGreetingOnly`:
+      "Buenas tardes", "Muy buenos días") never defers the pending ask, and our reply
+      to it keeps the ask open only when it asks nothing new or repeats the permission
+      question (`isAskSupersededBy`). A reply asking a new sales question ("¿Les cuento
+      el PRIME?") owns the next "si", like any other newer question. Live 2026-11-09/11/17, "Buenas tardes" then "si
+      claro" lost consent three times: the greeting reset the ask to `unasked`, the yes
+      was never read, a second ask stayed pending forever, and no template ever went.
+      "Yo te escribo" / "te aviso" (the customer will initiate contact) is never a yes.
+      **Lost yeses are recovered once, by an operator-run backfill, never at startup.**
+      `npm run followup:backfill-consent` (in the container:
+      `node dist/scripts/backfill-followup-consent.js`) replays every reached consent ask
+      with today's rules (`isAskSupersededBy` is shared with the webhook) and lists the
+      customers whose latest decisive answer is a yes but whose subscription is not
+      `active`. Dry run by default; `--apply` re-activates them and appends a
+      `backfill_2026_09` ledger row (actor `backfill-2026-11`; the source value is
+      shared with the September backfill, the actor tells them apart). It never sends: the
+      scheduler does, through every normal guard. Opted-out, revoked, declined, booked,
+      handed-off and `not_interested` leads are listed and skipped, and so is a yes
+      followed by a stop request (`last_opt_out_at`) or with any customer decline on
+      record (the send predicate would still read that decline).
       `consentAcceptedThisTurn` tells the model the "sí" is permission, not a booking
       confirmation.
     - **A bare leading "no" is not a refusal.** "no tengo fecha", "no todavía",

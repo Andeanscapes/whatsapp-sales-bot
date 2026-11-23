@@ -442,6 +442,13 @@ export interface FollowupEventRepository {
 }
 
 
+export interface MessageAfterRow {
+  direction: 'inbound' | 'outbound';
+  body: string | null;
+  whatsapp_message_id: string | null;
+  created_at: string;
+}
+
 export interface MessageRepository {
   addMessage(msg: StoredMessage): void;
   getLastOutboundBody(phone: string): string | null;
@@ -450,6 +457,8 @@ export interface MessageRepository {
   hasOutboundContaining(phone: string, needle: string): boolean;
   /** True when we sent anything after the stored outbound with this WhatsApp id. Unknown id → false. */
   hasOutboundAfterMessage(phone: string, whatsappMessageId: string): boolean;
+  /** Messages stored after the one with this WhatsApp id, oldest first. Unknown id → []. */
+  listMessagesAfterMessage(phone: string, whatsappMessageId: string, limit: number): MessageAfterRow[];
   getRecentMessages(phone: string, limit?: number): RecentMessage[];
   getLastInboundBodies(phone: string, limit?: number): { body: string | null }[];
   getLastInboundBody(phone: string): string | null;

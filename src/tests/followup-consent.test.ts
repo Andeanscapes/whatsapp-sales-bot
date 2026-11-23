@@ -6,6 +6,8 @@ import {
   classifyPendingConsentReply,
   consentCycleKey,
   isDuplicateConsentEcho,
+  isAskSupersededBy,
+  isGreetingOnly,
   recurringCycleKey,
   validateConsentAsk,
 } from '../services/followup-consent.js';
@@ -326,6 +328,47 @@ describe('classifyConsentReply', () => {
     ])('keeps the production reply %s as ambiguous (not a bare yes/no)', text => {
       expect(classifyConsentReply(text)).toBe('ambiguous');
     });
+  });
+
+  // Export 2026-11-18: real yeses that were left `pending`, so no template ever came.
+  describe('production consent replies (2026-11)', () => {
+    it.each([
+      'Si claro no hay problema',
+      'Si x favor',
+      'Muy buenos días, sí claro',
+      'Hola qué tal, si por favor',
+      'yes, no problem',
+      'Good morning, yes please',
+    ])('recognises the affirmation %s', text => {
+      expect(classifyConsentReply(text)).toBe('affirm');
+    });
+
+    // The customer says they will make the next contact: not permission for us to write.
+    it.each([
+      'Claro yo te escribo',
+      'Si, te aviso',
+      'Listo, le confirmo',
+      "Sure, I'll text you",
+      'ok I will let you know',
+    ])('keeps "%s" ambiguous', text => {
+      expect(classifyConsentReply(text)).toBe('ambiguous');
+      expect(classifyPendingConsentReply(text, true)).toBe('ambiguous');
+    });
+
+    it.each(['Buenas tardes', 'Muy buenos días', 'Hola qué tal', 'Hola, buen día!', 'Good morning', 'hi'])(
+      'treats "%s" as a greeting only',
+      text => expect(isGreetingOnly(text)).toBe(true),
+    );
+
+    // "¿qué tal si…?" proposes something; pinned so the greeting strip never turns it into a yes.
+    it('keeps "que tal si me escriben en diciembre" ambiguous', () => {
+      expect(classifyConsentReply('que tal si me escriben en diciembre')).toBe('ambiguous');
+    });
+
+    it.each(['Gracias', 'Si', 'Hola, cuánto vale?', 'Buenas tardes, somos 2', ''])(
+      'does not treat "%s" as a greeting only',
+      text => expect(isGreetingOnly(text)).toBe(false),
+    );
   });
 });
 
@@ -763,5 +806,40 @@ describe('classifyPendingConsentReply', () => {
 
   it.each(['si', 'no gracias', 'si, escribeme'])('the latest ask keeps the original classification: %s', text => {
     expect(classifyPendingConsentReply(text, false)).toBe(classifyConsentReply(text));
+  });
+});
+
+describe('isAskSupersededBy', () => {
+  const inbound = (body: string) => ({ direction: 'inbound' as const, body });
+  const outbound = (body: string | null) => ({ direction: 'outbound' as const, body });
+
+  it('is false with nothing sent after the ask', () => {
+    expect(isAskSupersededBy([inbound('Buenas tardes')])).toBe(false);
+  });
+
+  it('keeps the ask open after a greeting answered without a question', () => {
+    expect(isAskSupersededBy([inbound('Buenas tardes'), outbound('Buenas tardes, un gusto.')])).toBe(false);
+  });
+
+  it('supersedes the ask when the greeting reply asks a sales question', () => {
+    expect(isAskSupersededBy([inbound('Hola'), outbound('Hola. ¿Les cuento el plan PRIME?')])).toBe(true);
+  });
+
+  // Pinned: the whole reply is read, so repeating the permission question and then
+  // asking something else still keeps the ask open. A "si" there is ambiguous to a
+  // human too; this only documents current behaviour.
+  it('keeps the ask open when the reply repeats the permission question', () => {
+    expect(isAskSupersededBy([
+      inbound('Muy buenos días'),
+      outbound('Buenos días. ¿Te puedo escribir por acá más adelante con novedades?'),
+    ])).toBe(false);
+  });
+
+  it('supersedes the ask after any non-greeting inbound', () => {
+    expect(isAskSupersededBy([inbound('y el precio?'), outbound('Para dos son 600.')])).toBe(true);
+  });
+
+  it('treats a photo + text reply to a greeting as one turn', () => {
+    expect(isAskSupersededBy([inbound('Hola'), outbound(null), outbound('Hola, un gusto.')])).toBe(false);
   });
 });

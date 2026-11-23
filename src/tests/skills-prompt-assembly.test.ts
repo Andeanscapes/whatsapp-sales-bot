@@ -1115,7 +1115,7 @@ describe('skills-prompt-assembly', () => {
     expect(solo).toMatch(/no menciones anticipo/);
     expect(solo).toMatch(/Un solo párrafo, máximo 380 caracteres/);
     const english = /PRECIO PEDIDO SIN PLAN:[^\n]*/.exec(assembleSystemPrompt({ skills: loadSkills(), lang: 'en', collectedFields: { site: 'chivor', personas: 1 }, pendingPriceQuestion: true, entryMarker: { code: 'C01', temperature: 'cold' } }))?.[0] ?? '';
-    expect(english).toMatch(/máximo 350 caracteres/);
+    expect(english).toMatch(/Give all these totals now.*Maximum 320 characters/);
     expect(solo).toContain('Tras cada total, a lo sumo media frase con su diferencia');
     // Named plans are quoted as asked; one missing at the site quotes nothing (never a partial comparison).
     const named = line(2, { requestedPlanIds: ['prime_2d1n_chivor', 'core_2d1n_chivor'] });
@@ -1133,6 +1133,19 @@ describe('skills-prompt-assembly', () => {
     const gated = assembleSystemPrompt({ skills: loadSkills(), lang: 'es', collectedFields: { site: 'chivor', personas: 2 }, pendingPriceQuestion: true });
     expect(gated).not.toContain('PRICE GATE ACTIVO:');
     expect(gated).not.toContain('OPCIONES DE PLAN ESTE TURNO:');
+  });
+
+  it('answers an English booking question before asking for the specific departure', () => {
+    const input = {
+      skills: loadSkills(), lang: 'en', priceGiven: true,
+      collectedFields: { plan: 'core_2d1n_chivor', personas: 2, fecha: 'January' },
+      latestCustomerMessage: 'How can I book for January?',
+    };
+    const prompt = assembleSystemPrompt(input);
+    expect(prompt).toMatch(/T8 BEFORE DATE SELECTION:.*checks availability.*deposit.*method names only/);
+    expect(prompt).not.toMatch(/PRECIO YA ENTREGADO:.*solo fechas/);
+    expect(assembleSystemPrompt({ ...input, latestCustomerMessage: 'What dates are there in January?' })).not.toContain('T8 BEFORE DATE SELECTION:');
+    expect(assembleSystemPrompt({ ...input, collectedFields: { ...input.collectedFields, fecha: 'January 9' } })).not.toContain('T8 BEFORE DATE SELECTION:');
   });
 
   it('never tells the ad opener the conversation is already advanced', () => {

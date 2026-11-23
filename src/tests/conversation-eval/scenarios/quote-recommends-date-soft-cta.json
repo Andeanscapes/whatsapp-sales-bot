@@ -25,7 +25,7 @@
       "id": "recommends-published-date",
       "rule": "reply_must_match",
       "patterns": [
-        "21 de noviembre|28 de noviembre|5 de diciembre|noviembre|diciembre"
+        "21 de noviembre|28 de noviembre|5 de diciembre|noviembre|diciembre|enero"
       ],
       "turn": 1,
       "weight": 3,
@@ -79,7 +79,7 @@
   "turns": [
     {
       "user": "Y cual fecha me recomiendas para el CORE?",
-      "mockReply": "Para 2 personas el CORE tiene salida publicada el 21 de noviembre y el 28 de noviembre. ¿Quieres que revisemos el cupo del 21?",
+      "mockReply": "Para 2 personas el CORE tiene salida publicada el 9 de enero y el 16 de enero. ¿Quieres que revisemos el cupo del 9 de enero?",
       "expect": {
         "shouldSendReply": true
       }

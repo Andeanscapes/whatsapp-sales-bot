@@ -89,7 +89,7 @@ import {
   isPhotoSiteCorrection,
 } from './reply-guard.js';
 import { findEntryMarker, parseEntryMarker } from './entry-marker.js';
-import { classifyPendingConsentReply, isDuplicateConsentEcho, isFollowupPermissionQuestion } from './followup-consent.js';
+import { classifyPendingConsentReply, isAskSupersededBy, isDuplicateConsentEcho, isFollowupPermissionQuestion, isGreetingOnly } from './followup-consent.js';
 import { detectRequestedGalleryThemes, selectContextualImage } from './contextual-media.js';
 import { assignLine, isReferralLine } from './lead-routing.js';
 import { MONTH_NAMES } from './constants.js';
@@ -440,7 +440,11 @@ function hasTwoAnsweredPostQuoteDoubts(history: readonly RecentMessage[], priceG
  */
 function isConsentAskContinuation(text: string): boolean {
   if (normalizeForKeywordMatch(text).length === 0) return false;
-  return !isExplicitCustomerFarewell(text)
+  // "Buenas tardes" opens the turn; the answer to the ask usually follows seconds
+  // later. Deferring here reset the ask to `unasked`, so that answer was never read
+  // (live 2026-11-09 and 2026-11-17: greeting, then "si claro", then a second ask).
+  return !isGreetingOnly(text)
+    && !isExplicitCustomerFarewell(text)
     && !isSoftCloseMessage(text)
     && !isNonSalesInquiry(text);
 }
@@ -897,9 +901,15 @@ function inferCloseStage(recentMessages: RecentMessage[]): CloseStage {
   return 'none';
 }
 
+/** Rows read after the ask; a pending ask older than this is long superseded anyway. */
+const CONSENT_SUPERSEDE_SCAN_LIMIT = 50;
+
 /**
  * The pending consent ask stopped being the bot's latest question once anything was
  * sent after it. Unknown ask id (pre-send or not stored) keeps the original behaviour.
+ *
+ * Exception (`isAskSupersededBy`): our reply to a greeting-only turn keeps the ask
+ * open when it asks nothing new.
  */
 export function isConsentAskSuperseded(
   repos: ProcessMessageInput['repos'],
@@ -907,7 +917,14 @@ export function isConsentAskSuperseded(
   subscription: { status: string; ask_outbound_message_id: string | null } | undefined | null,
 ): boolean {
   if (subscription?.status !== 'pending' || !subscription.ask_outbound_message_id) return false;
-  return repos.message.hasOutboundAfterMessage(phone, subscription.ask_outbound_message_id);
+  if (!repos.message.hasOutboundAfterMessage(phone, subscription.ask_outbound_message_id)) return false;
+  const later = repos.message.listMessagesAfterMessage(
+    phone,
+    subscription.ask_outbound_message_id,
+    CONSENT_SUPERSEDE_SCAN_LIMIT,
+  );
+  // A truncated scan means a long thread after the ask, which is superseded.
+  return later.length >= CONSENT_SUPERSEDE_SCAN_LIMIT || isAskSupersededBy(later);
 }
 
 function persistCollectedFromLlmTurn(repos: ProcessMessageInput['repos'], phone: string, turn: LlmTurn): void {

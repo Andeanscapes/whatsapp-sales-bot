@@ -74,7 +74,7 @@
   "turns": [
     {
       "user": "D04 Hi, I want to drive to the 2D/1N emerald mine plan in Chivor. Dates?",
-      "mockReply": "For 2 days and 1 night we have two plans: CORE, with one mine and a hike, and PRIME, with two mines and a horseback ride. Published dates: November 21 and November 28. How many of you would be coming?",
+      "mockReply": "For 2 days and 1 night we have two plans: CORE, with one mine and a hike, and PRIME, with two mines and a horseback ride. Published dates: January 9 and January 16. How many of you would be coming?",
       "expect": {
         "shouldSendReply": true
       }
