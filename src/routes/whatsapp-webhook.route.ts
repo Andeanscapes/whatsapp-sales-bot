@@ -8,6 +8,7 @@ import { getSkills } from '../services/skill-loader.js';
 import { buildHandedOffReply, isConsentAskSuperseded, isOptOutMessage, processMessage } from '../services/response-engine.js';
 import { classifyPendingConsentReply, consentCycleKey } from '../services/followup-consent.js';
 import { sendText, sendImageUrl, downloadMedia, WhatsAppSendError, MAX_IMAGE_CAPTION_CHARS } from '../services/whatsapp-client.js';
+import { sendTelegramDocument } from '../services/telegram-document.js';
 import { canSendImage, galleryMediaId, galleryMediaIdFromUrl, markLlmGalleryShown, planCardSentRecently, releaseImageReservation, remainingGalleryImageBudget, reserveImageSend, reserveRequestedGalleryImageSend, selectPlanImage } from '../services/media-service.js';
 import { sendAlert } from '../services/alert-service.js';
 import { sendTelegramMessage, sendTelegramPhoto, sendTelegramVoice } from '../services/telegram-bot.js';
@@ -66,6 +67,30 @@ const messageSchema = z.object({
   image: z.object({ id: z.string(), mime_type: z.string().optional(), caption: z.string().optional() }).optional(),
   audio: z.object({ id: z.string(), mime_type: z.string().optional() }).optional(),
   video: z.object({ id: z.string(), mime_type: z.string().optional(), caption: z.string().optional() }).optional(),
+  document: z.object({
+    id: z.string(),
+    mime_type: z.string().optional(),
+    caption: z.string().optional(),
+    filename: z.string().optional(),
+  }).optional(),
+  sticker: z.object({ id: z.string(), mime_type: z.string().optional() }).optional(),
+  location: z.object({
+    latitude: z.number().optional(),
+    longitude: z.number().optional(),
+    name: z.string().optional(),
+    address: z.string().optional(),
+  }).optional(),
+  contacts: z.array(z.object({
+    name: z.object({ formatted_name: z.string().optional() }).passthrough().optional(),
+  }).passthrough()).optional(),
+  // Template quick-reply tap.
+  button: z.object({ text: z.string().optional(), payload: z.string().optional() }).optional(),
+  // Interactive reply tap (button or list).
+  interactive: z.object({
+    type: z.string().optional(),
+    button_reply: z.object({ id: z.string().optional(), title: z.string().optional() }).optional(),
+    list_reply: z.object({ id: z.string().optional(), title: z.string().optional() }).optional(),
+  }).passthrough().optional(),
   referral: z.object({
     ctwa_clid: referralText(REFERRAL_MAX).optional(),
     source_id: referralText(REFERRAL_MAX).optional(),
@@ -105,14 +130,33 @@ export interface ExtractedMedia {
   mimeType: string | null;
 }
 
+/**
+ * `text` is the only type the bot replies to. Everything else is persisted for
+ * the operator transcript and relayed to the assigned agent where it matters.
+ * A template quick-reply (`button`) and an interactive reply are normalised to
+ * `text`: the customer tapped a word, which is the same as typing it.
+ */
+export type ExtractedMessageType =
+  | 'text'
+  | 'image'
+  | 'audio'
+  | 'video'
+  | 'document'
+  | 'sticker'
+  | 'location'
+  | 'contacts'
+  | 'unsupported';
+
 export interface ExtractedMessage {
   from: string;
   id: string;
-  type: 'text' | 'image' | 'audio' | 'video';
+  type: ExtractedMessageType;
   text: string;
   media: ExtractedMedia | null;
   timestamp: string;
   referral?: MetaAdReferral;
+  /** Documents only: the customer's original file name, for the operator relay. */
+  filename?: string;
 }
 
 /** Why one item of a webhook payload produced no `ExtractedMessage`. */
@@ -128,10 +172,38 @@ export interface WebhookExtraction {
   skipped: WebhookSkip[];
 }
 
+/** A location with no label is still worth showing the operator as coordinates. */
+function locationText(location: NonNullable<z.infer<typeof messageSchema>['location']>): string {
+  const label = [location.name, location.address].filter(Boolean).join(' — ');
+  if (label) return label;
+  const { latitude, longitude } = location;
+  return latitude != null && longitude != null ? `${latitude},${longitude}` : '';
+}
+
+function contactsText(contacts: NonNullable<z.infer<typeof messageSchema>['contacts']>): string {
+  return contacts
+    .map(contact => contact.name?.formatted_name)
+    .filter((name): name is string => typeof name === 'string' && name.length > 0)
+    .join(', ');
+}
+
 function toExtracted(m: z.infer<typeof messageSchema>): ExtractedMessage | null {
   const referral = m.referral ? { referral: m.referral } : {};
   if (m.type === 'text') {
     return { from: m.from, id: m.id, type: 'text', text: m.text?.body ?? '', media: null, timestamp: '', ...referral };
+  }
+  // A tapped template button is the customer saying that word. Treating it as
+  // text lets the normal sales path — and the consent classifier — read it.
+  if (m.type === 'button' && m.button?.text) {
+    return { from: m.from, id: m.id, type: 'text', text: m.button.text, media: null, timestamp: '', ...referral };
+  }
+  if (m.type === 'interactive') {
+    const title = m.interactive?.button_reply?.title ?? m.interactive?.list_reply?.title;
+    // Other interactive subtypes (e.g. Flows `nfm_reply`) carry no plain title
+    // and must not be guessed at: they fall through and are reported as skipped.
+    if (title) {
+      return { from: m.from, id: m.id, type: 'text', text: title, media: null, timestamp: '', ...referral };
+    }
   }
   if (m.type === 'image' && m.image) {
     return {
@@ -165,6 +237,40 @@ function toExtracted(m: z.infer<typeof messageSchema>): ExtractedMessage | null 
       timestamp: '',
       ...referral,
     };
+  }
+  if (m.type === 'document' && m.document) {
+    return {
+      from: m.from,
+      id: m.id,
+      type: 'document',
+      text: m.document.caption ?? m.document.filename ?? '',
+      media: { id: m.document.id, mimeType: m.document.mime_type ?? null },
+      timestamp: '',
+      ...(m.document.filename ? { filename: m.document.filename } : {}),
+      ...referral,
+    };
+  }
+  if (m.type === 'sticker' && m.sticker) {
+    return {
+      from: m.from,
+      id: m.id,
+      type: 'sticker',
+      text: '',
+      media: { id: m.sticker.id, mimeType: m.sticker.mime_type ?? null },
+      timestamp: '',
+      ...referral,
+    };
+  }
+  if (m.type === 'location' && m.location) {
+    return { from: m.from, id: m.id, type: 'location', text: locationText(m.location), media: null, timestamp: '', ...referral };
+  }
+  if (m.type === 'contacts' && m.contacts) {
+    return { from: m.from, id: m.id, type: 'contacts', text: contactsText(m.contacts), media: null, timestamp: '', ...referral };
+  }
+  // Meta's own catch-all for a type this API version cannot render. Stored so
+  // the operator can see that the customer sent *something*.
+  if (m.type === 'unsupported') {
+    return { from: m.from, id: m.id, type: 'unsupported', text: '', media: null, timestamp: '', ...referral };
   }
   return null;
 }
@@ -208,6 +314,14 @@ export function extractWebhookItems(body: unknown): WebhookExtraction {
           });
           continue;
         }
+        // A reaction is deliberately NOT stored. An inbound row would make a 👍
+        // on a follow-up template the newest message in the thread, which breaks
+        // the recurring path's "the last message must be ours" dormancy check
+        // and would silently stop follow-ups for that customer.
+        if (parsed.data.type === 'reaction') {
+          skipped.push({ level: 'message', reason: 'reaction_ignored', messageType: 'reaction' });
+          continue;
+        }
         const extracted = toExtracted(parsed.data);
         if (extracted) messages.push(extracted);
         else skipped.push({ level: 'message', reason: 'unsupported_type', messageType: parsed.data.type });
@@ -247,6 +361,33 @@ async function recordBridgeRelayFailure(repos: Repositories, phone: string, agen
  * to `bot`, so the bot resumes and the conversation is never silently dropped.
  * `referred` customers (handed to another line) keep getting bot replies here.
  */
+/**
+ * Relays a customer document (usually a payment receipt) to an operator chat.
+ * Persistence already happened at the call site: a download or Telegram failure
+ * must never cost us the transcript row, so it degrades to a text notice.
+ */
+async function relayCustomerDocument(
+  repos: Repositories,
+  msg: ExtractedMessage,
+  chatId: string,
+  caption: string,
+  failureNotice: string,
+): Promise<void> {
+  if (!msg.media) return;
+  try {
+    const media = await downloadMedia(msg.media.id);
+    await sendTelegramDocument(chatId, media.buffer, msg.filename ?? 'documento', media.mimeType, caption);
+    return;
+  } catch (err) {
+    logSystemError('telegram_send', 'warning', err, { phone: msg.from, chatId, flow: 'customer_document' });
+  }
+  try {
+    await sendTelegramMessage(chatId, failureNotice);
+  } catch {
+    await recordBridgeRelayFailure(repos, msg.from, chatId, msg.type);
+  }
+}
+
 export async function forwardBridgeMessage(repos: Repositories, msg: ExtractedMessage): Promise<boolean> {
   if (repos.isPaused()) return false;
   if (repos.optOut.isOptedOut(msg.from)) return false;
@@ -315,6 +456,11 @@ export async function forwardBridgeMessage(repos: Repositories, msg: ExtractedMe
       logger.warn({ err, phone: msg.from, chatId: session.agentChatId }, '[BRIDGE] customer video notify failed; keeping bridge active');
       await recordBridgeRelayFailure(repos, msg.from, session.agentChatId, msg.type);
     }
+    return true;
+  }
+
+  if (msg.type === 'document' && msg.media) {
+    await relayCustomerDocument(repos, msg, session.agentChatId, bridgeMessages.newCustomerDocument(msg.from, msg.text), bridgeMessages.customerDocumentFailed(msg.from));
     return true;
   }
 
@@ -424,6 +570,14 @@ export async function forwardPostHandoffMedia(repos: Repositories, msg: Extracte
       }
     } else if (msg.type === 'video') {
       await sendTelegramMessage(assignment.assignedAgentChat, bridgeMessages.dormantBridgeVideoNotice(msg.from));
+    } else if (msg.type === 'document' && msg.media) {
+      await relayCustomerDocument(
+        repos,
+        msg,
+        assignment.assignedAgentChat,
+        bridgeMessages.newCustomerDocument(msg.from, msg.text),
+        bridgeMessages.dormantBridgeDocumentNotice(msg.from),
+      );
     } else {
       return false;
     }
@@ -488,6 +642,14 @@ export async function notifyAssignedLineIfDormant(repos: Repositories, msg: Extr
       }
     } else if (msg.type === 'video') {
       await sendTelegramMessage(assignment.assignedAgentChat, bridgeMessages.dormantBridgeVideoNotice(msg.from));
+    } else if (msg.type === 'document' && msg.media) {
+      await relayCustomerDocument(
+        repos,
+        msg,
+        assignment.assignedAgentChat,
+        bridgeMessages.newCustomerDocument(msg.from, msg.text),
+        bridgeMessages.dormantBridgeDocumentNotice(msg.from),
+      );
     } else {
       await sendTelegramMessage(assignment.assignedAgentChat, bridgeMessages.dormantBridgeNotice(msg.from, msg.text));
     }
@@ -677,6 +839,18 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
               raw_json: null,
               media_id: msg.media?.id,
             });
+            // A document reaching here has no assigned agent, so the forwarders
+            // above declined it. It is usually a payment receipt: tell the owner
+            // rather than leaving it to be found in the transcript.
+            if (msg.type === 'document' && msg.media && env.TELEGRAM_CHAT_ID) {
+              await relayCustomerDocument(
+                repos,
+                msg,
+                env.TELEGRAM_CHAT_ID,
+                bridgeMessages.newCustomerDocument(msg.from, msg.text),
+                bridgeMessages.customerDocumentFailed(msg.from),
+              );
+            }
             return;
           }
 
