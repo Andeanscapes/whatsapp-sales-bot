@@ -29,6 +29,36 @@ import { recordOutboundMedia } from '../services/conversation-media.js';
 const processingPhones = new Map<string, Promise<void>>();
 const pendingByPhone = new Map<string, number>();
 
+/**
+ * Waits for in-flight webhook turns to finish during shutdown.
+ *
+ * The route answers 200 and marks the message processed BEFORE handling it, so
+ * a turn killed mid-flight is lost for good: Meta will not retry a 200, and a
+ * retry would be deduped away anyway. That is what produced the 22 orphan rows
+ * in `processed_webhook_messages` (June–August 2026) — messages marked
+ * processed that never got a stored row or a reply.
+ *
+ * Bounded by `timeoutMs`, which must stay below compose's `stop_grace_period`
+ * so Docker never SIGKILLs us mid-drain. Returns the number of turns still
+ * running when the timeout hit (0 means a clean drain).
+ */
+export async function drainWebhookQueue(timeoutMs: number): Promise<number> {
+  const pending = [...processingPhones.values()];
+  if (pending.length === 0) return 0;
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const drained = Promise.allSettled(pending).then(() => true);
+  const timedOut = new Promise<boolean>(resolve => {
+    timer = setTimeout(() => resolve(false), timeoutMs);
+  });
+  try {
+    const ok = await Promise.race([drained, timedOut]);
+    return ok ? 0 : processingPhones.size;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 type RequestWithRawBody = FastifyRequest & { rawBody?: Buffer };
 
 function systemErrorRetry(repos: Repositories, phone: string): string {
