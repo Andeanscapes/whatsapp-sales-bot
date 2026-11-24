@@ -49,6 +49,15 @@ function safeStringEqual(a: string, b: string): boolean {
   return left.length === right.length && timingSafeEqual(left, right);
 }
 
+/**
+ * Referral strings are TRUNCATED, never rejected. A `.max()` here used to fail
+ * the parse, and because the whole payload was parsed as one unit that silently
+ * discarded every message in the POST — after the route had already answered
+ * 200, so Meta never retried. `ad-referral.ts` slices again at storage.
+ */
+const REFERRAL_MAX = 500;
+const referralText = (max: number) => z.string().transform(value => value.slice(0, max));
+
 const messageSchema = z.object({
   from: z.string(),
   id: z.string(),
@@ -58,25 +67,37 @@ const messageSchema = z.object({
   audio: z.object({ id: z.string(), mime_type: z.string().optional() }).optional(),
   video: z.object({ id: z.string(), mime_type: z.string().optional(), caption: z.string().optional() }).optional(),
   referral: z.object({
-    ctwa_clid: z.string().max(500).optional(),
-    source_id: z.string().max(500).optional(),
-    source_type: z.string().max(100).optional(),
-    headline: z.string().max(500).optional(),
+    ctwa_clid: referralText(REFERRAL_MAX).optional(),
+    source_id: referralText(REFERRAL_MAX).optional(),
+    source_type: referralText(100).optional(),
+    headline: referralText(REFERRAL_MAX).optional(),
   }).strip().optional(),
 });
 
-const webhookPayloadSchema = z.object({
-  object: z.string(),
-  entry: z.array(z.object({
-    id: z.string(),
-    changes: z.array(z.object({
-      value: z.object({
-        messaging_product: z.string().optional(),
-        messages: z.array(messageSchema).optional(),
-      }).passthrough(),
-      field: z.string(),
-    })),
-  })),
+/**
+ * Meta batches up to 1000 updates per POST and ships entries that carry no
+ * `changes` (account events) or changes with no `value`. Each level is therefore
+ * parsed on its own: one malformed or unknown sibling must never discard the
+ * real customer messages travelling in the same POST.
+ */
+const envelopeSchema = z.object({
+  object: z.string().optional(),
+  entry: z.array(z.unknown()),
+}).passthrough();
+
+const entrySchema = z.object({
+  // Documented as a string; accepted as a number too so a shape change cannot
+  // cost us a message.
+  id: z.union([z.string(), z.number()]).optional(),
+  changes: z.array(z.unknown()).optional(),
+}).passthrough();
+
+const changeSchema = z.object({
+  value: z.object({
+    messaging_product: z.string().optional(),
+    messages: z.array(z.unknown()).optional(),
+  }).passthrough().optional(),
+  field: z.string().optional(),
 }).passthrough();
 
 export interface ExtractedMedia {
@@ -94,53 +115,112 @@ export interface ExtractedMessage {
   referral?: MetaAdReferral;
 }
 
-export function extractMessages(body: unknown): ExtractedMessage[] | null {
-  const parsed = webhookPayloadSchema.safeParse(body);
-  if (!parsed.success) return null;
+/** Why one item of a webhook payload produced no `ExtractedMessage`. */
+export interface WebhookSkip {
+  level: 'envelope' | 'entry' | 'change' | 'message';
+  reason: string;
+  /** Message type when known. Never carries message bodies or phone numbers. */
+  messageType?: string;
+}
 
-  const result: ExtractedMessage[] = [];
-  for (const entry of parsed.data.entry) {
-    for (const change of entry.changes) {
-      const messages = change.value?.messages;
-      if (!messages) continue;
-      for (const m of messages) {
-        if (m.type === 'text') {
-          result.push({ from: m.from, id: m.id, type: 'text', text: m.text?.body ?? '', media: null, timestamp: '', ...(m.referral ? { referral: m.referral } : {}) });
-        } else if (m.type === 'image' && m.image) {
-          result.push({
-            from: m.from,
-            id: m.id,
-            type: 'image',
-            text: m.image.caption ?? '',
-            media: { id: m.image.id, mimeType: m.image.mime_type ?? null },
-            timestamp: '',
-            ...(m.referral ? { referral: m.referral } : {}),
+export interface WebhookExtraction {
+  messages: ExtractedMessage[];
+  skipped: WebhookSkip[];
+}
+
+function toExtracted(m: z.infer<typeof messageSchema>): ExtractedMessage | null {
+  const referral = m.referral ? { referral: m.referral } : {};
+  if (m.type === 'text') {
+    return { from: m.from, id: m.id, type: 'text', text: m.text?.body ?? '', media: null, timestamp: '', ...referral };
+  }
+  if (m.type === 'image' && m.image) {
+    return {
+      from: m.from,
+      id: m.id,
+      type: 'image',
+      text: m.image.caption ?? '',
+      media: { id: m.image.id, mimeType: m.image.mime_type ?? null },
+      timestamp: '',
+      ...referral,
+    };
+  }
+  if (m.type === 'audio' && m.audio) {
+    return {
+      from: m.from,
+      id: m.id,
+      type: 'audio',
+      text: '',
+      media: { id: m.audio.id, mimeType: m.audio.mime_type ?? null },
+      timestamp: '',
+      ...referral,
+    };
+  }
+  if (m.type === 'video' && m.video) {
+    return {
+      from: m.from,
+      id: m.id,
+      type: 'video',
+      text: m.video.caption ?? '',
+      media: { id: m.video.id, mimeType: m.video.mime_type ?? null },
+      timestamp: '',
+      ...referral,
+    };
+  }
+  return null;
+}
+
+/**
+ * Parses a webhook payload item by item. Anything that cannot be turned into an
+ * `ExtractedMessage` is reported in `skipped` rather than dropped in silence —
+ * a dropped customer message must always leave a trace.
+ */
+export function extractWebhookItems(body: unknown): WebhookExtraction {
+  const messages: ExtractedMessage[] = [];
+  const skipped: WebhookSkip[] = [];
+
+  const envelope = envelopeSchema.safeParse(body);
+  if (!envelope.success) {
+    return { messages, skipped: [{ level: 'envelope', reason: 'unparsable_payload' }] };
+  }
+
+  for (const rawEntry of envelope.data.entry) {
+    const entry = entrySchema.safeParse(rawEntry);
+    if (!entry.success) {
+      skipped.push({ level: 'entry', reason: 'unparsable_entry' });
+      continue;
+    }
+    // Account-level events arrive without `changes`; normal traffic, not a skip.
+    for (const rawChange of entry.data.changes ?? []) {
+      const change = changeSchema.safeParse(rawChange);
+      if (!change.success) {
+        skipped.push({ level: 'change', reason: 'unparsable_change' });
+        continue;
+      }
+      // Status callbacks (sent/delivered/read) carry no `messages`. Expected.
+      for (const rawMessage of change.data.value?.messages ?? []) {
+        const parsed = messageSchema.safeParse(rawMessage);
+        if (!parsed.success) {
+          const type = (rawMessage as { type?: unknown } | null)?.type;
+          skipped.push({
+            level: 'message',
+            reason: 'unparsable_message',
+            ...(typeof type === 'string' ? { messageType: type } : {}),
           });
-        } else if (m.type === 'audio' && m.audio) {
-          result.push({
-            from: m.from,
-            id: m.id,
-            type: 'audio',
-            text: '',
-            media: { id: m.audio.id, mimeType: m.audio.mime_type ?? null },
-            timestamp: '',
-            ...(m.referral ? { referral: m.referral } : {}),
-          });
-        } else if (m.type === 'video' && m.video) {
-          result.push({
-            from: m.from,
-            id: m.id,
-            type: 'video',
-            text: m.video.caption ?? '',
-            media: { id: m.video.id, mimeType: m.video.mime_type ?? null },
-            timestamp: '',
-            ...(m.referral ? { referral: m.referral } : {}),
-          });
+          continue;
         }
+        const extracted = toExtracted(parsed.data);
+        if (extracted) messages.push(extracted);
+        else skipped.push({ level: 'message', reason: 'unsupported_type', messageType: parsed.data.type });
       }
     }
   }
-  return result.length > 0 ? result : null;
+
+  return { messages, skipped };
+}
+
+export function extractMessages(body: unknown): ExtractedMessage[] | null {
+  const { messages } = extractWebhookItems(body);
+  return messages.length > 0 ? messages : null;
 }
 
 export function isWebhookSenderAllowed(from: string): boolean {
