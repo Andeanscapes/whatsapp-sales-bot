@@ -183,6 +183,26 @@ export async function reportCriticalSystemError(type: string, message: string): 
   );
 }
 
+/**
+ * A webhook item that produced no message is a candidate lost customer. The
+ * route answers 200 before parsing, so Meta never retries and nothing else
+ * would ever reveal it. Deduped hourly per reason so a recurring unknown type
+ * cannot flood the owner chat.
+ */
+export async function reportWebhookSkip(reason: string, messageType: string | undefined): Promise<void> {
+  const safeReason = reason.slice(0, 80);
+  const safeType = messageType?.slice(0, 40);
+  await reportOnce(
+    `webhook_skip:${safeReason}:${safeType ?? 'none'}`,
+    [
+      '⚠️ Webhook con elementos descartados',
+      `Motivo: ${safeReason}`,
+      safeType ? `Tipo de mensaje: ${safeType}` : null,
+      'Un mensaje de cliente pudo perderse. Revisa webhook_parse en system_errors.',
+    ].filter((line): line is string => line !== null).join('\n'),
+  );
+}
+
 async function reportDynamicDataFailure(): Promise<void> {
   await openIncident(
     'dynamic',
