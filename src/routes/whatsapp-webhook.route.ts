@@ -23,6 +23,7 @@ import { logger } from '../config/logger.js';
 import { logSystemError } from '../services/error-logger.js';
 import { recordAdReferral, type MetaAdReferral } from '../services/ad-referral.js';
 import { reportWebhookSkip } from '../services/whatsapp-operational-health.js';
+import { recordWebhookMessages, recordWebhookPost, recordWebhookSkipped } from '../services/webhook-stats.js';
 import { createTurnPacer } from '../services/human-delay.js';
 import { recordOutboundMedia } from '../services/conversation-media.js';
 
@@ -805,12 +806,15 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
 
     reply.code(200).send({ ok: true });
 
+    recordWebhookPost();
     const { messages, skipped } = extractWebhookItems(req.body);
+    recordWebhookMessages(messages.length);
     // Skips used to be invisible: the payload was discarded with no log, no row
     // and no dedupe entry, so a lost customer could only ever be found by them
     // complaining. Every skip is now recorded, and reactions are expected so
     // they never page anyone.
     for (const skip of skipped) {
+      recordWebhookSkipped(skip.reason);
       logSystemError('webhook_parse', 'warning', new Error(skip.reason), {
         level: skip.level,
         messageType: skip.messageType,
