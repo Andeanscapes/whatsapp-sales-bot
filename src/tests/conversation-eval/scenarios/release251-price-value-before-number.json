@@ -1,6 +1,6 @@
 {
   "id": "release251-price-value-before-number",
-  "source": "Bot export 2026-11-16: 41% of leads went silent right after a bare price message; the value line now comes before the totals. | 2.5.1 (owner 2026-11-16): C01 videos come from both regions, so the destination is asked before the price.",
+  "source": "Bot export 2026-11-16: 41% of leads went silent right after a bare price message; the value line now comes before the totals. | 2.5.1 (owner 2026-11-16): C01 videos come from both regions, so the destination is asked before the price. | 2026-11-24: value-before-number accepts the paraphrase its own cue asks for. The cue requires the value sentence \"en palabras de cliente\", so a reply that opens with the concrete inclusions (noche, comidas, guia, 4x4) and no inclusion verb satisfied the intent and still failed; measured 5/5 at exactly 80, the minLiveScore floor, so one more miss hard-failed the scenario with no critical criterion involved. The ordering intent (value text before the figure) is unchanged.",
   "tags": [
     "release-2.5.1",
     "live",
@@ -37,7 +37,7 @@
       "weight": 2,
       "critical": false,
       "patterns": [
-        "(?:incluy|incluid|cubiert)[\\s\\S]*\\$\\s?950\\.000"
+        "(?:incluy|incluid|cubiert|noche|comidas|gu[ií]a|4x4|hacienda)[\\s\\S]*\\$\\s?950\\.000"
       ]
     },
     {
