@@ -35,6 +35,19 @@ export interface RunContext {
   destroy: () => void;
 }
 
+/**
+ * Replayed history is backdated into this window so every replayed row is
+ * strictly older than the live turn that follows, whatever the machine speed.
+ * One minute is far below `RETURNING_GAP_HOURS` (71h), so a replay can never be
+ * read as a returning customer, and far above the millisecond collisions that
+ * made `hasMessageBefore` miss the history entirely on a fast CI runner.
+ */
+const REPLAY_HISTORY_GAP_MS = 60_000;
+/** Spacing between replayed turns, so their order is unambiguous. */
+const REPLAY_TURN_STEP_MS = 1_000;
+/** The mock reply of a replayed turn lands just after its inbound. */
+const REPLAY_REPLY_STEP_MS = 100;
+
 export function defaultMockResult(reply: string, overrides?: Partial<LlmTurn>): LlmResult | null {
   if (!reply) return null;
   const turn: LlmTurn = {
@@ -299,6 +312,16 @@ export async function runTurn(
 
   // Replay turns bypass LLM: store inbound and outbound directly with applied seeds.
   if (mode === 'live' && turnDef.replay) {
+    // Replayed rows are BACKDATED. They skip the LLM, so three of them run in
+    // back-to-back transactions with no awaits and all land in the same
+    // millisecond as the live turn that follows. `retargetingWithHistory` asks
+    // `hasMessageBefore(phone, entryMarkerAt)` with a strict `<`, so on a fast
+    // runner no replayed row counted as earlier history: RETORNO CON HISTORIAL
+    // and CONTEXTO PREVIO vanished and the R01 entry segment answered instead,
+    // with a brochure and a price (CI ES 2026-11-24, entry-retarget-R01-with-history
+    // 47; the same scenario passed 10/10 on a slower local machine). The gap is
+    // far below RETURNING_GAP_HOURS, so it cannot turn a replay into a return.
+    const replayBaseMs = Date.now() - REPLAY_HISTORY_GAP_MS + turnNumber * REPLAY_TURN_STEP_MS;
     // The engine persists the conversation language on every processed turn; a
     // replayed turn must too, or a later bare reply ("2") falls back to Spanish.
     const language = resolveLanguage(ctx.repos, ctx.customerPhone, turnDef.user);
@@ -309,14 +332,14 @@ export async function runTurn(
         direction: 'inbound',
         message_type: 'text',
         body: turnDef.user.slice(0, 1500),
-        created_at: new Date().toISOString(),
+        created_at: new Date(replayBaseMs).toISOString(),
       });
       ctx.repos.message.addMessage({
         customer_phone: ctx.customerPhone,
         direction: 'outbound',
         message_type: 'text',
         body: turnDef.mockReply,
-        created_at: new Date().toISOString(),
+        created_at: new Date(replayBaseMs + REPLAY_REPLY_STEP_MS).toISOString(),
       });
     });
     // Return a minimal output for replay turns (no AI call, no analysis).
