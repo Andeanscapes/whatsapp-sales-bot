@@ -174,16 +174,27 @@ describe('extractWebhookItems: tapped replies become text', () => {
 });
 
 describe('extractWebhookItems: previously discarded media types', () => {
-  it('extracts a document with its filename', () => {
+  it('keeps a document filename out of the body but hands it to the operator', () => {
+    // `text` becomes `body`, which getRecentMessages feeds to the LLM history.
+    // A receipt filename routinely carries a phone-shaped digit run; echoed back
+    // it trips COL_MOBILE, a HARD safety fail that suppresses the whole reply.
     const { messages } = extractWebhookItems(
-      wrap([{ id: 'biz', changes: [{ field: 'messages', value: { messages: [{ from: PHONE, id: 'wamid.D', type: 'document', document: { id: 'media-1', mime_type: 'application/pdf', filename: 'comprobante.pdf' } }] } }] }]),
+      wrap([{ id: 'biz', changes: [{ field: 'messages', value: { messages: [{ from: PHONE, id: 'wamid.D', type: 'document', document: { id: 'media-1', mime_type: 'application/pdf', filename: 'comprobante-3009900001.pdf' } }] } }] }]),
     );
 
-    expect(messages[0]).toMatchObject({ type: 'document', text: 'comprobante.pdf', filename: 'comprobante.pdf' });
+    expect(messages[0]).toMatchObject({ type: 'document', text: '', filename: 'comprobante-3009900001.pdf' });
     expect(messages[0]?.media).toEqual({ id: 'media-1', mimeType: 'application/pdf' });
   });
 
-  it('labels a location, falling back to coordinates', () => {
+  it('keeps a customer caption on a document, since they wrote it', () => {
+    const { messages } = extractWebhookItems(
+      wrap([{ id: 'biz', changes: [{ field: 'messages', value: { messages: [{ from: PHONE, id: 'wamid.D2', type: 'document', document: { id: 'media-2', caption: 'ahi va el comprobante', filename: 'x.pdf' } }] } }] }]),
+    );
+
+    expect(messages[0]).toMatchObject({ type: 'document', text: 'ahi va el comprobante' });
+  });
+
+  it('labels a location but never persists raw coordinates', () => {
     const named = extractWebhookItems(
       wrap([{ id: 'biz', changes: [{ field: 'messages', value: { messages: [{ from: PHONE, id: 'wamid.L1', type: 'location', location: { latitude: 4.6, longitude: -74.1, name: 'Chivor' } }] } }] }]),
     );
@@ -192,7 +203,10 @@ describe('extractWebhookItems: previously discarded media types', () => {
     );
 
     expect(named.messages[0]).toMatchObject({ type: 'location', text: 'Chivor' });
-    expect(bare.messages[0]).toMatchObject({ type: 'location', text: '4.6,-74.1' });
+    // A precise position must not reach the LLM history; the row type still
+    // tells the operator a pin arrived.
+    expect(bare.messages[0]).toMatchObject({ type: 'location', text: '' });
+    expect(bare.messages[0]?.text).not.toMatch(/-?\d+\.\d+/);
   });
 
   it('extracts sticker, contacts and unsupported', () => {
@@ -359,6 +373,23 @@ describe('webhook route intake', () => {
     expect(stored.n).toBe(0);
   });
 
+  it('delivers both valid messages when one sibling in the POST is unparsable', async () => {
+    // The shape that used to lose everything: Meta batches up to 1000 updates,
+    // so one bad item discarded the real customers travelling with it.
+    await post(envelope([
+      textMessage('wamid.MIX1', 'hola'),
+      { from: PHONE, type: 'text', text: { body: 'sin id' } },
+      textMessage('wamid.MIX2', 'somos 2'),
+    ]));
+    await drainWebhookQueue(5_000);
+
+    // processMessage is mocked, so it does not persist the inbound itself;
+    // reaching the reply path is what proves the message was not discarded.
+    expect(lastProcessed).toEqual(expect.arrayContaining(['hola', 'somos 2']));
+    const errors = db.prepare("SELECT count(*) n FROM system_errors WHERE error_type = 'webhook_parse'").get() as { n: number };
+    expect(errors.n).toBe(1);
+  });
+
   it('aggregates many identical skips into one system error row', async () => {
     // Meta batches up to 1000 updates per POST. One row per item would flood the
     // table operators read to find lost messages.
@@ -423,5 +454,75 @@ describe('webhook route intake', () => {
 describe('drainWebhookQueue', () => {
   it('returns 0 when there is nothing in flight', async () => {
     await expect(drainWebhookQueue(1_000)).resolves.toBe(0);
+  });
+});
+
+describe('drainWebhookQueue with work in flight', () => {
+  let db: Database.Database;
+  let app: Awaited<ReturnType<typeof buildApp>>;
+  let previousOwnerOnly: boolean;
+  let release: () => void;
+
+  beforeEach(async () => {
+    loadSkills();
+    previousOwnerOnly = env.WEBHOOK_OWNER_ONLY_ENABLED;
+    env.WEBHOOK_OWNER_ONLY_ENABLED = false;
+    lastProcessed.length = 0;
+    vi.clearAllMocks();
+    // Hold the turn open so the drain has something real to wait for.
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    processMessageMock.mockImplementationOnce(async (params: { message: string }) => {
+      await gate;
+      lastProcessed.push(params.message);
+      return {
+        reply: 'ok', shouldSendReply: true, usedAi: false, leadScore: 10,
+        shouldAlertOwner: false, shouldSendImage: false, shouldSendOwnerImage: false,
+        shouldSendGalleryImages: false, priceJustGiven: false, outboundDateAction: null, ownerAlertType: null,
+      };
+    });
+    db = new Database(':memory:');
+    migrate(db);
+    app = await buildApp(createRepositories(db));
+    await app.ready();
+  });
+
+  afterEach(async () => {
+    env.WEBHOOK_OWNER_ONLY_ENABLED = previousOwnerOnly;
+    await app.close();
+    db.close();
+  });
+
+  async function postText(id: string) {
+    const payload = envelope([textMessage(id, 'hola')]);
+    return app.inject({
+      method: 'POST',
+      url: '/webhooks/whatsapp',
+      headers: { 'content-type': 'application/json', 'x-hub-signature-256': sign(payload) },
+      payload,
+    });
+  }
+
+  it('waits for an in-flight turn and reports a clean drain', async () => {
+    await postText('wamid.DRAIN1');
+    // The route answers 200 and detaches, so the turn is still running here.
+    expect(lastProcessed).toHaveLength(0);
+
+    const drained = drainWebhookQueue(5_000);
+    release();
+
+    await expect(drained).resolves.toBe(0);
+    expect(lastProcessed).toContain('hola');
+  });
+
+  it('reports the turns still running when the timeout wins', async () => {
+    await postText('wamid.DRAIN2');
+
+    // Never released before the deadline: the drain must give up and say how
+    // many turns were still in flight instead of hanging the shutdown.
+    const stillRunning = await drainWebhookQueue(50);
+    expect(stillRunning).toBeGreaterThan(0);
+
+    release();
+    await drainWebhookQueue(5_000);
   });
 });

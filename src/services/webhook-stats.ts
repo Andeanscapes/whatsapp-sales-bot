@@ -9,6 +9,14 @@
  * Persisting them would put a write on the hot inbound path to answer a
  * question the operator asks a few times a week.
  */
+/**
+ * The one skip reason that is expected traffic rather than a possible lost
+ * message: counted apart, never written to `system_errors`, never pages the
+ * owner. Lives here, the leaf module, so the route and the counters cannot
+ * drift and no import cycle is created.
+ */
+export const REACTION_SKIP_REASON = 'reaction_ignored';
+
 export interface WebhookStatsSnapshot {
   /** Signature-verified POSTs that reached the handler. */
   posts: number;
@@ -39,7 +47,7 @@ export function recordWebhookMessages(count: number): void {
 }
 
 export function recordWebhookSkipped(reason: string): void {
-  if (reason === 'reaction_ignored') stats.reactions += 1;
+  if (reason === REACTION_SKIP_REASON) stats.reactions += 1;
   else stats.skipped += 1;
 }
 

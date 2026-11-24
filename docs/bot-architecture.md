@@ -213,8 +213,9 @@ Anything that yields no message is returned in `skipped` and written to `system_
 | `text` | yes | yes | only type that gets an LLM reply |
 | `button`, `interactive` (button/list reply) | yes, as `text` | yes | a tapped word is the same as a typed one |
 | `image`, `audio`, `video` | yes | no | relayed in bridge/handoff paths |
-| `document` | yes | no | relayed to the assigned agent, else the owner, as a likely payment receipt |
-| `sticker`, `location`, `unsupported` | yes | no | operator transcript only |
+| `document` | yes, **caption only** | no | relayed to the assigned agent, else the owner, as a likely payment receipt. The filename is never stored in `body` — it carries reference/phone-shaped digit runs that trip `COL_MOBILE` when echoed, a hard safety fail that suppresses the reply. It reaches the operator via `ExtractedMessage.filename` |
+| `sticker`, `unsupported` | yes | no | operator transcript only |
+| `location` | yes, **label only** | no | raw coordinates are never persisted: `body` feeds the LLM history and a lat/lng is precise geolocation the model cannot use |
 | `contacts` | yes, **empty body** | no | the card names a third party, and `body` feeds `getRecentMessages` → the LLM history sent to DeepSeek |
 | `reaction` | **no** | no | an inbound row would make a 👍 the newest message and stall the recurring follow-up dormancy check |
 | `interactive` (other subtypes, e.g. Flows `nfm_reply`) | no | no | skipped and reported rather than guessed at |

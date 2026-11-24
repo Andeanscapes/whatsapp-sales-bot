@@ -677,11 +677,20 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
       `document` is stored and relayed to the assigned agent, else the owner, as a likely
       payment receipt — persist first, notify second, and a download or Telegram failure
       degrades to a text notice and never costs the transcript row. `sticker`,
-      `location`, `contacts` and `unsupported` are stored, never answered; a
-      `contacts` card is stored with an **empty body**, because it names a third party
-      and `body` feeds `getRecentMessages`, which builds the LLM history sent to
-      DeepSeek. A caption-less type reaches an agent as a typed notice, never through
-      the plain text relay, which would render an empty bubble.
+      `location`, `contacts` and `unsupported` are stored, never answered.
+      **`body` feeds `getRecentMessages`, which builds the LLM history sent to DeepSeek,
+      so machine-generated identifiers never go in it.** A `document` stores its customer
+      caption but **never its filename**: a receipt filename carries a reference or
+      phone-shaped digit run ("comprobante-3009900001.pdf") that, echoed back, trips
+      `COL_MOBILE` in `containsPaymentDetailLeak` — a HARD safety fail that suppresses the
+      reply, so the customer would get silence on the turn right after sending their proof.
+      The filename reaches the operator through `ExtractedMessage.filename`. A `contacts`
+      card stores an **empty body** (it names a third party) and a `location` stores its
+      label only, never raw coordinates. A caption-less type reaches an agent as a typed
+      notice, never through the plain text relay, which would render an empty bubble.
+      Asymmetry to keep in mind: a 👍 **reaction** is dropped to protect the recurring
+      template's dormancy check, but a 👍 **sticker** is a real inbound and is stored, so
+      it does advance that check.
       Skips are aggregated per reason+type per POST before writing: at 1000 updates per
       POST, one row per item would flood the table operators read to find lost messages.
     - **In-flight turns are drained on shutdown.** `drainWebhookQueue` is awaited by

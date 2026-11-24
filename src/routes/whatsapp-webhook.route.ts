@@ -23,7 +23,7 @@ import { logger } from '../config/logger.js';
 import { logSystemError } from '../services/error-logger.js';
 import { recordAdReferral, type MetaAdReferral } from '../services/ad-referral.js';
 import { reportWebhookSkip } from '../services/whatsapp-operational-health.js';
-import { recordWebhookMessages, recordWebhookPost, recordWebhookSkipped } from '../services/webhook-stats.js';
+import { REACTION_SKIP_REASON, recordWebhookMessages, recordWebhookPost, recordWebhookSkipped } from '../services/webhook-stats.js';
 import { createTurnPacer } from '../services/human-delay.js';
 import { recordOutboundMedia } from '../services/conversation-media.js';
 
@@ -204,12 +204,15 @@ export interface WebhookExtraction {
   skipped: WebhookSkip[];
 }
 
-/** A location with no label is still worth showing the operator as coordinates. */
+/**
+ * Label only. `body` is read by `getRecentMessages`, which builds the LLM
+ * history sent to DeepSeek, so raw coordinates would ship a precise home or
+ * workplace position to a third-party API for no conversational gain — the
+ * model cannot act on a lat/lng. A pin with no label is still visible to the
+ * operator as `message_type = 'location'`.
+ */
 function locationText(location: NonNullable<z.infer<typeof messageSchema>['location']>): string {
-  const label = [location.name, location.address].filter(Boolean).join(' — ');
-  if (label) return label;
-  const { latitude, longitude } = location;
-  return latitude != null && longitude != null ? `${latitude},${longitude}` : '';
+  return [location.name, location.address].filter(Boolean).join(' — ');
 }
 
 function toExtracted(m: z.infer<typeof messageSchema>): ExtractedMessage | null {
@@ -268,7 +271,15 @@ function toExtracted(m: z.infer<typeof messageSchema>): ExtractedMessage | null 
       from: m.from,
       id: m.id,
       type: 'document',
-      text: m.document.caption ?? m.document.filename ?? '',
+      // Caption only, never the filename. `text` is persisted as `body`, which
+      // `getRecentMessages` feeds to the LLM history, and a receipt filename
+      // routinely carries a reference or phone-shaped digit run
+      // ("comprobante-3009900001.pdf"). Echoed back by the model that trips
+      // COL_MOBILE in `containsPaymentDetailLeak`, a HARD safety fail that
+      // suppresses the reply entirely — the customer would get silence on the
+      // turn right after sending their payment proof. The filename still
+      // reaches the operator through `filename` below.
+      text: m.document.caption ?? '',
       media: { id: m.document.id, mimeType: m.document.mime_type ?? null },
       timestamp: '',
       ...(m.document.filename ? { filename: m.document.filename } : {}),
@@ -348,7 +359,7 @@ export function extractWebhookItems(body: unknown): WebhookExtraction {
         // the recurring path's "the last message must be ours" dormancy check
         // and would silently stop follow-ups for that customer.
         if (parsed.data.type === 'reaction') {
-          skipped.push({ level: 'message', reason: 'reaction_ignored', messageType: 'reaction' });
+          skipped.push({ level: 'message', reason: REACTION_SKIP_REASON, messageType: 'reaction' });
           continue;
         }
         const extracted = toExtracted(parsed.data);
@@ -838,15 +849,20 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
     // — flooding the table operators read to find lost messages. One row with a
     // count carries the same diagnostic value.
     const skipCounts = new Map<string, { skip: WebhookSkip; count: number }>();
+    // Counted directly, not derived by subtracting the reported skips: a second
+    // future "expected" reason would otherwise silently corrupt this number.
+    let reactionCount = 0;
     for (const skip of skipped) {
       recordWebhookSkipped(skip.reason);
-      if (skip.reason === 'reaction_ignored') continue;
+      if (skip.reason === REACTION_SKIP_REASON) {
+        reactionCount += 1;
+        continue;
+      }
       const key = `${skip.level}:${skip.reason}:${skip.messageType ?? ''}`;
       const existing = skipCounts.get(key);
       if (existing) existing.count += 1;
       else skipCounts.set(key, { skip, count: 1 });
     }
-    const reactionCount = skipped.length - [...skipCounts.values()].reduce((sum, s) => sum + s.count, 0);
     if (reactionCount > 0) {
       logger.info({ count: reactionCount }, '[WEBHOOK] reactions ignored (never stored)');
     }
