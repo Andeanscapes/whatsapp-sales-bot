@@ -306,7 +306,19 @@ export async function runTurn(
   mode: 'deterministic' | 'live' = 'deterministic',
 ): Promise<TurnRecord> {
   if (turnDef.gapDaysBefore) ageConversation(ctx, turnDef.gapDaysBefore);
-  if (turnDef.seedPriceGiven) ctx.repos.conversation.setPriceGiven(ctx.customerPhone);
+  // Replayed rows are backdated (see below), so a seed that records "when this
+  // happened" has to use the same clock. `setPriceGiven` stamps the real clock:
+  // on a replayed turn that puts the quote AFTER the history it belongs to, and
+  // `hasTwoAnsweredPostQuoteDoubts` stops at the first row older than the quote,
+  // so the post-quote cupo offer never fired (two-doubts-then-cupo-offer 85 -> 62).
+  const isBackdatedReplay = mode === 'live' && Boolean(turnDef.replay);
+  const replayBaseMs = Date.now() - REPLAY_HISTORY_GAP_MS + turnNumber * REPLAY_TURN_STEP_MS;
+  if (turnDef.seedPriceGiven) {
+    ctx.repos.conversation.setPriceGiven(ctx.customerPhone);
+    if (isBackdatedReplay) {
+      ctx.repos.conversation.upsert(ctx.customerPhone, { price_given_at: new Date(replayBaseMs).toISOString() });
+    }
+  }
   if (turnDef.seedLeadScore !== undefined) ctx.repos.conversation.updateLeadScore(ctx.customerPhone, turnDef.seedLeadScore);
   applyQualificationSeed(ctx.repos, ctx.customerPhone, turnDef.seedQualification);
 
@@ -321,7 +333,9 @@ export async function runTurn(
     // with a brochure and a price (CI ES 2026-11-24, entry-retarget-R01-with-history
     // 47; the same scenario passed 10/10 on a slower local machine). The gap is
     // far below RETURNING_GAP_HOURS, so it cannot turn a replay into a return.
-    const replayBaseMs = Date.now() - REPLAY_HISTORY_GAP_MS + turnNumber * REPLAY_TURN_STEP_MS;
+    // `replayBaseMs` is computed once at the top of the turn so clock-bearing
+    // seeds (seedPriceGiven) and these rows cannot disagree.
+    //
     // The engine persists the conversation language on every processed turn; a
     // replayed turn must too, or a later bare reply ("2") falls back to Spanish.
     const language = resolveLanguage(ctx.repos, ctx.customerPhone, turnDef.user);
