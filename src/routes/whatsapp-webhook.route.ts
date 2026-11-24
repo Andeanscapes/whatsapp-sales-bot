@@ -811,10 +811,18 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
     recordWebhookMessages(messages.length);
     // Skips used to be invisible: the payload was discarded with no log, no row
     // and no dedupe entry, so a lost customer could only ever be found by them
-    // complaining. Every skip is now recorded, and reactions are expected so
-    // they never page anyone.
+    // complaining.
+    //
+    // A reaction is expected traffic, not a failure. It is counted and logged at
+    // info level only: writing it to `system_errors` would bury the real parse
+    // failures operators read that table for, and a popular template can draw
+    // many reactions in one batch.
     for (const skip of skipped) {
       recordWebhookSkipped(skip.reason);
+      if (skip.reason === 'reaction_ignored') {
+        logger.info({ itemType: skip.messageType }, '[WEBHOOK] reaction ignored (never stored)');
+        continue;
+      }
       // `itemType`, not `messageType`: maskSensitiveContext redacts any key
       // containing "message", which would blank out the one field that makes a
       // skip diagnosable.
@@ -822,9 +830,7 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
         level: skip.level,
         itemType: skip.messageType,
       });
-      if (skip.reason !== 'reaction_ignored') {
-        void reportWebhookSkip(skip.reason, skip.messageType);
-      }
+      void reportWebhookSkip(skip.reason, skip.messageType);
     }
     if (messages.length === 0) return;
 

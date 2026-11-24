@@ -356,6 +356,17 @@ describe('webhook route intake', () => {
     const stored = db.prepare('SELECT count(*) n FROM messages WHERE customer_phone = ?').get(PHONE) as { n: number };
     expect(stored.n).toBe(0);
   });
+
+  it('does not write a system error for a reaction', async () => {
+    // Reactions are expected traffic. Logging them as webhook_parse would bury
+    // the real parse failures operators read system_errors for.
+    await post(envelope([{ from: PHONE, id: 'wamid.RX2', type: 'reaction', reaction: { emoji: '👍' } }]));
+    await drainWebhookQueue(5_000);
+
+    const errors = db.prepare("SELECT count(*) n FROM system_errors WHERE error_type = 'webhook_parse'").get() as { n: number };
+    expect(errors.n).toBe(0);
+    expect(getWebhookStats().reactions).toBe(1);
+  });
 });
 
 describe('drainWebhookQueue', () => {
