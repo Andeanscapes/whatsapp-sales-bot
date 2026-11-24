@@ -12,6 +12,10 @@ import { setupGlobalErrorHandlers, setErrorRepos, pruneOldErrors } from './servi
 import { checkWhatsAppApiHealth, sendStartupStatus, startOperationalHealthMonitor } from './services/whatsapp-operational-health.js';
 import { startFollowupScheduler } from './services/followup-service.js';
 import { startFollowupDigestScheduler } from './services/followup-digest.js';
+import { drainWebhookQueue } from './routes/whatsapp-webhook.route.js';
+
+/** Must stay under compose `stop_grace_period` (30s) so Docker never SIGKILLs a drain. */
+const SHUTDOWN_DRAIN_MS = 20_000;
 
 async function runStartupDiagnostics(dynamicDataAvailable: boolean): Promise<void> {
   const whatsapp = await checkWhatsAppApiHealth();
@@ -108,6 +112,21 @@ function gracefulShutdown(signal: string, db: { close: () => void }, app: { clos
       await app.close();
     } catch (err) {
       logger.error(err, 'error closing fastify');
+    }
+    // After Fastify stops accepting requests but BEFORE the database closes:
+    // a webhook turn already answered 200 and was marked processed, so killing
+    // it here loses the message permanently — Meta never retries a 200, and a
+    // retry would be deduped away. Bounded well under compose's
+    // stop_grace_period (30s) so Docker cannot SIGKILL us mid-drain.
+    try {
+      const stillRunning = await drainWebhookQueue(SHUTDOWN_DRAIN_MS);
+      if (stillRunning > 0) {
+        logger.warn({ stillRunning }, 'shutdown drain timed out with webhook turns in flight');
+      } else {
+        logger.info('webhook queue drained');
+      }
+    } catch (err) {
+      logger.error(err, 'error draining webhook queue');
     }
     try {
       db.close();
