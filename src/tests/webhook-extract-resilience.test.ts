@@ -213,7 +213,9 @@ describe('extractWebhookItems: previously discarded media types', () => {
     );
 
     expect(messages.map(m => m.type)).toEqual(['sticker', 'contacts', 'unsupported']);
-    expect(messages[1]?.text).toBe('Juan Perez');
+    // A contact card names a THIRD PARTY. `body` feeds getRecentMessages, which
+    // builds the LLM history sent to DeepSeek, so the name is never carried.
+    expect(messages[1]?.text).toBe('');
   });
 });
 
@@ -355,6 +357,55 @@ describe('webhook route intake', () => {
 
     const stored = db.prepare('SELECT count(*) n FROM messages WHERE customer_phone = ?').get(PHONE) as { n: number };
     expect(stored.n).toBe(0);
+  });
+
+  it('aggregates many identical skips into one system error row', async () => {
+    // Meta batches up to 1000 updates per POST. One row per item would flood the
+    // table operators read to find lost messages.
+    const many = Array.from({ length: 50 }, (_, i) => ({ from: PHONE, id: `wamid.MANY${i}`, type: 'order' }));
+    await post(envelope(many));
+    await drainWebhookQueue(5_000);
+
+    const rows = db.prepare("SELECT context_json FROM system_errors WHERE error_type = 'webhook_parse'").all() as { context_json: string | null }[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.context_json ?? '').toContain('"count":50');
+    expect(getWebhookStats().skipped).toBe(50);
+  });
+
+  it('stores a contacts card without the third party name', async () => {
+    await post(envelope([{ from: PHONE, id: 'wamid.CC', type: 'contacts', contacts: [{ name: { formatted_name: 'Juan Perez' } }] }]));
+    await drainWebhookQueue(5_000);
+
+    const stored = db.prepare('SELECT message_type, body FROM messages WHERE customer_phone = ?').all(PHONE) as { message_type: string; body: string | null }[];
+    expect(stored[0]?.message_type).toBe('contacts');
+    expect(stored[0]?.body ?? '').not.toContain('Juan Perez');
+  });
+
+  it('stores a document even when no Telegram chat is configured', async () => {
+    env.TELEGRAM_CHAT_ID = '';
+
+    await post(envelope([{ from: PHONE, id: 'wamid.DOC3', type: 'document', document: { id: 'media-12', mime_type: 'application/pdf' } }]));
+    await drainWebhookQueue(5_000);
+
+    const stored = db.prepare('SELECT count(*) n FROM messages WHERE customer_phone = ?').get(PHONE) as { n: number };
+    expect(stored.n).toBe(1);
+    expect(sendTelegramDocumentMock).not.toHaveBeenCalled();
+  });
+
+  it('tells a live bridge agent what arrived instead of an empty bubble', async () => {
+    // These types were dropped at extraction before, so the plain text relay —
+    // which renders msg.text — would reach the agent blank.
+    const repos = createRepositories(db);
+    repos.conversation.upsert(PHONE, {});
+    repos.bridgeSession.open(env.TELEGRAM_CHAT_ID, PHONE);
+    repos.conversation.setMode(PHONE, 'bridge_active');
+
+    await post(envelope([{ from: PHONE, id: 'wamid.STK2', type: 'sticker', sticker: { id: 'media-13', mime_type: 'image/webp' } }]));
+    await drainWebhookQueue(5_000);
+
+    const relayed = sendTelegramMessageMock.mock.calls.map(call => String((call as unknown[])[1] ?? ''));
+    expect(relayed.some(text => text.includes('sticker'))).toBe(true);
+    expect(relayed.some(text => text.trim().endsWith(PHONE))).toBe(false);
   });
 
   it('does not write a system error for a reaction', async () => {

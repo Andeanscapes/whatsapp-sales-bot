@@ -198,6 +198,7 @@ Webhook details:
 - Incoming messages are processed sequentially per phone using `processingPhones` map.
 - Duplicate WhatsApp message IDs are ignored by `processed_webhook_messages`.
 - `drainWebhookQueue()` is awaited by `gracefulShutdown` (20s cap, under compose's 30s `stop_grace_period`). The route answers 200 and marks the message processed *before* handling it, so a turn killed mid-flight is lost permanently: Meta does not retry a 200, and a retry would be deduped away. That is what produced the 22 orphan `processed_webhook_messages` rows observed Jun–Aug 2026.
+- No response delay: the first bot message of a turn is sent as soon as it is ready. `createTurnPacer` in `human-delay.ts` only keeps a ~1–4s gap between later messages of the same turn (photos, then text) so they arrive in order, and stops a turn whose phone already has a newer inbound queued (burst merge). The `MESSAGE_DELAY` flag was removed (2026-11-07). Does not apply to bridge/agent/admin sends or system-error fallbacks.
 
 ### Payload parsing (`extractWebhookItems`)
 
@@ -213,10 +214,12 @@ Anything that yields no message is returned in `skipped` and written to `system_
 | `button`, `interactive` (button/list reply) | yes, as `text` | yes | a tapped word is the same as a typed one |
 | `image`, `audio`, `video` | yes | no | relayed in bridge/handoff paths |
 | `document` | yes | no | relayed to the assigned agent, else the owner, as a likely payment receipt |
-| `sticker`, `location`, `contacts`, `unsupported` | yes | no | operator transcript only |
+| `sticker`, `location`, `unsupported` | yes | no | operator transcript only |
+| `contacts` | yes, **empty body** | no | the card names a third party, and `body` feeds `getRecentMessages` → the LLM history sent to DeepSeek |
 | `reaction` | **no** | no | an inbound row would make a 👍 the newest message and stall the recurring follow-up dormancy check |
 | `interactive` (other subtypes, e.g. Flows `nfm_reply`) | no | no | skipped and reported rather than guessed at |
-- No response delay: the first bot message of a turn is sent as soon as it is ready. `createTurnPacer` in `human-delay.ts` only keeps a ~1–4s gap between later messages of the same turn (photos, then text) so they arrive in order, and stops a turn whose phone already has a newer inbound queued (burst merge). The `MESSAGE_DELAY` flag was removed (2026-11-07). Does not apply to bridge/agent/admin sends or system-error fallbacks.
+
+A non-text type with no caption (sticker, contacts, unsupported) reaches a bridge or dormant agent as a typed notice, never as the plain text relay — that would render an empty bubble.
 
 ## Customer Chat Flow
 

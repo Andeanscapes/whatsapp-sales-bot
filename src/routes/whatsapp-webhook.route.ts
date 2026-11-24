@@ -212,13 +212,6 @@ function locationText(location: NonNullable<z.infer<typeof messageSchema>['locat
   return latitude != null && longitude != null ? `${latitude},${longitude}` : '';
 }
 
-function contactsText(contacts: NonNullable<z.infer<typeof messageSchema>['contacts']>): string {
-  return contacts
-    .map(contact => contact.name?.formatted_name)
-    .filter((name): name is string => typeof name === 'string' && name.length > 0)
-    .join(', ');
-}
-
 function toExtracted(m: z.infer<typeof messageSchema>): ExtractedMessage | null {
   const referral = m.referral ? { referral: m.referral } : {};
   if (m.type === 'text') {
@@ -296,8 +289,12 @@ function toExtracted(m: z.infer<typeof messageSchema>): ExtractedMessage | null 
   if (m.type === 'location' && m.location) {
     return { from: m.from, id: m.id, type: 'location', text: locationText(m.location), media: null, timestamp: '', ...referral };
   }
-  if (m.type === 'contacts' && m.contacts) {
-    return { from: m.from, id: m.id, type: 'contacts', text: contactsText(m.contacts), media: null, timestamp: '', ...referral };
+  if (m.type === 'contacts') {
+    // Body stays empty on purpose. A contact card carries a THIRD PARTY's name,
+    // and `body` is read by getRecentMessages, which builds the LLM history sent
+    // to DeepSeek. The operator still sees message_type = 'contacts'; that is
+    // enough to know a card was shared, without shipping someone else's PII.
+    return { from: m.from, id: m.id, type: 'contacts', text: '', media: null, timestamp: '', ...referral };
   }
   // Meta's own catch-all for a type this API version cannot render. Stored so
   // the operator can see that the customer sent *something*.
@@ -496,6 +493,18 @@ export async function forwardBridgeMessage(repos: Repositories, msg: ExtractedMe
     return true;
   }
 
+  // Sticker, contacts and unsupported carry no caption; the text relay below
+  // would reach the agent as an empty bubble. Location keeps its own label.
+  if (msg.type !== 'text' && msg.text.trim().length === 0) {
+    try {
+      await sendTelegramMessage(session.agentChatId, bridgeMessages.newCustomerOtherMedia(msg.from, msg.type));
+    } catch (err) {
+      logger.warn({ err, phone: msg.from, chatId: session.agentChatId }, '[BRIDGE] customer media notify failed; keeping bridge active');
+      await recordBridgeRelayFailure(repos, msg.from, session.agentChatId, msg.type);
+    }
+    return true;
+  }
+
   try {
     await sendTelegramMessage(session.agentChatId, bridgeMessages.newCustomerMessage(msg.from, msg.text));
     return true;
@@ -611,7 +620,10 @@ export async function forwardPostHandoffMedia(repos: Repositories, msg: Extracte
         bridgeMessages.dormantBridgeDocumentNotice(msg.from),
       );
     } else {
-      return false;
+      // Sticker, location, contacts, unsupported: the row is already stored
+      // above, so returning false here would leave the agent uninformed about a
+      // message the customer did send.
+      await sendTelegramMessage(assignment.assignedAgentChat, bridgeMessages.dormantBridgeOtherMediaNotice(msg.from, msg.type));
     }
   } catch {
     return false;
@@ -682,6 +694,8 @@ export async function notifyAssignedLineIfDormant(repos: Repositories, msg: Extr
         bridgeMessages.newCustomerDocument(msg.from, msg.text),
         bridgeMessages.dormantBridgeDocumentNotice(msg.from),
       );
+    } else if (msg.type !== 'text' && msg.text.trim().length === 0) {
+      await sendTelegramMessage(assignment.assignedAgentChat, bridgeMessages.dormantBridgeOtherMediaNotice(msg.from, msg.type));
     } else {
       await sendTelegramMessage(assignment.assignedAgentChat, bridgeMessages.dormantBridgeNotice(msg.from, msg.text));
     }
@@ -817,18 +831,33 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
     // info level only: writing it to `system_errors` would bury the real parse
     // failures operators read that table for, and a popular template can draw
     // many reactions in one batch.
+    //
+    // Skips are aggregated per reason+type before being written. Meta batches up
+    // to 1000 updates per POST, so a shape change that breaks messageSchema
+    // would otherwise write 1000 rows per POST, repeatedly, on the inbound path
+    // — flooding the table operators read to find lost messages. One row with a
+    // count carries the same diagnostic value.
+    const skipCounts = new Map<string, { skip: WebhookSkip; count: number }>();
     for (const skip of skipped) {
       recordWebhookSkipped(skip.reason);
-      if (skip.reason === 'reaction_ignored') {
-        logger.info({ itemType: skip.messageType }, '[WEBHOOK] reaction ignored (never stored)');
-        continue;
-      }
+      if (skip.reason === 'reaction_ignored') continue;
+      const key = `${skip.level}:${skip.reason}:${skip.messageType ?? ''}`;
+      const existing = skipCounts.get(key);
+      if (existing) existing.count += 1;
+      else skipCounts.set(key, { skip, count: 1 });
+    }
+    const reactionCount = skipped.length - [...skipCounts.values()].reduce((sum, s) => sum + s.count, 0);
+    if (reactionCount > 0) {
+      logger.info({ count: reactionCount }, '[WEBHOOK] reactions ignored (never stored)');
+    }
+    for (const { skip, count } of skipCounts.values()) {
       // `itemType`, not `messageType`: maskSensitiveContext redacts any key
       // containing "message", which would blank out the one field that makes a
       // skip diagnosable.
       logSystemError('webhook_parse', 'warning', new Error(skip.reason), {
         level: skip.level,
         itemType: skip.messageType,
+        count,
       });
       void reportWebhookSkip(skip.reason, skip.messageType);
     }

@@ -37,7 +37,7 @@ function webhookSection(): string {
   const w = getWebhookStats();
   const lines = [
     '',
-    '*Webhooks (desde el ultimo reinicio)*',
+    `*Webhooks (desde ${w.since.slice(0, 16).replace('T', ' ')} UTC)*`,
     `• POSTs: ${w.posts} | Mensajes: ${w.messages}`,
     `• Descartados: ${w.skipped} | Reacciones ignoradas: ${w.reactions}`,
   ];

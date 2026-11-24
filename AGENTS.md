@@ -677,7 +677,13 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
       `document` is stored and relayed to the assigned agent, else the owner, as a likely
       payment receipt — persist first, notify second, and a download or Telegram failure
       degrades to a text notice and never costs the transcript row. `sticker`,
-      `location`, `contacts` and `unsupported` are stored, never answered.
+      `location`, `contacts` and `unsupported` are stored, never answered; a
+      `contacts` card is stored with an **empty body**, because it names a third party
+      and `body` feeds `getRecentMessages`, which builds the LLM history sent to
+      DeepSeek. A caption-less type reaches an agent as a typed notice, never through
+      the plain text relay, which would render an empty bubble.
+      Skips are aggregated per reason+type per POST before writing: at 1000 updates per
+      POST, one row per item would flood the table operators read to find lost messages.
     - **In-flight turns are drained on shutdown.** `drainWebhookQueue` is awaited by
       `gracefulShutdown` (20s, under compose's 30s `stop_grace_period`). Without it a
       deploy killed turns that were already marked processed — the mechanism behind the

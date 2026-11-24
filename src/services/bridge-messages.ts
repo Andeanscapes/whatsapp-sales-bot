@@ -98,6 +98,10 @@ export const bridgeMessages = {
     caption.trim().length > 0
       ? `Documento de ${phone} (posible comprobante)\n\n${caption}`
       : `Documento de ${phone} (posible comprobante)`,
+  // Sticker/location/contacts/unsupported carry no caption, so the plain
+  // "nuevo mensaje" relay would reach the agent as an empty bubble.
+  newCustomerOtherMedia: (phone: string, messageType: string): string =>
+    `${phone} envio un mensaje de tipo "${messageType}" que no se puede mostrar aqui. Abre el chat de WhatsApp para verlo.`,
   relayFailed: (phone: string, messageType: string): string =>
     `No se pudo entregar al agente el mensaje ${messageType} de ${phone}. El mensaje quedo guardado y el bridge sigue activo.`,
   dormantBridgeNotice: (phone: string, text: string): string =>
@@ -110,6 +114,8 @@ export const bridgeMessages = {
     `${phone} envio un video.\n\nUsa /chat ${phone} para tomar control.`,
   dormantBridgeDocumentNotice: (phone: string): string =>
     `${phone} envio un documento (posible comprobante).\n\nUsa /chat ${phone} para tomar control.`,
+  dormantBridgeOtherMediaNotice: (phone: string, messageType: string): string =>
+    `${phone} envio un mensaje de tipo "${messageType}" que no se puede mostrar aqui.\n\nUsa /chat ${phone} para tomar control.`,
   customerImageFailed: (phone: string): string =>
     `${phone} envio una imagen pero no se pudo descargar. Pidele al cliente que la reenvie.`,
   customerAudioFailed: (phone: string): string =>
