@@ -815,9 +815,12 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
     // they never page anyone.
     for (const skip of skipped) {
       recordWebhookSkipped(skip.reason);
+      // `itemType`, not `messageType`: maskSensitiveContext redacts any key
+      // containing "message", which would blank out the one field that makes a
+      // skip diagnosable.
       logSystemError('webhook_parse', 'warning', new Error(skip.reason), {
         level: skip.level,
-        messageType: skip.messageType,
+        itemType: skip.messageType,
       });
       if (skip.reason !== 'reaction_ignored') {
         void reportWebhookSkip(skip.reason, skip.messageType);
