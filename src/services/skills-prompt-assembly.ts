@@ -911,7 +911,12 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
     // The method lives in whatsapp-sales.skill.md §T2 Retarget; this only routes to it. Before
     // 2026-11-12 the R01 segment's own question carried the blocker diagnosis.
     if (retargetingWithHistory && !returning) {
-      runtime.push('RETORNO CON HISTORIAL: el cliente ya escribió antes. Aplica §T2 Retarget de whatsapp-sales: retoma solo lo que CONTEXTO PREVIO y el historial muestran (sin datos, no inventes familiaridad) y una sola pregunta por el freno. Sin precio, sin presentación.');
+      // "Sin precio" alone lost to the CATALOGO about one turn in ten: the model
+      // volunteered a total on the diagnosis turn even with QUOTE LOCK already
+      // suppressed by `returnWithoutPriceAsk` (live ES CI 2026-11-24,
+      // entry-retarget-R01-with-history 53). The explicit token ban is the wording
+      // APERTURA DE ANUNCIO has carried in production since 2.5.1.
+      runtime.push('RETORNO CON HISTORIAL: el cliente ya escribió antes. Aplica §T2 Retarget de whatsapp-sales: retoma solo lo que CONTEXTO PREVIO y el historial muestran (sin datos, no inventes familiaridad) y una sola pregunta por el freno. Sin presentación. Sin precios, sin $, sin COP, sin totales, sin "desde" y sin anticipo, aunque el CATALOGO los traiga o el cliente los pida: en este turno solo diagnosticas el freno.');
     }
   }
 
