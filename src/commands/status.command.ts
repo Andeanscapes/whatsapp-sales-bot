@@ -2,6 +2,7 @@ import { env } from '../config/env.js';
 import type { LineLeadCount } from '../db/repositories/types.js';
 import { getLineById, getRoutingConfig } from '../services/lead-routing.js';
 import { getReportExcludedPhones } from '../services/report-exclusions.js';
+import { getWebhookStats } from '../services/webhook-stats.js';
 import type { CommandContext } from './index.js';
 
 function lineLabel(lineId: string): string {
@@ -23,6 +24,24 @@ function byLineSection(counts: LineLeadCount[]): string {
   for (const l of counts) {
     lines.push(`• ${lineLabel(l.lineId)}: ${l.total} total | ${l.hot} calientes | ${l.booked} reservas`);
   }
+  return lines.join('\n');
+}
+
+/**
+ * Webhook intake since the last restart. `Descartados > 0` means Meta delivered
+ * something the bot could not turn into a message — the one symptom that used
+ * to be completely invisible. Reactions are counted apart because they are
+ * ignored on purpose and are not losses.
+ */
+function webhookSection(): string {
+  const w = getWebhookStats();
+  const lines = [
+    '',
+    `*Webhooks (desde ${w.since.slice(0, 16).replace('T', ' ')} UTC)*`,
+    `• POSTs: ${w.posts} | Mensajes: ${w.messages}`,
+    `• Descartados: ${w.skipped} | Reacciones ignoradas: ${w.reactions}`,
+  ];
+  if (w.skipped > 0) lines.push('⚠️ Revisa webhook_parse en system_errors.');
   return lines.join('\n');
 }
 
@@ -59,6 +78,7 @@ export async function statusHandler(ctx: CommandContext): Promise<string> {
   ];
 
   parts.push(byLineSection(byLine));
+  parts.push(webhookSection());
   parts.push('', '_Usa /report para detalle completo._');
 
   return parts.join('\n');

@@ -8,6 +8,7 @@ import { getSkills } from '../services/skill-loader.js';
 import { buildHandedOffReply, isConsentAskSuperseded, isOptOutMessage, processMessage } from '../services/response-engine.js';
 import { classifyPendingConsentReply, consentCycleKey } from '../services/followup-consent.js';
 import { sendText, sendImageUrl, downloadMedia, WhatsAppSendError, MAX_IMAGE_CAPTION_CHARS } from '../services/whatsapp-client.js';
+import { sendTelegramDocument } from '../services/telegram-document.js';
 import { canSendImage, galleryMediaId, galleryMediaIdFromUrl, markLlmGalleryShown, planCardSentRecently, releaseImageReservation, remainingGalleryImageBudget, reserveImageSend, reserveRequestedGalleryImageSend, selectPlanImage } from '../services/media-service.js';
 import { sendAlert } from '../services/alert-service.js';
 import { sendTelegramMessage, sendTelegramPhoto, sendTelegramVoice } from '../services/telegram-bot.js';
@@ -21,11 +22,43 @@ import { normalizePhone } from '../services/report-exclusions.js';
 import { logger } from '../config/logger.js';
 import { logSystemError } from '../services/error-logger.js';
 import { recordAdReferral, type MetaAdReferral } from '../services/ad-referral.js';
+import { reportWebhookSkip } from '../services/whatsapp-operational-health.js';
+import { REACTION_SKIP_REASON, recordWebhookMessages, recordWebhookPost, recordWebhookSkipped } from '../services/webhook-stats.js';
 import { createTurnPacer } from '../services/human-delay.js';
 import { recordOutboundMedia } from '../services/conversation-media.js';
 
 const processingPhones = new Map<string, Promise<void>>();
 const pendingByPhone = new Map<string, number>();
+
+/**
+ * Waits for in-flight webhook turns to finish during shutdown.
+ *
+ * The route answers 200 and marks the message processed BEFORE handling it, so
+ * a turn killed mid-flight is lost for good: Meta will not retry a 200, and a
+ * retry would be deduped away anyway. That is what produced the 22 orphan rows
+ * in `processed_webhook_messages` (June–August 2026) — messages marked
+ * processed that never got a stored row or a reply.
+ *
+ * Bounded by `timeoutMs`, which must stay below compose's `stop_grace_period`
+ * so Docker never SIGKILLs us mid-drain. Returns the number of turns still
+ * running when the timeout hit (0 means a clean drain).
+ */
+export async function drainWebhookQueue(timeoutMs: number): Promise<number> {
+  const pending = [...processingPhones.values()];
+  if (pending.length === 0) return 0;
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const drained = Promise.allSettled(pending).then(() => true);
+  const timedOut = new Promise<boolean>(resolve => {
+    timer = setTimeout(() => resolve(false), timeoutMs);
+  });
+  try {
+    const ok = await Promise.race([drained, timedOut]);
+    return ok ? 0 : processingPhones.size;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 type RequestWithRawBody = FastifyRequest & { rawBody?: Buffer };
 
@@ -49,6 +82,15 @@ function safeStringEqual(a: string, b: string): boolean {
   return left.length === right.length && timingSafeEqual(left, right);
 }
 
+/**
+ * Referral strings are TRUNCATED, never rejected. A `.max()` here used to fail
+ * the parse, and because the whole payload was parsed as one unit that silently
+ * discarded every message in the POST — after the route had already answered
+ * 200, so Meta never retried. `ad-referral.ts` slices again at storage.
+ */
+const REFERRAL_MAX = 500;
+const referralText = (max: number) => z.string().transform(value => value.slice(0, max));
+
 const messageSchema = z.object({
   from: z.string(),
   id: z.string(),
@@ -57,26 +99,62 @@ const messageSchema = z.object({
   image: z.object({ id: z.string(), mime_type: z.string().optional(), caption: z.string().optional() }).optional(),
   audio: z.object({ id: z.string(), mime_type: z.string().optional() }).optional(),
   video: z.object({ id: z.string(), mime_type: z.string().optional(), caption: z.string().optional() }).optional(),
+  document: z.object({
+    id: z.string(),
+    mime_type: z.string().optional(),
+    caption: z.string().optional(),
+    filename: z.string().optional(),
+  }).optional(),
+  sticker: z.object({ id: z.string(), mime_type: z.string().optional() }).optional(),
+  location: z.object({
+    latitude: z.number().optional(),
+    longitude: z.number().optional(),
+    name: z.string().optional(),
+    address: z.string().optional(),
+  }).optional(),
+  contacts: z.array(z.object({
+    name: z.object({ formatted_name: z.string().optional() }).passthrough().optional(),
+  }).passthrough()).optional(),
+  // Template quick-reply tap.
+  button: z.object({ text: z.string().optional(), payload: z.string().optional() }).optional(),
+  // Interactive reply tap (button or list).
+  interactive: z.object({
+    type: z.string().optional(),
+    button_reply: z.object({ id: z.string().optional(), title: z.string().optional() }).optional(),
+    list_reply: z.object({ id: z.string().optional(), title: z.string().optional() }).optional(),
+  }).passthrough().optional(),
   referral: z.object({
-    ctwa_clid: z.string().max(500).optional(),
-    source_id: z.string().max(500).optional(),
-    source_type: z.string().max(100).optional(),
-    headline: z.string().max(500).optional(),
+    ctwa_clid: referralText(REFERRAL_MAX).optional(),
+    source_id: referralText(REFERRAL_MAX).optional(),
+    source_type: referralText(100).optional(),
+    headline: referralText(REFERRAL_MAX).optional(),
   }).strip().optional(),
 });
 
-const webhookPayloadSchema = z.object({
-  object: z.string(),
-  entry: z.array(z.object({
-    id: z.string(),
-    changes: z.array(z.object({
-      value: z.object({
-        messaging_product: z.string().optional(),
-        messages: z.array(messageSchema).optional(),
-      }).passthrough(),
-      field: z.string(),
-    })),
-  })),
+/**
+ * Meta batches up to 1000 updates per POST and ships entries that carry no
+ * `changes` (account events) or changes with no `value`. Each level is therefore
+ * parsed on its own: one malformed or unknown sibling must never discard the
+ * real customer messages travelling in the same POST.
+ */
+const envelopeSchema = z.object({
+  object: z.string().optional(),
+  entry: z.array(z.unknown()),
+}).passthrough();
+
+const entrySchema = z.object({
+  // Documented as a string; accepted as a number too so a shape change cannot
+  // cost us a message.
+  id: z.union([z.string(), z.number()]).optional(),
+  changes: z.array(z.unknown()).optional(),
+}).passthrough();
+
+const changeSchema = z.object({
+  value: z.object({
+    messaging_product: z.string().optional(),
+    messages: z.array(z.unknown()).optional(),
+  }).passthrough().optional(),
+  field: z.string().optional(),
 }).passthrough();
 
 export interface ExtractedMedia {
@@ -84,63 +162,219 @@ export interface ExtractedMedia {
   mimeType: string | null;
 }
 
+/**
+ * `text` is the only type the bot replies to. Everything else is persisted for
+ * the operator transcript and relayed to the assigned agent where it matters.
+ * A template quick-reply (`button`) and an interactive reply are normalised to
+ * `text`: the customer tapped a word, which is the same as typing it.
+ */
+export type ExtractedMessageType =
+  | 'text'
+  | 'image'
+  | 'audio'
+  | 'video'
+  | 'document'
+  | 'sticker'
+  | 'location'
+  | 'contacts'
+  | 'unsupported';
+
 export interface ExtractedMessage {
   from: string;
   id: string;
-  type: 'text' | 'image' | 'audio' | 'video';
+  type: ExtractedMessageType;
   text: string;
   media: ExtractedMedia | null;
   timestamp: string;
   referral?: MetaAdReferral;
+  /** Documents only: the customer's original file name, for the operator relay. */
+  filename?: string;
 }
 
-export function extractMessages(body: unknown): ExtractedMessage[] | null {
-  const parsed = webhookPayloadSchema.safeParse(body);
-  if (!parsed.success) return null;
+/** Why one item of a webhook payload produced no `ExtractedMessage`. */
+export interface WebhookSkip {
+  level: 'envelope' | 'entry' | 'change' | 'message';
+  reason: string;
+  /** Message type when known. Never carries message bodies or phone numbers. */
+  messageType?: string;
+}
 
-  const result: ExtractedMessage[] = [];
-  for (const entry of parsed.data.entry) {
-    for (const change of entry.changes) {
-      const messages = change.value?.messages;
-      if (!messages) continue;
-      for (const m of messages) {
-        if (m.type === 'text') {
-          result.push({ from: m.from, id: m.id, type: 'text', text: m.text?.body ?? '', media: null, timestamp: '', ...(m.referral ? { referral: m.referral } : {}) });
-        } else if (m.type === 'image' && m.image) {
-          result.push({
-            from: m.from,
-            id: m.id,
-            type: 'image',
-            text: m.image.caption ?? '',
-            media: { id: m.image.id, mimeType: m.image.mime_type ?? null },
-            timestamp: '',
-            ...(m.referral ? { referral: m.referral } : {}),
+export interface WebhookExtraction {
+  messages: ExtractedMessage[];
+  skipped: WebhookSkip[];
+}
+
+/**
+ * Label only. `body` is read by `getRecentMessages`, which builds the LLM
+ * history sent to DeepSeek, so raw coordinates would ship a precise home or
+ * workplace position to a third-party API for no conversational gain — the
+ * model cannot act on a lat/lng. A pin with no label is still visible to the
+ * operator as `message_type = 'location'`.
+ */
+function locationText(location: NonNullable<z.infer<typeof messageSchema>['location']>): string {
+  return [location.name, location.address].filter(Boolean).join(' — ');
+}
+
+function toExtracted(m: z.infer<typeof messageSchema>): ExtractedMessage | null {
+  const referral = m.referral ? { referral: m.referral } : {};
+  if (m.type === 'text') {
+    return { from: m.from, id: m.id, type: 'text', text: m.text?.body ?? '', media: null, timestamp: '', ...referral };
+  }
+  // A tapped template button is the customer saying that word. Treating it as
+  // text lets the normal sales path — and the consent classifier — read it.
+  if (m.type === 'button' && m.button?.text) {
+    return { from: m.from, id: m.id, type: 'text', text: m.button.text, media: null, timestamp: '', ...referral };
+  }
+  if (m.type === 'interactive') {
+    const title = m.interactive?.button_reply?.title ?? m.interactive?.list_reply?.title;
+    // Other interactive subtypes (e.g. Flows `nfm_reply`) carry no plain title
+    // and must not be guessed at: they fall through and are reported as skipped.
+    if (title) {
+      return { from: m.from, id: m.id, type: 'text', text: title, media: null, timestamp: '', ...referral };
+    }
+  }
+  if (m.type === 'image' && m.image) {
+    return {
+      from: m.from,
+      id: m.id,
+      type: 'image',
+      text: m.image.caption ?? '',
+      media: { id: m.image.id, mimeType: m.image.mime_type ?? null },
+      timestamp: '',
+      ...referral,
+    };
+  }
+  if (m.type === 'audio' && m.audio) {
+    return {
+      from: m.from,
+      id: m.id,
+      type: 'audio',
+      text: '',
+      media: { id: m.audio.id, mimeType: m.audio.mime_type ?? null },
+      timestamp: '',
+      ...referral,
+    };
+  }
+  if (m.type === 'video' && m.video) {
+    return {
+      from: m.from,
+      id: m.id,
+      type: 'video',
+      text: m.video.caption ?? '',
+      media: { id: m.video.id, mimeType: m.video.mime_type ?? null },
+      timestamp: '',
+      ...referral,
+    };
+  }
+  if (m.type === 'document' && m.document) {
+    return {
+      from: m.from,
+      id: m.id,
+      type: 'document',
+      // Caption only, never the filename. `text` is persisted as `body`, which
+      // `getRecentMessages` feeds to the LLM history, and a receipt filename
+      // routinely carries a reference or phone-shaped digit run
+      // ("comprobante-3009900001.pdf"). Echoed back by the model that trips
+      // COL_MOBILE in `containsPaymentDetailLeak`, a HARD safety fail that
+      // suppresses the reply entirely — the customer would get silence on the
+      // turn right after sending their payment proof. The filename still
+      // reaches the operator through `filename` below.
+      text: m.document.caption ?? '',
+      media: { id: m.document.id, mimeType: m.document.mime_type ?? null },
+      timestamp: '',
+      ...(m.document.filename ? { filename: m.document.filename } : {}),
+      ...referral,
+    };
+  }
+  if (m.type === 'sticker' && m.sticker) {
+    return {
+      from: m.from,
+      id: m.id,
+      type: 'sticker',
+      text: '',
+      media: { id: m.sticker.id, mimeType: m.sticker.mime_type ?? null },
+      timestamp: '',
+      ...referral,
+    };
+  }
+  if (m.type === 'location' && m.location) {
+    return { from: m.from, id: m.id, type: 'location', text: locationText(m.location), media: null, timestamp: '', ...referral };
+  }
+  if (m.type === 'contacts') {
+    // Body stays empty on purpose. A contact card carries a THIRD PARTY's name,
+    // and `body` is read by getRecentMessages, which builds the LLM history sent
+    // to DeepSeek. The operator still sees message_type = 'contacts'; that is
+    // enough to know a card was shared, without shipping someone else's PII.
+    return { from: m.from, id: m.id, type: 'contacts', text: '', media: null, timestamp: '', ...referral };
+  }
+  // Meta's own catch-all for a type this API version cannot render. Stored so
+  // the operator can see that the customer sent *something*.
+  if (m.type === 'unsupported') {
+    return { from: m.from, id: m.id, type: 'unsupported', text: '', media: null, timestamp: '', ...referral };
+  }
+  return null;
+}
+
+/**
+ * Parses a webhook payload item by item. Anything that cannot be turned into an
+ * `ExtractedMessage` is reported in `skipped` rather than dropped in silence —
+ * a dropped customer message must always leave a trace.
+ */
+export function extractWebhookItems(body: unknown): WebhookExtraction {
+  const messages: ExtractedMessage[] = [];
+  const skipped: WebhookSkip[] = [];
+
+  const envelope = envelopeSchema.safeParse(body);
+  if (!envelope.success) {
+    return { messages, skipped: [{ level: 'envelope', reason: 'unparsable_payload' }] };
+  }
+
+  for (const rawEntry of envelope.data.entry) {
+    const entry = entrySchema.safeParse(rawEntry);
+    if (!entry.success) {
+      skipped.push({ level: 'entry', reason: 'unparsable_entry' });
+      continue;
+    }
+    // Account-level events arrive without `changes`; normal traffic, not a skip.
+    for (const rawChange of entry.data.changes ?? []) {
+      const change = changeSchema.safeParse(rawChange);
+      if (!change.success) {
+        skipped.push({ level: 'change', reason: 'unparsable_change' });
+        continue;
+      }
+      // Status callbacks (sent/delivered/read) carry no `messages`. Expected.
+      for (const rawMessage of change.data.value?.messages ?? []) {
+        const parsed = messageSchema.safeParse(rawMessage);
+        if (!parsed.success) {
+          const type = (rawMessage as { type?: unknown } | null)?.type;
+          skipped.push({
+            level: 'message',
+            reason: 'unparsable_message',
+            ...(typeof type === 'string' ? { messageType: type } : {}),
           });
-        } else if (m.type === 'audio' && m.audio) {
-          result.push({
-            from: m.from,
-            id: m.id,
-            type: 'audio',
-            text: '',
-            media: { id: m.audio.id, mimeType: m.audio.mime_type ?? null },
-            timestamp: '',
-            ...(m.referral ? { referral: m.referral } : {}),
-          });
-        } else if (m.type === 'video' && m.video) {
-          result.push({
-            from: m.from,
-            id: m.id,
-            type: 'video',
-            text: m.video.caption ?? '',
-            media: { id: m.video.id, mimeType: m.video.mime_type ?? null },
-            timestamp: '',
-            ...(m.referral ? { referral: m.referral } : {}),
-          });
+          continue;
         }
+        // A reaction is deliberately NOT stored. An inbound row would make a 👍
+        // on a follow-up template the newest message in the thread, which breaks
+        // the recurring path's "the last message must be ours" dormancy check
+        // and would silently stop follow-ups for that customer.
+        if (parsed.data.type === 'reaction') {
+          skipped.push({ level: 'message', reason: REACTION_SKIP_REASON, messageType: 'reaction' });
+          continue;
+        }
+        const extracted = toExtracted(parsed.data);
+        if (extracted) messages.push(extracted);
+        else skipped.push({ level: 'message', reason: 'unsupported_type', messageType: parsed.data.type });
       }
     }
   }
-  return result.length > 0 ? result : null;
+
+  return { messages, skipped };
+}
+
+export function extractMessages(body: unknown): ExtractedMessage[] | null {
+  const { messages } = extractWebhookItems(body);
+  return messages.length > 0 ? messages : null;
 }
 
 export function isWebhookSenderAllowed(from: string): boolean {
@@ -167,6 +401,33 @@ async function recordBridgeRelayFailure(repos: Repositories, phone: string, agen
  * to `bot`, so the bot resumes and the conversation is never silently dropped.
  * `referred` customers (handed to another line) keep getting bot replies here.
  */
+/**
+ * Relays a customer document (usually a payment receipt) to an operator chat.
+ * Persistence already happened at the call site: a download or Telegram failure
+ * must never cost us the transcript row, so it degrades to a text notice.
+ */
+async function relayCustomerDocument(
+  repos: Repositories,
+  msg: ExtractedMessage,
+  chatId: string,
+  caption: string,
+  failureNotice: string,
+): Promise<void> {
+  if (!msg.media) return;
+  try {
+    const media = await downloadMedia(msg.media.id);
+    await sendTelegramDocument(chatId, media.buffer, msg.filename ?? 'documento', media.mimeType, caption);
+    return;
+  } catch (err) {
+    logSystemError('telegram_send', 'warning', err, { phone: msg.from, chatId, flow: 'customer_document' });
+  }
+  try {
+    await sendTelegramMessage(chatId, failureNotice);
+  } catch {
+    await recordBridgeRelayFailure(repos, msg.from, chatId, msg.type);
+  }
+}
+
 export async function forwardBridgeMessage(repos: Repositories, msg: ExtractedMessage): Promise<boolean> {
   if (repos.isPaused()) return false;
   if (repos.optOut.isOptedOut(msg.from)) return false;
@@ -233,6 +494,23 @@ export async function forwardBridgeMessage(repos: Repositories, msg: ExtractedMe
       await sendTelegramMessage(session.agentChatId, bridgeMessages.newCustomerVideo(msg.from));
     } catch (err) {
       logger.warn({ err, phone: msg.from, chatId: session.agentChatId }, '[BRIDGE] customer video notify failed; keeping bridge active');
+      await recordBridgeRelayFailure(repos, msg.from, session.agentChatId, msg.type);
+    }
+    return true;
+  }
+
+  if (msg.type === 'document' && msg.media) {
+    await relayCustomerDocument(repos, msg, session.agentChatId, bridgeMessages.newCustomerDocument(msg.from, msg.text), bridgeMessages.customerDocumentFailed(msg.from));
+    return true;
+  }
+
+  // Sticker, contacts and unsupported carry no caption; the text relay below
+  // would reach the agent as an empty bubble. Location keeps its own label.
+  if (msg.type !== 'text' && msg.text.trim().length === 0) {
+    try {
+      await sendTelegramMessage(session.agentChatId, bridgeMessages.newCustomerOtherMedia(msg.from, msg.type));
+    } catch (err) {
+      logger.warn({ err, phone: msg.from, chatId: session.agentChatId }, '[BRIDGE] customer media notify failed; keeping bridge active');
       await recordBridgeRelayFailure(repos, msg.from, session.agentChatId, msg.type);
     }
     return true;
@@ -344,8 +622,19 @@ export async function forwardPostHandoffMedia(repos: Repositories, msg: Extracte
       }
     } else if (msg.type === 'video') {
       await sendTelegramMessage(assignment.assignedAgentChat, bridgeMessages.dormantBridgeVideoNotice(msg.from));
+    } else if (msg.type === 'document' && msg.media) {
+      await relayCustomerDocument(
+        repos,
+        msg,
+        assignment.assignedAgentChat,
+        bridgeMessages.newCustomerDocument(msg.from, msg.text),
+        bridgeMessages.dormantBridgeDocumentNotice(msg.from),
+      );
     } else {
-      return false;
+      // Sticker, location, contacts, unsupported: the row is already stored
+      // above, so returning false here would leave the agent uninformed about a
+      // message the customer did send.
+      await sendTelegramMessage(assignment.assignedAgentChat, bridgeMessages.dormantBridgeOtherMediaNotice(msg.from, msg.type));
     }
   } catch {
     return false;
@@ -408,6 +697,16 @@ export async function notifyAssignedLineIfDormant(repos: Repositories, msg: Extr
       }
     } else if (msg.type === 'video') {
       await sendTelegramMessage(assignment.assignedAgentChat, bridgeMessages.dormantBridgeVideoNotice(msg.from));
+    } else if (msg.type === 'document' && msg.media) {
+      await relayCustomerDocument(
+        repos,
+        msg,
+        assignment.assignedAgentChat,
+        bridgeMessages.newCustomerDocument(msg.from, msg.text),
+        bridgeMessages.dormantBridgeDocumentNotice(msg.from),
+      );
+    } else if (msg.type !== 'text' && msg.text.trim().length === 0) {
+      await sendTelegramMessage(assignment.assignedAgentChat, bridgeMessages.dormantBridgeOtherMediaNotice(msg.from, msg.type));
     } else {
       await sendTelegramMessage(assignment.assignedAgentChat, bridgeMessages.dormantBridgeNotice(msg.from, msg.text));
     }
@@ -532,8 +831,53 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
 
     reply.code(200).send({ ok: true });
 
-    const messages = extractMessages(req.body);
-    if (!messages) return;
+    recordWebhookPost();
+    const { messages, skipped } = extractWebhookItems(req.body);
+    recordWebhookMessages(messages.length);
+    // Skips used to be invisible: the payload was discarded with no log, no row
+    // and no dedupe entry, so a lost customer could only ever be found by them
+    // complaining.
+    //
+    // A reaction is expected traffic, not a failure. It is counted and logged at
+    // info level only: writing it to `system_errors` would bury the real parse
+    // failures operators read that table for, and a popular template can draw
+    // many reactions in one batch.
+    //
+    // Skips are aggregated per reason+type before being written. Meta batches up
+    // to 1000 updates per POST, so a shape change that breaks messageSchema
+    // would otherwise write 1000 rows per POST, repeatedly, on the inbound path
+    // — flooding the table operators read to find lost messages. One row with a
+    // count carries the same diagnostic value.
+    const skipCounts = new Map<string, { skip: WebhookSkip; count: number }>();
+    // Counted directly, not derived by subtracting the reported skips: a second
+    // future "expected" reason would otherwise silently corrupt this number.
+    let reactionCount = 0;
+    for (const skip of skipped) {
+      recordWebhookSkipped(skip.reason);
+      if (skip.reason === REACTION_SKIP_REASON) {
+        reactionCount += 1;
+        continue;
+      }
+      const key = `${skip.level}:${skip.reason}:${skip.messageType ?? ''}`;
+      const existing = skipCounts.get(key);
+      if (existing) existing.count += 1;
+      else skipCounts.set(key, { skip, count: 1 });
+    }
+    if (reactionCount > 0) {
+      logger.info({ count: reactionCount }, '[WEBHOOK] reactions ignored (never stored)');
+    }
+    for (const { skip, count } of skipCounts.values()) {
+      // `itemType`, not `messageType`: maskSensitiveContext redacts any key
+      // containing "message", which would blank out the one field that makes a
+      // skip diagnosable.
+      logSystemError('webhook_parse', 'warning', new Error(skip.reason), {
+        level: skip.level,
+        itemType: skip.messageType,
+        count,
+      });
+      void reportWebhookSkip(skip.reason, skip.messageType);
+    }
+    if (messages.length === 0) return;
 
     for (const msg of messages) {
       logger.info({ from: msg.from, type: msg.type, msgId: msg.id, textLen: msg.type === 'text' ? msg.text.length : undefined }, '[WEBHOOK] incoming WhatsApp message');
@@ -597,6 +941,18 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
               raw_json: null,
               media_id: msg.media?.id,
             });
+            // A document reaching here has no assigned agent, so the forwarders
+            // above declined it. It is usually a payment receipt: tell the owner
+            // rather than leaving it to be found in the transcript.
+            if (msg.type === 'document' && msg.media && env.TELEGRAM_CHAT_ID) {
+              await relayCustomerDocument(
+                repos,
+                msg,
+                env.TELEGRAM_CHAT_ID,
+                bridgeMessages.newCustomerDocument(msg.from, msg.text),
+                bridgeMessages.customerDocumentFailed(msg.from),
+              );
+            }
             return;
           }
 

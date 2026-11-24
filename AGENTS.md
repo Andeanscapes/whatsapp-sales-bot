@@ -648,6 +648,59 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
     guessed: the first turn asks the group, and the group answer gets `PRECIO PEDIDO SIN PLAN`
     (ad leads from any earlier inbound, others from this or the previous inbound).
 
+17. **A webhook item is never silently dropped: it is extracted, stored, or logged.**
+    The route answers `200` before parsing, so Meta never retries — anything discarded
+    after that point is lost forever and, before this rule, left no log, no row and no
+    `processed_webhook_messages` entry. A lost customer could only be discovered by the
+    customer complaining on another channel, which is exactly how it was found
+    (2026-11-24 audit).
+    - **Parse per item, never per payload.** `extractWebhookItems` parses envelope,
+      `entry`, `change` and each message independently. Meta batches up to 1000 updates
+      per POST, so one malformed or unknown sibling used to discard every real message
+      travelling with it. Confirmed killers: an `entry` with no `changes`, a `change`
+      with no `value`, a message with no `id`, and `referral.ctwa_clid` / `headline`
+      past the old `.max(500)`. Referral strings are **truncated, never rejected**:
+      `ad-referral.ts` slices again at storage.
+    - **Every skip is recorded.** `webhook_parse` in `system_errors` plus
+      `reportWebhookSkip` to the owner (hourly dedupe). Status callbacks and payloads
+      with no `messages` are normal traffic and must stay silent, or the signal drowns.
+      The context key is `itemType`, **not** `messageType`: `maskSensitiveContext`
+      redacts any key containing `message` and would blank out the only diagnosable
+      field. A skip carries shape only — never a body or a phone.
+    - **A reaction is never stored.** An inbound row would make a 👍 on a follow-up
+      template the newest message in the thread, breaking the recurring path's "the last
+      message must be ours" dormancy check and silently ending follow-ups for that
+      customer. It is counted and skipped with its own reason so it never pages anyone.
+    - **Only `text` reaches the LLM.** `button` and `interactive` button/list replies are
+      normalised to `text` (a tapped word is a typed word, and the consent classifier
+      must see it). Other interactive subtypes are skipped rather than guessed at.
+      `document` is stored and relayed to the assigned agent, else the owner, as a likely
+      payment receipt — persist first, notify second, and a download or Telegram failure
+      degrades to a text notice and never costs the transcript row. `sticker`,
+      `location`, `contacts` and `unsupported` are stored, never answered.
+      **`body` feeds `getRecentMessages`, which builds the LLM history sent to DeepSeek,
+      so machine-generated identifiers never go in it.** A `document` stores its customer
+      caption but **never its filename**: a receipt filename carries a reference or
+      phone-shaped digit run ("comprobante-3009900001.pdf") that, echoed back, trips
+      `COL_MOBILE` in `containsPaymentDetailLeak` — a HARD safety fail that suppresses the
+      reply, so the customer would get silence on the turn right after sending their proof.
+      The filename reaches the operator through `ExtractedMessage.filename`. A `contacts`
+      card stores an **empty body** (it names a third party) and a `location` stores its
+      label only, never raw coordinates. A caption-less type reaches an agent as a typed
+      notice, never through the plain text relay, which would render an empty bubble.
+      Asymmetry to keep in mind: a 👍 **reaction** is dropped to protect the recurring
+      template's dormancy check, but a 👍 **sticker** is a real inbound and is stored, so
+      it does advance that check.
+      Skips are aggregated per reason+type per POST before writing: at 1000 updates per
+      POST, one row per item would flood the table operators read to find lost messages.
+    - **In-flight turns are drained on shutdown.** `drainWebhookQueue` is awaited by
+      `gracefulShutdown` (20s, under compose's 30s `stop_grace_period`). Without it a
+      deploy killed turns that were already marked processed — the mechanism behind the
+      22 orphan rows of Jun–Aug 2026.
+    - `/status` reports POSTs, messages, skips and reactions since the last restart.
+      Counters are in-memory on purpose: persisting them adds a write to the hot inbound
+      path to answer a question asked a few times a week.
+
 ### Multi-Agent Guardrails
 
 - One phase per PR. Never combine phases.

@@ -3,7 +3,13 @@ export interface StoredMessage {
   whatsapp_message_id?: string;
   customer_phone: string;
   direction: 'inbound' | 'outbound';
-  message_type: 'text' | 'image' | 'video' | 'audio' | 'template';
+  /**
+   * Inbound types mirror what WhatsApp can deliver; `template` is outbound only.
+   * Only `text` reaches the bot reply path — the rest are stored so the operator
+   * transcript and replay show what the customer actually sent.
+   */
+  message_type: 'text' | 'image' | 'video' | 'audio' | 'template'
+    | 'document' | 'sticker' | 'location' | 'contacts' | 'unsupported';
   body?: string;
   created_at: string;
   raw_json?: string | null;

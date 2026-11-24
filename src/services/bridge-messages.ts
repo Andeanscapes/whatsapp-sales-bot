@@ -92,6 +92,16 @@ export const bridgeMessages = {
       : `Imagen de ${phone}`,
   newCustomerAudio: (phone: string): string => `Audio de ${phone}`,
   newCustomerVideo: (phone: string): string => `Video de ${phone}`,
+  // A document from a customer is most often a payment receipt, so it is
+  // flagged rather than relayed as a silent attachment.
+  newCustomerDocument: (phone: string, caption: string): string =>
+    caption.trim().length > 0
+      ? `Documento de ${phone} (posible comprobante)\n\n${caption}`
+      : `Documento de ${phone} (posible comprobante)`,
+  // Sticker/location/contacts/unsupported carry no caption, so the plain
+  // "nuevo mensaje" relay would reach the agent as an empty bubble.
+  newCustomerOtherMedia: (phone: string, messageType: string): string =>
+    `${phone} envio un mensaje de tipo "${messageType}" que no se puede mostrar aqui. Abre el chat de WhatsApp para verlo.`,
   relayFailed: (phone: string, messageType: string): string =>
     `No se pudo entregar al agente el mensaje ${messageType} de ${phone}. El mensaje quedo guardado y el bridge sigue activo.`,
   dormantBridgeNotice: (phone: string, text: string): string =>
@@ -102,10 +112,16 @@ export const bridgeMessages = {
     `${phone} envio un audio.\n\nUsa /chat ${phone} para tomar control.`,
   dormantBridgeVideoNotice: (phone: string): string =>
     `${phone} envio un video.\n\nUsa /chat ${phone} para tomar control.`,
+  dormantBridgeDocumentNotice: (phone: string): string =>
+    `${phone} envio un documento (posible comprobante).\n\nUsa /chat ${phone} para tomar control.`,
+  dormantBridgeOtherMediaNotice: (phone: string, messageType: string): string =>
+    `${phone} envio un mensaje de tipo "${messageType}" que no se puede mostrar aqui.\n\nUsa /chat ${phone} para tomar control.`,
   customerImageFailed: (phone: string): string =>
     `${phone} envio una imagen pero no se pudo descargar. Pidele al cliente que la reenvie.`,
   customerAudioFailed: (phone: string): string =>
     `${phone} envio un audio pero no se pudo descargar. Pidele al cliente que lo reenvie.`,
+  customerDocumentFailed: (phone: string): string =>
+    `${phone} envio un documento pero no se pudo descargar. Pidele al cliente que lo reenvie.`,
   imageNoActiveChat: 'No hay chat activo. Abre uno con /chat <telefono> antes de enviar una imagen.',
   postHandoffCustomerMessage: (params: { phone: string; text: string; bridge: boolean; displayNumber?: string }): string => {
     const action = params.bridge

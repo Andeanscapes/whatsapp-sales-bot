@@ -172,7 +172,8 @@ sequenceDiagram
   Meta->>Route: POST /webhooks/whatsapp + X-Hub-Signature-256
   Route->>Route: verify HMAC signature
   Route-->>Meta: 200 { ok: true }
-  Route->>Route: extractMessages
+  Route->>Route: extractWebhookItems (per entry/change/message)
+  Route->>DB: log webhook_parse for each skipped item
   Route->>DB: dedupe.isProcessed / markProcessed
   Route->>Route: queue by customer phone
   Route->>Bridge: live bridge? dormant assignment? post-handoff media/text?
@@ -196,8 +197,30 @@ Webhook details:
 - Route returns 200 before slow processing.
 - Incoming messages are processed sequentially per phone using `processingPhones` map.
 - Duplicate WhatsApp message IDs are ignored by `processed_webhook_messages`.
-- Text, image, audio, and video can be extracted. Only text reaches bot brain. Media is forwarded only in bridge/handoff paths.
+- `drainWebhookQueue()` is awaited by `gracefulShutdown` (20s cap, under compose's 30s `stop_grace_period`). The route answers 200 and marks the message processed *before* handling it, so a turn killed mid-flight is lost permanently: Meta does not retry a 200, and a retry would be deduped away. That is what produced the 22 orphan `processed_webhook_messages` rows observed Jun–Aug 2026.
 - No response delay: the first bot message of a turn is sent as soon as it is ready. `createTurnPacer` in `human-delay.ts` only keeps a ~1–4s gap between later messages of the same turn (photos, then text) so they arrive in order, and stops a turn whose phone already has a newer inbound queued (burst merge). The `MESSAGE_DELAY` flag was removed (2026-11-07). Does not apply to bridge/agent/admin sends or system-error fallbacks.
+
+### Payload parsing (`extractWebhookItems`)
+
+Envelope, `entry`, `change` and each message are parsed **independently**. Meta batches up to 1000 updates per POST, so a single all-or-nothing `safeParse` meant one malformed or unknown sibling discarded every real customer message in the same POST — silently, after the 200, with no row and no dedupe entry. Referral strings are **truncated**, never rejected.
+
+Anything that yields no message is returned in `skipped` and written to `system_errors` as `webhook_parse` (shape only — the context key is `itemType`, because `maskSensitiveContext` redacts any key containing `message`). Non-reaction skips also page the owner through `reportWebhookSkip`, deduped hourly. `/status` shows POSTs, messages, skips and reactions since the last restart.
+
+### Inbound type matrix
+
+| WhatsApp type | Stored | Reaches the bot | Notes |
+|---|---|---|---|
+| `text` | yes | yes | only type that gets an LLM reply |
+| `button`, `interactive` (button/list reply) | yes, as `text` | yes | a tapped word is the same as a typed one |
+| `image`, `audio`, `video` | yes | no | relayed in bridge/handoff paths |
+| `document` | yes, **caption only** | no | relayed to the assigned agent, else the owner, as a likely payment receipt. The filename is never stored in `body` — it carries reference/phone-shaped digit runs that trip `COL_MOBILE` when echoed, a hard safety fail that suppresses the reply. It reaches the operator via `ExtractedMessage.filename` |
+| `sticker`, `unsupported` | yes | no | operator transcript only |
+| `location` | yes, **label only** | no | raw coordinates are never persisted: `body` feeds the LLM history and a lat/lng is precise geolocation the model cannot use |
+| `contacts` | yes, **empty body** | no | the card names a third party, and `body` feeds `getRecentMessages` → the LLM history sent to DeepSeek |
+| `reaction` | **no** | no | an inbound row would make a 👍 the newest message and stall the recurring follow-up dormancy check |
+| `interactive` (other subtypes, e.g. Flows `nfm_reply`) | no | no | skipped and reported rather than guessed at |
+
+A non-text type with no caption (sticker, contacts, unsupported) reaches a bridge or dormant agent as a typed notice, never as the plain text relay — that would render an empty bubble.
 
 ## Customer Chat Flow
 
