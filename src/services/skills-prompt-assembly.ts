@@ -3,6 +3,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import type { Skills } from './skill-loader.js';
 import { languageName } from './language-service.js';
+import { isBareAcknowledgment } from './reply-guard.js';
 import { substituteTokens } from './skill-loader.js';
 import type { CustomerContext } from './customer-context.js';
 import {
@@ -911,7 +912,12 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
     // The method lives in whatsapp-sales.skill.md §T2 Retarget; this only routes to it. Before
     // 2026-11-12 the R01 segment's own question carried the blocker diagnosis.
     if (retargetingWithHistory && !returning) {
-      runtime.push('RETORNO CON HISTORIAL: el cliente ya escribió antes. Aplica §T2 Retarget de whatsapp-sales: retoma solo lo que CONTEXTO PREVIO y el historial muestran (sin datos, no inventes familiaridad) y una sola pregunta por el freno. Sin precio, sin presentación.');
+      // "Sin precio" alone lost to the CATALOGO about one turn in ten: the model
+      // volunteered a total on the diagnosis turn even with QUOTE LOCK already
+      // suppressed by `returnWithoutPriceAsk` (live ES CI 2026-11-24,
+      // entry-retarget-R01-with-history 53). The explicit token ban is the wording
+      // APERTURA DE ANUNCIO has carried in production since 2.5.1.
+      runtime.push('RETORNO CON HISTORIAL: el cliente ya escribió antes. Aplica §T2 Retarget de whatsapp-sales: retoma solo lo que CONTEXTO PREVIO y el historial muestran (sin datos, no inventes familiaridad) y una sola pregunta por el freno. Sin presentación. Sin precios, sin $, sin COP, sin totales, sin "desde" y sin anticipo, aunque el CATALOGO los traiga o el cliente los pida: en este turno solo diagnosticas el freno.');
     }
   }
 
@@ -1213,7 +1219,13 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
         const start = guidance.meetingPoint ? ` State that the plan starts at ${guidance.meetingPoint}, naming the town${arrivesOnOwn(collectedFields?.transporte) ? ', and that getting there is on your own' : ''}.` : '';
         const recommendation = guidance.recommendedName && plansToQuote.some(plan => shortPlanName(plan.name) === guidance.recommendedName)
           ? ` Label ${guidance.recommendedName} "recommended".` : '';
-        compactEnglishQuote = `PRECIO PEDIDO SIN PLAN: the customer already asked for a price and supplied their group and destination. Give all these totals now, even if the latest message only names the destination. Do not ask another discovery question. Maximum ${priceNoPlanLimit - 30} characters. First: one short sentence with logistics and one shared inclusion from CATALOGO.${start} Skip greetings and acknowledgments. Next: exact totals for ${groupLabel}: ${totals}.${recommendation} Use at most four words per plan to distinguish it. No other plans, amounts or deposits. End with one short question that helps them choose by what they want: if they already said what matters to them, recommend in half a sentence the quoted plan that fits it and ask whether to go ahead with it; otherwise ask which of the differences you just gave matters more to them. Keep that question to at most 12 words, without repeating inclusions or amounts, and keep the whole reply within the character limit. Never end with a generic "which one shall we go with?".`;
+        // The inclusion used to share one clause with the logistics ("one short sentence with
+        // logistics and one shared inclusion"), and live EN dropped the inclusion while keeping
+        // the logistics, so the figure arrived with no value before it — the 41%-silence shape
+        // this turn exists to avoid. It is now its own obligatory sentence with the catalog
+        // facts, mirroring the Spanish `valueCue` (live EN 2026-11-24, 87: the reply opened
+        // "Chivor it is." and put the inclusions after the amounts).
+        compactEnglishQuote = `PRECIO PEDIDO SIN PLAN: the customer already asked for a price and supplied their group and destination. Give all these totals now, even if the latest message only names the destination. Do not ask another discovery question. Maximum ${priceNoPlanLimit - 30} characters. First, obligatory: one sentence with no figures that says what the plan includes, in the customer's words (${quoteValueFor(activeExperience, selectedSiteId, plansToQuote, facts)}), and then the logistics.${start} Never open with a greeting, an acknowledgment or a restatement of their choice ("Perfect", "Chivor it is"); the amounts come only after that sentence. Next: exact totals for ${groupLabel}: ${totals}.${recommendation} Use at most four words per plan to distinguish it. No other plans, amounts or deposits. End with one short question that helps them choose by what they want: if they already said what matters to them, recommend in half a sentence the quoted plan that fits it and ask whether to go ahead with it; otherwise ask which of the differences you just gave matters more to them. Keep that question to at most 12 words, without repeating inclusions or amounts, and keep the whole reply within the character limit. Never end with a generic "which one shall we go with?".`;
       } else {
         runtime.push(`PRECIO PEDIDO SIN PLAN: el cliente pidió el precio y ya sabes el grupo. Un solo párrafo, máximo ${priceNoPlanLimit} caracteres. ${startPointCue(guidance.meetingPoint, arrivesOnOwn(collectedFields?.transporte))}${valueCue}${dayCue}Totales para ${groupLabel}, sin transporte: ${totals}. Tras cada total, a lo sumo cuatro palabras con su diferencia; no repitas lo que ya dijo la frase de valor. Copia esas cifras; no sumes ni inventes otras; no menciones anticipo ni porcentajes de pago todavía. ${recommendedCue}En este turno no hagas la diagnosisQuestion del ENTRY_SEGMENT ni un menú sin precios: el cliente pidió el precio. Una sola pregunta, que lo ayude a elegir por lo que busca: si ya dijo qué le importa, recomienda en media frase el plan cotizado que encaja con eso y pregunta si seguimos con ese; si no, pregunta qué le importa más entre las diferencias que acabas de dar. Esa pregunta va en máximo 8 palabras, sin repetir las diferencias, inclusiones ni cifras, y todo el párrafo sigue dentro del máximo de caracteres. Nunca cierres con un "¿con cuál seguimos?" genérico.`);
       }
@@ -1539,6 +1551,25 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
   if (t3bCloseTurn && planSelectedThisTurn && !reservationRequestedThisTurn && !proactiveMode) {
     const point = planGuidance(activeExperience, [], selectedSiteId).meetingPoint;
     runtime.push(`CIERRE T3b: acaba de elegir plan y día después de ver el precio. No recotices. Indica fecha, punto de encuentro${point ? ` (${point})` : ''} y hora de inicio del plan según CATALOGO; luego el anticipo${planDepositPercent != null ? ` del ${planDepositPercent}%` : ''} condicionado a confirmar cupo. Cierra con una sola pregunta para iniciar la reserva.`);
+  }
+  // "ok gracias" after a quote was silence in 71 chats (export 2026-11-16). The
+  // rule is turn-specific, so it lives here and not in whatsapp-sales §5b: as
+  // always-on skill text it competed with the general "acuse sin nada pendiente"
+  // rule, and tightening either side just moved the failure between languages
+  // (live 2026-11-24: EN repeated the total, ES dropped the step). §5b keeps
+  // owning the ordinary acknowledgment.
+  // No `lockedPlanId` requirement on purpose: a price turn that quoted two plans
+  // leaves no plan selected, which is exactly this scenario, and gating on it
+  // made the cue dead code (live 2026-11-24, ES stayed at the §5b baseline 4/5).
+  // All this turn needs is that we quoted and no date is agreed.
+  if (priceGiven && !pausedPlan && !hasConcreteDate
+    && isBareAcknowledgment(latestCustomerMessage ?? '')
+    && !informationalCloseTurn && !priceObjectionThisTurn && !quoteRequestedThisTurn
+    && !reservationRequestedThisTurn && !closeCtaAcceptedThisTurn && !consentAcceptedThisTurn
+    && !returning && !proactiveMode) {
+    runtime.push(lang === 'en'
+      ? 'ACKNOWLEDGMENT AFTER A QUOTE: they only said thanks and your last question is still unanswered. One short sentence: a soft step toward the date plus a single question. Do NOT repeat the total or any figure — the price is already given and repeating it turns this into a second quote. Never close with bare courtesy.'
+      : 'ACUSE TRAS COTIZACION: solo agradeció y tu última pregunta sigue sin respuesta. Una frase corta: un paso suave hacia la fecha y una sola pregunta. NO repitas el total ni ninguna cifra — el precio ya lo diste y repetirlo convierte esto en una segunda cotización. Nunca cierres con una cortesía a secas.');
   }
   if (input.postQuoteDoubtFollowup && priceGiven && lockedPlanId && !pausedPlan && !hasConcreteDate
     && !informationalCloseTurn && !priceObjectionThisTurn && !quoteRequestedThisTurn
