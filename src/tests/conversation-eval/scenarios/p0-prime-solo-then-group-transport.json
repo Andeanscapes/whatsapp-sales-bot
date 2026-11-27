@@ -1,0 +1,20 @@
+{
+  "id": "p0-prime-solo-then-group-transport",
+  "source": "P0 price audit 2026-11-26 (synthetic): solo PRIME Chivor, then '¿cuánto para 3? ¿incluye transporte?' and '¿total para 4 con transporte?'. Live 2.6.0 answered 1.440.000 and 1.920.000 / 3.620.000 (BASIC solo rate x N). Owner rule: 3+ travellers pay couple / 2 each; the Bogotá vehicle is priced per vehicle (max 4), apart from the plan.",
+  "tags": ["pricing", "p0-quote", "live"],
+  "lang": "es",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "criteria": [
+    { "id": "three-group-rate", "rule": "reply_must_match", "patterns": ["2[.,]550[.,]000"], "turn": 2, "weight": 3, "critical": true },
+    { "id": "three-never-solo-rate", "rule": "reply_must_not_match", "patterns": ["1[.,]440[.,]000|2[.,]660[.,]000"], "turn": 2, "weight": 3, "critical": true },
+    { "id": "four-plan-and-vehicle", "rule": "reply_must_match", "patterns": ["5[.,]100[.,]000"], "turn": 3, "weight": 3, "critical": true },
+    { "id": "four-never-live-figures", "rule": "reply_must_not_match", "patterns": ["1[.,]920[.,]000|3[.,]620[.,]000|1[.,]480[.,]000"], "turn": 3, "weight": 3, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 3, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "Voy solo, quiero el de dos minas y cabalgata en Chivor. ¿Cuánto vale?", "mockReply": "Viajando solo, PRIME queda en $960.000 COP. ¿Te reviso cupo para el 28 de noviembre?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 1, "plan": "prime_2d1n_chivor" } },
+    { "user": "¿cuánto para 3? ¿incluye transporte?", "mockReply": "Para 3 personas, el plan queda en $2.550.000 COP. El transporte privado desde Bogotá va aparte: $1.700.000 COP por vehículo, hasta 4 pasajeros. ¿Les reviso cupo?", "expect": { "shouldSendReply": true }, "seedPriceGiven": true },
+    { "user": "¿Total para 4 con transporte?", "mockReply": "Para 4 personas: plan $3.400.000 COP + transporte privado $1.700.000 COP por vehículo = $5.100.000 COP. ¿Les reviso cupo?", "expect": { "shouldSendReply": true }, "seedPriceGiven": true }
+  ]
+}

@@ -37,7 +37,7 @@ describe('catalog fields newer than the production bot', () => {
   // shared-facts fields stay out so the 2.5.1 fallback wording keeps its coverage.
   it('the committed fixture carries only the video-link fields, and this code loads it', () => {
     const found = findFieldsNewerThanProdBot(read(FIXTURE));
-    for (const path of found) expect(path).toMatch(/\.(?:cultureReels|reels) \(needs /);
+    for (const path of found) expect(path).toMatch(/\.(?:cultureReels|reels|pricing\.calculation=couple_half_from_three|pricing\.maxQuotedPeople) \(needs /);
     expect(dynamicDataSchema.safeParse(read(FIXTURE)).success).toBe(true);
   });
 
@@ -50,6 +50,26 @@ describe('catalog fields newer than the production bot', () => {
 
   it.each(FIELDS_NEWER_THAN_PROD_BOT)('$field is accepted by this code, so the new bot reads what the guard holds back', ({ field, level }) => {
     expect(dynamicDataSchema.safeParse(withField(field, level)).success).toBe(true);
+  });
+
+  // A new enum value is as fatal to an older bot as a new key: 2.6.0 rejects the whole feed.
+  it('flags the 3+ group calculation value and the quote cap inside plan pricing, never the older values', () => {
+    const catalog = read(FIXTURE);
+    const paths = findFieldsNewerThanProdBot(catalog);
+    expect(paths.some(path => /\.plans\.prime_2d1n_chivor\.pricing\.calculation=couple_half_from_three \(needs /.test(path))).toBe(true);
+    expect(paths.some(path => /\.plans\.prime_2d1n_chivor\.pricing\.maxQuotedPeople \(needs /.test(path))).toBe(true);
+    for (const experience of Object.values(catalog.experiences)) {
+      for (const site of Object.values(experience.sites)) {
+        for (const plan of Object.values(site.plans)) {
+          const pricing = plan.pricing as Record<string, unknown> | undefined;
+          if (!pricing) continue;
+          pricing.calculation = 'couple_half_from_five';
+          delete pricing.maxQuotedPeople;
+        }
+      }
+    }
+    expect(findFieldsNewerThanProdBot(catalog).filter(path => path.includes('.pricing.'))).toEqual([]);
+    expect(dynamicDataSchema.safeParse(catalog).success).toBe(true);
   });
 
   it('tolerates a malformed catalog instead of throwing', () => {

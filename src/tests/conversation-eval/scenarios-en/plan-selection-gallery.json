@@ -13,6 +13,6 @@
   ],
   "turns": [
     { "user": "We're a couple and we're interested in Chivor", "mockReply": "Awesome! Are you looking for an intense adventure or something calmer and more rural?", "replay": true, "expect": { "shouldSendReply": true, "shouldSendGalleryImages": false }, "seedQualification": { "people": 2 } },
-    { "user": "The CORE plan", "mockReply": "It's a real, authentic mining experience. For 2 people it comes to $1,200,000 COP. Which month would you like to travel?\n[[FOTOS:mine]]", "expect": { "shouldSendReply": true, "shouldSendGalleryImages": true, "priceJustGiven": true } }
+    { "user": "The CORE plan", "mockReply": "It's a real, authentic mining experience. For 2 people it comes to $950,000 COP. Which month would you like to travel?\n[[FOTOS:mine]]", "expect": { "shouldSendReply": true, "shouldSendGalleryImages": true, "priceJustGiven": true } }
   ]
 }

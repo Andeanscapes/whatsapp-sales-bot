@@ -257,3 +257,75 @@ describe('calculatePriceQuote', () => {
     }
   });
 });
+
+// Owner rule 2026-11-26 (P0 price audit): 1 = individual, 2 = couple total,
+// 3..10 = couple / 2 x N. Transport is per vehicle (max 4), never per person.
+// The table is the audit's acceptance oracle for catalog v22; the catalog stays the
+// only source in production code.
+describe('owner group-pricing oracle (6 plans x 1..10 travellers)', () => {
+  const ORACLE: Record<string, number[]> = {
+    basic_1d_chivor: [480000, 740000, 1110000, 1480000, 1850000, 2220000, 2590000, 2960000, 3330000, 3700000],
+    core_2d1n_chivor: [620000, 950000, 1425000, 1900000, 2375000, 2850000, 3325000, 3800000, 4275000, 4750000],
+    prime_2d1n_chivor: [960000, 1700000, 2550000, 3400000, 4250000, 5100000, 5950000, 6800000, 7650000, 8500000],
+    basic_1d_coscuez: [420000, 720000, 1080000, 1440000, 1800000, 2160000, 2520000, 2880000, 3240000, 3600000],
+    core_2d1n_coscuez: [580000, 1004000, 1506000, 2008000, 2510000, 3012000, 3514000, 4016000, 4518000, 5020000],
+    prime_2d1n_coscuez: [1497000, 2270000, 3405000, 4540000, 5675000, 6810000, 7945000, 9080000, 10215000, 11350000],
+  };
+  const cases = Object.entries(ORACLE).flatMap(([planId, totals]) => totals.map((total, i) => [planId, i + 1, total] as const));
+
+  it('covers exactly 60 cases', () => {
+    expect(cases).toHaveLength(60);
+  });
+
+  it.each(cases)('%s for %i travellers = %i COP', (planId, people, total) => {
+    const quote = calculatePriceQuote(getActiveExperience(loadSkills()), { planId, people });
+    expect(quote?.planTotal).toBe(total);
+    expect(quote?.total).toBe(total);
+    expect(quote?.transportTotal).toBeNull();
+  });
+
+  it.each(Object.keys(ORACLE))('%s: 3+ never equals couple + individual', planId => {
+    const exp = getActiveExperience(loadSkills());
+    const solo = calculatePriceQuote(exp, { planId, people: 1 })?.planTotal ?? 0;
+    const couple = calculatePriceQuote(exp, { planId, people: 2 })?.planTotal ?? 0;
+    expect(calculatePriceQuote(exp, { planId, people: 3 })?.planTotal).not.toBe(solo + couple);
+  });
+
+  it.each(Object.keys(ORACLE))('%s: transport adds one vehicle for 1..4 and needs confirmation above 4', planId => {
+    const exp = getActiveExperience(loadSkills());
+    for (const people of [1, 2, 3, 4]) {
+      const quote = calculatePriceQuote(exp, { planId, people, transportNeed: 'from_bogota' });
+      expect(quote?.transportTotal).toBe(1700000);
+      expect(quote?.total).toBe(ORACLE[planId][people - 1] + 1700000);
+    }
+    const five = calculatePriceQuote(exp, { planId, people: 5, transportNeed: 'from_bogota' });
+    expect(five?.planTotal).toBe(ORACLE[planId][4]);
+    expect(five?.requiresTransportConfirmation).toBe(true);
+    expect(five?.total).toBeNull();
+  });
+
+  it('P0 case: PRIME Chivor 3 = 2.550.000, 4 + vehicle = 5.100.000', () => {
+    const exp = getActiveExperience(loadSkills());
+    expect(calculatePriceQuote(exp, { planId: 'prime_2d1n_chivor', people: 3 })?.total).toBe(2550000);
+    const four = calculatePriceQuote(exp, { planId: 'prime_2d1n_chivor', people: 4, transportNeed: 'from_bogota' });
+    expect(four?.planTotal).toBe(3400000);
+    expect(four?.total).toBe(5100000);
+  });
+
+  it.each([0, -1, 11, 25, 'tres', null, undefined])('returns no automatic quote for %s travellers', people => {
+    expect(calculatePriceQuote(getActiveExperience(loadSkills()), { planId: 'prime_2d1n_chivor', people })).toBeNull();
+  });
+
+  it('keeps the historical meaning of couple_half_from_five for catalogs that still publish it', () => {
+    const exp = getActiveExperience(loadSkills());
+    exp.plans = exp.plans.map(plan => ({ ...plan, calculation: 'couple_half_from_five' }));
+    expect(calculatePriceQuote(exp, { planId: 'prime_2d1n_chivor', people: 3 })?.total).toBe(2660000);
+    expect(calculatePriceQuote(exp, { planId: 'prime_2d1n_chivor', people: 4 })?.total).toBe(3400000);
+  });
+
+  it('rounds an odd couple price once, on the total', () => {
+    const exp = getActiveExperience(loadSkills());
+    exp.pricing = { ...exp.pricing, items: exp.pricing.items.map(item => item.id === 'core_2d1n_chivor_couple' ? { ...item, couplePrice: 950001 } : item) };
+    expect(calculatePriceQuote(exp, { planId: 'core_2d1n_chivor', people: 3 })?.total).toBe(1425002);
+  });
+});

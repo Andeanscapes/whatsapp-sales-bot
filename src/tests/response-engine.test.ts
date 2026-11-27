@@ -3226,8 +3226,9 @@ describe('processMessage', () => {
     exp.pricing = {
       currency: 'COP', lastUpdated: '2026-01-01',
       items: [
-        { id: 'individual', planId: '2d1n_mining', label: 'Individual', pricePerPerson: 550000, peopleIncluded: 1, publiclyShow: true },
-        { id: 'couple', planId: '2d1n_mining', label: 'Pareja', couplePrice: 1000000, peopleIncluded: 2, publiclyShow: true },
+        // A real plan id: the quote guard only accepts figures the calculator can produce.
+        { id: 'individual', planId: 'core_2d1n_chivor', label: 'Individual', pricePerPerson: 550000, peopleIncluded: 1, publiclyShow: true },
+        { id: 'couple', planId: 'core_2d1n_chivor', label: 'Pareja', couplePrice: 1000000, peopleIncluded: 2, publiclyShow: true },
       ],
       botRules: ['pricing rules'],
       businessRules: [],
@@ -4118,7 +4119,7 @@ describe('processMessage', () => {
     try {
       mockLlmComplete.mockResolvedValueOnce(fromOld({
         response: {
-          reply: 'Para 3 personas en PRIME seria $2,150,000 COP. ¿Qué fecha?',
+          reply: 'Para 3 personas en PRIME seria $2,100,000 COP. ¿Qué fecha?',
           intent: 'pricing',
           lead_score_delta: 10,
           should_send_image: false,
@@ -4132,7 +4133,7 @@ describe('processMessage', () => {
 
       const result = await processMessage({ repos, customerPhone: phone, message: 'somos tres que precio tiene?' });
 
-      expect(result.reply).toContain('$2,150,000 COP');
+      expect(result.reply).toContain('$2,100,000 COP');
       const conv = repos.conversation.getByPhone(phone) as { collected_plan: string | null };
       expect(conv.collected_plan).toBe('prime_2d1n_chivor');
     } finally {
@@ -6524,7 +6525,7 @@ describe('processMessage — plan reference switch and plan card', () => {
     seedThread(phone, CORE);
     repos.conversation.upsert(phone, { price_given_at: new Date(Date.now() - 90_000).toISOString() });
     mockLlmComplete.mockReset();
-    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'El otro plan para 2 queda en $1.500.000 COP. ¿Qué fecha tienen en mente?' } }));
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'El otro plan para 2 queda en $1.700.000 COP. ¿Qué fecha tienen en mente?' } }));
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
 
@@ -6608,7 +6609,7 @@ describe('processMessage — plan reference switch and plan card', () => {
     seedThread(phone, CORE);
     repos.conversation.upsert(phone, { price_given_at: new Date(Date.now() - 90_000).toISOString() });
     mockLlmComplete.mockReset();
-    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'El PRIME para 2 queda en $1.840.000 COP. ¿Qué fecha tienen en mente?' } }));
+    mockLlmComplete.mockResolvedValue(fromOld({ response: { reply: 'El PRIME para 2 queda en $1.700.000 COP. ¿Qué fecha tienen en mente?' } }));
     vi.mocked(checkBudget).mockReturnValue({ aiAllowed: true });
     vi.mocked(checkTimeWindow).mockReturnValue({ isLimited: false });
 

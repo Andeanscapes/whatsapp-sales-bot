@@ -1,0 +1,20 @@
+{
+  "id": "p0-prime-solo-then-group-transport",
+  "source": "English twin of the P0 price audit 2026-11-26 (synthetic): solo PRIME Chivor, then 3 with transport and 4 with transport. 3+ travellers pay couple / 2 each; the Bogotá vehicle is per vehicle (max 4).",
+  "tags": ["pricing", "p0-quote", "live"],
+  "lang": "en",
+  "liveRuns": 1,
+  "minLiveScore": 80,
+  "criteria": [
+    { "id": "three-group-rate", "rule": "reply_must_match", "patterns": ["2[.,]550[.,]000"], "turn": 2, "weight": 3, "critical": true },
+    { "id": "three-never-solo-rate", "rule": "reply_must_not_match", "patterns": ["1[.,]440[.,]000|2[.,]660[.,]000"], "turn": 2, "weight": 3, "critical": true },
+    { "id": "four-plan-and-vehicle", "rule": "reply_must_match", "patterns": ["5[.,]100[.,]000"], "turn": 3, "weight": 3, "critical": true },
+    { "id": "four-never-live-figures", "rule": "reply_must_not_match", "patterns": ["1[.,]920[.,]000|3[.,]620[.,]000|1[.,]480[.,]000"], "turn": 3, "weight": 3, "critical": true },
+    { "id": "one-question", "rule": "max_question_marks", "max": 1, "turn": 3, "weight": 1 }
+  ],
+  "turns": [
+    { "user": "I'm travelling alone and I want the one with two mines and horseback riding in Chivor. How much is it?", "mockReply": "Travelling solo, PRIME comes to $960,000 COP. Should I check availability for November 28?", "expect": { "shouldSendReply": true }, "seedQualification": { "people": 1, "plan": "prime_2d1n_chivor" } },
+    { "user": "how much for 3? does it include transport?", "mockReply": "For 3 people, the plan comes to $2,550,000 COP. Private transport from Bogotá is separate: $1,700,000 COP per vehicle, up to 4 passengers. Should I check availability?", "expect": { "shouldSendReply": true }, "seedPriceGiven": true },
+    { "user": "What's the total for 4 with transport?", "mockReply": "For 4 people: plan $3,400,000 COP + private transport $1,700,000 COP per vehicle = $5,100,000 COP. Should I check availability?", "expect": { "shouldSendReply": true }, "seedPriceGiven": true }
+  ]
+}

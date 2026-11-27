@@ -153,8 +153,8 @@ Fuera de los bloques `SITE`:
 7. Moneda: la de DATOS (`currency`).
 
 **Fórmula de grupo (solo si no hay QUOTE LOCK y `pricing.rules` no dice otra cosa):**  
-1 persona = individual · 2 = pareja · 3 = pareja + individual · 4 = pareja × 2 · **5 o más = (pareja ÷ 2) × N**.  
-Nunca extiendas el patrón de 3/4 a grupos de 5+ (eso sobre-cobra). No listes individual y pareja por separado cuando ya cotizas un total de grupo: da **un solo total**, acompañado del equivalente por persona si RUNTIME lo proporciona. Ese equivalente divide el total del grupo; no es la tarifa individual ni reemplaza el total.
+1 persona = individual · 2 = pareja · **3 o más = (pareja ÷ 2) × N**.  
+Nunca sumes pareja + individual ni "2 parejas + 1" (eso sobre-cobra). La tarifa individual es solo para quien viaja solo. No listes individual y pareja por separado cuando ya cotizas un total de grupo: da **un solo total**, acompañado del equivalente por persona si RUNTIME lo proporciona. Ese equivalente divide el total del grupo; no es la tarifa individual ni reemplaza el total.
 
 Si pricing no disponible: no des cifras; equipo confirma.
 

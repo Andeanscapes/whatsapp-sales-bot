@@ -36,6 +36,8 @@ export function migrate(db: Database.Database): void {
   addColumnIfMissing(db, 'conversations', 'handed_off_at', 'TEXT');
   addColumnIfMissing(db, 'conversations', 'price_given_at', 'TEXT');
   addColumnIfMissing(db, 'conversations', 'quote_fingerprint', 'TEXT');
+  // Group size + transport a delivered quote was for; a change re-opens QUOTE LOCK.
+  addColumnIfMissing(db, 'conversations', 'quote_key', 'TEXT');
   addColumnIfMissing(db, 'conversations', 'collected_pet', 'TEXT');
   addColumnIfMissing(db, 'conversations', 'soft_closed_at', 'TEXT');
   addColumnIfMissing(db, 'conversations', 'collected_plan', 'TEXT');

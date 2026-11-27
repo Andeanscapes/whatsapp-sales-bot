@@ -15,6 +15,6 @@
     { "user": "Pareja", "mockReply": "En Coscuez hay dos formas de vivirlo. ¿Buscan la experiencia esencial, con una mina y caminata al mirador, o la más completa que suma Fura y Tena el segundo día?", "expect": { "shouldSendReply": true } },
     { "user": "Si el más completo", "mockReply": "Perfecto. El PRIME de Coscuez suma Fura y Tena el segundo día. ¿Tienen alguna fecha aproximada en mente?", "expect": { "shouldSendReply": true, "mediaPlanId": "prime_2d1n_coscuez" } },
     { "user": "No todavia", "mockReply": "Entendido. Publicadas tenemos el 24 y 31 de octubre, 14 y 28 de noviembre, y 12 de diciembre. ¿Qué mes les viene mejor?", "expect": { "shouldSendReply": true } },
-    { "user": "28 noviembre suena bien", "mockReply": "El 28 de noviembre entonces. Para 2 personas, PRIME Coscuez queda en *$1.840.000*. ¿Qué te parece?", "expect": { "shouldSendReply": true, "priceJustGiven": true, "mediaPlanId": "prime_2d1n_coscuez" } }
+    { "user": "28 noviembre suena bien", "mockReply": "El 28 de noviembre entonces. Para 2 personas, PRIME Coscuez queda en *$2.270.000*. ¿Qué te parece?", "expect": { "shouldSendReply": true, "priceJustGiven": true, "mediaPlanId": "prime_2d1n_coscuez" } }
   ]
 }

@@ -146,6 +146,7 @@ const experienceSchema = z.object({
     selectionAliases: z.array(z.string()).optional(),
     includedAddonIds: z.array(z.string()).optional(),
     calculation: planCalculationSchema.optional(),
+    maxQuotedPeople: z.number().int().positive().optional(),
    })),
    sites: z.record(z.object({
      name: z.string().optional(),
@@ -505,6 +506,7 @@ function experienceFromDynamic(expId: string, dyn: InternalExperienceData): Expe
     selectionAliases: plan.selectionAliases,
     includedAddonIds: plan.includedAddonIds,
     calculation: plan.calculation,
+    maxQuotedPeople: plan.maxQuotedPeople,
   }));
 
   const pricingItems: Experience['pricing']['items'] = dyn.pricing.items.map(item => ({

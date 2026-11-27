@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { logger } from '../config/logger.js';
-import { assertDynamicCatalogReady, dynamicDataSchema, type DynamicData } from './dynamic-data-schema.js';
+import { assertDynamicCatalogReady, dynamicDataSchema, type DynamicData, type PlanCalculation } from './dynamic-data-schema.js';
 import { assertReferentAttributionMatches } from './sales-composition.js';
 
 export const PRICING_NOT_AVAILABLE = 'PRICING_NOT_AVAILABLE';
@@ -178,7 +178,8 @@ export interface InternalPlanNarrative {
   galleryTheme?: string;
   selectionAliases?: string[];
   includedAddonIds?: string[];
-  calculation?: 'pairs_plus_single' | 'couple_half_from_five' | 'per_person';
+  calculation?: PlanCalculation;
+  maxQuotedPeople?: number;
   reels?: InternalVideoLink[];
 }
 
@@ -532,6 +533,7 @@ export function transformDynamicData(data: DynamicData): InternalDynamicData {
           selectionAliases: plan.selectionAliases,
           includedAddonIds: plan.includedAddonIds,
           calculation: plan.pricing?.calculation,
+          maxQuotedPeople: plan.pricing?.maxQuotedPeople,
           reels: plan.reels,
         });
 

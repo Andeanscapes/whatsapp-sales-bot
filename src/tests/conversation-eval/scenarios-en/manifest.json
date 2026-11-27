@@ -1,7 +1,7 @@
 {
   "name": "Andean Scapes English conversation pack (twins of the Spanish pack)",
-  "version": "2026-11-12-en-curated-language-switch-returning-two-destinations+release-2.5.1-marker-destination",
-  "totalTests": 95,
+  "version": "2026-11-12-en-curated-language-switch-returning-two-destinations+release-2.5.1-marker-destination+p0-quote-2026-11-26",
+  "totalTests": 96,
   "scenarioIds": [
     "ad-info-pareja-core-quote",
     "ad-info-then-group-asks-plan",
@@ -56,6 +56,7 @@
     "leak-suppression-token-sentinel",
     "near-city-expectation-remote-trip",
     "opt-out-mid-conversation",
+    "p0-prime-solo-then-group-transport",
     "partner-pause-reschedule-offer",
     "pet-in-mine-objection-close",
     "pickup-bogota-assumed",

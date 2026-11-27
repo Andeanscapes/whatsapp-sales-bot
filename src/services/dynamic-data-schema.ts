@@ -43,12 +43,20 @@ function isRealCalendarDate(value: string): boolean {
   return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
 }
 
-export const planCalculationSchema = z.enum(['pairs_plus_single', 'couple_half_from_five', 'per_person']);
+/**
+ * `couple_half_from_three`: 1 = individual, 2 = couple, 3+ = couple / 2 per traveller
+ * (owner rule 2026-11-26). `couple_half_from_five` keeps its historical meaning
+ * (3 = couple + individual, 4 = 2 couples) for catalogs that still publish it.
+ */
+export const planCalculationSchema = z.enum(['pairs_plus_single', 'couple_half_from_five', 'couple_half_from_three', 'per_person']);
+export type PlanCalculation = z.infer<typeof planCalculationSchema>;
 
 export const dynamicPlanPricingSchema = z.object({
   individual: z.number().int().nonnegative().optional(),
   couple: z.number().int().nonnegative().optional(),
   calculation: planCalculationSchema.optional(),
+  /** Largest group the engine quotes automatically; above it the team quotes to measure. */
+  maxQuotedPeople: z.number().int().positive().optional(),
 }).strict();
 
 export const dynamicAddonSchema = z.object({

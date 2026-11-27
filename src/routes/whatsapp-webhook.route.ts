@@ -1403,7 +1403,9 @@ export async function whatsappWebhookRoutes(app: FastifyInstance, opts: { repos:
             try {
               const alertReason = result.ownerAlertType === 'media_marker_unhonoured'
                 ? `Pidió ${isPlanBrochureRequest(msg.text) ? 'brochure' : 'fotos'} — no se pudo enviar`
-                : undefined;
+                : result.ownerAlertType === 'quote_mismatch_blocked'
+                  ? 'Cotización bloqueada: la cifra del bot no coincide con el calculador. Revisa y cotiza a mano.'
+                  : undefined;
               const delivered = await sendAlert({
                 customerPhone: msg.from,
                 score: result.leadScore,

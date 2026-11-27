@@ -77,6 +77,25 @@ export async function mercadoPagoWebhookRoutes(app: FastifyInstance, opts: { rep
     if (payment.status !== 'approved' || !payment.external_reference) return reply.code(200).send({ ok: true });
 
     const reservation = opts.repos.paymentReservation.getByExternalReference(payment.external_reference);
+    // A link /payment superseded (P0 2026-11-26) can still be paid at Mercado Pago: never
+    // drop that payment silently. The team reconciles it by hand.
+    if (reservation?.status === 'failed' && reservation.paymentUrl) {
+      const conversation = opts.repos.conversation.getByPhone(reservation.customerPhone);
+      logger.warn({ paymentId: String(payment.id), externalReference: payment.external_reference }, '[MERCADOPAGO] payment on a superseded link');
+      const alerted = await sendAlert({
+        customerPhone: reservation.customerPhone,
+        score: conversation?.lead_score ?? 0,
+        intent: 'payment_superseded',
+        paymentId: String(payment.id),
+        message: getSkills().fallbackReplies.es.paymentApprovedOwnerAlert,
+        name: conversation?.collected_name ?? undefined,
+        date: reservation.date ?? undefined,
+        people: reservation.people != null ? String(reservation.people) : undefined,
+        transport: reservation.transportNeed ?? undefined,
+        reason: `Pago de ${payment.transaction_amount} COP en un enlace anterior que /payment ya habia reemplazado. Revisa y concilia a mano.`,
+      }, opts.repos);
+      return alerted ? reply.code(200).send({ ok: true }) : reply.code(503).send({ error: 'Unable to notify payment approval' });
+    }
     if (!reservation || reservation.status !== 'pending' || reservation.expectedAmountCop !== payment.transaction_amount) {
       return reply.code(200).send({ ok: true });
     }

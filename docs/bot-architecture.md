@@ -322,8 +322,16 @@ Deterministic code controls safety and business-critical behavior:
 Payment details (phone, link, instructions) are NEVER in the prompt. The LLM only sees payment method **names** and deposit **percentage**.
 
 **Group quotes:** when QUOTE LOCK is present the model must emit that single total
-(e.g. 5 people → `(couple÷2)×5`). Listing individual/couple unit prices or stacking
-“2 parejas + 1” for 5+ is a skill defect, not a calculator bug.
+(e.g. 3 people → `(couple÷2)×3` under `couple_half_from_three`). Listing individual/couple
+unit prices or stacking "pareja + individual" for 3+ is a skill defect, not a calculator bug.
+
+**Quote guard (P0 2026-11-26):** `quote-guard.ts` checks every COP figure in the reply
+against the calculator, bound to the plan and group size its sentence names. A figure the
+calculator cannot produce triggers the single budget-gated corrective retry (`CORRECCION
+PRECIO`, with a fresh QUOTE LOCK); if the retry still misses, the turn sends the curated
+`aiFailureQualified` reply, alerts the owner (`quote_mismatch_blocked`), and records no
+price state. `/payment` never re-sends a pending link whose plan, group, transport or
+amount no longer match the current quote: it marks it failed and creates a new one.
 
 `DeepSeekLlmClient` sends:
 

@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS conversations (
   collected_date_canon_day INTEGER,
   price_given_at TEXT,
   quote_fingerprint TEXT,
+  quote_key TEXT,
   handed_off_at TEXT,
   soft_closed_at TEXT,
   gallery_nudged_at TEXT,

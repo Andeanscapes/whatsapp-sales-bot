@@ -106,12 +106,15 @@ describe('catalog quote contract', () => {
     expect(lock).not.toContain('aproximado por redondeo');
   });
 
-  it('labels the rounded equivalent without rounding the group total', () => {
+  // Owner rule 2026-11-26: 3+ travellers pay couple / 2 each; never couple + individual.
+  it('quotes 3 travellers at the group rate with an exact equivalent', () => {
     const prompt = assembleSystemPrompt({
       skills: loadSkills(), collectedFields: { personas: 3, plan: 'basic_1d_chivor' },
     });
-    expect(prompt).toContain('el plan queda en $1.220.000 COP');
-    expect(prompt).toContain('EQUIVALENTE POR PERSONA: $407.000 COP (aproximado por redondeo)');
+    expect(prompt).toContain('el plan queda en $1.110.000 COP');
+    expect(prompt).toContain('EQUIVALENTE POR PERSONA: $370.000 COP');
+    expect(prompt).not.toContain('aproximado por redondeo');
+    expect(prompt).not.toContain('1.220.000');
   });
 
   it('bases the equivalent on the complete transport-inclusive total', () => {
@@ -135,7 +138,8 @@ describe('catalog quote contract', () => {
     const prime = normalized.plans?.find(plan => plan.id === 'prime_2d1n_chivor');
     expect(prime?.selectionAliases).toEqual(['prime', 'mas completa', 'premium', 'la de dos minas', 'la de cabalgata', 'mas completo', 'most complete']);
     expect(prime?.includedAddonIds).toEqual(['horseback_riding']);
-    expect(prime?.calculation).toBe('couple_half_from_five');
+    expect(prime?.calculation).toBe('couple_half_from_three');
+    expect(prime?.maxQuotedPeople).toBe(10);
     expect(normalized.pricing.items.find(item => item.id === 'horseback_riding')?.quoteMode).toBe('separate');
     const skills = loadSkills();
     expect(getActiveExperience(skills).plans.find(plan => plan.id === prime?.id)?.includedAddonIds).toEqual(['horseback_riding']);
@@ -143,7 +147,7 @@ describe('catalog quote contract', () => {
     expect(prompt).toContain('selectionAliases: prime');
     expect(prompt).toContain('includedAddonIds (no extra charge): horseback_riding');
     expect(prompt).toContain('quoteMode: separate');
-    expect(prompt).not.toContain('calculation: couple_half_from_five');
+    expect(prompt).not.toContain('calculation: couple_half_from_three');
   });
 
   it('never prices an included addon for the plan that includes it (CI catalog)', () => {

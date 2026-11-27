@@ -3,7 +3,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { migrate } from '../db/migrate.js';
 import { createRepositories, type Repositories } from '../db/repositories/index.js';
-import { getActiveExperience } from '../services/product-registry.js';
+import { getActiveExperience, getPublicPaymentFactsForPlan } from '../services/product-registry.js';
 import { getSkills, loadSkills } from '../services/skill-loader.js';
 import type { LlmClientInput, LlmResult } from '../services/llm/llm-client.js';
 import type { LeadAnalysis } from '../services/lead-analyzer.js';
@@ -18,7 +18,7 @@ const { mockSendBridgeReply } = vi.hoisted(() => ({
   mockSendBridgeReply: vi.fn(async (_repos: unknown, _phone: string, _body: string) => ({ ok: true as const, message: 'sent' })),
 }));
 const { mockCreatePreference } = vi.hoisted(() => ({
-  mockCreatePreference: vi.fn(async () => ({
+  mockCreatePreference: vi.fn(async (): Promise<{ paymentUrl: string; preferenceId: string } | null> => ({
     paymentUrl: 'https://www.mercadopago.com/checkout/v1/redirect?pref_id=pref-1',
     preferenceId: 'pref-1',
   })),
@@ -705,11 +705,14 @@ describe('reservation closing regression', () => {
     const previousSecret = env.MERCADOPAGO_WEBHOOK_SECRET;
     env.MERCADOPAGO_ACCESS_TOKEN = 'test-token';
     env.MERCADOPAGO_WEBHOOK_SECRET = 'test-secret';
-    repos.conversation.upsert(phone, { language: 'es' });
+    // The pending link matches the current quote (CORE, 2, own transport), so it is re-sent.
+    repos.conversation.upsert(phone, { language: 'es', collected_plan: 'core_2d1n_chivor', collected_people: 2, collected_transport_need: 'own' });
+    const skills = getSkills();
+    const pct = getPublicPaymentFactsForPlan(skills, getActiveExperience(skills), 'core_2d1n_chivor').depositPercent;
     repos.paymentReservation.createPending({
       externalReference: 'as_existing',
       customerPhone: phone,
-      expectedAmountCop: 150000,
+      expectedAmountCop: Math.round(950000 * pct / 100),
       planId: 'core_2d1n_chivor',
       date: 'sábado 14 de noviembre',
       people: 2,
@@ -728,6 +731,53 @@ describe('reservation closing regression', () => {
       expect(msg).toMatch(/reenviado/i);
       expect(mockCreatePreference).not.toHaveBeenCalled();
       expect(String(mockSendBridgeReply.mock.calls[0]?.[2])).toContain('pref-existing');
+    } finally {
+      env.MERCADOPAGO_ACCESS_TOKEN = previousToken;
+      env.MERCADOPAGO_WEBHOOK_SECRET = previousSecret;
+      db.close();
+    }
+  });
+
+  // P0 2026-11-26: a pending link priced with the old 3-person formula is never re-sent.
+  it('invalidates a pending link that no longer matches the quote and charges the current one', async () => {
+    const db = new Database(':memory:');
+    migrate(db);
+    const repos = createRepositories(db);
+    const phone = '573001234583';
+    const previousToken = env.MERCADOPAGO_ACCESS_TOKEN;
+    const previousSecret = env.MERCADOPAGO_WEBHOOK_SECRET;
+    env.MERCADOPAGO_ACCESS_TOKEN = 'test-token';
+    env.MERCADOPAGO_WEBHOOK_SECRET = 'test-secret';
+    const skills = getSkills();
+    const pct = getPublicPaymentFactsForPlan(skills, getActiveExperience(skills), 'prime_2d1n_chivor').depositPercent;
+    repos.conversation.upsert(phone, {
+      language: 'es', collected_plan: 'prime_2d1n_chivor', collected_people: 3,
+      collected_date: 'sábado 14 de noviembre', collected_transport_need: 'own',
+    });
+    repos.paymentReservation.createPending({
+      externalReference: 'as_old_formula', customerPhone: phone,
+      expectedAmountCop: Math.round(2660000 * pct / 100), planId: 'prime_2d1n_chivor',
+      date: 'sábado 14 de noviembre', people: 3, transportNeed: 'own',
+      depositPercent: pct, availabilityConfirmedAt: new Date().toISOString(),
+    });
+    repos.paymentReservation.attachPreference('as_old_formula', 'pref-old', 'https://www.mercadopago.com.co/checkout/v1/redirect?pref_id=pref-old');
+    try {
+      const message = await paymentHandler({ repos, args: [phone, 'confirm'], chatId: 1 });
+      expect(message).toMatch(/invalidado/);
+      expect(repos.paymentReservation.getByExternalReference('as_old_formula')?.status).toBe('failed');
+      expect(mockCreatePreference).toHaveBeenLastCalledWith(
+        expect.objectContaining({ planId: 'prime_2d1n_chivor', people: 3, amountCop: Math.round(2550000 * pct / 100) }),
+        repos,
+      );
+      expect(String(mockSendBridgeReply.mock.calls[0]?.[2])).not.toContain('pref-old');
+
+      // If the replacement cannot be created, the old link stays the customer's pending one.
+      repos.paymentReservation.markFailed(repos.paymentReservation.getPendingByCustomerPhone(phone)?.externalReference ?? '');
+      repos.paymentReservation.reopenFailed('as_old_formula');
+      mockCreatePreference.mockResolvedValueOnce(null);
+      const failed = await paymentHandler({ repos, args: [phone, 'confirm'], chatId: 1 });
+      expect(failed).toMatch(/No pude crear el enlace/);
+      expect(repos.paymentReservation.getPendingByCustomerPhone(phone)?.externalReference).toBe('as_old_formula');
     } finally {
       env.MERCADOPAGO_ACCESS_TOKEN = previousToken;
       env.MERCADOPAGO_WEBHOOK_SECRET = previousSecret;
@@ -848,7 +898,7 @@ describe('reservation closing regression', () => {
         expect(repos.conversation.getByPhone(phone)?.collected_plan).toBe('core_2d1n_chivor');
 
         mockComplete.mockResolvedValueOnce(llmResult(
-          'Para pareja, el plan completo de 2 días/1 noche en la mina queda en $1.000.000 COP. Eso incluye alojamiento, las 3 comidas, la experiencia minera con equipo y la charla esmeraldera.\n\n¿Les gustaría que revise alguna fecha en particular?',
+          'Para pareja, el plan completo de 2 días/1 noche en la mina queda en $950.000 COP. Eso incluye alojamiento, las 3 comidas, la experiencia minera con equipo y la charla esmeraldera.\n\n¿Les gustaría que revise alguna fecha en particular?',
         ));
         const t4 = await processMessage({ repos, customerPhone: phone, message: 'No todavia que vale para pareja ?' });
         persistOutbound(repos, phone, t4.reply);
@@ -946,7 +996,7 @@ describe('reservation closing regression', () => {
       });
       persistOutbound(
         repos, phone,
-        'El plan de 2 días / 1 noche para ustedes queda en $1.000.000. Anticipo 25% por Nequi o Mercado Pago. Primero valido disponibilidad con el equipo. ¿La iniciamos?',
+        'El plan de 2 días / 1 noche para ustedes queda en $950.000. Anticipo 25% por Nequi o Mercado Pago. Primero valido disponibilidad con el equipo. ¿La iniciamos?',
       );
       mockAnalyzeLead.mockResolvedValueOnce({
         intent: 'curious', scoreDelta: 0, confidence: 0.3,
@@ -992,7 +1042,7 @@ describe('reservation closing regression', () => {
         persistOutbound(repos, phone, t2.reply);
 
         mockComplete.mockResolvedValueOnce(llmResult(
-          'Claro, te cuento. El plan 2D/1N de la mina es todo incluido.\n\nPara dos personas, el total es $1.000.000 COP. ¿Les suena bien para esa fecha?',
+          'Claro, te cuento. El plan 2D/1N de la mina es todo incluido.\n\nPara dos personas, el total es $950.000 COP. ¿Les suena bien para esa fecha?',
         ));
         const t3 = await processMessage({ repos, customerPhone: phone, message: 'No sabemos todavia que vale el plan ?' });
         persistOutbound(repos, phone, t3.reply);
@@ -1185,7 +1235,7 @@ describe('reservation closing regression', () => {
       });
       persistOutbound(
         repos, phone,
-        'Para pareja el plan completo queda en $1.000.000 COP. ¿Te suena?',
+        'Para pareja el plan completo queda en $950.000 COP. ¿Te suena?',
       );
       mockAnalyzeLead.mockResolvedValueOnce({
         intent: 'curious', scoreDelta: 0, confidence: 0.4,

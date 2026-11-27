@@ -630,6 +630,8 @@ export interface PaymentReservationRepository {
   getPendingByCustomerPhone(customerPhone: string): PaymentReservation | null;
   markApproved(externalReference: string, mercadoPagoPaymentId: string): boolean;
   markFailed(externalReference: string): void;
+  /** Undo `markFailed` when its replacement link could not be created. */
+  reopenFailed(externalReference: string): void;
 }
 
 export type ConversationMode = 'bot' | 'bridge_active' | 'referred' | 'human_pending' | 'human_only';
@@ -690,6 +692,8 @@ export interface ConversationRow {
   collected_travel_origin: string | null;
   price_given_at: string | null;
   quote_fingerprint: string | null;
+  /** JSON `{people, transport}` the delivered quote was computed for; null before 2026-11-26. */
+  quote_key: string | null;
   handed_off_at: string | null;
   soft_closed_at: string | null;
   gallery_nudged_at: string | null;

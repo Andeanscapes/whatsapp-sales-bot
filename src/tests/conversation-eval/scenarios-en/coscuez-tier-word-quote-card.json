@@ -15,6 +15,6 @@
     { "user": "Couple", "mockReply": "In Coscuez there are two ways to experience it. Are you after the essential experience, with one mine and the hike to the viewpoint, or the most complete one that adds Fura and Tena on the second day?", "expect": { "shouldSendReply": true } },
     { "user": "Yes the most complete one", "mockReply": "Perfect. PRIME in Coscuez adds Fura and Tena on the second day. Do you have a rough date in mind?", "expect": { "shouldSendReply": true, "mediaPlanId": "prime_2d1n_coscuez" } },
     { "user": "Not yet", "mockReply": "Got it. Our published departures are October 24 and 31, November 14 and 28, and December 12. Which month works best for you?", "expect": { "shouldSendReply": true } },
-    { "user": "November 28 sounds good", "mockReply": "November 28 it is. For 2 people, PRIME Coscuez comes to *$1,840,000*. How does that sound?", "expect": { "shouldSendReply": true, "priceJustGiven": true, "mediaPlanId": "prime_2d1n_coscuez" } }
+    { "user": "November 28 sounds good", "mockReply": "November 28 it is. For 2 people, PRIME Coscuez comes to *$2,270,000*. How does that sound?", "expect": { "shouldSendReply": true, "priceJustGiven": true, "mediaPlanId": "prime_2d1n_coscuez" } }
   ]
 }

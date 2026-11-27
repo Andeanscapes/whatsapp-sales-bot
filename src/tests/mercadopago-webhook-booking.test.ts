@@ -107,3 +107,23 @@ describe('Mercado Pago approval marks the lead as booked', () => {
     expect(repos.conversation.getBookedAt(PHONE)).toBe(first);
   });
 });
+
+// P0 2026-11-26: /payment supersedes a link priced with the old formula; Mercado Pago may
+// still accept a payment on it. That payment must alert, never vanish.
+describe('payment on a superseded link', () => {
+  it('alerts the owner and does not mark the lead booked', async () => {
+    const { sendAlert } = await import('../services/alert-service.js');
+    vi.mocked(sendAlert).mockClear();
+    repos.paymentReservation.attachPreference(REFERENCE, 'pref-old', 'https://www.mercadopago.com.co/checkout/v1/redirect?pref_id=pref-old');
+    repos.paymentReservation.markFailed(REFERENCE);
+
+    expect(await notify()).toBe(200);
+
+    expect(vi.mocked(sendAlert)).toHaveBeenCalledWith(
+      expect.objectContaining({ intent: 'payment_superseded', reason: expect.stringContaining('enlace anterior') }),
+      repos,
+    );
+    expect(repos.conversation.getBookedAt(PHONE)).toBeNull();
+    expect(repos.paymentReservation.getByExternalReference(REFERENCE)?.status).toBe('failed');
+  });
+});

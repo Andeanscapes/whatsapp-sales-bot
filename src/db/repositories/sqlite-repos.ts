@@ -83,7 +83,7 @@ const ALLOWED_CONVERSATION_COLUMNS = new Set([
   'collected_adults', 'collected_children', 'collected_child_ages_json', 'collected_travel_origin',
   'free_entry_detected', 'ad_referral_json', 'entry_marker', 'entry_temperature', 'entry_marker_at',
   'hot_alert_sent_at', 'urgent_alert_sent_at',
-  'price_given_at', 'quote_fingerprint', 'soft_closed_at',
+  'price_given_at', 'quote_fingerprint', 'quote_key', 'soft_closed_at',
   'sales_phase', 'lead_intent',
   'assigned_line_id', 'assigned_agent_chat', 'conversation_mode',
   'converted_at', 'gallery_nudged_at',
@@ -456,7 +456,7 @@ export class SqliteConversationRepo implements ConversationRepository {
   }
 
   clearPriceQuote(phone: string): void {
-    this.db.prepare('UPDATE conversations SET price_given_at = NULL, quote_fingerprint = NULL WHERE customer_phone = ?').run(phone);
+    this.db.prepare('UPDATE conversations SET price_given_at = NULL, quote_fingerprint = NULL, quote_key = NULL WHERE customer_phone = ?').run(phone);
   }
 
   getLeadScore(phone: string): number {
@@ -505,7 +505,7 @@ export class SqliteConversationRepo implements ConversationRepository {
   clearRetiredPlan(phone: string): void {
     this.db.prepare(
       `UPDATE conversations
-       SET collected_plan = NULL, price_given_at = NULL, quote_fingerprint = NULL, sales_phase = NULL
+       SET collected_plan = NULL, price_given_at = NULL, quote_fingerprint = NULL, quote_key = NULL, sales_phase = NULL
        WHERE customer_phone = ?`
     ).run(phone);
   }
@@ -516,6 +516,7 @@ export class SqliteConversationRepo implements ConversationRepository {
        SET collected_plan = NULL,
            price_given_at = NULL,
            quote_fingerprint = NULL,
+           quote_key = NULL,
            sales_phase = NULL,
            lead_intent = NULL,
            gallery_nudged_at = NULL,
@@ -1358,6 +1359,14 @@ export class SqlitePaymentReservationRepo implements PaymentReservationRepositor
       UPDATE payment_reservations
       SET status = 'failed'
       WHERE external_reference = ? AND status = 'pending'
+    `).run(externalReference);
+  }
+
+  reopenFailed(externalReference: string): void {
+    this.db.prepare(`
+      UPDATE payment_reservations
+      SET status = 'pending'
+      WHERE external_reference = ? AND status = 'failed'
     `).run(externalReference);
   }
 }

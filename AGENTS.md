@@ -40,6 +40,9 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
    One budget-gated corrective LLM rewrite may run on an active inbound turn when
    the model omits the mandatory final question. The engine supplies no customer
    copy; it validates shape, retries at most once, then sends the model output unchanged.
+   The same single retry also runs when the reply carries a COP figure the calculator
+   cannot produce (invariant 18); that one case is a post-LLM guard: a persistent miss is
+   never sent.
    The final question is NOT mandatory on a POST-CTA turn, nor on a `T3b RESERVA
    PEDIDA` turn with no operational field missing: "¿cómo se reserva?" after price +
    date already answers the start-booking question, so the cue tells the model to ask
@@ -710,6 +713,23 @@ Mini PC (Fedora 44) → Node 24 + Fastify → Cloudflare Tunnel → WhatsApp Clo
 - Never use `any`. Never weaken existing zod/HMAC/pino-redact configs.
 - Never log `WHATSAPP_ACCESS_TOKEN`, `DEEPSEEK_API_KEY`, `ADMIN_SECRET`, `WHATSAPP_APP_SECRET`, or `TELEGRAM_BOT_TOKEN`.
 - Bind Fastify to `127.0.0.1` only. No external port binding.
+
+18. **Every COP figure the customer sees comes from the calculator** (P0 2026-11-26).
+    Live 2.6.0 quoted PRIME Chivor for 3 and 4 as 1.440.000 and 1.920.000 / 3.620.000
+    (BASIC's solo rate × N) because `price_given_at` suppressed QUOTE LOCK, the counts
+    were not extracted, and `logQuoteMismatch` only logged.
+    - Owner rule, all plans and sites: 1 = individual, 2 = couple total, 3–10 = couple ÷ 2
+      × N (`couple_half_from_three`, `maxQuotedPeople: 10`). Capacity is not price: above
+      `maxGroupSizePerDate` the team still validates the date. Transport is per vehicle.
+    - `quote-guard.ts` binds each figure to the plan and group size its sentence names.
+      A miss gets the single corrective retry (fresh QUOTE LOCK + `CORRECCION PRECIO`);
+      a persistent miss sends `aiFailureQualified`, alerts `quote_mismatch_blocked` and
+      records no price state. Never downgrade it back to log-only.
+    - A what-if size ("¿cuánto para 3?", "¿y si somos 4?", "solo o pareja", "una o dos
+      parejas") gets its own QUOTE LOCK and is never stored; a declared change ("al final
+      somos 4") replaces the group and, through `quote_key`, re-opens QUOTE LOCK.
+    - The local 4x4 every plan includes is never the Bogotá vehicle.
+    - `/payment` never re-sends a pending link that no longer matches the current quote.
 
 ## Implementation phases (do in order)
 

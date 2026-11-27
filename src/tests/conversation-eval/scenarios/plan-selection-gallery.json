@@ -13,6 +13,6 @@
   ],
   "turns": [
     { "user": "Somos una pareja y nos interesa Chivor", "mockReply": "¡Buenísimo! ¿Buscan una aventura intensa o algo más tranquilo y rural?", "replay": true, "expect": { "shouldSendReply": true, "shouldSendGalleryImages": false }, "seedQualification": { "people": 2 } },
-    { "user": "El plan CORE", "mockReply": "Es una experiencia minera real y auténtica. Para 2 personas queda en $1.200.000 COP. ¿En qué mes les gustaría viajar?\n[[FOTOS:mine]]", "expect": { "shouldSendReply": true, "shouldSendGalleryImages": true, "priceJustGiven": true } }
+    { "user": "El plan CORE", "mockReply": "Es una experiencia minera real y auténtica. Para 2 personas queda en $950.000 COP. ¿En qué mes les gustaría viajar?\n[[FOTOS:mine]]", "expect": { "shouldSendReply": true, "shouldSendGalleryImages": true, "priceJustGiven": true } }
   ]
 }

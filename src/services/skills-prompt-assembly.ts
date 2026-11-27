@@ -29,7 +29,7 @@ import {
 } from './product-registry.js';
 import { getEntrySalesComposition, renderReferentStrategies } from './sales-composition.js';
 import { findPlanBrochureImage, PLAN_BROCHURE_THEME } from './media-service.js';
-import { isConcreteDayDate } from './qualification-engine.js';
+import { isConcreteDayDate, type QuoteScenario } from './qualification-engine.js';
 import { MONTHS_EN, MONTHS_ES } from './date-canonicalizer.js';
 // Single source for both control tokens: the prompt and the validator must never
 // disagree about the exact strings.
@@ -73,6 +73,88 @@ function mentionedDuration(message: string): string | null {
   if (short) return `${short[1]}d/${short[2]}n`;
   const long = /\b(\d)\s*(?:dias?|days?)\s*(?:y|and|\/|,)?\s*(\d)\s*(?:noches?|nights?)\b/.exec(norm);
   return long ? `${long[1]}d/${long[2]}n` : null;
+}
+
+/** The plan's private transport addon: its catalog label and vehicle seats (`max`). */
+function transportAddon(exp: ActiveExperience, planId: string): { label: string; seats: number | null } | null {
+  const plan = exp.plans.find(candidate => candidate.id === planId);
+  const item = exp.pricing.items.find(candidate => candidate.kind === 'addon' && candidate.role === 'transport'
+    && (!candidate.planId || candidate.planId === planId)
+    && (!plan?.siteId || !candidate.siteId || candidate.siteId === plan.siteId));
+  return item ? { label: item.label, seats: item.peopleIncluded ?? null } : null;
+}
+
+function vehicleClause(addon: { label: string; seats: number | null } | null, lang: 'es' | 'en' = 'es'): string {
+  return lang === 'en'
+    ? `${addon ? ` (${addon.label})` : ''} per vehicle${addon?.seats ? `, up to ${addon.seats} passengers` : ''}`
+    : `${addon ? ` (${addon.label})` : ''} por vehículo${addon?.seats ? `, hasta ${addon.seats} pasajeros` : ''}`;
+}
+
+/**
+ * P0 2026-11-26: "4 con transporte" was answered with one lump figure the model built
+ * itself. A quote that carries the vehicle names plan, vehicle and total apart.
+ */
+function transportBreakdown(exp: ActiveExperience, planId: string, quote: { planTotal: number; transportTotal: number | null; total: number | null; currency: string }, lang: 'es' | 'en'): string {
+  if (quote.transportTotal == null || quote.total == null) return '';
+  const money = (amount: number): string => `${formatMoney(amount, quote.currency, lang)} ${quote.currency}`;
+  const addon = transportAddon(exp, planId);
+  return lang === 'en'
+    ? ` BREAKDOWN: plan ${money(quote.planTotal)} + transport ${money(quote.transportTotal)}${vehicleClause(addon, 'en')} = ${money(quote.total)}. Transport is per vehicle, not per person.`
+    : ` DESGLOSE: plan ${money(quote.planTotal)} + transporte ${money(quote.transportTotal)}${vehicleClause(addon)} = ${money(quote.total)}. El transporte es por vehículo, no por persona.`;
+}
+
+/**
+ * QUOTE LOCK for the group sizes the customer asked to price this turn ("¿cuánto para
+ * 3?", "solo o pareja", "para 4 con transporte"). Quoted fresh even after an earlier
+ * quote; every figure comes from the calculator. A what-if size never changes the
+ * agreed group.
+ */
+function scenarioQuoteLock(
+  skills: Skills,
+  exp: ActiveExperience,
+  planId: string,
+  scenario: QuoteScenario,
+  storedTransport: unknown,
+  lang: 'es' | 'en',
+): string {
+  const transportRequested = scenario.transportAsked || storedTransport === 'from_bogota' || storedTransport === 'yes';
+  const addon = transportAddon(exp, planId);
+  const maxRegular = skills.salesStrategy.maxGroupSizePerDate;
+  const lines = scenario.people.map(people => {
+    const label = lang === 'en' ? `${people} ${people === 1 ? 'person' : 'people'}` : `${people} ${people === 1 ? 'persona' : 'personas'}`;
+    const planOnly = calculatePriceQuote(exp, { planId, people, transportNeed: 'own' });
+    if (!planOnly) {
+      return lang === 'en'
+        ? `For ${label} there is no automatic total: the team quotes it; do not calculate it.`
+        : `Para ${label} no hay total automático: lo cotiza el equipo a medida; no lo calcules.`;
+    }
+    const money = (amount: number): string => `${formatMoney(amount, planOnly.currency, lang)} ${planOnly.currency}`;
+    const sentence = lang === 'en'
+      ? `"For ${label}, the plan comes to ${money(planOnly.planTotal)}"`
+      : `"Para ${label}, el plan queda en ${money(planOnly.planTotal)}"`;
+    const equivalent = people > 1 ? calculatePerPersonEquivalent(planOnly.planTotal, people) : null;
+    const equivalentLine = equivalent ? (lang === 'en' ? ` (${money(equivalent.amount)} per person)` : ` (equivalente ${money(equivalent.amount)} por persona)`) : '';
+    let transportLine = '';
+    if (transportRequested) {
+      const withTransport = calculatePriceQuote(exp, { planId, people, transportNeed: 'from_bogota' });
+      transportLine = withTransport?.transportTotal != null && withTransport.total != null
+        ? (lang === 'en'
+          ? `; with transport: plan ${money(withTransport.planTotal)} + transport ${money(withTransport.transportTotal)}${vehicleClause(addon, 'en')} = ${money(withTransport.total)}`
+          : `; con transporte: plan ${money(withTransport.planTotal)} + transporte ${money(withTransport.transportTotal)}${vehicleClause(addon)} = ${money(withTransport.total)}`)
+        : lang === 'en'
+          ? '; private transport for that group: the team confirms it (more than one vehicle or no price); do not add it'
+          : '; transporte privado para ese grupo: lo confirma el equipo (supera un vehículo o no tiene precio); no lo sumes';
+    }
+    const capacityLine = people > maxRegular ? (lang === 'en' ? `; the team confirms space for ${people} people` : `; cupo de ${people} personas lo valida el equipo`) : '';
+    return `${sentence}${equivalentLine}${transportLine}${capacityLine}`;
+  });
+  const scope = scenario.hypothetical
+    ? ' Es un escenario que pidió el cliente: no cambia el grupo acordado ni la reserva.'
+    : '';
+  const transportRule = transportRequested
+    ? ' El transporte privado es opcional, aparte y por vehículo, no por persona.'
+    : ' Sin transporte: llegar es por cuenta del cliente salvo que pida transporte privado.';
+  return `QUOTE LOCK (cotización pedida este turno): ${lines.join(' | ')}.${scope}${transportRule} Copia esas personas y esas cifras tal cual; no recalcules, no uses la tarifa individual por persona para un grupo ni cifras de cotizaciones anteriores. Si pidió varios escenarios, da cada uno con su cifra. Una sola pregunta de avance.`;
 }
 
 function perPersonQuoteCue(total: number, people: number, currency: string, lang: 'es' | 'en' = 'es'): string {
@@ -657,6 +739,10 @@ export interface AssembleSystemPromptInput {
   galleryImagesRemaining?: number;
   galleryRetryInstruction?: boolean;
   advanceQuestionRetryInstruction?: boolean;
+  /** The first draft wrote a figure the calculator cannot produce; this retry copies QUOTE LOCK. */
+  quoteRetryInstruction?: boolean;
+  /** Group sizes (and transport) the customer asked to price this turn; quoted fresh even after a quote. */
+  quoteScenario?: QuoteScenario | null;
   /** Plan ID for a brochure request, when the customer named a different site. */
   brochurePlanId?: string | null;
   /** Site the customer asked photos for, when different from their stored plan's site. */
@@ -820,7 +906,7 @@ function arrivesOnOwn(transport: unknown): boolean {
 }
 
 export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
-   const { skills, lang, collectedFields, salesPhase, customerContext, selectedExperienceId, entryMarker, priorContext, retargetingWithHistory, entryOpeningTurn, returning, leadPain, priceGiven, latestCustomerMessage, otherQuestionThisTurn, dateSelectedThisTurn, planSelectedThisTurn, closeCtaAcceptedThisTurn, reservationRequestedThisTurn, proactiveMode, consentAskRetryInstruction, reaskAfterOptOut, consentAcceptedThisTurn, followupReopenedThisTurn, usedEmojis, galleryShown, galleryRequestThemes, galleryImagesRemaining, galleryRetryInstruction, advanceQuestionRetryInstruction, brochurePlanId, otherSitePhotoRequest, photoSiteCorrection, priceObjectionThisTurn, transportObjectionThisTurn, pauseSummaryAlreadySent, adOpeningTurn, pendingPriceQuestion, requestedPlanIds, greetingPhotoTurn, quoteRequestedThisTurn, videoRequested, videoLinks, replyLanguage, languageSwitchedThisTurn, returningPriceQuestion } = input;
+   const { skills, lang, collectedFields, salesPhase, customerContext, selectedExperienceId, entryMarker, priorContext, retargetingWithHistory, entryOpeningTurn, returning, leadPain, priceGiven, latestCustomerMessage, otherQuestionThisTurn, dateSelectedThisTurn, planSelectedThisTurn, closeCtaAcceptedThisTurn, reservationRequestedThisTurn, proactiveMode, consentAskRetryInstruction, reaskAfterOptOut, consentAcceptedThisTurn, followupReopenedThisTurn, usedEmojis, galleryShown, galleryRequestThemes, galleryImagesRemaining, galleryRetryInstruction, advanceQuestionRetryInstruction, quoteRetryInstruction, quoteScenario, brochurePlanId, otherSitePhotoRequest, photoSiteCorrection, priceObjectionThisTurn, transportObjectionThisTurn, pauseSummaryAlreadySent, adOpeningTurn, pendingPriceQuestion, requestedPlanIds, greetingPhotoTurn, quoteRequestedThisTurn, videoRequested, videoLinks, replyLanguage, languageSwitchedThisTurn, returningPriceQuestion } = input;
 
   const personality = substituteTokens(readPrompt('seller-personality.skill.md'));
   // entry-strategy must precede cold-info-handler: the first-turn handler reads the
@@ -1301,7 +1387,9 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
   // `PRECIO YA ENTREGADO` cue, which forbids repeating the total. Their
   // contradiction made live `buying-signal-payment-facts` re-quote instead of
   // naming anticipo + methods (§T8).
-  if (!t3bCloseTurn && !priceGiven && typeof knownPeople === 'number' && lockedPlanId && isPricingAvailable(activeExperience)) {
+  if (quoteScenario && quoteScenario.people.length > 0 && lockedPlanId && !proactiveMode && !t3bCloseTurn && isPricingAvailable(activeExperience)) {
+    runtime.push(scenarioQuoteLock(skills, activeExperience, lockedPlanId, quoteScenario, collectedFields?.transporte, lang === 'en' ? 'en' : 'es'));
+  } else if (!t3bCloseTurn && !priceGiven && typeof knownPeople === 'number' && lockedPlanId && isPricingAvailable(activeExperience)) {
     const quote = calculatePriceQuote(activeExperience, {
       planId: lockedPlanId,
       people: knownPeople,
@@ -1377,7 +1465,7 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
         ? `For ${quote.people} ${quote.people === 1 ? 'person' : 'people'}, the plan comes to ${formatMoney(amount, quote.currency, 'en')} ${quote.currency}`
         : `Para ${quote.people} ${quote.people === 1 ? 'persona' : 'personas'}, el plan queda en ${formatMoney(amount, quote.currency)} ${quote.currency}`;
       runtime.push(
-        `QUOTE LOCK: escribe "${quoteSentence}". Copia esas personas y ese total; no recalcules ni redondees otra cifra.${quote.requiresTransportConfirmation ? '' : perPersonQuoteCue(amount, quote.people, quote.currency, lang === 'en' ? 'en' : 'es')}${transportNote}${diagnosisTurn ? ' Turno de retorno: diagnostica el freno primero; usa este total solo si el cliente pide el precio.' : ' Este turno entrega ese total; no lo pospongas para despues de preguntar fecha o mes.'}${openingCue}${planNameCue}${dayTripCue}${noDayClose}${sizeCue}`,
+        `QUOTE LOCK: escribe "${quoteSentence}". Copia esas personas y ese total; no recalcules ni redondees otra cifra.${transportBreakdown(activeExperience, lockedPlanId, quote, lang === 'en' ? 'en' : 'es')}${quote.requiresTransportConfirmation ? '' : perPersonQuoteCue(amount, quote.people, quote.currency, lang === 'en' ? 'en' : 'es')}${transportNote}${diagnosisTurn ? ' Turno de retorno: diagnostica el freno primero; usa este total solo si el cliente pide el precio.' : ' Este turno entrega ese total; no lo pospongas para despues de preguntar fecha o mes.'}${openingCue}${planNameCue}${dayTripCue}${noDayClose}${sizeCue}`,
       );
     }
   }
@@ -1461,6 +1549,9 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
   if (galleryRetryInstruction && galleryRequestThemes && galleryRequestThemes.length > 0) {
     const exactMarker = `[[FOTOS:${galleryRequestThemes.join(',')}]]`;
     runtime.push(`CORRECCION FOTOS: el pedido explicito de fotos quedo sin marcador. Reescribe este mismo turno sin agregar copy del sistema y termina literalmente con ${exactMarker} en su propia linea. Conserva exactamente esos ids; no escribas "tema" ni sustituyas el marcador.`);
+  }
+  if (quoteRetryInstruction) {
+    runtime.push('CORRECCION PRECIO: tu borrador anterior escribió una cifra que no sale del calculador para ese plan y ese número de personas. Reescribe este mismo turno completo usando solo las cifras de QUOTE LOCK y RUNTIME, con el número de personas que trae cada una. No uses la tarifa individual por persona para un grupo ni cifras de mensajes anteriores. Si no hay cifra en RUNTIME para lo que pidió, di que el equipo la confirma; no la calcules.');
   }
   if (advanceQuestionRetryInstruction) {
     runtime.push('CORRECCION PREGUNTA: reescribe este mismo turno completo. El texto visible debe terminar con exactamente una pregunta de avance adecuada a la fase actual. No agregues una pregunta generica si corresponde pedir fecha, plan, grupo o cierre. Si hay marcador [[FOTOS:...]], la pregunta va inmediatamente antes y el marcador conserva la ultima linea.');

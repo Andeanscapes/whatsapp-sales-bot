@@ -26,6 +26,8 @@ export interface AlertRequest {
   transport?: string;
   /** Optional operator hint appended after the template body. */
   reason?: string;
+  /** Dedupe key for `payment_superseded`: one alert per Mercado Pago payment, ever. */
+  paymentId?: string;
 }
 
 async function sendWhatsAppAlert(body: string): Promise<void> {
@@ -83,14 +85,23 @@ function fitAlert(body: string): string {
 }
 
 export async function sendAlert(request: AlertRequest, repos: Repositories): Promise<boolean> {
-  const alertType = request.intent === 'reservation_handoff' || request.intent === 'reservation_intent' || request.intent === 'payment_received' || request.intent === 'unsafe_reservation_blocked' || request.intent === 'policy_violation_blocked' || request.intent === 'media_marker_unhonoured' || request.intent === 'system_error' || request.intent === 'dynamic_pricing_unavailable'
+  const alertType = request.intent === 'reservation_handoff' || request.intent === 'reservation_intent' || request.intent === 'payment_received' || request.intent === 'unsafe_reservation_blocked' || request.intent === 'policy_violation_blocked' || request.intent === 'media_marker_unhonoured' || request.intent === 'quote_mismatch_blocked' || request.intent === 'payment_superseded' || request.intent === 'system_error' || request.intent === 'dynamic_pricing_unavailable'
     ? request.intent
     : request.score >= env.URGENT_LEAD_THRESHOLD ? 'urgent' : 'hot';
   const repeatableReservationAlert = alertType === 'reservation_handoff' || alertType === 'reservation_intent' || alertType === 'payment_received';
   const ledgerType = request.availabilityRequest
     ? `availability_check:${request.availabilityRequest.planId}:${request.availabilityRequest.date}`
-    : alertType;
-  if (repeatableReservationAlert) {
+    : alertType === 'payment_superseded' && request.paymentId
+      ? `payment_superseded:${request.paymentId}`
+      : alertType;
+  // A payment on a replaced link is money to reconcile: one alert per payment id, with no
+  // time cooldown. Mercado Pago sends several notifications for the same payment.
+  if (alertType === 'payment_superseded') {
+    if (request.paymentId && repos.ownerAlert.wasAlertedSince(request.customerPhone, ledgerType, new Date(0).toISOString())) {
+      logger.info({ alertType }, '[ALERT] superseded payment already alerted');
+      return true;
+    }
+  } else if (repeatableReservationAlert) {
     const sinceIso = new Date(Date.now() - RESERVATION_ALERT_COOLDOWN_MS).toISOString();
     if (repos.ownerAlert.wasAlertedSince(request.customerPhone, ledgerType, sinceIso)) {
       logger.info({ customerPhone: request.customerPhone, alertType }, '[ALERT] skipped reservation alert within cooldown');

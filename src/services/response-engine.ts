@@ -40,7 +40,10 @@ import {
   siteNamedRecently,
   extractCopAmounts,
   isForbiddenCustomerName,
+  detectQuoteScenario,
+  isGroupSizeQuestion,
 } from './qualification-engine.js';
+import { findQuoteMismatches, type QuoteGuardContext } from './quote-guard.js';
 import { canSendPlanImage, findPlanBrochureImage, galleryImageLimit, hasShownLlmGallery, PLAN_BROCHURE_THEME, planCardSentRecently, remainingGalleryImageBudget, selectBalancedByCategory } from './media-service.js';
 import {
   isSoftCloseMessage,
@@ -602,7 +605,9 @@ export type HardSafetyReason =
   /** Well-formed marker the engine could not honour: no reply text left, or no photos resolved. */
   | 'media_marker_unhonoured'
   /** An Instagram post/reel link that was not selected from the catalog for this chat. */
-  | 'unapproved_video_link';
+  | 'unapproved_video_link'
+  /** A COP figure the calculator cannot produce for the plan and group the reply names. */
+  | 'quote_mismatch';
 
 /**
  * Post-LLM safety verdict. Returns a reason when the model's reply must not go out
@@ -632,6 +637,24 @@ export function hardSafetyFail(
 }
 
 /**
+ * Group size and priced transport a delivered quote was computed for. Only private
+ * transport changes the total; "own", bus or unknown arrival all price the plan alone.
+ */
+function quoteKeyOf(fields: { personas?: unknown; transporte?: unknown }): string {
+  return JSON.stringify({
+    people: typeof fields.personas === 'number' ? fields.personas : null,
+    privateTransport: fields.transporte === 'from_bogota' || fields.transporte === 'yes',
+  });
+}
+
+/** True when the stored quote was for another group size or transport. Pre-key rows (null) are left alone. */
+export function isQuoteKeyStale(stored: string | null | undefined, current: { personas?: unknown; transporte?: unknown }): boolean {
+  if (!stored) return false;
+  return stored !== quoteKeyOf(current);
+}
+
+/**
+ * Superseded in production by `quote-guard.ts` (P0 2026-11-26); kept only for its existing tests.
  * Diagnostic only (log-only rollout): never edits, gates, or suppresses the reply.
  * Returns the unaccounted-for COP figures so the behaviour is unit-testable.
  */
@@ -1407,6 +1430,22 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     delete bookingFields._relative_date_token;
   }
   const contextFields = contextAwareExtract(message, repos, customerPhone, bookingFields, activeExperience);
+  // A what-if size ("¿cuánto para 3?", "¿y si somos 4?", "solo o pareja") is quoted this
+  // turn and never replaces the agreed group size (owner decision 2026-11-26).
+  const storedPeople = typeof storedConversation?.collected_people === 'number' ? storedConversation.collected_people : null;
+  const lastBotQuestion = getLastAssistantQuestion(repos, customerPhone);
+  const quoteScenario = detectQuoteScenario(
+    message,
+    typeof contextFields.collected_people === 'number' ? contextFields.collected_people : null,
+    storedPeople,
+    lastBotQuestion != null && isGroupSizeQuestion(lastBotQuestion),
+  );
+  if (quoteScenario?.hypothetical) {
+    for (const field of ['collected_people', 'collected_adults', 'collected_children', 'collected_child_ages_json'] as const) {
+      delete contextFields[field];
+      delete bookingFields[field];
+    }
+  }
   if (!availabilityDay && !contextFields.collected_date) {
     const selectedPlan = typeof contextFields.collected_plan === 'string'
       ? contextFields.collected_plan
@@ -1514,6 +1553,10 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     repos.conversation.clearPriceQuote(customerPhone);
   } else if (planSwitchedAfterQuote) {
     // The quote on record belongs to the previous plan; the new plan has not been priced.
+    repos.conversation.clearPriceQuote(customerPhone);
+  } else if (isQuoteKeyStale(repos.conversation.getByPhone(customerPhone)?.quote_key, collectedFields)) {
+    // A confirmed change of group size or transport invalidates the delivered total,
+    // its per-person equivalent and its deposit: the next total is a fresh QUOTE LOCK.
     repos.conversation.clearPriceQuote(customerPhone);
   }
   const recentMessages = repos.message.getRecentMessages(customerPhone, 21).filter((_, i, arr) => i < arr.length - 1);
@@ -1965,6 +2008,20 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     : [];
   const greetingPhotoCandidate = env.PERSONA_GREETING_IMAGE_ENABLED && isNewConversation
     && getOwnerImage(skills) != null && canSendPlanImage(repos, customerPhone, 'owner_intro');
+  // A scenario asked after the quote gets its own QUOTE LOCK; a price objection keeps its own cue.
+  const freshScenarioQuote = !!quoteScenario && !priceObjectionThisTurn;
+  const quoteGuard: QuoteGuardContext = {
+    planIds: getPlans(activeExperience).map(plan => plan.id),
+    // Objection alternatives may cross sites; otherwise unnamed figures bind to the chosen site.
+    preferredSiteId: priceObjectionThisTurn ? null : conversationSiteId,
+    peopleCounts: [
+      ...(typeof safeCollected.personas === 'number' ? [safeCollected.personas] : []),
+      ...(quoteScenario?.people ?? []),
+    ],
+    depositPercentFor: planId => getPublicPaymentFactsForPlan(skills, activeExperience, planId).depositPercent,
+    customerAmounts: extractCopAmounts(message),
+  };
+  const quoteGuardActive = isPricingAvailable(activeExperience);
   const promptInput = {
     skills: planGallerySkills,
     lang,
@@ -1981,7 +2038,9 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     leadPain: knownPain,
     // A returning customer asking the price gets a fresh QUOTE LOCK: the old quote is days
     // old and the PRECIO YA ENTREGADO cue would forbid the total they just asked for.
-    priceGiven: repos.conversation.getPriceGivenAt(customerPhone) != null && !(returningTurn && isPriceQuestion(message)),
+    priceGiven: repos.conversation.getPriceGivenAt(customerPhone) != null && !(returningTurn && isPriceQuestion(message))
+      && !freshScenarioQuote,
+    quoteScenario: freshScenarioQuote ? quoteScenario : null,
     latestCustomerMessage: message,
     otherQuestionThisTurn: /[?¿]/.test(message) && !isPriceQuestion(message),
     postQuoteDoubtFollowup: priceGivenAt != null && !!storedPlan && safeCollected.plan === storedPlan
@@ -2089,8 +2148,11 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     && galleryRequestThemes.length > 0
     && galleryImagesRemaining > 0
     && !containsMediaMarkerSyntax(llmTurn.reply);
+  // A figure the calculator cannot produce for the plan and group the reply names.
+  const initialQuoteMismatches = quoteGuardActive ? findQuoteMismatches(initialVisibleReply, activeExperience, quoteGuard) : [];
+  const quoteCorrectionNeeded = initialQuoteMismatches.length > 0;
   if (
-    (advanceQuestionCorrectionNeeded || galleryCorrectionNeeded)
+    (advanceQuestionCorrectionNeeded || galleryCorrectionNeeded || quoteCorrectionNeeded)
     && checkBudget(repos, customerPhone).aiAllowed
   ) {
     logger.warn({
@@ -2098,12 +2160,16 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
       missingQuestion: advanceQuestionCorrectionNeeded,
       missingMediaMarker: galleryCorrectionNeeded,
       themes: galleryCorrectionNeeded ? galleryRequestThemes : undefined,
+      quoteMismatch: quoteCorrectionNeeded ? JSON.stringify(initialQuoteMismatches.slice(0, 10)) : undefined,
     }, '[LLM] retrying incomplete active reply');
     const retryResult = await llmClient.complete({
       systemPrompt: buildSystemPrompt({
         ...promptInput,
+        // The draft priced on its own: give the retry a fresh QUOTE LOCK to copy.
+        ...(quoteCorrectionNeeded ? { priceGiven: false } : {}),
         galleryRetryInstruction: galleryCorrectionNeeded,
         advanceQuestionRetryInstruction: advanceQuestionCorrectionNeeded,
+        quoteRetryInstruction: quoteCorrectionNeeded,
       }),
       message,
       history: llmHistory,
@@ -2264,8 +2330,6 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
   // Strip-only guard on price/payment/close turns. Does not rewrite sales copy.
   const replyText = stripEmojisOnPaymentClose(paymentSafeReply, { movesToPayment, mentionsPrice });
 
-  const quoteQualification = { ...merged };
-
   // ── Plan inference from customer message ────────────────────────────────
   if (merged.plan == null) {
     const userPlan = detectPlan(message, activeExperience, conversationSiteId);
@@ -2381,7 +2445,10 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
   //   * prompt_leak / payment_detail_leak → suppress (empty); substitute risks echo
   //   * false_reservation / template / sentinel → non-echoing aiFailureQualified
   const exp = getActiveExperience(skills);
-  logQuoteMismatch(strippedReplyText, exp, quoteQualification, customerPhone, getPublicPaymentFactsForPlan(skills, exp, typeof quoteQualification.plan === 'string' ? quoteQualification.plan : null).depositPercent);
+  const finalQuoteMismatches = quoteGuardActive ? findQuoteMismatches(strippedReplyText, activeExperience, quoteGuard) : [];
+  if (finalQuoteMismatches.length > 0) {
+    logger.warn({ mismatches: JSON.stringify(finalQuoteMismatches.slice(0, 10)), retried: quoteCorrectionNeeded }, '[QUOTE_GUARD] reply figure not produced by the calculator — blocked');
+  }
   logEmojiStyle(rawReplyText, {
     phone: customerPhone,
     salesPhase: salesPhase ?? undefined,
@@ -2406,6 +2473,7 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
   const unapprovedVideoLinks = unapprovedVideoUrls(strippedReplyText, videoLinks.map(link => link.url), videoLinkSent);
   const safetyFailReason = hardSafetyFail(strippedReplyText, isPricingAvailable(exp), hasHoldableDate)
     ?? (unapprovedVideoLinks.length > 0 ? 'unapproved_video_link' : null)
+    ?? (finalQuoteMismatches.length > 0 ? 'quote_mismatch' : null)
     ?? (unhonourableMediaMarker ? 'media_marker_unhonoured' : null);
   if (safetyFailReason === 'price_without_pricing') {
     logger.warn({ phone: customerPhone }, '[BOT] LLM priced while pricing unavailable — curated fallback sent');
@@ -2426,6 +2494,8 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
     logger.warn({ phone: customerPhone, reason: safetyFailReason, echoRisk }, '[BOT] hard safety block');
     const ownerAlertType = safetyFailReason === 'media_marker_unhonoured'
       ? 'media_marker_unhonoured'
+      : safetyFailReason === 'quote_mismatch'
+        ? 'quote_mismatch_blocked'
       : safetyFailReason === 'payment_detail_leak'
         || safetyFailReason === 'false_reservation_claim'
         || safetyFailReason === 'payment_without_date'
@@ -2467,11 +2537,14 @@ async function processMessageCore(input: ProcessMessageInput, turn: ReturningTur
   const initialPriceJustGiven = initialPriceMentioned && legalPrice;
   const pricePresented = !!(initialPriceJustGiven || prePriceRow);
 
-  if (initialPriceMentioned && !prePriceRow) {
+  // A what-if quote ("¿y para 4?") is not a quote of the agreed group: no price state.
+  if (initialPriceMentioned && !prePriceRow && !quoteScenario?.hypothetical) {
     if (legalPrice) {
       repos.conversation.upsert(customerPhone, {
         price_given_at: new Date().toISOString(),
         quote_fingerprint: fingerprintFor(merged),
+        // Same source as the staleness check (stored fields), never the model's extraction.
+        quote_key: quoteKeyOf(updatedCollected),
       });
     } else {
       logger.info({ phone: customerPhone, fieldCount: priceContextSignals }, '[BOT] price mentioned — price_given deferred (insufficient qualification)');

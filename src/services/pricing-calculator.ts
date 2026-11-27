@@ -106,14 +106,13 @@ function getPlanPrices(exp: ActiveExperience, planId: string, siteId?: string, p
     ? { individual, couple: couple ?? individual * 2 } : null;
 }
 
-// The 5+ formula divides the couple price by 2 per person. Remote couple prices
-// are whole COP and may be odd, so round to the nearest peso to avoid emitting a
-// fractional currency amount to the customer.
-function calculatePlanTotal(people: number, individual: number, couple: number): number {
+// Group formulas divide the couple price by 2 per person. Remote couple prices
+// are whole COP and may be odd, so round once, on the total, to the nearest peso.
+function calculatePlanTotal(people: number, individual: number, couple: number, halfFrom: 3 | 5): number {
   if (people === 1) return individual;
   if (people === 2) return couple;
-  if (people === 3) return couple + individual;
-  if (people === 4) return couple * 2;
+  if (halfFrom === 5 && people === 3) return couple + individual;
+  if (halfFrom === 5 && people === 4) return couple * 2;
   return Math.round((couple / 2) * people);
 }
 
@@ -126,6 +125,8 @@ export function calculatePriceQuote(exp: ActiveExperience, input: PriceQuoteInpu
 
   const people = toPeople(input.people);
   if (people == null) return null;
+  // Above the catalog cap the team quotes to measure: no automatic total.
+  if (plan.maxQuotedPeople != null && people > plan.maxQuotedPeople) return null;
 
   const prices = getPlanPrices(exp, planId, siteId ?? undefined, plan.calculation === 'per_person');
   if (!prices) return null;
@@ -134,7 +135,7 @@ export function calculatePriceQuote(exp: ActiveExperience, input: PriceQuoteInpu
     ? prices.individual * people
     : plan.calculation === 'pairs_plus_single'
       ? Math.floor(people / 2) * prices.couple + (people % 2) * prices.individual
-      : calculatePlanTotal(people, prices.individual, prices.couple);
+      : calculatePlanTotal(people, prices.individual, prices.couple, plan.calculation === 'couple_half_from_three' ? 3 : 5);
   const eligible = exp.pricing.items.filter(item => item.kind === 'addon'
     && (!item.planId || item.planId === planId)
     && (!siteId || !item.siteId || item.siteId === siteId));
@@ -202,6 +203,7 @@ export function getQuoteFingerprint(exp: ActiveExperience, planId: string | null
     .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
   const hash = createHash('sha256').update(JSON.stringify({
     items, depositPercent, calculation: plan.calculation ?? null,
+    ...(plan.maxQuotedPeople != null ? { maxQuotedPeople: plan.maxQuotedPeople } : {}),
     includedAddonIds: [...(plan.includedAddonIds ?? [])].sort(),
   })).digest('hex');
   return `${plan.id}:${hash}`;

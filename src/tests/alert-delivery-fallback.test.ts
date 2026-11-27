@@ -258,3 +258,18 @@ function disableRouting(): void {
   env.LEAD_ROUTING_JSON = '';
   resetRoutingConfigCache();
 }
+
+// P0 2026-11-26: Mercado Pago repeats notifications for one payment; a payment on a
+// replaced link alerts once per payment id, and a second payment still alerts.
+describe('sendAlert — superseded payment', () => {
+  it('alerts once per payment id, never on a cooldown', async () => {
+    mockSendTelegram.mockResolvedValue(undefined);
+    const alert = (paymentId: string) => sendAlert({ customerPhone: PHONE, score: 50, intent: 'payment_superseded', message: 'pago', paymentId }, repos);
+
+    expect(await alert('777')).toBe(true);
+    expect(await alert('777')).toBe(true);
+    expect(mockSendTelegram).toHaveBeenCalledTimes(1);
+    expect(await alert('778')).toBe(true);
+    expect(mockSendTelegram).toHaveBeenCalledTimes(2);
+  });
+});

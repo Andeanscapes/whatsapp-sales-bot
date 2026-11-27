@@ -698,7 +698,8 @@
               "pricing": {
                 "individual": 480000,
                 "couple": 740000,
-                "calculation": "couple_half_from_five"
+                "calculation": "couple_half_from_three",
+                "maxQuotedPeople": 10
               },
               "clarifications": [],
               "addons": [],
@@ -754,7 +755,8 @@
               "pricing": {
                 "individual": 620000,
                 "couple": 950000,
-                "calculation": "couple_half_from_five"
+                "calculation": "couple_half_from_three",
+                "maxQuotedPeople": 10
               },
               "clarifications": [],
               "addons": [
@@ -822,7 +824,8 @@
               "pricing": {
                 "individual": 960000,
                 "couple": 1700000,
-                "calculation": "couple_half_from_five"
+                "calculation": "couple_half_from_three",
+                "maxQuotedPeople": 10
               },
               "clarifications": [],
               "addons": [
@@ -1222,7 +1225,7 @@
           },
           "rules": [
             "Usa solo el plan de Coscuez elegido. No mezcles inclusiones, rutas, alojamiento, fotos o extras de Chivor.",
-            "Usa la misma regla de calculo del motor que Chivor: couple_half_from_five. No reinterpretar el nombre ni crear una formula nueva; sin el calculador o un QUOTE LOCK, el equipo confirma cotizaciones de 3 o mas personas.",
+            "Usa la misma regla de calculo del motor que Chivor. No crear una formula nueva; sin el calculador o un QUOTE LOCK, el equipo confirma la cotizacion.",
             "Cada adulto o nino que participa cuenta como un cupo completo. No hay descuento infantil publicado. Edad minima: 5 anios.",
             "Si RUNTIME incluye QUOTE LOCK, copia unicamente ese total exacto. Nunca reconstruyas el total desde los precios visibles.",
             "El anticipo es 50% y el saldo 50% en los tres planes de Coscuez. No solicitar pago antes de validar disponibilidad. Confirmacion sujeta a validacion del equipo.",
@@ -1499,7 +1502,8 @@
               "pricing": {
                 "individual": 420000,
                 "couple": 720000,
-                "calculation": "couple_half_from_five"
+                "calculation": "couple_half_from_three",
+                "maxQuotedPeople": 10
               },
               "clarifications": [],
               "addons": [],
@@ -1568,7 +1572,8 @@
               "pricing": {
                 "individual": 580000,
                 "couple": 1004000,
-                "calculation": "couple_half_from_five"
+                "calculation": "couple_half_from_three",
+                "maxQuotedPeople": 10
               },
               "clarifications": [
                 "Precio pareja corresponde al total de 2 personas. Para grupos mayores, aplicar la regla del motor compartida con Chivor."
@@ -1651,7 +1656,8 @@
               "pricing": {
                 "individual": 1497000,
                 "couple": 2270000,
-                "calculation": "couple_half_from_five"
+                "calculation": "couple_half_from_three",
+                "maxQuotedPeople": 10
               },
               "clarifications": [
                 "Precio pareja corresponde al total de 2 personas. Para grupos mayores, aplicar la regla del motor compartida con Chivor."

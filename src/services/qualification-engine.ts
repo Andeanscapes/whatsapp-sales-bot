@@ -93,8 +93,64 @@ export function isAmbiguousPartyComparison(text: string): boolean {
     || /precios?\s+para\s+(?:una\s+)?persona\s+o\s+(?:para\s+)?pareja/i.test(norm)
     || /(?:una\s+)?persona\s+o\s+(?:para\s+)?pareja/i.test(norm)
     || /(?:precio|precios|vale|valor).{0,40}(?:una\s+persona|individual|solo).{0,40}(?:pareja|dos\s+personas)/i.test(norm)
-    || /(?:precio|precios|vale|valor).{0,40}(?:pareja|dos\s+personas).{0,40}(?:una\s+persona|individual|solo)/i.test(norm);
+    || /(?:precio|precios|vale|valor).{0,40}(?:pareja|dos\s+personas).{0,40}(?:una\s+persona|individual|solo)/i.test(norm)
+    || COUPLE_COUNT_ALTERNATIVE.test(norm);
 }
+
+export interface QuoteScenario {
+  /** Group sizes to quote this turn, in the order the customer named them. */
+  people: number[];
+  /** True when the count is a what-if and must not replace the stored group size. */
+  hypothetical: boolean;
+  /** The customer asked whether (or how much) private transport adds. */
+  transportAsked: boolean;
+}
+
+// Private transport from the customer's city, never the local 4x4 every plan includes.
+const TRANSPORT_ASKED = /\b(?:con|incluye|incluido|incluida|incluyendo|sin|y\s+el)\s+(?:el\s+)?transporte\b|\btransporte\s+(?:incluido|aparte)\b|\b(?:with|including|without)\s+(?:the\s+)?transport(?:ation)?\b|\btransport(?:ation)?\s+included\b/;
+// A bare "si somos 4" is usually "Sí, somos 4" with the accent dropped: only "y si / pero si /
+// que tal si" or a conditional verb make it a what-if.
+const HYPOTHETICAL_COUNT = /\b(?:y|pero|que\s+tal)\s+si\s+(?:somos|vamos|llevo|llevamos)\b|\bsi\s+(?:fueramos|fuesemos|vinieramos|seriamos)\b|\by\s+(?:para|con)\s+\d|\bwhat\s+if\s+we\b|\b(?:and\s+)?for\s+\d+\s*\?|^\s*(?:y|and)\s+(?:para|for)\s+\d/;
+const DECLARATIVE_COUNT = /\b(?:al\s+final|finalmente|ahora\s+somos|ya\s+somos|seremos|iremos|somos|vamos|actually\s+we|we\s+are\s+now|now\s+we\s+are)\b/;
+
+/**
+ * Quote scenarios the customer asked for this turn, given the stored group size.
+ * - Two sizes ("solo o pareja", "una o dos parejas") → both, never stored.
+ * - A different size asked as a question after a size is stored ("¿cuánto para 3?",
+ *   "¿y si somos 4?") → quoted this turn, never stored (owner decision 2026-11-26).
+ * - A declarative change ("somos 4", "al final vamos 3") is not a scenario: it replaces
+ *   the stored size through the normal extraction.
+ * Null when the turn names no new size.
+ */
+export function detectQuoteScenario(
+  text: string,
+  extractedPeople: number | null,
+  storedPeople: number | null,
+  /** The bot just asked the group: a size in the reply answers it, even as a question. */
+  groupAsked = false,
+): QuoteScenario | null {
+  const norm = normalizeText(text);
+  const transportAsked = TRANSPORT_ASKED.test(norm);
+  if (isAmbiguousPartyComparison(text)) {
+    const couples = COUPLE_COUNT_ALTERNATIVE.exec(norm);
+    const people = couples
+      ? [2, (parseCountWord(couples[0].match(/(dos|2|tres|3|two|three)\s+(?:parejas|couples)/)?.[1] ?? '') ?? 2) * 2]
+      : [1, 2];
+    return { people, hypothetical: true, transportAsked };
+  }
+  const alternative = /\b(\d{1,2}|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\s+(?:o|or)\s+(\d{1,2}|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\s+(?:personas|people|viajeros|travell?ers)\b/.exec(norm);
+  if (alternative) {
+    const people = [parseCountWord(alternative[1]), parseCountWord(alternative[2])].filter((n): n is number => n != null);
+    if (people.length === 2 && people[0] !== people[1]) return { people, hypothetical: true, transportAsked };
+  }
+  if (groupAsked || extractedPeople == null || storedPeople == null || extractedPeople === storedPeople) return null;
+  const question = /[?¿]/.test(text) || HYPOTHETICAL_COUNT.test(norm);
+  const hypothetical = HYPOTHETICAL_COUNT.test(norm) || (question && !DECLARATIVE_COUNT.test(norm));
+  return hypothetical ? { people: [extractedPeople], hypothetical: true, transportAsked } : null;
+}
+
+/** "una o dos parejas", "en pareja o 2 parejas", "one or two couples": two scenarios, no settled size. */
+const COUPLE_COUNT_ALTERNATIVE = /\b(?:una|1|en|one|a)\s+(?:pareja\s+|couple\s+)?(?:o|or)\s+(?:dos|2|tres|3|two|three)\s+(?:parejas|couples)\b/i;
 
 export const TRANSPORT_OWN_PATTERNS = [
   /\b(?:veh[ií]culo propio|carro propio|mi carro|mi coche|mi auto|mi camioneta|en mi carro|voy en carro|voy con carro|llevo carro|tengo mi carro|moto|moto propia|vamos en (?:carro|moto|auto)|tenemos (?:carro|moto|auto|veh[ií]culo)|transporte propio|transporte si|si tenemos)\b/i,
@@ -772,6 +828,13 @@ export function extractBookingFields(text: string, experience?: ActiveExperience
     }
   }
 
+  // "dos parejas", "somos 3 parejas": couples times two, before "somos N" reads the bare count.
+  const couplesMatch = normalized.match(/\b(dos|tres|cuatro|cinco|2|3|4|5|two|three|four|five)\s+(?:parejas|couples)\b/);
+  const couples = couplesMatch ? parseCountWord(couplesMatch[1]) : null;
+  if (couples != null && !fields.collected_people && !mixedAdultsAndChildren && !isAmbiguousPartyComparison(text)) {
+    fields.collected_people = couples * 2;
+  }
+
   const simpleNumberMatch = text.match(/\b(?:somos|van|vamos|seriamos|serian|somos como|van como)\s+(\d+)\b/i);
   if (simpleNumberMatch && !fields.collected_people && !mixedAdultsAndChildren) {
     fields.collected_people = parseInt(simpleNumberMatch[1], 10);
@@ -791,18 +854,22 @@ export function extractBookingFields(text: string, experience?: ActiveExperience
   // Live 2026-11-18 (two-plan-narrow-quotes-both ES) "para 2" stayed unknown. Only a number
   // that ends the clause counts: "para el 2", "para 2 de noviembre", "para 2 noches" and
   // "for 2 days" are dates or durations, and without a price word the number is ignored.
-  const priceAsk = /\b(?:cuanto|vale|valen|cuesta|cuestan|precio|precios|valor|costo|how much|price|prices|cost)\b/.test(normalized);
+  // P0 2026-11-26: "¿total para 4 con transporte y todo?" and "¿cuánto para 3? ¿incluye
+  // transporte?" left the count unread, so the model priced 3 and 4 on its own.
+  const priceAsk = /\b(?:cuanto|vale|valen|cuesta|cuestan|precio|precios|valor|costo|total|cotiza\w*|how much|price|prices|cost)\b|\b(?:y|con)\s+todo\b/.test(normalized);
   // "y/and" may follow only when a question word follows it: "para 15 y 16 de noviembre",
   // "for 2 and 3 nights" and "para 2 y mi mamá" are date ranges or an incomplete headcount.
+  // A transport clause may follow: "para 4 con transporte", "for 3 including transport".
   const bareCountMatch = priceAsk
-    ? normalized.match(/\b(?:para|for)\s+(\d{1,2})(?=\s*$|\s+(?:cuanto|how|porfa|por favor|please)\b|\s+(?:y|and)\s+(?:que|cuanto|what|how)\b)/)
+    ? normalized.match(/\b(?:para|for)\s+(\d{1,2})(?=\s*$|\s+(?:cuanto|how|porfa|por favor|please|incluye|incluido|incluida|including|personas?|people|viajeros?)\b|\s+(?:con|sin|with|without)\s+(?:el\s+|the\s+)?(?:transporte|transport|todo)\b|\s+(?:y|and)\s+(?:que|cuanto|what|how|todo)\b)/)
     : null;
   const bareCount = bareCountMatch ? Number(bareCountMatch[1]) : null;
   if (bareCount != null && bareCount > 0 && bareCount <= 30 && !fields.collected_people && !mixedAdultsAndChildren) {
     fields.collected_people = bareCount;
   }
 
-  const couplePattern = /\b(?:couple|pareja|dos personas|2 personas|dos pilotos|mi esposo y yo|mi esposa y yo|mi novio y yo|mi novia y yo|mi pareja y yo|mi hija y yo|mi hijo y yo|mi (?:mam[aá]|madre|made) y yo|vamos dos|somos dos|somos 2|vamos 2|por ahora dos)\b/i;
+  // "Empareja por ahora" (live 2026-11-18) is "en pareja" typed together.
+  const couplePattern = /\b(?:couple|pareja|empareja|enpareja|dos personas|2 personas|dos pilotos|mi esposo y yo|mi esposa y yo|mi novio y yo|mi novia y yo|mi pareja y yo|mi hija y yo|mi hijo y yo|mi (?:mam[aá]|madre|made) y yo|vamos dos|somos dos|somos 2|vamos 2|por ahora dos)\b/i;
   const soloPattern = /\b(?:sola|solo|voy sola|voy solo|ir[ií]a sola|ir[ií]a solo|yo sola|yo solo|una persona|1 persona|just me|only me|me alone|solo traveler)\b/i;
   const ambiguousParty = isAmbiguousPartyComparison(text);
   if (couplePattern.test(text) && !fields.collected_people && !ambiguousParty && !mixedAdultsAndChildren) {
@@ -903,6 +970,15 @@ function extractPeopleFromReply(text: string): number | null {
     return Number.isInteger(n) && n >= 1 && n <= 20 ? n : null;
   };
 
+  // "una o dos parejas" names two scenarios; "dos parejas" is four travellers. Read as a
+  // bare number word, the first used to store 1.
+  if (isAmbiguousPartyComparison(text)) return null;
+  const couples = /\b(\d{1,2}|dos|tres|cuatro|cinco)\s+parejas\b/.exec(normalizeText(text));
+  if (couples) {
+    const n = toPeople(couples[1]);
+    return n != null && n * 2 <= 20 ? n * 2 : null;
+  }
+
   const peopleContext = /\b(?:somos|seriamos|ser[ií]amos|serian|ser[ií]an|vamos|iriamos|ir[ií]amos|para)\s+(\d{1,2}|uno|una|un|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|dieciseis|dieciséis|diecisiete|dieciocho|diecinueve|veinte)\b/.exec(norm)
     ?? /\b(\d{1,2}|uno|una|un|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|dieciseis|dieciséis|diecisiete|dieciocho|diecinueve|veinte)\s+personas\b/.exec(norm);
   if (peopleContext) {
@@ -914,6 +990,9 @@ function extractPeopleFromReply(text: string): number | null {
   // in a second WhatsApp message. A calendar month makes that number a day, not a
   // delayed headcount answer. Explicit people wording above still wins.
   if (MONTH_NAMES.some(month => norm.includes(month))) return null;
+
+  // "Empareja por ahora", "en pareja": only after any explicit count ("3, una pareja y mi hermana").
+  const coupleOnly = /\b(?:en\s*pareja|empareja)\b/.test(normalizeText(text)) && !/\d/.test(norm);
 
   // Exact standalone digit (existing behaviour preserved).
   const soloNum = /^(\d+)$/.exec(norm);
@@ -929,6 +1008,8 @@ function extractPeopleFromReply(text: string): number | null {
     if (n != null) return n;
   }
 
+  if (coupleOnly) return 2;
+
   // Spanish number-word (uno..veinte).
   const words = norm.split(/[^a-záéíóúüñ]+/).filter(Boolean);
   for (const w of words) {
@@ -937,6 +1018,13 @@ function extractPeopleFromReply(text: string): number | null {
   }
 
   return null;
+}
+
+/** The bot's question asks how many travel ("¿cuántas personas?", "¿solo, en pareja o en grupo?"). */
+export function isGroupSizeQuestion(question: string): boolean {
+  const norm = normalizeText(question);
+  return /cu[aá]ntas personas|cu[aá]ntos ser[ií]an|how many people/i.test(norm)
+    || /sol[oa]s?\b.{0,40}\bpareja|pareja.{0,40}\bgrupo|\balone\b.{0,40}\bcouple|\bcouple\b.{0,40}\bgroup|just you.{0,40}\b(?:couple|group)/i.test(norm);
 }
 
 export function contextAwareExtract(message: string, repos: Repositories, phone: string, existing: Record<string, unknown>, experience?: ActiveExperience): Record<string, unknown> {
@@ -950,8 +1038,7 @@ export function contextAwareExtract(message: string, repos: Repositories, phone:
   if (lastQuestion && !fields.collected_people) {
     // The ad opener asks the group ("¿solo, en pareja o para un grupo?"); "para 2" answers it as a
     // headcount. Without this, "Quiero el pasadía para 2" stored no people and no T3b close ran.
-    const askedPeople = normQuestion != null && (/cu[aá]ntas personas|cu[aá]ntos ser[ií]an|how many people/i.test(normQuestion)
-      || /sol[oa]s?\b.{0,40}\bpareja|pareja.{0,40}\bgrupo|\balone\b.{0,40}\bcouple|\bcouple\b.{0,40}\bgroup|just you.{0,40}\b(?:couple|group)/i.test(normQuestion));
+    const askedPeople = normQuestion != null && isGroupSizeQuestion(normQuestion);
     if (askedPeople) {
       const people = extractPeopleFromReply(norm);
       if (people != null) fields.collected_people = people;
@@ -1252,11 +1339,33 @@ export function resolveLanguage(repos: Repositories, phone: string, message: str
   return resolveTurnLanguage(repos, phone, message).language;
 }
 
-const COP_AMOUNT = /(?:\$\s*|COP\s*)?(\d{1,3}(?:[.,]\d{3})+|\d{6,})(?:\s*(?:COP|pesos))?/gi;
+const COP_AMOUNT = /(?:\$\s*|COP\s*)?(\d{1,3}(?:[.,']\d{3})+|\d{6,})(?:\s*(?:COP|pesos))?/gi;
+/**
+ * Spoken forms: "1,44 millones", "$1.4M", "1 millón 440 mil", "620 mil", "$620k". A figure
+ * the guard cannot read is a figure it cannot block.
+ */
+const COP_SPOKEN = /\b(\d{1,3}(?:[.,]\d{1,3})?)\s*[Mm]ill(?:ones|[oó]n|ions?)(?:\s+(?:y\s+)?(\d{1,3})\s*mil\b)?|\$\s*(\d{1,3}(?:[.,]\d{1,3})?)\s*M\b|\b(\d{2,3})\s*mil\b|\$\s*(\d{2,3})\s*[kK]\b/g;
 
 export function extractCopAmounts(reply: string): number[] {
-  return [...reply.matchAll(COP_AMOUNT)]
-    .map(match => Number.parseInt(match[1].replace(/[.,]/g, ''), 10))
+  const found: Array<{ start: number; end: number; amount: number }> = [];
+  for (const match of reply.matchAll(COP_SPOKEN)) {
+    const [, millions, thousandsAfter, dollarMillions, thousands, kilo] = match;
+    const amount = millions != null
+      ? Math.round(Number.parseFloat(millions.replace(',', '.')) * 1_000_000) + (thousandsAfter ? Number(thousandsAfter) * 1000 : 0)
+      : dollarMillions != null
+        ? Math.round(Number.parseFloat(dollarMillions.replace(',', '.')) * 1_000_000)
+        : Number(thousands ?? kilo) * 1000;
+    found.push({ start: match.index ?? 0, end: (match.index ?? 0) + match[0].length, amount });
+  }
+  for (const match of reply.matchAll(COP_AMOUNT)) {
+    const start = match.index ?? 0;
+    const end = start + match[0].length;
+    if (found.some(span => start < span.end && end > span.start)) continue;
+    found.push({ start, end, amount: Number.parseInt(match[1].replace(/[.,']/g, ''), 10) });
+  }
+  return found
+    .sort((a, b) => a.start - b.start)
+    .map(entry => entry.amount)
     .filter(amount => Number.isFinite(amount) && amount >= 100_000);
 }
 

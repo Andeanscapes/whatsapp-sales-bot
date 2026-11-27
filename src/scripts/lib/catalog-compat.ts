@@ -16,6 +16,15 @@ export const FIELDS_NEWER_THAN_PROD_BOT: ReadonlyArray<{ field: string; level: '
   { field: 'reels', level: 'plan', since: 'the release after 2.5.1' },
 ];
 
+/**
+ * Keys (or values) inside `plans.<id>.pricing` that older bots reject. `value` set means
+ * only that enum value is new; omitted means the key itself is new.
+ */
+export const PLAN_PRICING_NEWER_THAN_PROD_BOT: ReadonlyArray<{ key: string; value?: string; since: string }> = [
+  { key: 'calculation', value: 'couple_half_from_three', since: 'the release after 2.6.0' },
+  { key: 'maxQuotedPeople', since: 'the release after 2.6.0' },
+];
+
 type CatalogNode = Record<string, unknown>;
 interface CatalogShape {
   experiences?: Record<string, CatalogNode & { sites?: Record<string, CatalogNode & { plans?: Record<string, CatalogNode> }> }>;
@@ -24,6 +33,23 @@ interface CatalogShape {
 /** Paths in the catalog that an older bot would reject. */
 export function findFieldsNewerThanProdBot(json: unknown): string[] {
   const experiences = (json as CatalogShape | null)?.experiences ?? {};
+  return [...findNewerFields(experiences), ...findNewerPlanPricing(experiences)];
+}
+
+function findNewerPlanPricing(experiences: NonNullable<CatalogShape['experiences']>): string[] {
+  return Object.entries(experiences).flatMap(([experienceId, experience]) =>
+    Object.entries(experience?.sites ?? {}).flatMap(([siteId, site]) =>
+      Object.entries(site?.plans ?? {}).flatMap(([planId, plan]) => {
+        const pricing = plan?.pricing;
+        if (!pricing || typeof pricing !== 'object') return [];
+        const node = pricing as CatalogNode;
+        return PLAN_PRICING_NEWER_THAN_PROD_BOT
+          .filter(({ key, value }) => Object.hasOwn(node, key) && (value == null || node[key] === value))
+          .map(({ key, value, since }) => `experiences.${experienceId}.sites.${siteId}.plans.${planId}.pricing.${key}${value ? `=${value}` : ''} (needs ${since})`);
+      })));
+}
+
+function findNewerFields(experiences: NonNullable<CatalogShape['experiences']>): string[] {
   return Object.entries(experiences).flatMap(([experienceId, experience]) =>
     FIELDS_NEWER_THAN_PROD_BOT.flatMap(({ field, level, since }) => {
       const sites = Object.entries(experience?.sites ?? {});
