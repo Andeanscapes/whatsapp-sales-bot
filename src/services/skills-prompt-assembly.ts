@@ -3,6 +3,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import type { Skills } from './skill-loader.js';
 import { languageName } from './language-service.js';
+import { isBareAcknowledgment } from './reply-guard.js';
 import { substituteTokens } from './skill-loader.js';
 import type { CustomerContext } from './customer-context.js';
 import {
@@ -1641,6 +1642,25 @@ export function assembleSystemPrompt(input: AssembleSystemPromptInput): string {
   if (t3bCloseTurn && planSelectedThisTurn && !reservationRequestedThisTurn && !proactiveMode) {
     const point = planGuidance(activeExperience, [], selectedSiteId).meetingPoint;
     runtime.push(`CIERRE T3b: acaba de elegir plan y día después de ver el precio. No recotices. Indica fecha, punto de encuentro${point ? ` (${point})` : ''} y hora de inicio del plan según CATALOGO; luego el anticipo${planDepositPercent != null ? ` del ${planDepositPercent}%` : ''} condicionado a confirmar cupo. Cierra con una sola pregunta para iniciar la reserva.`);
+  }
+  // "ok gracias" after a quote was silence in 71 chats (export 2026-11-16). The
+  // rule is turn-specific, so it lives here and not in whatsapp-sales §5b: as
+  // always-on skill text it competed with the general "acuse sin nada pendiente"
+  // rule, and tightening either side just moved the failure between languages
+  // (live 2026-11-24: EN repeated the total, ES dropped the step). §5b keeps
+  // owning the ordinary acknowledgment.
+  // No `lockedPlanId` requirement on purpose: a price turn that quoted two plans
+  // leaves no plan selected, which is exactly this scenario, and gating on it
+  // made the cue dead code (live 2026-11-24, ES stayed at the §5b baseline 4/5).
+  // All this turn needs is that we quoted and no date is agreed.
+  if (priceGiven && !pausedPlan && !hasConcreteDate
+    && isBareAcknowledgment(latestCustomerMessage ?? '')
+    && !informationalCloseTurn && !priceObjectionThisTurn && !quoteRequestedThisTurn
+    && !reservationRequestedThisTurn && !closeCtaAcceptedThisTurn && !consentAcceptedThisTurn
+    && !returning && !proactiveMode) {
+    runtime.push(lang === 'en'
+      ? 'ACKNOWLEDGMENT AFTER A QUOTE: they only said thanks and your last question is still unanswered. One short sentence: a soft step toward the date plus a single question. Do NOT repeat the total or any figure — the price is already given and repeating it turns this into a second quote. Never close with bare courtesy.'
+      : 'ACUSE TRAS COTIZACION: solo agradeció y tu última pregunta sigue sin respuesta. Una frase corta: un paso suave hacia la fecha y una sola pregunta. NO repitas el total ni ninguna cifra — el precio ya lo diste y repetirlo convierte esto en una segunda cotización. Nunca cierres con una cortesía a secas.');
   }
   if (input.postQuoteDoubtFollowup && priceGiven && lockedPlanId && !pausedPlan && !hasConcreteDate
     && !informationalCloseTurn && !priceObjectionThisTurn && !quoteRequestedThisTurn

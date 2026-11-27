@@ -261,6 +261,20 @@ export function isNoReplyNeededPause(text: string): boolean {
   return parts.length > 0 && parts.every(part => ACK_ONLY.test(part) || DELIBERATION.test(part));
 }
 
+/**
+ * Pure courtesy and nothing else: "gracias", "ok gracias", "listo", "thanks".
+ *
+ * Tells the "ok" that DODGES our open question apart from the "ok" that answers
+ * it — "ok el 14" and "dale, para diciembre" carry an answer and must keep the
+ * normal §7 routing. Reuses `ACK_ONLY` so the courtesy vocabulary has one home;
+ * a digit or a question mark disqualifies the message outright.
+ */
+export function isBareAcknowledgment(text: string): boolean {
+  if (/[?¿\d]/.test(text)) return false;
+  const parts = text.split(/[.!,;\n]+/).map(normalizeText).filter(Boolean);
+  return parts.length > 0 && parts.every(part => ACK_ONLY.test(part));
+}
+
 export function detectsAvailabilityConfirmRequest(text: string): boolean {
   const norm = normalizeText(text);
   return /(?:por favor\s+)?confirm(?:a|ar|e|emos)?\s+(?:la\s+)?disponibilidad/i.test(norm)
